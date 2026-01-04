@@ -10,12 +10,17 @@ const snapshotGlobal = globalThis as typeof globalThis & {
 };
 const snapshotPromise =
   snapshotGlobal.__smolSnapshotPromise ??
-  (snapshotGlobal.__smolSnapshotPromise = fetch(snapshotUrl).then((response) => {
-    if (!response.ok) {
-      throw new Error(`Failed to fetch snapshot: ${response.statusText}`);
-    }
-    return response.json() as Promise<Smol[]>;
-  }));
+  (snapshotGlobal.__smolSnapshotPromise = fetch(snapshotUrl)
+    .then((response) => {
+      if (!response.ok) {
+        throw new Error(`Failed to fetch snapshot: ${response.statusText}`);
+      }
+      return response.json() as Promise<Smol[]>;
+    })
+    .catch((error) => {
+      snapshotGlobal.__smolSnapshotPromise = undefined;
+      throw error;
+    }));
 
 const snapshot = await snapshotPromise;
 
