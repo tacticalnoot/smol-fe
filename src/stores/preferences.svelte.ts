@@ -17,7 +17,15 @@ function loadPreferences() {
     try {
         const stored = localStorage.getItem('smol_preferences');
         if (stored) {
-            return { ...DEFAULT_PREFERENCES, ...JSON.parse(stored) };
+            const parsed = { ...DEFAULT_PREFERENCES, ...JSON.parse(stored) };
+
+            // Migrate old 'technicolor' to 'slate' at load time
+            if (parsed.glowTheme === 'technicolor' as any) {
+                parsed.glowTheme = 'slate';
+                console.log('[Preferences] Migrating technicolor → slate');
+            }
+
+            return parsed;
         }
     } catch (e) {
         console.warn('Failed to load preferences', e);

@@ -19,6 +19,7 @@
     import { getTokenBalance } from "../../utils/balance";
     import TipArtistModal from "../artist/TipArtistModal.svelte";
     import { sac } from "../../utils/passkey-kit";
+    import { buildRadioUrl } from "../../utils/radio";
     import {
         safeFetchSmols,
         likeSmol,
@@ -1346,9 +1347,7 @@
                                                             : ''}"
                                                         onclick={(e) => {
                                                             e.stopPropagation();
-                                                            navigate(
-                                                                `/radio?seed=${song.Id}`,
-                                                            );
+                                                            navigate(buildRadioUrl(song));
                                                         }}
                                                         onkeydown={() => {}}
                                                         title="Start Radio"
@@ -1481,16 +1480,12 @@
                                                     : ''}"
                                                 onclick={(e) => {
                                                     e.stopPropagation();
-                                                    navigate(
-                                                        `/radio?artist=${song.Address}`,
-                                                    );
+                                                    navigate(buildRadioUrl(song));
                                                 }}
                                                 onkeydown={(e) => {
                                                     if (e.key === "Enter") {
                                                         e.stopPropagation();
-                                                        navigate(
-                                                            `/radio?artist=${song.Address}`,
-                                                        );
+                                                        navigate(buildRadioUrl(song));
                                                     }
                                                 }}
                                                 title="Start Artist Radio"
