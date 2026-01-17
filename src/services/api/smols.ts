@@ -9,76 +9,89 @@ const API_URL = import.meta.env.PUBLIC_API_URL || 'https://api.smol.xyz';
 /**
  * Fetch all smols with Hybrid Strategy (Live + GalacticSnapshot Merge)
  */
-export async function fetchSmols(options?: { limit?: number }): Promise<Smol[]> {
-  try {
-    const url = new URL(`${API_URL}`);
-    if (options?.limit) {
-      url.searchParams.set("limit", String(options.limit));
-    }
-    const response = await fetch(url.toString());
-    if (!response.ok) {
-      console.warn(
-        `Failed to fetch live smols: ${response.statusText}, falling back to snapshot`,
-      );
-      return getSnapshotAsync();
-    }
+// 1. Parallelize Live Fetch and Snapshot Load
+const [liveRes, snapshot] = await Promise.all([
+  fetch(url.toString()),
+  getSnapshotAsync(),
+]);
 
-    const data = await response.json();
-    const liveSmols = data.smols || data;
-    if (!Array.isArray(liveSmols) || liveSmols.length === 0) {
-      console.warn("Live smols response empty, falling back to snapshot");
-      return getSnapshotAsync();
-    }
+if (!liveRes.ok) {
+  console.warn(
+    `Failed to fetch live smols: ${liveRes.statusText}, falling back to snapshot`,
+  );
+  return snapshot;
+}
 
-    // Merge: Prefer Live, but fallback to Snapshot for missing critical fields (Tags, Address)
-    const merged = await mergeSmolsWithSnapshot(liveSmols as Smol[]);
-    const snapshotMap = new Map((await getSnapshotAsync()).map((s) => [s.Id, s]));
+const data = await liveRes.json();
+const liveSmols = (data.smols || data) as Smol[];
+if (!Array.isArray(liveSmols) || liveSmols.length === 0) {
+  console.warn("Live smols response empty, falling back to snapshot");
+  return snapshot;
+}
 
-    // 4. DEEP VERIFICATION: Hydrate missing metadata for "Live-Only" songs
-    // (Songs present in API but not in snapshot = New drops missing tags/address)
-    const newItems = merged.filter(
-      (s: any) =>
-        !snapshotMap.has(s.Id) &&
-        (!s.Tags || s.Tags.length === 0 || !s.Address),
-    );
+// 2. Perform Merging with pre-loaded snapshot
+const snapshotMap = new Map(snapshot.map((s) => [s.Id, s]));
 
-    if (newItems.length > 0) {
-      // console.log(`[HybridData] Found ${newItems.length} new live items. Hydrating tags...`);
-      // Fetch details in parallel chunks (Batched to prevent rate limits)
-      const chunkSize = 5;
-      for (let i = 0; i < newItems.length; i += chunkSize) {
-        const chunk = newItems.slice(i, i + chunkSize);
-        await Promise.all(
-          chunk.map(async (song: any) => {
-            try {
-              const res = await fetch(`${API_URL}/${song.Id}`);
-              if (!res.ok) return;
-              const data = await res.json();
-              const detail = data.d1 || data.kv_do;
-              if (detail) {
-                if (detail.Tags) song.Tags = detail.Tags;
-                if (detail.lyrics?.style) {
-                  song.Tags = [...(song.Tags || []), ...detail.lyrics.style];
-                }
-                if (detail.Address) song.Address = detail.Address;
-                // Prefer Username if available, otherwise fallback to Creator/Address logic downstream
-                if (detail.Username) song.Username = detail.Username;
-                if (detail.Creator) song.Creator = detail.Creator;
-                if (detail.Mint_Token) song.Mint_Token = detail.Mint_Token;
-              }
-            } catch (e) {
-              // console.warn(`Failed to hydrate ${song.Id}`, e);
+// Merge: Prefer Live, but fallback to Snapshot for missing critical fields
+const merged = liveSmols.map((newSmol) => {
+  const oldSmol = snapshotMap.get(newSmol.Id);
+  return {
+    ...newSmol,
+    Tags:
+      newSmol.Tags && newSmol.Tags.length > 0
+        ? newSmol.Tags
+        : oldSmol?.Tags || [],
+    Address: newSmol.Address || oldSmol?.Address || undefined,
+    Minted_By: newSmol.Minted_By || oldSmol?.Minted_By || undefined,
+    Username: newSmol.Username || oldSmol?.Username || undefined,
+  };
+});
+
+// 4. DEEP VERIFICATION: Hydrate missing metadata for "Live-Only" songs
+// (Songs present in API but not in snapshot = New drops missing tags/address)
+const newItems = merged.filter(
+  (s: any) =>
+    !snapshotMap.has(s.Id) &&
+    (!s.Tags || s.Tags.length === 0 || !s.Address),
+);
+
+if (newItems.length > 0) {
+  // console.log(`[HybridData] Found ${newItems.length} new live items. Hydrating tags...`);
+  // Fetch details in parallel chunks (Batched to prevent rate limits)
+  const chunkSize = 5;
+  for (let i = 0; i < newItems.length; i += chunkSize) {
+    const chunk = newItems.slice(i, i + chunkSize);
+    await Promise.all(
+      chunk.map(async (song: any) => {
+        try {
+          const res = await fetch(`${API_URL}/${song.Id}`);
+          if (!res.ok) return;
+          const data = await res.json();
+          const detail = data.d1 || data.kv_do;
+          if (detail) {
+            if (detail.Tags) song.Tags = detail.Tags;
+            if (detail.lyrics?.style) {
+              song.Tags = [...(song.Tags || []), ...detail.lyrics.style];
             }
-          }),
-        );
-      }
-    }
-
-    return merged as Smol[];
-  } catch (e) {
-    console.error("Fetch error, falling back to snapshot", e);
-    return getSnapshotAsync();
+            if (detail.Address) song.Address = detail.Address;
+            // Prefer Username if available, otherwise fallback to Creator/Address logic downstream
+            if (detail.Username) song.Username = detail.Username;
+            if (detail.Creator) song.Creator = detail.Creator;
+            if (detail.Mint_Token) song.Mint_Token = detail.Mint_Token;
+          }
+        } catch (e) {
+          // console.warn(`Failed to hydrate ${song.Id}`, e);
+        }
+      }),
+    );
   }
+}
+
+return merged as Smol[];
+  } catch (e) {
+  console.error("Fetch error, falling back to snapshot", e);
+  return getSnapshotAsync();
+}
 }
 
 /**
