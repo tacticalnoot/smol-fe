@@ -215,8 +215,35 @@
 
     async function hydrateGlobalData() {
         if (isLoadingLive) return;
-        isLoadingLive = true;
 
+        // 1. Optimistic Load from LocalStorage or Snapshot
+        try {
+            const cached = localStorage.getItem("smol_global_data_v2");
+            if (cached) {
+                const { smols, timestamp } = JSON.parse(cached);
+                // Use cache if less than 5 minutes old for instant UI
+                if (Date.now() - timestamp < 5 * 60 * 1000) {
+                    liveDiscography = smols;
+                    updateTopTags(smols);
+                    isUrlStateLoaded = true;
+                }
+            } else {
+                // Fallback to snapshot for first-time or cold cache
+                import("../../services/api/snapshot").then(
+                    ({ getSnapshotAsync }) => {
+                        getSnapshotAsync().then((snap) => {
+                            if (liveDiscography.length === 0) {
+                                liveDiscography = snap;
+                                updateTopTags(snap);
+                                isUrlStateLoaded = true;
+                            }
+                        });
+                    },
+                );
+            }
+        } catch (e) {}
+
+        isLoadingLive = true;
         try {
             const smols = await safeFetchSmols();
             // Sort by Created_At desc (Newest first)
@@ -226,25 +253,18 @@
                     new Date(a.Created_At || 0).getTime(),
             );
 
-            // Limit to avoid OOM on massive lists, but keep enough for discovery
-            // Limit to avoid OOM on massive lists, but keep enough for discovery
             liveDiscography = smols;
-
-            // Tags
-            const tagCounts: Record<string, number> = {};
-            liveDiscography.forEach((smol) => {
-                if (smol.Tags && Array.isArray(smol.Tags)) {
-                    smol.Tags.forEach((tag) => {
-                        tagCounts[tag] = (tagCounts[tag] || 0) + 1;
-                    });
-                }
-            });
-            liveTopTags = Object.entries(tagCounts)
-                .sort((a, b) => b[1] - a[1])
-                .slice(0, 10)
-                .map((t) => t[0]);
-
+            updateTopTags(smols);
             isUrlStateLoaded = true; // Data ready
+
+            // Update Cache
+            localStorage.setItem(
+                "smol_global_data_v2",
+                JSON.stringify({
+                    smols: smols.slice(0, 2000), // Safety limit for storage
+                    timestamp: Date.now(),
+                }),
+            );
 
             // Auto-select first song if nothing playing
             if (!audioState.currentSong && liveDiscography.length > 0) {
@@ -255,6 +275,21 @@
         } finally {
             isLoadingLive = false;
         }
+    }
+
+    function updateTopTags(smols: Smol[]) {
+        const tagCounts: Record<string, number> = {};
+        smols.forEach((smol) => {
+            if (smol.Tags && Array.isArray(smol.Tags)) {
+                smol.Tags.forEach((tag) => {
+                    tagCounts[tag] = (tagCounts[tag] || 0) + 1;
+                });
+            }
+        });
+        liveTopTags = Object.entries(tagCounts)
+            .sort((a, b) => b[1] - a[1])
+            .slice(0, 10)
+            .map((t) => t[0]);
     }
 
     // Deterministic Hash for Seeded Shuffle
