@@ -96,6 +96,27 @@
         return () => clearInterval(interval);
     });
 
+    // Click Outside Action
+    function clickOutside(node: HTMLElement, onEvent: () => void) {
+        const handleClick = (event: MouseEvent) => {
+            if (
+                node &&
+                !node.contains(event.target as Node) &&
+                !event.defaultPrevented
+            ) {
+                onEvent();
+            }
+        };
+
+        document.addEventListener("click", handleClick, true);
+
+        return {
+            destroy() {
+                document.removeEventListener("click", handleClick, true);
+            },
+        };
+    }
+
     // Auto-scroll to playing song when returning to grid view or changing song
     // FIX: Add tracker to prevent aggressive snapping on homepage
     let lastScrolledSongId = $state("");
@@ -934,7 +955,10 @@
                 <!-- AI Settings Toggle -->
                 <div class="relative">
                     <button
-                        onclick={() => (showSettingsMenu = !showSettingsMenu)}
+                        onclick={(e) => {
+                            e.stopPropagation();
+                            showSettingsMenu = !showSettingsMenu;
+                        }}
                         class="w-9 h-9 flex items-center justify-center rounded-lg border border-white/5 transition-colors {showSettingsMenu
                             ? 'bg-white/10 text-white'
                             : 'text-white/40 hover:text-white hover:bg-white/5'}"
@@ -962,18 +986,9 @@
                     </button>
 
                     {#if showSettingsMenu}
-                        <!-- Backdrop to close on click outside -->
                         <div
-                            class="fixed inset-0 z-[99]"
-                            onclick={() => (showSettingsMenu = false)}
-                            onkeydown={(e) =>
-                                e.key === "Escape" &&
-                                (showSettingsMenu = false)}
-                            role="button"
-                            tabindex="-1"
-                            aria-label="Close menu"
-                        ></div>
-                        <div
+                            div
+                            use:clickOutside={() => (showSettingsMenu = false)}
                             class="absolute top-full right-0 mt-2 w-56 bg-[#1a1a1a]/95 backdrop-blur-xl border border-white/10 rounded-xl p-3 z-[100] shadow-2xl animate-in slide-in-from-top-2"
                         >
                             <div class="space-y-4">
