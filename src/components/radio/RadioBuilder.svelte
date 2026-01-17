@@ -223,6 +223,10 @@
 
     if (urlTags.length > 0) {
       selectedTags = urlTags.slice(0, MAX_TAGS);
+    } else if (playId) {
+      // If we have a playId but NO tags in the URL, we should likely clear old tags
+      // so they can be re-extracted from the new seed song below.
+      selectedTags = [];
     }
 
     // Ensure data is loaded before processing play/mixtape params
