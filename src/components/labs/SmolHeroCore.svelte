@@ -552,175 +552,132 @@
         gameState = "analyzing";
         analyzingProgress = 0;
 
-        return new Promise((resolve, reject) => {
-            // Timeout after 2 minutes
-            const timeout = setTimeout(() => {
-                reject(new Error("Analysis timed out after 2 minutes"));
-            }, 120000);
+        return new Promise(async (resolve, reject) => {
+            try {
+                // 1. Fetch and Decode Audio (Offline)
+                console.log("[SmolHero] Fetching audio for analysis...");
+                const response = await fetch(getSongUrl(track.Song_1));
+                if (!response.ok)
+                    throw new Error(`Fetch failed: ${response.status}`);
 
-            const analysisAudio = new Audio();
-            analysisAudio.crossOrigin = "anonymous";
-            analysisAudio.src = getSongUrl(track.Song_1);
-            analysisAudio.volume = 0; // Completely silent for iOS
-            analysisAudio.playbackRate = 2.0; // 2x speed for faster analysis
-            analysisAudio.preload = "auto"; // Force preload
+                const arrayBuffer = await response.arrayBuffer();
+                analyzingProgress = 20;
 
-            const detectedOnsets: CachedOnset[] = [];
-            let analysisContext: AudioContext | null = null;
-            let analysisAnalysers: AnalyserNode[] = [];
+                const tempCtx = new AudioContext();
+                const audioBuffer = await tempCtx.decodeAudioData(arrayBuffer);
+                analyzingProgress = 40;
 
-            const setupAnalysis = async () => {
-                try {
-                    analysisContext = new AudioContext();
-                    if (analysisContext.state === "suspended") {
-                        await analysisContext.resume();
-                    }
-                    const source =
-                        analysisContext.createMediaElementSource(analysisAudio);
-                    const gainNode = analysisContext.createGain();
-                    gainNode.gain.value = 0.01;
+                // 2. Render 3 distinct frequency bands using OfflineAudioContext
+                // We map: Channel 0 = Bass, Channel 1 = Mid, Channel 2 = Treble
+                const offlineCtx = new OfflineAudioContext(
+                    3,
+                    audioBuffer.length,
+                    audioBuffer.sampleRate,
+                );
 
-                    // Create same frequency band filters
-                    const bassFilter = analysisContext.createBiquadFilter();
-                    bassFilter.type = "lowpass";
-                    bassFilter.frequency.value = 200;
-                    bassFilter.Q.value = 0.7;
-                    const bassAnalyser = analysisContext.createAnalyser();
-                    bassAnalyser.fftSize = 512;
-                    bassAnalyser.smoothingTimeConstant = 0.3;
+                const source = offlineCtx.createBufferSource();
+                source.buffer = audioBuffer;
 
-                    const midFilter = analysisContext.createBiquadFilter();
-                    midFilter.type = "bandpass";
-                    midFilter.frequency.value = 1000;
-                    midFilter.Q.value = 0.7;
-                    const midAnalyser = analysisContext.createAnalyser();
-                    midAnalyser.fftSize = 512;
-                    midAnalyser.smoothingTimeConstant = 0.3;
+                // Bass Path
+                const bassFilter = offlineCtx.createBiquadFilter();
+                bassFilter.type = "lowpass";
+                bassFilter.frequency.value = 200;
+                bassFilter.Q.value = 0.7;
 
-                    const trebleFilter = analysisContext.createBiquadFilter();
-                    trebleFilter.type = "highpass";
-                    trebleFilter.frequency.value = 2000;
-                    trebleFilter.Q.value = 0.7;
-                    const trebleAnalyser = analysisContext.createAnalyser();
-                    trebleAnalyser.fftSize = 512;
-                    trebleAnalyser.smoothingTimeConstant = 0.3;
+                // Mid Path
+                const midFilter = offlineCtx.createBiquadFilter();
+                midFilter.type = "bandpass";
+                midFilter.frequency.value = 1000;
+                midFilter.Q.value = 0.7;
 
-                    source.connect(bassFilter);
-                    bassFilter.connect(bassAnalyser);
-                    source.connect(midFilter);
-                    midFilter.connect(midAnalyser);
-                    source.connect(trebleFilter);
-                    trebleFilter.connect(trebleAnalyser);
-                    source.connect(gainNode);
-                    gainNode.connect(analysisContext.destination);
+                // Treble Path
+                const trebleFilter = offlineCtx.createBiquadFilter();
+                trebleFilter.type = "highpass";
+                trebleFilter.frequency.value = 2000;
+                trebleFilter.Q.value = 0.7;
 
-                    analysisAnalysers = [
-                        bassAnalyser,
-                        midAnalyser,
-                        trebleAnalyser,
-                    ];
+                // Merger (3 channels)
+                const merger = offlineCtx.createChannelMerger(3);
 
-                    // Run analysis loop
-                    const energyHistory: number[][] = [[], [], []];
-                    const lastOnsetTimes = [0, 0, 0];
+                source.connect(bassFilter);
+                bassFilter.connect(merger, 0, 0); // Connect to input 0 of merger (Bass -> Ch 0)
 
-                    const analyzeFrame = () => {
-                        if (analysisAudio.paused || analysisAudio.ended) return;
+                source.connect(midFilter);
+                midFilter.connect(merger, 0, 1); // Connect to input 1 of merger (Mid -> Ch 1)
 
-                        const currentTime =
-                            analysisAudio.currentTime /
-                            analysisAudio.playbackRate; // Adjust for playback rate
+                source.connect(trebleFilter);
+                trebleFilter.connect(merger, 0, 2); // Connect to input 2 of merger (Treble -> Ch 2)
 
-                        analysisAnalysers.forEach((analyser, lane) => {
-                            const bufferLength = analyser.frequencyBinCount;
-                            const dataArray = new Uint8Array(bufferLength);
-                            analyser.getByteFrequencyData(dataArray);
+                merger.connect(offlineCtx.destination);
 
-                            let sum = 0;
-                            for (let i = 0; i < bufferLength; i++) {
-                                sum += dataArray[i] * dataArray[i];
-                            }
-                            const rms = Math.sqrt(sum / bufferLength);
+                source.start(0);
 
-                            energyHistory[lane].push(rms);
-                            if (
-                                energyHistory[lane].length > ENERGY_HISTORY_SIZE
-                            ) {
-                                energyHistory[lane].shift();
-                            }
+                console.log("[SmolHero] Rendering spectral bands...");
+                const renderedBuffer = await offlineCtx.startRendering();
+                analyzingProgress = 70;
 
-                            if (
-                                energyHistory[lane].length < ENERGY_HISTORY_SIZE
-                            )
-                                return;
+                // 3. Analyze the rendered bands
+                console.log("[SmolHero] Detecting beats...");
+                const detectedOnsets: CachedOnset[] = [];
+                const sampleRate = renderedBuffer.sampleRate;
+                const windowSize = Math.floor(sampleRate / 60); // ~60fps windows
 
-                            const avgEnergy =
-                                energyHistory[lane].reduce((a, b) => a + b, 0) /
-                                energyHistory[lane].length;
-                            const threshold =
-                                avgEnergy * onsetThresholdMultiplier;
+                // Detection State per lane
+                const lastOnsetTimes = [0, 0, 0];
+                const energyHistory: number[][] = [[], [], []];
 
-                            if (
-                                rms > threshold &&
-                                currentTime - lastOnsetTimes[lane] > 0.1
-                            ) {
-                                // Onset detected! Store it
-                                detectedOnsets.push({
-                                    lane,
-                                    time: currentTime,
-                                });
-                                lastOnsetTimes[lane] = currentTime;
-                            }
-                        });
+                // Process each "frame"
+                for (let i = 0; i < renderedBuffer.length; i += windowSize) {
+                    const currentTime = i / sampleRate;
 
-                        // Update progress
-                        if (analysisAudio.duration) {
-                            analyzingProgress = Math.floor(
-                                (analysisAudio.currentTime /
-                                    analysisAudio.duration) *
-                                    100,
-                            );
+                    for (let lane = 0; lane < 3; lane++) {
+                        const channelData = renderedBuffer.getChannelData(lane);
+
+                        // Calculate RMS for this window
+                        let sum = 0;
+                        const end = Math.min(
+                            i + windowSize,
+                            renderedBuffer.length,
+                        );
+                        for (let j = i; j < end; j++) {
+                            sum += channelData[j] * channelData[j];
+                        }
+                        const rms = Math.sqrt(sum / (end - i));
+
+                        // Rolling History
+                        energyHistory[lane].push(rms);
+                        if (energyHistory[lane].length > ENERGY_HISTORY_SIZE) {
+                            energyHistory[lane].shift();
                         }
 
-                        requestAnimationFrame(analyzeFrame);
-                    };
+                        if (energyHistory[lane].length < ENERGY_HISTORY_SIZE)
+                            continue;
 
-                    analyzeFrame();
-                } catch (e) {
-                    console.error("[SmolHero] Analysis setup failed:", e);
-                    reject(e);
+                        const avgEnergy =
+                            energyHistory[lane].reduce((a, b) => a + b, 0) /
+                            energyHistory[lane].length;
+                        const threshold = avgEnergy * onsetThresholdMultiplier;
+
+                        // Threshold check + Cooldown (0.1s)
+                        if (
+                            rms > threshold &&
+                            currentTime - lastOnsetTimes[lane] > 0.1
+                        ) {
+                            detectedOnsets.push({ lane, time: currentTime });
+                            lastOnsetTimes[lane] = currentTime;
+                        }
+                    }
+
+                    // Update UI every ~1 second of audio processed (approx)
+                    if (i % (sampleRate * 2) === 0) {
+                        const progress =
+                            70 + Math.floor((i / renderedBuffer.length) * 30);
+                        analyzingProgress = progress;
+                    }
                 }
-            };
 
-            analysisAudio.onloadedmetadata = () => {
-                console.log(
-                    `[SmolHero] Audio loaded, duration: ${analysisAudio.duration}s`,
-                );
-                setupAnalysis();
-
-                // Try to play with better error handling
-                analysisAudio
-                    .play()
-                    .then(() => {
-                        console.log("[SmolHero] Analysis playback started");
-                    })
-                    .catch((err) => {
-                        console.error("[SmolHero] Playback failed:", err);
-                        reject(
-                            new Error(
-                                `Failed to play audio for analysis: ${err.message}`,
-                            ),
-                        );
-                    });
-            };
-
-            analysisAudio.onended = () => {
-                console.log("[SmolHero] Analysis playback ended");
-                clearTimeout(timeout);
-                if (analysisContext) {
-                    analysisContext.close();
-                }
                 analyzingProgress = 100;
+                tempCtx.close();
 
                 const beatmap: Beatmap = {
                     trackId: track.Song_1,
@@ -728,35 +685,15 @@
                     onsets: detectedOnsets.sort((a, b) => a.time - b.time),
                 };
 
-                // Cache it
                 beatmapCache.set(
                     `${track.Song_1}-${settings.difficulty}`,
                     beatmap,
                 );
-
-                console.log(
-                    `[SmolHero] Analysis complete: ${detectedOnsets.length} onsets detected`,
-                );
                 resolve(beatmap);
-            };
-
-            analysisAudio.onerror = (e) => {
-                console.error("[SmolHero] Audio error:", e);
-                clearTimeout(timeout);
-                if (analysisContext) {
-                    analysisContext.close();
-                }
-                reject(new Error("Audio failed to load"));
-            };
-
-            // Add load event for debugging
-            analysisAudio.onloadstart = () => {
-                console.log("[SmolHero] Starting to load audio...");
-            };
-
-            analysisAudio.oncanplay = () => {
-                console.log("[SmolHero] Audio can play");
-            };
+            } catch (e: any) {
+                console.error("[SmolHero] Offline Analysis Failed:", e);
+                reject(new Error(e.message || "Analysis failed"));
+            }
         });
     }
 
