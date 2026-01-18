@@ -12,9 +12,9 @@ const API_URL = import.meta.env.PUBLIC_API_URL || 'https://api.smol.xyz';
 export async function fetchSmols(options?: { limit?: number }): Promise<Smol[]> {
   try {
     const url = new URL(`${API_URL}`);
-    if (options?.limit) {
-      url.searchParams.set("limit", String(options.limit));
-    }
+    // Default to 5000 if no limit specified to ensure all songs load
+    const limit = options?.limit ?? 5000;
+    url.searchParams.set("limit", String(limit));
 
     // 1. Parallelize Live Fetch and Snapshot Load
     const [liveRes, snapshot] = await Promise.all([
