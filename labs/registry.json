@@ -105,7 +105,7 @@
         "id": "lab_smol_hero",
         "title": "Smol Hero",
         "badge": "EXP-006",
-        "status_color": "GREEN",
+        "status_color": "ORANGE",
         "readiness_score": 85,
         "last_reviewed": "2026-01-18",
         "blast_radius": "LABS_ONLY",
