@@ -266,7 +266,7 @@
                     result = await getQuote({
                         assetIn,
                         assetOut,
-                        amount: stroops,
+                        amount: Number(stroops),
                         tradeType,
                         slippageBps: 500, // 5% (matches Tyler's ohloss implementation)
                     });

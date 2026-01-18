@@ -1022,7 +1022,6 @@
 
                     {#if showSettingsMenu}
                         <div
-                            div
                             use:clickOutside={() => (showSettingsMenu = false)}
                             class="absolute top-full right-0 mt-2 w-56 bg-[#1a1a1a]/95 backdrop-blur-xl border border-white/10 rounded-xl p-3 z-[100] shadow-2xl animate-in slide-in-from-top-2"
                         >
