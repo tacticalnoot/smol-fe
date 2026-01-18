@@ -217,15 +217,39 @@
 
         // Spawn notes that should appear soon (within spawn lead time)
         const spawnWindow = NOTE_SPAWN_LEAD_TIME / 1000; // Convert to seconds
-        const spawnDeadline = currentTime + spawnWindow;
 
         cachedBeatmap.onsets.forEach((onset, index) => {
             // Skip if already spawned
             if (spawnedCachedOnsets.has(index)) return;
 
-            // Check if this onset should spawn now
-            if (onset.time <= spawnDeadline && onset.time > currentTime) {
-                spawnNote(onset.lane, currentTime);
+            // Check if we should spawn this note now
+            // onset.time is when the note should be HIT
+            // We spawn it spawnWindow seconds BEFORE it needs to be hit
+            const shouldSpawnAt = onset.time - spawnWindow;
+
+            // Spawn if current time has passed the spawn point, but note hasn't been spawned yet
+            if (currentTime >= shouldSpawnAt && currentTime < onset.time) {
+                // Apply difficulty filtering
+                if (settings.difficulty === "easy" && onset.lane !== 0) {
+                    spawnedCachedOnsets.add(index);
+                    return;
+                }
+                if (settings.difficulty === "medium" && onset.lane === 2) {
+                    spawnedCachedOnsets.add(index);
+                    return;
+                }
+
+                // Create note directly with correct hit time
+                const note: Note = {
+                    id: `cached-${onset.lane}-${onset.time}-${index}`,
+                    lane: onset.lane,
+                    spawnTime: currentTime,
+                    hitTime: onset.time,
+                    position: 0,
+                    hit: false,
+                    accuracy: null
+                };
+                notes = [...notes, note];
                 spawnedCachedOnsets.add(index);
             }
         });
@@ -476,11 +500,17 @@
         analyzingProgress = 0;
 
         return new Promise((resolve, reject) => {
+            // Timeout after 2 minutes
+            const timeout = setTimeout(() => {
+                reject(new Error("Analysis timed out after 2 minutes"));
+            }, 120000);
+
             const analysisAudio = new Audio();
             analysisAudio.crossOrigin = "anonymous";
             analysisAudio.src = `${import.meta.env.PUBLIC_API_URL}/song/${track.Song_1}.mp3`;
-            analysisAudio.volume = 0.01; // Very quiet
+            analysisAudio.volume = 0; // Completely silent for iOS
             analysisAudio.playbackRate = 2.0; // 2x speed for faster analysis
+            analysisAudio.preload = "auto"; // Force preload
 
             const detectedOnsets: CachedOnset[] = [];
             let analysisContext: AudioContext | null = null;
@@ -582,11 +612,23 @@
             };
 
             analysisAudio.onloadedmetadata = () => {
+                console.log(`[SmolHero] Audio loaded, duration: ${analysisAudio.duration}s`);
                 setupAnalysis();
-                analysisAudio.play().catch(reject);
+
+                // Try to play with better error handling
+                analysisAudio.play()
+                    .then(() => {
+                        console.log("[SmolHero] Analysis playback started");
+                    })
+                    .catch(err => {
+                        console.error("[SmolHero] Playback failed:", err);
+                        reject(new Error(`Failed to play audio for analysis: ${err.message}`));
+                    });
             };
 
             analysisAudio.onended = () => {
+                console.log("[SmolHero] Analysis playback ended");
+                clearTimeout(timeout);
                 if (analysisContext) {
                     analysisContext.close();
                 }
@@ -606,10 +648,21 @@
             };
 
             analysisAudio.onerror = (e) => {
+                console.error("[SmolHero] Audio error:", e);
+                clearTimeout(timeout);
                 if (analysisContext) {
                     analysisContext.close();
                 }
-                reject(e);
+                reject(new Error("Audio failed to load"));
+            };
+
+            // Add load event for debugging
+            analysisAudio.onloadstart = () => {
+                console.log("[SmolHero] Starting to load audio...");
+            };
+
+            analysisAudio.oncanplay = () => {
+                console.log("[SmolHero] Audio can play");
             };
         });
     }
@@ -624,13 +677,18 @@
 
             if (!beatmap) {
                 try {
+                    console.log(`[SmolHero] Starting pre-analysis for ${track.Title}...`);
                     beatmap = await analyzeTrack(track);
-                } catch (e) {
+                } catch (e: any) {
                     console.error("[SmolHero] Pre-analysis failed:", e);
-                    alert("Failed to analyze track. Please try another.");
+                    const errorMsg = e?.message || "Unknown error";
+                    alert(`Failed to analyze track:\n${errorMsg}\n\nTry:\n- Tap to play the track\n- Check your network connection\n- Try a different track`);
                     gameState = "menu";
+                    currentTrack = null;
                     return;
                 }
+            } else {
+                console.log(`[SmolHero] Using cached beatmap for ${track.Title}`);
             }
 
             cachedBeatmap = beatmap;
@@ -673,6 +731,13 @@
         audio.play().then(() => {
             gameStartTime = Date.now();
             isAnalyzing = true;
+
+            if (cachedBeatmap) {
+                console.log(`[SmolHero] Starting game with cached beatmap (${cachedBeatmap.onsets.length} onsets)`);
+            } else {
+                console.log("[SmolHero] Starting game with real-time beat detection");
+            }
+
             gameLoop();
         }).catch(e => {
             console.error("[SmolHero] Playback failed:", e);
@@ -760,7 +825,7 @@
 
     {:else if gameState === "analyzing"}
         <!-- ANALYZING TRACK -->
-        <div class="flex flex-col items-center justify-center h-96 gap-6">
+        <div class="flex flex-col items-center justify-center h-96 gap-6 p-4">
             <div class="text-center">
                 <h2 class="text-2xl font-bold text-[#9ae600] mb-2">ANALYZING TRACK</h2>
                 <p class="text-xs text-[#555]">{currentTrack?.Title || 'Unknown Track'}</p>
@@ -787,10 +852,23 @@
             </div>
 
             {#if isIOS}
-                <p class="text-[10px] text-[#555] max-w-xs text-center">
-                    📱 iOS detected: Pre-analyzing track for optimal performance
-                </p>
+                <div class="text-center space-y-2">
+                    <p class="text-[10px] text-[#555] max-w-xs">
+                        📱 iOS Pre-Analysis Mode
+                    </p>
+                    <p class="text-[8px] text-[#333] max-w-xs">
+                        This process takes ~15-30 seconds.<br>
+                        Audio is being analyzed silently.
+                    </p>
+                </div>
             {/if}
+
+            <button
+                onclick={() => { gameState = "menu"; currentTrack = null; }}
+                class="mt-4 px-4 py-2 text-xs border border-[#333] rounded bg-black text-[#555] hover:border-[#f91880] hover:text-[#f91880] transition-all"
+            >
+                Cancel
+            </button>
         </div>
 
     {:else if gameState === "menu"}
