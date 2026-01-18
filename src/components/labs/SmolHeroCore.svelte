@@ -1,6 +1,7 @@
 <script lang="ts">
     import { onMount, onDestroy } from "svelte";
     import { safeFetchSmols } from "../../services/api/smols";
+    import { getSongUrl } from "../../utils/apiUrl";
     import confetti from "canvas-confetti";
 
     // ======================
@@ -559,7 +560,7 @@
 
             const analysisAudio = new Audio();
             analysisAudio.crossOrigin = "anonymous";
-            analysisAudio.src = `${import.meta.env.PUBLIC_API_URL}/song/${track.Song_1}.mp3`;
+            analysisAudio.src = getSongUrl(track.Song_1);
             analysisAudio.volume = 0; // Completely silent for iOS
             analysisAudio.playbackRate = 2.0; // 2x speed for faster analysis
             analysisAudio.preload = "auto"; // Force preload
@@ -568,9 +569,12 @@
             let analysisContext: AudioContext | null = null;
             let analysisAnalysers: AnalyserNode[] = [];
 
-            const setupAnalysis = () => {
+            const setupAnalysis = async () => {
                 try {
                     analysisContext = new AudioContext();
+                    if (analysisContext.state === "suspended") {
+                        await analysisContext.resume();
+                    }
                     const source =
                         analysisContext.createMediaElementSource(analysisAudio);
                     const gainNode = analysisContext.createGain();
