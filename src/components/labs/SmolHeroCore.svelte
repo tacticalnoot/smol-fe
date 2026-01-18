@@ -60,14 +60,16 @@
     // STATE
     // ======================
 
-    let gameState = $state<"menu" | "analyzing" | "calibrating" | "playing" | "paused" | "finished">("menu");
+    let gameState = $state<
+        "menu" | "analyzing" | "calibrating" | "playing" | "paused" | "finished"
+    >("menu");
     let currentTrack = $state<any | null>(null);
     let playableTracks = $state<any[]>([]);
     let loading = $state(false);
 
     // Pre-analysis for iOS support
     let isIOS = $state(false);
-    let usePreAnalysis = $state(false); // Set to true on iOS or for compatibility
+    let usePreAnalysis = $state(true); // Default to True (Sync Mode) for best quality
     let analyzingProgress = $state(0); // 0-100
     let cachedBeatmap = $state<Beatmap | null>(null);
     let beatmapCache = new Map<string, Beatmap>(); // Cache beatmaps by trackId-difficulty
@@ -92,7 +94,7 @@
         difficulty: "medium",
         noteSpeed: 400, // pixels per second
         laneCount: 3,
-        calibrationOffset: 0
+        calibrationOffset: 0,
     });
 
     let notes = $state<Note[]>([]);
@@ -103,7 +105,7 @@
         miss: 0,
         combo: 0,
         maxCombo: 0,
-        score: 0
+        score: 0,
     });
 
     // Beat detection state
@@ -117,11 +119,16 @@
     // Difficulty-based onset sensitivity
     let onsetThresholdMultiplier = $derived.by(() => {
         switch (settings.difficulty) {
-            case "easy": return 1.8; // Less sensitive, fewer notes
-            case "medium": return 1.5;
-            case "hard": return 1.3;
-            case "expert": return 1.2; // More sensitive, more notes
-            default: return 1.5;
+            case "easy":
+                return 1.8; // Less sensitive, fewer notes
+            case "medium":
+                return 1.5;
+            case "hard":
+                return 1.3;
+            case "expert":
+                return 1.2; // More sensitive, more notes
+            default:
+                return 1.5;
         }
     });
 
@@ -141,7 +148,12 @@
     const LANE_KEYS = ["d", "f", "j"]; // Keys for lanes 0, 1, 2
     let pressedKeys = new Set<string>();
     let pressedLanes = $state<boolean[]>([false, false, false]); // Visual feedback for pressed lanes
-    let hitFeedback = $state<{text: string; lane: number; timestamp: number}[]>([]); // Hit feedback text
+    let hitFeedback = $state<
+        { text: string; lane: number; timestamp: number }[]
+    >([]); // Hit feedback text
+    let hitEffects = $state<
+        { id: string; lane: number; timestamp: number; color: string }[]
+    >([]); // Visual hit particles
 
     // ======================
     // BEAT DETECTION CORE
@@ -247,7 +259,7 @@
                     hitTime: onset.time,
                     position: 0,
                     hit: false,
-                    accuracy: null
+                    accuracy: null,
                 };
                 notes = [...notes, note];
                 spawnedCachedOnsets.add(index);
@@ -283,13 +295,18 @@
             if (energyHistory[lane].length < ENERGY_HISTORY_SIZE) return;
 
             // Calculate average energy
-            const avgEnergy = energyHistory[lane].reduce((a, b) => a + b, 0) / energyHistory[lane].length;
+            const avgEnergy =
+                energyHistory[lane].reduce((a, b) => a + b, 0) /
+                energyHistory[lane].length;
 
             // Detect onset: current energy significantly above average
             const threshold = avgEnergy * onsetThresholdMultiplier;
             const minTimeBetweenOnsets = 0.1; // 100ms minimum between onsets in same lane
 
-            if (rms > threshold && (currentTime - lastOnsetTimes[lane]) > minTimeBetweenOnsets) {
+            if (
+                rms > threshold &&
+                currentTime - lastOnsetTimes[lane] > minTimeBetweenOnsets
+            ) {
                 // ONSET DETECTED!
                 spawnNote(lane, currentTime);
                 lastOnsetTimes[lane] = currentTime;
@@ -302,7 +319,7 @@
         if (settings.difficulty === "easy" && lane !== 0) return; // Bass only
         if (settings.difficulty === "medium" && lane === 2) return; // Bass + Mid only
 
-        const hitTime = detectionTime + (NOTE_SPAWN_LEAD_TIME / 1000); // Convert ms to seconds
+        const hitTime = detectionTime + NOTE_SPAWN_LEAD_TIME / 1000; // Convert ms to seconds
 
         const note: Note = {
             id: `${lane}-${detectionTime}-${Math.random()}`,
@@ -311,7 +328,7 @@
             hitTime,
             position: 0,
             hit: false,
-            accuracy: null
+            accuracy: null,
         };
 
         notes = [...notes, note];
@@ -336,12 +353,12 @@
         }
 
         // Update note positions
-        notes = notes.map(note => {
+        notes = notes.map((note) => {
             if (note.hit) return note;
 
             // Calculate position based on time until hit
             const timeUntilHit = note.hitTime - currentTime;
-            const progress = 1 - (timeUntilHit / (NOTE_SPAWN_LEAD_TIME / 1000));
+            const progress = 1 - timeUntilHit / (NOTE_SPAWN_LEAD_TIME / 1000);
             const newPosition = Math.max(0, Math.min(100, progress * 100));
 
             // Check if note passed hit zone (miss)
@@ -354,14 +371,15 @@
         });
 
         // Clean up old notes
-        notes = notes.filter(note => {
+        notes = notes.filter((note) => {
             const timeSinceHit = currentTime - note.hitTime;
             return timeSinceHit < 2; // Keep for 2 seconds after hit time
         });
 
         // Clean up old hit feedback
         const now = Date.now();
-        hitFeedback = hitFeedback.filter(f => (now - f.timestamp) < 1000); // Keep for 1 second
+        hitFeedback = hitFeedback.filter((f) => now - f.timestamp < 1000); // Keep for 1 second
+        hitEffects = hitEffects.filter((e) => now - e.timestamp < 500); // Keep particles for 500ms
 
         // Continue loop
         animationFrameId = requestAnimationFrame(gameLoop);
@@ -393,8 +411,12 @@
         // Find closest unhit note in this lane
         const currentTime = audio?.currentTime || 0;
         const laneNotes = notes
-            .filter(n => n.lane === laneIndex && !n.hit)
-            .sort((a, b) => Math.abs(a.hitTime - currentTime) - Math.abs(b.hitTime - currentTime));
+            .filter((n) => n.lane === laneIndex && !n.hit)
+            .sort(
+                (a, b) =>
+                    Math.abs(a.hitTime - currentTime) -
+                    Math.abs(b.hitTime - currentTime),
+            );
 
         if (laneNotes.length === 0) return;
 
@@ -438,17 +460,44 @@
         }
 
         // Calculate score
-        const baseScore = accuracy === "perfect" ? 300 : accuracy === "great" ? 200 : 100;
-        const comboMultiplier = 1 + (stats.combo / 10);
+        const baseScore =
+            accuracy === "perfect" ? 300 : accuracy === "great" ? 200 : 100;
+        const comboMultiplier = 1 + stats.combo / 10;
         stats.score += Math.floor(baseScore * comboMultiplier);
 
         // Add hit feedback text
-        const feedbackText = accuracy === "perfect" ? "PERFECT!" : accuracy === "great" ? "GREAT!" : "OK";
-        hitFeedback = [...hitFeedback, {
-            text: feedbackText,
-            lane: note.lane,
-            timestamp: Date.now()
-        }];
+        const feedbackText =
+            accuracy === "perfect"
+                ? "PERFECT!"
+                : accuracy === "great"
+                  ? "GREAT!"
+                  : "OK";
+        hitFeedback = [
+            ...hitFeedback,
+            {
+                text: feedbackText,
+                lane: note.lane,
+                timestamp: Date.now(),
+            },
+        ];
+
+        // Add visual hit effect
+        if (accuracy !== "miss") {
+            hitEffects = [
+                ...hitEffects,
+                {
+                    id: Math.random().toString(),
+                    lane: note.lane,
+                    timestamp: Date.now(),
+                    color:
+                        accuracy === "perfect"
+                            ? "#9ae600"
+                            : accuracy === "great"
+                              ? "#FDDA24"
+                              : "#f91880",
+                },
+            ];
+        }
 
         // Visual feedback
         if (accuracy === "perfect") {
@@ -457,8 +506,8 @@
                 confetti({
                     particleCount: 20,
                     spread: 40,
-                    origin: { y: 0.8, x: 0.3 + (note.lane * 0.2) },
-                    colors: ['#9ae600', '#f91880', '#FDDA24']
+                    origin: { y: 0.8, x: 0.3 + note.lane * 0.2 },
+                    colors: ["#9ae600", "#f91880", "#FDDA24"],
                 });
             }
         }
@@ -469,11 +518,14 @@
         stats.combo = 0; // Break combo
 
         // Add miss feedback
-        hitFeedback = [...hitFeedback, {
-            text: "MISS",
-            lane: note.lane,
-            timestamp: Date.now()
-        }];
+        hitFeedback = [
+            ...hitFeedback,
+            {
+                text: "MISS",
+                lane: note.lane,
+                timestamp: Date.now(),
+            },
+        ];
     }
 
     // ======================
@@ -487,7 +539,7 @@
                 const data = await safeFetchSmols({ limit: 100 });
                 smols = data;
             }
-            playableTracks = smols.filter(s => s.Song_1).slice(0, 20);
+            playableTracks = smols.filter((s) => s.Song_1).slice(0, 20);
             loading = false;
         } catch (e) {
             console.error("[SmolHero] Failed to load tracks:", e);
@@ -519,7 +571,8 @@
             const setupAnalysis = () => {
                 try {
                     analysisContext = new AudioContext();
-                    const source = analysisContext.createMediaElementSource(analysisAudio);
+                    const source =
+                        analysisContext.createMediaElementSource(analysisAudio);
                     const gainNode = analysisContext.createGain();
                     gainNode.gain.value = 0.01;
 
@@ -557,7 +610,11 @@
                     source.connect(gainNode);
                     gainNode.connect(analysisContext.destination);
 
-                    analysisAnalysers = [bassAnalyser, midAnalyser, trebleAnalyser];
+                    analysisAnalysers = [
+                        bassAnalyser,
+                        midAnalyser,
+                        trebleAnalyser,
+                    ];
 
                     // Run analysis loop
                     const energyHistory: number[][] = [[], [], []];
@@ -566,7 +623,9 @@
                     const analyzeFrame = () => {
                         if (analysisAudio.paused || analysisAudio.ended) return;
 
-                        const currentTime = analysisAudio.currentTime / analysisAudio.playbackRate; // Adjust for playback rate
+                        const currentTime =
+                            analysisAudio.currentTime /
+                            analysisAudio.playbackRate; // Adjust for playback rate
 
                         analysisAnalysers.forEach((analyser, lane) => {
                             const bufferLength = analyser.frequencyBinCount;
@@ -580,25 +639,43 @@
                             const rms = Math.sqrt(sum / bufferLength);
 
                             energyHistory[lane].push(rms);
-                            if (energyHistory[lane].length > ENERGY_HISTORY_SIZE) {
+                            if (
+                                energyHistory[lane].length > ENERGY_HISTORY_SIZE
+                            ) {
                                 energyHistory[lane].shift();
                             }
 
-                            if (energyHistory[lane].length < ENERGY_HISTORY_SIZE) return;
+                            if (
+                                energyHistory[lane].length < ENERGY_HISTORY_SIZE
+                            )
+                                return;
 
-                            const avgEnergy = energyHistory[lane].reduce((a, b) => a + b, 0) / energyHistory[lane].length;
-                            const threshold = avgEnergy * onsetThresholdMultiplier;
+                            const avgEnergy =
+                                energyHistory[lane].reduce((a, b) => a + b, 0) /
+                                energyHistory[lane].length;
+                            const threshold =
+                                avgEnergy * onsetThresholdMultiplier;
 
-                            if (rms > threshold && (currentTime - lastOnsetTimes[lane]) > 0.1) {
+                            if (
+                                rms > threshold &&
+                                currentTime - lastOnsetTimes[lane] > 0.1
+                            ) {
                                 // Onset detected! Store it
-                                detectedOnsets.push({ lane, time: currentTime });
+                                detectedOnsets.push({
+                                    lane,
+                                    time: currentTime,
+                                });
                                 lastOnsetTimes[lane] = currentTime;
                             }
                         });
 
                         // Update progress
                         if (analysisAudio.duration) {
-                            analyzingProgress = Math.floor((analysisAudio.currentTime / analysisAudio.duration) * 100);
+                            analyzingProgress = Math.floor(
+                                (analysisAudio.currentTime /
+                                    analysisAudio.duration) *
+                                    100,
+                            );
                         }
 
                         requestAnimationFrame(analyzeFrame);
@@ -612,17 +689,24 @@
             };
 
             analysisAudio.onloadedmetadata = () => {
-                console.log(`[SmolHero] Audio loaded, duration: ${analysisAudio.duration}s`);
+                console.log(
+                    `[SmolHero] Audio loaded, duration: ${analysisAudio.duration}s`,
+                );
                 setupAnalysis();
 
                 // Try to play with better error handling
-                analysisAudio.play()
+                analysisAudio
+                    .play()
                     .then(() => {
                         console.log("[SmolHero] Analysis playback started");
                     })
-                    .catch(err => {
+                    .catch((err) => {
                         console.error("[SmolHero] Playback failed:", err);
-                        reject(new Error(`Failed to play audio for analysis: ${err.message}`));
+                        reject(
+                            new Error(
+                                `Failed to play audio for analysis: ${err.message}`,
+                            ),
+                        );
                     });
             };
 
@@ -637,13 +721,18 @@
                 const beatmap: Beatmap = {
                     trackId: track.Song_1,
                     difficulty: settings.difficulty,
-                    onsets: detectedOnsets.sort((a, b) => a.time - b.time)
+                    onsets: detectedOnsets.sort((a, b) => a.time - b.time),
                 };
 
                 // Cache it
-                beatmapCache.set(`${track.Song_1}-${settings.difficulty}`, beatmap);
+                beatmapCache.set(
+                    `${track.Song_1}-${settings.difficulty}`,
+                    beatmap,
+                );
 
-                console.log(`[SmolHero] Analysis complete: ${detectedOnsets.length} onsets detected`);
+                console.log(
+                    `[SmolHero] Analysis complete: ${detectedOnsets.length} onsets detected`,
+                );
                 resolve(beatmap);
             };
 
@@ -677,21 +766,30 @@
 
             if (!beatmap) {
                 try {
-                    console.log(`[SmolHero] Starting pre-analysis for ${track.Title}...`);
+                    console.log(
+                        `[SmolHero] Starting pre-analysis for ${track.Title}...`,
+                    );
                     beatmap = await analyzeTrack(track);
                 } catch (e: any) {
                     console.error("[SmolHero] Pre-analysis failed:", e);
                     const errorMsg = e?.message || "Unknown error";
-                    alert(`Failed to analyze track:\n${errorMsg}\n\nTry:\n- Tap to play the track\n- Check your network connection\n- Try a different track`);
+                    alert(
+                        `Failed to analyze track:\n${errorMsg}\n\nTry:\n- Tap to play the track\n- Check your network connection\n- Try a different track`,
+                    );
                     gameState = "menu";
                     currentTrack = null;
                     return;
                 }
             } else {
-                console.log(`[SmolHero] Using cached beatmap for ${track.Title}`);
+                console.log(
+                    `[SmolHero] Using cached beatmap for ${track.Title}`,
+                );
             }
 
             cachedBeatmap = beatmap;
+        } else {
+            // Real-time mode reset
+            cachedBeatmap = null;
         }
 
         gameState = "playing";
@@ -710,7 +808,7 @@
             miss: 0,
             combo: 0,
             maxCombo: 0,
-            score: 0
+            score: 0,
         };
         energyHistory = [[], [], []];
         lastOnsetTimes = [0, 0, 0];
@@ -728,20 +826,27 @@
         }
 
         // Start playback
-        audio.play().then(() => {
-            gameStartTime = Date.now();
-            isAnalyzing = true;
+        audio
+            .play()
+            .then(() => {
+                gameStartTime = Date.now();
+                isAnalyzing = true;
 
-            if (cachedBeatmap) {
-                console.log(`[SmolHero] Starting game with cached beatmap (${cachedBeatmap.onsets.length} onsets)`);
-            } else {
-                console.log("[SmolHero] Starting game with real-time beat detection");
-            }
+                if (cachedBeatmap) {
+                    console.log(
+                        `[SmolHero] Starting game with cached beatmap (${cachedBeatmap.onsets.length} onsets)`,
+                    );
+                } else {
+                    console.log(
+                        "[SmolHero] Starting game with real-time beat detection",
+                    );
+                }
 
-            gameLoop();
-        }).catch(e => {
-            console.error("[SmolHero] Playback failed:", e);
-        });
+                gameLoop();
+            })
+            .catch((e) => {
+                console.error("[SmolHero] Playback failed:", e);
+            });
 
         // Handle track end
         audio.onended = () => {
@@ -758,14 +863,17 @@
 
         // Epic confetti if good score
         const totalNotes = stats.perfect + stats.great + stats.ok + stats.miss;
-        const accuracy = totalNotes > 0 ? ((stats.perfect + stats.great) / totalNotes) * 100 : 0;
+        const accuracy =
+            totalNotes > 0
+                ? ((stats.perfect + stats.great) / totalNotes) * 100
+                : 0;
 
         if (accuracy >= 90) {
             confetti({
                 particleCount: 100,
                 spread: 70,
                 origin: { y: 0.6 },
-                colors: ['#9ae600', '#f91880', '#FDDA24']
+                colors: ["#9ae600", "#f91880", "#FDDA24"],
             });
         }
     }
@@ -788,10 +896,12 @@
     // ======================
 
     onMount(() => {
-        // Detect iOS/Safari
-        isIOS = /iPhone|iPad|iPod/.test(navigator.userAgent) ||
-                (navigator.userAgent.includes('Mac') && 'ontouchend' in document);
-        usePreAnalysis = isIOS; // Always use pre-analysis on iOS
+        isIOS =
+            /iPhone|iPad|iPod/.test(navigator.userAgent) ||
+            (navigator.userAgent.includes("Mac") && "ontouchend" in document);
+
+        // On iOS, force Sync Mode (no option)
+        if (isIOS) usePreAnalysis = true;
 
         loadTracks();
         window.addEventListener("keydown", handleKeyDown);
@@ -820,21 +930,30 @@
 <div class="smol-hero-container w-full max-w-4xl mx-auto font-pixel">
     {#if loading}
         <div class="flex items-center justify-center h-96">
-            <div class="text-[#9ae600] text-sm animate-pulse">LOADING TRACKS...</div>
+            <div class="text-[#9ae600] text-sm animate-pulse">
+                LOADING TRACKS...
+            </div>
         </div>
-
     {:else if gameState === "analyzing"}
         <!-- ANALYZING TRACK -->
         <div class="flex flex-col items-center justify-center h-96 gap-6 p-4">
             <div class="text-center">
-                <h2 class="text-2xl font-bold text-[#9ae600] mb-2">ANALYZING TRACK</h2>
-                <p class="text-xs text-[#555]">{currentTrack?.Title || 'Unknown Track'}</p>
-                <p class="text-[10px] text-[#333] mt-1">Detecting beats from audio...</p>
+                <h2 class="text-2xl font-bold text-[#9ae600] mb-2">
+                    ANALYZING TRACK
+                </h2>
+                <p class="text-xs text-[#555]">
+                    {currentTrack?.Title || "Unknown Track"}
+                </p>
+                <p class="text-[10px] text-[#333] mt-1">
+                    Detecting beats from audio...
+                </p>
             </div>
 
             <!-- Progress bar -->
             <div class="w-full max-w-md">
-                <div class="h-2 bg-[#222] rounded-full overflow-hidden border border-[#333]">
+                <div
+                    class="h-2 bg-[#222] rounded-full overflow-hidden border border-[#333]"
+                >
                     <div
                         class="h-full bg-gradient-to-r from-[#9ae600] to-[#f91880] transition-all duration-300"
                         style="width: {analyzingProgress}%"
@@ -847,7 +966,10 @@
 
             <div class="flex gap-1">
                 {#each Array(3) as _, i}
-                    <div class="w-2 h-2 bg-[#9ae600] rounded-full animate-bounce" style="animation-delay: {i * 0.2}s"></div>
+                    <div
+                        class="w-2 h-2 bg-[#9ae600] rounded-full animate-bounce"
+                        style="animation-delay: {i * 0.2}s"
+                    ></div>
                 {/each}
             </div>
 
@@ -857,146 +979,277 @@
                         📱 iOS Pre-Analysis Mode
                     </p>
                     <p class="text-[8px] text-[#333] max-w-xs">
-                        This process takes ~15-30 seconds.<br>
+                        This process takes ~15-30 seconds.<br />
                         Audio is being analyzed silently.
                     </p>
                 </div>
             {/if}
 
             <button
-                onclick={() => { gameState = "menu"; currentTrack = null; }}
+                onclick={() => {
+                    gameState = "menu";
+                    currentTrack = null;
+                }}
                 class="mt-4 px-4 py-2 text-xs border border-[#333] rounded bg-black text-[#555] hover:border-[#f91880] hover:text-[#f91880] transition-all"
             >
                 Cancel
             </button>
         </div>
-
     {:else if gameState === "menu"}
         <!-- TRACK SELECTION MENU -->
         <div class="flex flex-col gap-6">
             <div class="text-center border-b border-[#333] pb-6">
-                <h1 class="text-4xl font-bold text-[#9ae600] mb-2">SMOL HERO</h1>
-                <p class="text-xs text-[#555] uppercase tracking-widest">Rhythm Game • Beat Detection Engine</p>
+                <h1 class="text-4xl font-bold text-[#9ae600] mb-2">
+                    SMOL HERO
+                </h1>
+                <p class="text-xs text-[#555] uppercase tracking-widest">
+                    Rhythm Game • Beat Detection Engine
+                </p>
                 {#if isIOS}
-                    <div class="mt-3 inline-block px-3 py-1 bg-[#9ae600]/10 border border-[#9ae600] rounded text-[10px] text-[#9ae600]">
-                        ✓ iOS COMPATIBLE • Pre-Analysis Mode
+                    <div
+                        class="mt-3 inline-block px-3 py-1 bg-[#9ae600]/10 border border-[#9ae600] rounded text-[10px] text-[#9ae600]"
+                    >
+                        ✓ iOS COMPATIBLE • Pre-Analysis Mode Active
                     </div>
+                {:else}
+                    <button
+                        onclick={() => (usePreAnalysis = !usePreAnalysis)}
+                        class="mt-3 inline-flex items-center gap-2 px-3 py-1 border rounded text-[10px] transition-all {usePreAnalysis
+                            ? 'bg-[#9ae600]/10 border-[#9ae600] text-[#9ae600]'
+                            : 'bg-[#222] border-[#333] text-[#555] hover:border-[#666]'}"
+                    >
+                        {usePreAnalysis
+                            ? "✓ SYNC MODE (BEST)"
+                            : "○ INSTANT START (LAGGY)"}
+                    </button>
+                    {#if usePreAnalysis}
+                        <p class="text-[8px] text-[#555] mt-1">
+                            Analyzes track before playing for perfect beat
+                            syncing.
+                        </p>
+                    {/if}
                 {/if}
             </div>
 
             <div class="flex gap-4 justify-center mb-4">
                 <button
-                    onclick={() => settings.difficulty = "easy"}
-                    class="px-4 py-2 text-xs border rounded {settings.difficulty === 'easy' ? 'bg-[#9ae600] text-black border-[#9ae600]' : 'bg-black border-[#333] text-[#555] hover:border-[#9ae600]'}"
+                    onclick={() => (settings.difficulty = "easy")}
+                    class="px-4 py-2 text-xs border rounded {settings.difficulty ===
+                    'easy'
+                        ? 'bg-[#9ae600] text-black border-[#9ae600]'
+                        : 'bg-black border-[#333] text-[#555] hover:border-[#9ae600]'}"
                 >
                     EASY
                 </button>
                 <button
-                    onclick={() => settings.difficulty = "medium"}
-                    class="px-4 py-2 text-xs border rounded {settings.difficulty === 'medium' ? 'bg-[#9ae600] text-black border-[#9ae600]' : 'bg-black border-[#333] text-[#555] hover:border-[#9ae600]'}"
+                    onclick={() => (settings.difficulty = "medium")}
+                    class="px-4 py-2 text-xs border rounded {settings.difficulty ===
+                    'medium'
+                        ? 'bg-[#9ae600] text-black border-[#9ae600]'
+                        : 'bg-black border-[#333] text-[#555] hover:border-[#9ae600]'}"
                 >
                     MEDIUM
                 </button>
                 <button
-                    onclick={() => settings.difficulty = "hard"}
-                    class="px-4 py-2 text-xs border rounded {settings.difficulty === 'hard' ? 'bg-[#9ae600] text-black border-[#9ae600]' : 'bg-black border-[#333] text-[#555] hover:border-[#9ae600]'}"
+                    onclick={() => (settings.difficulty = "hard")}
+                    class="px-4 py-2 text-xs border rounded {settings.difficulty ===
+                    'hard'
+                        ? 'bg-[#9ae600] text-black border-[#9ae600]'
+                        : 'bg-black border-[#333] text-[#555] hover:border-[#9ae600]'}"
                 >
                     HARD
                 </button>
                 <button
-                    onclick={() => settings.difficulty = "expert"}
-                    class="px-4 py-2 text-xs border rounded {settings.difficulty === 'expert' ? 'bg-[#9ae600] text-black border-[#9ae600]' : 'bg-black border-[#333] text-[#555] hover:border-[#9ae600]'}"
+                    onclick={() => (settings.difficulty = "expert")}
+                    class="px-4 py-2 text-xs border rounded {settings.difficulty ===
+                    'expert'
+                        ? 'bg-[#9ae600] text-black border-[#9ae600]'
+                        : 'bg-black border-[#333] text-[#555] hover:border-[#9ae600]'}"
                 >
                     EXPERT
                 </button>
             </div>
 
-            <div class="grid grid-cols-1 md:grid-cols-2 gap-3 max-h-96 overflow-y-auto">
+            <div
+                class="grid grid-cols-1 md:grid-cols-2 gap-3 max-h-96 overflow-y-auto"
+            >
                 {#each playableTracks as track}
                     <button
                         onclick={() => selectTrack(track)}
                         class="p-4 border border-[#333] rounded bg-[#111] hover:border-[#9ae600] hover:bg-[#222] transition-all text-left"
                     >
-                        <div class="text-sm text-white font-bold truncate">{track.Title}</div>
-                        <div class="text-[10px] text-[#555] truncate">{track.Creator || 'Unknown'}</div>
+                        <div class="text-sm text-white font-bold truncate">
+                            {track.Title}
+                        </div>
+                        <div class="text-[10px] text-[#555] truncate">
+                            {track.Creator || "Unknown"}
+                        </div>
                     </button>
                 {/each}
             </div>
         </div>
-
     {:else if gameState === "playing"}
         <!-- GAME SCREEN -->
         <div class="relative">
             <!-- HUD -->
-            <div class="flex justify-between items-start mb-4 p-4 border-b border-[#333]">
+            <div
+                class="flex justify-between items-start mb-4 p-4 border-b border-[#333]"
+            >
                 <div class="flex flex-col gap-1">
-                    <div class="text-sm text-white font-bold">{currentTrack?.Title || 'Unknown Track'}</div>
-                    <div class="text-[10px] text-[#555]">{currentTrack?.Creator || 'Unknown Artist'}</div>
+                    <div class="text-sm text-white font-bold">
+                        {currentTrack?.Title || "Unknown Track"}
+                    </div>
+                    <div class="text-[10px] text-[#555]">
+                        {currentTrack?.Creator || "Unknown Artist"}
+                    </div>
                 </div>
                 <div class="flex gap-6 text-right">
                     <div class="flex flex-col">
                         <span class="text-[10px] text-[#555]">SCORE</span>
-                        <span class="text-xl text-[#9ae600] font-bold">{stats.score.toLocaleString()}</span>
+                        <span class="text-xl text-[#9ae600] font-bold"
+                            >{stats.score.toLocaleString()}</span
+                        >
                     </div>
                     <div class="flex flex-col">
                         <span class="text-[10px] text-[#555]">COMBO</span>
-                        <span class="text-xl text-[#f91880] font-bold {stats.combo > 0 ? 'animate-pulse' : ''}">{stats.combo}x</span>
+                        <span
+                            class="text-xl text-[#f91880] font-bold {stats.combo >
+                            0
+                                ? 'animate-pulse'
+                                : ''}">{stats.combo}x</span
+                        >
                     </div>
                 </div>
             </div>
 
             <!-- GAME FIELD -->
-            <div class="relative bg-black border-2 border-[#333] rounded-lg overflow-hidden" style="height: {laneHeight}px;">
+            <div
+                class="relative bg-black border-2 border-[#333] rounded-lg overflow-hidden"
+                style="height: {laneHeight}px;"
+            >
                 <!-- Lanes -->
                 <div class="absolute inset-0 flex">
                     {#each [0, 1, 2] as lane}
-                        <div class="flex-1 border-r border-[#222] last:border-r-0 relative">
+                        <div
+                            class="flex-1 border-r border-[#222] last:border-r-0 relative"
+                        >
                             <!-- Lane background -->
-                            <div class="absolute inset-0 bg-gradient-to-b from-transparent via-[#111] to-black opacity-50"></div>
+                            <div
+                                class="absolute inset-0 bg-gradient-to-b from-transparent via-[#111] to-black transition-all duration-75"
+                                style="opacity: {pressedLanes[lane]
+                                    ? 0.8
+                                    : 0.5}; background-color: {pressedLanes[
+                                    lane
+                                ]
+                                    ? 'rgba(154, 230, 0, 0.1)'
+                                    : 'transparent'}; box-shadow: {pressedLanes[
+                                    lane
+                                ]
+                                    ? 'inset 0 0 20px rgba(154,230,0,0.1)'
+                                    : 'none'};"
+                            ></div>
 
                             <!-- Hit zone indicator -->
                             <div
                                 class="absolute w-full h-2 border-y-2 transition-all duration-75"
-                                style="top: {hitZoneY}px; background-color: {pressedLanes[lane] ? 'rgba(154, 230, 0, 0.6)' : 'rgba(154, 230, 0, 0.3)'}; border-color: {pressedLanes[lane] ? '#9ae600' : '#9ae600'}; box-shadow: {pressedLanes[lane] ? '0 0 20px #9ae600' : 'none'};"
+                                style="top: {hitZoneY}px; background-color: {pressedLanes[
+                                    lane
+                                ]
+                                    ? 'rgba(154, 230, 0, 0.6)'
+                                    : 'rgba(154, 230, 0, 0.3)'}; border-color: {pressedLanes[
+                                    lane
+                                ]
+                                    ? '#9ae600'
+                                    : '#9ae600'}; box-shadow: {pressedLanes[
+                                    lane
+                                ]
+                                    ? '0 0 20px #9ae600'
+                                    : 'none'};"
                             ></div>
 
                             <!-- Key hint -->
-                            <div class="absolute bottom-4 left-1/2 -translate-x-1/2 text-[#333] text-2xl font-bold {pressedLanes[lane] ? 'text-[#9ae600] scale-110' : ''} transition-all duration-75">
+                            <div
+                                class="absolute bottom-4 left-1/2 -translate-x-1/2 text-[#333] text-2xl font-bold {pressedLanes[
+                                    lane
+                                ]
+                                    ? 'text-[#9ae600] scale-110'
+                                    : ''} transition-all duration-75"
+                            >
                                 {LANE_KEYS[lane].toUpperCase()}
                             </div>
 
                             <!-- Hit feedback text -->
-                            {#each hitFeedback.filter(f => f.lane === lane) as feedback (feedback.timestamp)}
-                                {@const age = (Date.now() - feedback.timestamp) / 1000}
+                            {#each hitFeedback.filter((f) => f.lane === lane) as feedback (feedback.timestamp)}
+                                {@const age =
+                                    (Date.now() - feedback.timestamp) / 1000}
                                 {@const opacity = Math.max(0, 1 - age)}
                                 {@const yOffset = age * 50}
                                 <div
                                     class="absolute left-1/2 -translate-x-1/2 text-xs font-bold pointer-events-none"
-                                    style="top: {hitZoneY - yOffset}px; opacity: {opacity}; color: {feedback.text === 'PERFECT!' ? '#9ae600' : feedback.text === 'GREAT!' ? '#FDDA24' : feedback.text === 'OK' ? '#f91880' : '#666'}; text-shadow: 0 0 10px currentColor;"
+                                    style="top: {hitZoneY -
+                                        yOffset}px; opacity: {opacity}; color: {feedback.text ===
+                                    'PERFECT!'
+                                        ? '#9ae600'
+                                        : feedback.text === 'GREAT!'
+                                          ? '#FDDA24'
+                                          : feedback.text === 'OK'
+                                            ? '#f91880'
+                                            : '#666'}; text-shadow: 0 0 10px currentColor;"
                                 >
                                     {feedback.text}
                                 </div>
                             {/each}
 
+                            <!-- Hit effects -->
+                            {#each hitEffects.filter((e) => e.lane === lane) as effect (effect.id)}
+                                <div
+                                    class="absolute left-1/2 -translate-x-1/2 w-full aspect-square pointer-events-none"
+                                    style="top: {hitZoneY - 20}px;"
+                                >
+                                    <div
+                                        class="absolute inset-0 rounded-full animate-ping opacity-75"
+                                        style="background-color: {effect.color}"
+                                    ></div>
+                                    <div
+                                        class="absolute inset-0 rounded-full animate-pulse opacity-50"
+                                        style="background-color: {effect.color}; filter: blur(4px)"
+                                    ></div>
+                                </div>
+                            {/each}
+
                             <!-- Notes in this lane -->
-                            {#each notes.filter(n => n.lane === lane) as note (note.id)}
+                            {#each notes.filter((n) => n.lane === lane) as note (note.id)}
                                 <div
                                     class="absolute left-1/2 -translate-x-1/2 rounded-full transition-all duration-75"
                                     style="
-                                        top: {(note.position / 100) * laneHeight}px;
+                                        top: {(note.position / 100) *
+                                        laneHeight}px;
                                         width: {noteSize}px;
                                         height: {noteSize}px;
                                         background: {note.hit
-                                            ? (note.accuracy === 'perfect' ? '#9ae600' : note.accuracy === 'great' ? '#FDDA24' : '#f91880')
-                                            : (lane === 0 ? '#9ae600' : lane === 1 ? '#FDDA24' : '#f91880')
-                                        };
+                                        ? note.accuracy === 'perfect'
+                                            ? '#9ae600'
+                                            : note.accuracy === 'great'
+                                              ? '#FDDA24'
+                                              : '#f91880'
+                                        : lane === 0
+                                          ? '#9ae600'
+                                          : lane === 1
+                                            ? '#FDDA24'
+                                            : '#f91880'};
                                         opacity: {note.hit ? 0.3 : 1};
                                         box-shadow: 0 0 20px currentColor;
                                     "
                                 >
                                     {#if note.hit && note.accuracy}
-                                        <div class="absolute inset-0 flex items-center justify-center text-black text-[8px] font-bold">
-                                            {note.accuracy === 'perfect' ? '★' : note.accuracy === 'great' ? '✓' : '·'}
+                                        <div
+                                            class="absolute inset-0 flex items-center justify-center text-black text-[8px] font-bold"
+                                        >
+                                            {note.accuracy === "perfect"
+                                                ? "★"
+                                                : note.accuracy === "great"
+                                                  ? "✓"
+                                                  : "·"}
                                         </div>
                                     {/if}
                                 </div>
@@ -1011,34 +1264,53 @@
                 Press D, F, J to hit notes • ESC to quit
             </div>
         </div>
-
     {:else if gameState === "finished"}
         <!-- RESULTS SCREEN -->
-        <div class="flex flex-col gap-6 p-8 border-2 border-[#9ae600] rounded-lg bg-[#111]">
+        <div
+            class="flex flex-col gap-6 p-8 border-2 border-[#9ae600] rounded-lg bg-[#111]"
+        >
             <div class="text-center border-b border-[#333] pb-4">
-                <h2 class="text-3xl font-bold text-[#9ae600] mb-2">STAGE CLEAR!</h2>
+                <h2 class="text-3xl font-bold text-[#9ae600] mb-2">
+                    STAGE CLEAR!
+                </h2>
                 <p class="text-sm text-white">{currentTrack?.Title}</p>
             </div>
 
             <div class="grid grid-cols-2 gap-4">
-                <div class="flex flex-col items-center p-4 border border-[#333] rounded">
-                    <span class="text-[10px] text-[#555] uppercase">Final Score</span>
-                    <span class="text-3xl text-[#9ae600] font-bold">{stats.score.toLocaleString()}</span>
+                <div
+                    class="flex flex-col items-center p-4 border border-[#333] rounded"
+                >
+                    <span class="text-[10px] text-[#555] uppercase"
+                        >Final Score</span
+                    >
+                    <span class="text-3xl text-[#9ae600] font-bold"
+                        >{stats.score.toLocaleString()}</span
+                    >
                 </div>
-                <div class="flex flex-col items-center p-4 border border-[#333] rounded">
-                    <span class="text-[10px] text-[#555] uppercase">Max Combo</span>
-                    <span class="text-3xl text-[#f91880] font-bold">{stats.maxCombo}x</span>
+                <div
+                    class="flex flex-col items-center p-4 border border-[#333] rounded"
+                >
+                    <span class="text-[10px] text-[#555] uppercase"
+                        >Max Combo</span
+                    >
+                    <span class="text-3xl text-[#f91880] font-bold"
+                        >{stats.maxCombo}x</span
+                    >
                 </div>
             </div>
 
             <div class="grid grid-cols-4 gap-2 text-center">
                 <div class="p-3 border border-[#333] rounded">
                     <div class="text-[10px] text-[#9ae600]">PERFECT</div>
-                    <div class="text-xl font-bold text-white">{stats.perfect}</div>
+                    <div class="text-xl font-bold text-white">
+                        {stats.perfect}
+                    </div>
                 </div>
                 <div class="p-3 border border-[#333] rounded">
                     <div class="text-[10px] text-[#FDDA24]">GREAT</div>
-                    <div class="text-xl font-bold text-white">{stats.great}</div>
+                    <div class="text-xl font-bold text-white">
+                        {stats.great}
+                    </div>
                 </div>
                 <div class="p-3 border border-[#333] rounded">
                     <div class="text-[10px] text-[#f91880]">OK</div>
