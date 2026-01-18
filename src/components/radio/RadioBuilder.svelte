@@ -310,18 +310,18 @@
     }
   }
 
-  onMount(async () => {
-    // Initial load: fetch data and then process any params
-    await initializeData();
-    await handleUrlParams();
+  onMount(() => {
+    // Initial load: fetch data and then process any params (async)
+    (async () => {
+      await initializeData();
+      await handleUrlParams();
+    })();
 
     // Listen for Astro navigation (handles "Send to Radio" while already on Radio page)
-    const cleanup = () =>
-      document.removeEventListener("astro:after-navigation", handleUrlParams);
     document.addEventListener("astro:after-navigation", handleUrlParams);
 
     return () => {
-      cleanup();
+      document.removeEventListener("astro:after-navigation", handleUrlParams);
     };
   });
 

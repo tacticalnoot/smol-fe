@@ -5,7 +5,7 @@ import type { APIContext } from 'astro';
 const SOROSWAP_API_URL = 'https://api.soroswap.finance';
 const SUPPORTED_PROTOCOLS = ['soroswap', 'aqua', 'phoenix'];
 
-export async function POST({ request, env }: APIContext) {
+export async function POST({ request, locals }: APIContext) {
     try {
         const body = await request.json();
         const { tokenIn, tokenOut, amountIn, slippageBps = 500 } = body;
@@ -15,7 +15,8 @@ export async function POST({ request, env }: APIContext) {
         }
 
         // Use env variable for API key (Cloudflare Secret)
-        // Checking both standard and PUBLIC_ variants to support local dev and existing configs
+        // Checking both runtime.env (Cloudflare) and process.env (local dev)
+        const env = (locals as any).runtime?.env;
         const apiKey = env?.SOROSWAP_API_KEY || process.env.SOROSWAP_API_KEY ||
             env?.PUBLIC_SOROSWAP_API_KEY || process.env.PUBLIC_SOROSWAP_API_KEY;
 

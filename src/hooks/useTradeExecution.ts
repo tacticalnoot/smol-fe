@@ -6,13 +6,17 @@ import {
   xdr,
   Address,
   nativeToScVal,
-  TimeoutInfinite
+  TimeoutInfinite,
+  Account
 } from '@stellar/stellar-sdk';
 import { getSafeRpId } from '../utils/domains';
 import { getLatestSequence } from '../utils/base';
 import { account, send, sac } from '../utils/passkey-kit';
 import type { QuoteResponse, RawTrade, RawTradeDistribution } from '../utils/soroswap';
 import { AGGREGATOR_CONTRACT } from '../utils/soroswap';
+
+// NULL_ACCOUNT for building unsigned transactions (relayer will rewrap)
+const NULL_ACCOUNT = "GAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAWHF";
 
 const PROTOCOL_IDS: Record<string, number> = {
   soroswap: 0,
@@ -149,10 +153,8 @@ export function useTradeExecution() {
       nativeToScVal(deadline, { type: 'u64' })
     );
 
-    // Get current Source Account (for sequence number)
-    // We use the account connected to passkey kit
-    const pk = account.get().account().publicKey();
-    const sourceAccount = await sac.get().getRpcClient().getAccount(pk);
+    // Use NULL_ACCOUNT as source - the relayer will rewrap with its funded account
+    const sourceAccount = new Account(NULL_ACCOUNT, "0");
 
     // Network Passphrase
     const networkPassphrase = import.meta.env.PUBLIC_NETWORK_PASSPHRASE || Networks.PUBLIC;
