@@ -17,6 +17,17 @@
         accuracy: "perfect" | "great" | "ok" | "miss" | null;
     }
 
+    interface CachedOnset {
+        lane: number;
+        time: number; // Time in seconds when onset occurs
+    }
+
+    interface Beatmap {
+        trackId: string;
+        difficulty: string;
+        onsets: CachedOnset[];
+    }
+
     interface GameSettings {
         difficulty: "easy" | "medium" | "hard" | "expert";
         noteSpeed: number; // pixels per second
@@ -49,10 +60,17 @@
     // STATE
     // ======================
 
-    let gameState = $state<"menu" | "calibrating" | "playing" | "paused" | "finished">("menu");
+    let gameState = $state<"menu" | "analyzing" | "calibrating" | "playing" | "paused" | "finished">("menu");
     let currentTrack = $state<any | null>(null);
     let playableTracks = $state<any[]>([]);
     let loading = $state(false);
+
+    // Pre-analysis for iOS support
+    let isIOS = $state(false);
+    let usePreAnalysis = $state(false); // Set to true on iOS or for compatibility
+    let analyzingProgress = $state(0); // 0-100
+    let cachedBeatmap = $state<Beatmap | null>(null);
+    let beatmapCache = new Map<string, Beatmap>(); // Cache beatmaps by trackId-difficulty
 
     // Audio
     let audio: HTMLAudioElement | null = null;
@@ -191,6 +209,28 @@
         }
     }
 
+    // Track which cached onsets we've already spawned
+    let spawnedCachedOnsets = new Set<number>();
+
+    function detectOnsetsFromCache(currentTime: number) {
+        if (!cachedBeatmap) return;
+
+        // Spawn notes that should appear soon (within spawn lead time)
+        const spawnWindow = NOTE_SPAWN_LEAD_TIME / 1000; // Convert to seconds
+        const spawnDeadline = currentTime + spawnWindow;
+
+        cachedBeatmap.onsets.forEach((onset, index) => {
+            // Skip if already spawned
+            if (spawnedCachedOnsets.has(index)) return;
+
+            // Check if this onset should spawn now
+            if (onset.time <= spawnDeadline && onset.time > currentTime) {
+                spawnNote(onset.lane, currentTime);
+                spawnedCachedOnsets.add(index);
+            }
+        });
+    }
+
     function detectOnsets() {
         if (!bassAnalyser || !midAnalyser || !trebleAnalyser) return;
 
@@ -264,8 +304,12 @@
 
         const currentTime = audio.currentTime;
 
-        // Detect new onsets
-        detectOnsets();
+        // Detect new onsets (real-time or from cache)
+        if (cachedBeatmap) {
+            detectOnsetsFromCache(currentTime);
+        } else {
+            detectOnsets();
+        }
 
         // Update note positions
         notes = notes.map(note => {
@@ -427,8 +471,171 @@
         }
     }
 
-    function selectTrack(track: any) {
+    async function analyzeTrack(track: any): Promise<Beatmap> {
+        gameState = "analyzing";
+        analyzingProgress = 0;
+
+        return new Promise((resolve, reject) => {
+            const analysisAudio = new Audio();
+            analysisAudio.crossOrigin = "anonymous";
+            analysisAudio.src = `${import.meta.env.PUBLIC_API_URL}/song/${track.Song_1}.mp3`;
+            analysisAudio.volume = 0.01; // Very quiet
+            analysisAudio.playbackRate = 2.0; // 2x speed for faster analysis
+
+            const detectedOnsets: CachedOnset[] = [];
+            let analysisContext: AudioContext | null = null;
+            let analysisAnalysers: AnalyserNode[] = [];
+
+            const setupAnalysis = () => {
+                try {
+                    analysisContext = new AudioContext();
+                    const source = analysisContext.createMediaElementSource(analysisAudio);
+                    const gainNode = analysisContext.createGain();
+                    gainNode.gain.value = 0.01;
+
+                    // Create same frequency band filters
+                    const bassFilter = analysisContext.createBiquadFilter();
+                    bassFilter.type = "lowpass";
+                    bassFilter.frequency.value = 200;
+                    bassFilter.Q.value = 0.7;
+                    const bassAnalyser = analysisContext.createAnalyser();
+                    bassAnalyser.fftSize = 512;
+                    bassAnalyser.smoothingTimeConstant = 0.3;
+
+                    const midFilter = analysisContext.createBiquadFilter();
+                    midFilter.type = "bandpass";
+                    midFilter.frequency.value = 1000;
+                    midFilter.Q.value = 0.7;
+                    const midAnalyser = analysisContext.createAnalyser();
+                    midAnalyser.fftSize = 512;
+                    midAnalyser.smoothingTimeConstant = 0.3;
+
+                    const trebleFilter = analysisContext.createBiquadFilter();
+                    trebleFilter.type = "highpass";
+                    trebleFilter.frequency.value = 2000;
+                    trebleFilter.Q.value = 0.7;
+                    const trebleAnalyser = analysisContext.createAnalyser();
+                    trebleAnalyser.fftSize = 512;
+                    trebleAnalyser.smoothingTimeConstant = 0.3;
+
+                    source.connect(bassFilter);
+                    bassFilter.connect(bassAnalyser);
+                    source.connect(midFilter);
+                    midFilter.connect(midAnalyser);
+                    source.connect(trebleFilter);
+                    trebleFilter.connect(trebleAnalyser);
+                    source.connect(gainNode);
+                    gainNode.connect(analysisContext.destination);
+
+                    analysisAnalysers = [bassAnalyser, midAnalyser, trebleAnalyser];
+
+                    // Run analysis loop
+                    const energyHistory: number[][] = [[], [], []];
+                    const lastOnsetTimes = [0, 0, 0];
+
+                    const analyzeFrame = () => {
+                        if (analysisAudio.paused || analysisAudio.ended) return;
+
+                        const currentTime = analysisAudio.currentTime / analysisAudio.playbackRate; // Adjust for playback rate
+
+                        analysisAnalysers.forEach((analyser, lane) => {
+                            const bufferLength = analyser.frequencyBinCount;
+                            const dataArray = new Uint8Array(bufferLength);
+                            analyser.getByteFrequencyData(dataArray);
+
+                            let sum = 0;
+                            for (let i = 0; i < bufferLength; i++) {
+                                sum += dataArray[i] * dataArray[i];
+                            }
+                            const rms = Math.sqrt(sum / bufferLength);
+
+                            energyHistory[lane].push(rms);
+                            if (energyHistory[lane].length > ENERGY_HISTORY_SIZE) {
+                                energyHistory[lane].shift();
+                            }
+
+                            if (energyHistory[lane].length < ENERGY_HISTORY_SIZE) return;
+
+                            const avgEnergy = energyHistory[lane].reduce((a, b) => a + b, 0) / energyHistory[lane].length;
+                            const threshold = avgEnergy * onsetThresholdMultiplier;
+
+                            if (rms > threshold && (currentTime - lastOnsetTimes[lane]) > 0.1) {
+                                // Onset detected! Store it
+                                detectedOnsets.push({ lane, time: currentTime });
+                                lastOnsetTimes[lane] = currentTime;
+                            }
+                        });
+
+                        // Update progress
+                        if (analysisAudio.duration) {
+                            analyzingProgress = Math.floor((analysisAudio.currentTime / analysisAudio.duration) * 100);
+                        }
+
+                        requestAnimationFrame(analyzeFrame);
+                    };
+
+                    analyzeFrame();
+                } catch (e) {
+                    console.error("[SmolHero] Analysis setup failed:", e);
+                    reject(e);
+                }
+            };
+
+            analysisAudio.onloadedmetadata = () => {
+                setupAnalysis();
+                analysisAudio.play().catch(reject);
+            };
+
+            analysisAudio.onended = () => {
+                if (analysisContext) {
+                    analysisContext.close();
+                }
+                analyzingProgress = 100;
+
+                const beatmap: Beatmap = {
+                    trackId: track.Song_1,
+                    difficulty: settings.difficulty,
+                    onsets: detectedOnsets.sort((a, b) => a.time - b.time)
+                };
+
+                // Cache it
+                beatmapCache.set(`${track.Song_1}-${settings.difficulty}`, beatmap);
+
+                console.log(`[SmolHero] Analysis complete: ${detectedOnsets.length} onsets detected`);
+                resolve(beatmap);
+            };
+
+            analysisAudio.onerror = (e) => {
+                if (analysisContext) {
+                    analysisContext.close();
+                }
+                reject(e);
+            };
+        });
+    }
+
+    async function selectTrack(track: any) {
         currentTrack = track;
+
+        // Check if we need pre-analysis
+        if (usePreAnalysis) {
+            const cacheKey = `${track.Song_1}-${settings.difficulty}`;
+            let beatmap = beatmapCache.get(cacheKey);
+
+            if (!beatmap) {
+                try {
+                    beatmap = await analyzeTrack(track);
+                } catch (e) {
+                    console.error("[SmolHero] Pre-analysis failed:", e);
+                    alert("Failed to analyze track. Please try another.");
+                    gameState = "menu";
+                    return;
+                }
+            }
+
+            cachedBeatmap = beatmap;
+        }
+
         gameState = "playing";
         startGame();
     }
@@ -449,6 +656,7 @@
         };
         energyHistory = [[], [], []];
         lastOnsetTimes = [0, 0, 0];
+        spawnedCachedOnsets.clear(); // Reset cached onset tracking
 
         // Create and setup audio
         audio = new Audio();
@@ -456,8 +664,10 @@
         audio.src = `${import.meta.env.PUBLIC_API_URL}/song/${currentTrack.Song_1}.mp3`;
         audio.volume = 0.7;
 
-        // Init analysis
-        initAudioAnalysis();
+        // Init analysis (only if not using pre-computed beatmap)
+        if (!cachedBeatmap) {
+            initAudioAnalysis();
+        }
 
         // Start playback
         audio.play().then(() => {
@@ -513,6 +723,11 @@
     // ======================
 
     onMount(() => {
+        // Detect iOS/Safari
+        isIOS = /iPhone|iPad|iPod/.test(navigator.userAgent) ||
+                (navigator.userAgent.includes('Mac') && 'ontouchend' in document);
+        usePreAnalysis = isIOS; // Always use pre-analysis on iOS
+
         loadTracks();
         window.addEventListener("keydown", handleKeyDown);
         window.addEventListener("keyup", handleKeyUp);
@@ -543,12 +758,52 @@
             <div class="text-[#9ae600] text-sm animate-pulse">LOADING TRACKS...</div>
         </div>
 
+    {:else if gameState === "analyzing"}
+        <!-- ANALYZING TRACK -->
+        <div class="flex flex-col items-center justify-center h-96 gap-6">
+            <div class="text-center">
+                <h2 class="text-2xl font-bold text-[#9ae600] mb-2">ANALYZING TRACK</h2>
+                <p class="text-xs text-[#555]">{currentTrack?.Title || 'Unknown Track'}</p>
+                <p class="text-[10px] text-[#333] mt-1">Detecting beats from audio...</p>
+            </div>
+
+            <!-- Progress bar -->
+            <div class="w-full max-w-md">
+                <div class="h-2 bg-[#222] rounded-full overflow-hidden border border-[#333]">
+                    <div
+                        class="h-full bg-gradient-to-r from-[#9ae600] to-[#f91880] transition-all duration-300"
+                        style="width: {analyzingProgress}%"
+                    ></div>
+                </div>
+                <div class="text-center mt-2 text-sm text-[#9ae600] font-mono">
+                    {analyzingProgress}%
+                </div>
+            </div>
+
+            <div class="flex gap-1">
+                {#each Array(3) as _, i}
+                    <div class="w-2 h-2 bg-[#9ae600] rounded-full animate-bounce" style="animation-delay: {i * 0.2}s"></div>
+                {/each}
+            </div>
+
+            {#if isIOS}
+                <p class="text-[10px] text-[#555] max-w-xs text-center">
+                    📱 iOS detected: Pre-analyzing track for optimal performance
+                </p>
+            {/if}
+        </div>
+
     {:else if gameState === "menu"}
         <!-- TRACK SELECTION MENU -->
         <div class="flex flex-col gap-6">
             <div class="text-center border-b border-[#333] pb-6">
                 <h1 class="text-4xl font-bold text-[#9ae600] mb-2">SMOL HERO</h1>
                 <p class="text-xs text-[#555] uppercase tracking-widest">Rhythm Game • Beat Detection Engine</p>
+                {#if isIOS}
+                    <div class="mt-3 inline-block px-3 py-1 bg-[#9ae600]/10 border border-[#9ae600] rounded text-[10px] text-[#9ae600]">
+                        ✓ iOS COMPATIBLE • Pre-Analysis Mode
+                    </div>
+                {/if}
             </div>
 
             <div class="flex gap-4 justify-center mb-4">
