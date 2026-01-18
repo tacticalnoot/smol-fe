@@ -54,6 +54,20 @@ export async function fetchSmols(options?: { limit?: number }): Promise<Smol[]> 
       };
     });
 
+    // 3. Add songs from snapshot that aren't in the live response
+    const liveIds = new Set(liveSmols.map((s) => s.Id));
+    snapshot.forEach((oldSmol) => {
+      if (!liveIds.has(oldSmol.Id)) {
+        merged.push({
+          ...oldSmol,
+          Tags: oldSmol.Tags || [],
+          Address: oldSmol.Address || undefined,
+          Minted_By: oldSmol.Minted_By || undefined,
+          Username: oldSmol.Username || undefined,
+        });
+      }
+    });
+
     // 4. DEEP VERIFICATION: Hydrate missing metadata for "Live-Only" songs
     // (Songs present in API but not in snapshot = New drops missing tags/address)
     const newItems = merged.filter(
