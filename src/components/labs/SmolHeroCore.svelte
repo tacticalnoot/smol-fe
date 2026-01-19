@@ -873,7 +873,6 @@
                 }
 
                 analyzingProgress = 100;
-                tempCtx.close();
 
                 const beatmap: Beatmap = {
                     trackId: track.Song_1,
