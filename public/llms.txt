@@ -65,7 +65,7 @@ Experimental features including:
 - Swapper (token exchange)
 
 ## Documentation & Support
-https://github.com/smol-ai
+https://github.com/Kalepail
 Open-source repositories, SDKs, and technical documentation.
 
 https://twitter.com/smolxyz
