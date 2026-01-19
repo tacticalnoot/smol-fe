@@ -1071,6 +1071,19 @@
     // LIFECYCLE
     // ======================
 
+    function getArtistDisplay(track: any) {
+        if (!track) return "Unknown Artist";
+        if (track.Creator && track.Creator !== "Unknown") return track.Creator;
+        const addr = track.Address || track.Minted_By;
+        if (addr) {
+            if (addr.length > 10) {
+                return `${addr.slice(0, 4)}...${addr.slice(-4)}`;
+            }
+            return addr;
+        }
+        return "Unknown Artist";
+    }
+
     onMount(() => {
         isIOS =
             /iPhone|iPad|iPod/.test(navigator.userAgent) ||
@@ -1324,10 +1337,7 @@
                                 {track.Title}
                             </div>
                             <div class="text-[10px] text-[#555] truncate">
-                                {track.Creator ||
-                                    track.Address ||
-                                    track.Minted_By ||
-                                    "Unknown"}
+                                {getArtistDisplay(track)}
                             </div>
                         </button>
                         <div
@@ -1377,10 +1387,7 @@
                         {currentTrack?.Title || "Unknown Track"}
                     </div>
                     <div class="text-[10px] text-[#555]">
-                        {currentTrack?.Creator ||
-                            currentTrack?.Address ||
-                            currentTrack?.Minted_By ||
-                            "Unknown Artist"}
+                        {getArtistDisplay(currentTrack)}
                     </div>
                 </div>
                 <div class="flex gap-6 text-right">
