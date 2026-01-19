@@ -158,6 +158,11 @@
 
     // Key bindings
     const LANE_KEYS = ["d", "f", "j"]; // Keys for lanes 0, 1, 2
+    const LANE_COLORS = [
+        { hex: "#9ae600", rgb: "154, 230, 0" }, // Green
+        { hex: "#b026ff", rgb: "176, 38, 255" }, // Purple
+        { hex: "#ff7700", rgb: "255, 119, 0" }, // Orange
+    ];
     let pressedKeys = new Set<string>();
     let pressedLanes = $state<boolean[]>([false, false, false]); // Visual feedback for pressed lanes
     let hitFeedback = $state<
@@ -1198,8 +1203,9 @@
         <!-- TRACK SELECTION MENU -->
         <div class="flex flex-col gap-6">
             <div class="text-center border-b border-[#333] pb-6">
-                <h1 class="text-4xl font-bold text-[#9ae600] mb-2">
-                    SMOL HERO
+                <h1 class="text-4xl font-bold mb-2">
+                    <span class="text-[#9ae600]">SMOL</span>
+                    <span class="text-white">HERO</span>
                 </h1>
                 <p class="text-xs text-[#555] uppercase tracking-widest">
                     Rhythm Game • Beat Detection Engine
@@ -1449,11 +1455,11 @@
                                     : 0.5}; background-color: {pressedLanes[
                                     lane
                                 ]
-                                    ? 'rgba(154, 230, 0, 0.1)'
+                                    ? `rgba(${LANE_COLORS[lane].rgb}, 0.1)`
                                     : 'transparent'}; box-shadow: {pressedLanes[
                                     lane
                                 ]
-                                    ? 'inset 0 0 20px rgba(154,230,0,0.1)'
+                                    ? `inset 0 0 20px rgba(${LANE_COLORS[lane].rgb}, 0.1)`
                                     : 'none'};"
                             ></div>
 
@@ -1463,25 +1469,25 @@
                                 style="top: {hitZoneY}px; background-color: {pressedLanes[
                                     lane
                                 ]
-                                    ? 'rgba(154, 230, 0, 0.6)'
-                                    : 'rgba(154, 230, 0, 0.3)'}; border-color: {pressedLanes[
+                                    ? `rgba(${LANE_COLORS[lane].rgb}, 0.6)`
+                                    : `rgba(${LANE_COLORS[lane].rgb}, 0.3)`}; border-color: {pressedLanes[
                                     lane
                                 ]
-                                    ? '#9ae600'
-                                    : '#9ae600'}; box-shadow: {pressedLanes[
-                                    lane
-                                ]
-                                    ? '0 0 20px #9ae600'
+                                    ? LANE_COLORS[lane].hex
+                                    : LANE_COLORS[lane]
+                                          .hex}; box-shadow: {pressedLanes[lane]
+                                    ? `0 0 20px ${LANE_COLORS[lane].hex}`
                                     : 'none'};"
                             ></div>
 
                             <!-- Key hint -->
                             <div
-                                class="absolute bottom-4 left-1/2 -translate-x-1/2 text-[#333] text-2xl font-bold {pressedLanes[
-                                    lane
-                                ]
-                                    ? 'text-[#9ae600] scale-110'
-                                    : ''} transition-all duration-75"
+                                class="absolute bottom-4 left-1/2 -translate-x-1/2 text-[#333] text-2xl font-bold transition-all duration-75"
+                                style="color: {pressedLanes[lane]
+                                    ? LANE_COLORS[lane].hex
+                                    : '#333'}; transform: {pressedLanes[lane]
+                                    ? 'translate(-50%) scale(1.1)'
+                                    : 'translate(-50%) scale(1)'};"
                             >
                                 {LANE_KEYS[lane].toUpperCase()}
                             </div>
@@ -1538,11 +1544,7 @@
                                                 settings.noteSpeed}px;
                                              height: {note.duration *
                                             settings.noteSpeed}px;
-                                             background: {lane === 0
-                                            ? '#9ae600'
-                                            : lane === 1
-                                              ? '#FDDA24'
-                                              : '#f91880'};
+                                        background: {LANE_COLORS[lane].hex};
                                          "
                                     ></div>
                                 {/if}
@@ -1554,17 +1556,14 @@
                                         laneHeight}px;
                                         width: {noteSize}px;
                                         height: {noteSize}px;
+                                        height: {noteSize}px;
                                         background: {note.hit
                                         ? note.accuracy === 'perfect'
                                             ? '#9ae600'
                                             : note.accuracy === 'great'
                                               ? '#FDDA24'
                                               : '#f91880'
-                                        : lane === 0
-                                          ? '#9ae600'
-                                          : lane === 1
-                                            ? '#FDDA24'
-                                            : '#f91880'};
+                                        : LANE_COLORS[lane].hex};
                                         opacity: {note.hit ? 0.3 : 1};
                                         box-shadow: 0 0 20px currentColor;
                                     "
