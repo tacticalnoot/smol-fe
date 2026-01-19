@@ -132,15 +132,15 @@
     let onsetThresholdMultiplier = $derived.by(() => {
         switch (settings.difficulty) {
             case "easy":
-                return 1.8; // Less sensitive, fewer notes
+                return 2.5; // Stricter
             case "medium":
-                return 1.5;
+                return 2.0;
             case "hard":
-                return 1.3;
+                return 1.6;
             case "expert":
-                return 1.2; // More sensitive, more notes
+                return 1.3;
             default:
-                return 1.5;
+                return 2.0;
         }
     });
 
@@ -371,12 +371,15 @@
             if (note.hit) return note;
 
             // Calculate position based on time until hit
+            // Calculate raw position first
             const timeUntilHit = note.hitTime - currentTime;
             const progress = 1 - timeUntilHit / (NOTE_SPAWN_LEAD_TIME / 1000);
-            const newPosition = Math.max(0, Math.min(100, progress * 100));
+            const rawPosition = progress * 100;
+            const newPosition = Math.max(0, Math.min(100, rawPosition));
 
             // Check if note passed hit zone (miss)
-            if (newPosition > 100 && !note.hit && !note.accuracy) {
+            // allow a small buffer (110%) before counting as miss to allow late hits
+            if (rawPosition > 110 && !note.hit && !note.accuracy) {
                 handleMiss(note);
                 return { ...note, accuracy: "miss", position: newPosition };
             }
