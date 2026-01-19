@@ -17,6 +17,8 @@ Allow: /ai-music/
 Allow: /prompts/
 Allow: /onchain/
 Allow: /artist/
+Allow: /llms.txt
+Allow: /llms-full.txt
 
 Sitemap: https://noot.smol.xyz/sitemap-index.xml
 Allow: /
