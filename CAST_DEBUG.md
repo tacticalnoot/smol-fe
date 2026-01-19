@@ -56,6 +56,37 @@ With `CAST_DEBUG` enabled, you'll see detailed logs for:
 - Playback progress (current time / duration)
 - Pause/resume events
 
+## Quick Audio URL Test
+
+Use the validation script to test audio endpoints:
+
+```bash
+node scripts/test-cast-audio.js https://noot.smol.xyz/api/audio/SONG_ID
+```
+
+This tests:
+- HEAD request returns 200
+- Content-Type is audio/*
+- Range request returns **206** (critical!)
+- Accept-Ranges: bytes header present
+- CORS headers configured
+
+## Using Cast Debug Logger (Alternative)
+
+Google's official Cast debugging tool streams receiver logs to your terminal:
+
+**Install:**
+```bash
+npm install -g cast-debug-logger
+```
+
+**Run:**
+```bash
+cast-debug-logger --device=YOUR_CAST_IP
+```
+
+You'll see real-time logs from the Cast device including media errors.
+
 ## Diagnosing Common Issues
 
 ### Issue: "Artwork flashes then blue Cast logo"
@@ -129,24 +160,105 @@ request.autoplay = true;
 request.currentTime = 0;
 ```
 
-## Testing on Android
+## Testing on Android with Receiver Debugging
 
-1. Ensure Android device and Chromecast are on same Wi-Fi
-2. Open site in Chrome (not other browsers)
-3. Enable `CAST_DEBUG` via console
-4. Tap Cast button and select device
-5. Play a song
-6. Check console for errors
+### Step 1: Get Cast Device IP
+1. Open Google Home app
+2. Tap your Cast device → Settings (gear icon)
+3. Note the IP address (e.g., `192.168.1.100`)
+
+### Step 2: Open Receiver Debugger
+In **desktop Chrome**, open:
+```
+http://YOUR_CAST_DEVICE_IP:9222
+```
+
+This opens Chrome DevTools for the receiver. Keep this tab open!
+
+### Step 3: Enable Debug Mode on Mobile
+On **Android Chrome**, open console and run:
+```javascript
+localStorage.setItem("CAST_DEBUG", "true")
+```
+Then reload the page.
+
+### Step 4: Start Casting
+1. Tap Cast button and select your device
+2. Play a song
+3. Watch **BOTH**:
+   - Mobile Chrome console (sender logs)
+   - Desktop receiver debugger (receiver logs + Network tab)
+
+### Step 5: Check for Issues
+
+**In receiver Network tab**, look for the audio request:
+- Status should be `206` for range requests (not 200)
+- Check for `net::ERR_FAILED` or CORS errors
+
+**In receiver Console**, look for:
+- `MEDIA_ERR_SRC_NOT_SUPPORTED` - No Range support or wrong codec
+- `MEDIA_ERR_NETWORK` - Can't fetch audio
+- `Failed to load media` - Various media errors
 
 **Pass criteria:**
 - Receiver shows artwork continuously
 - Audio plays
 - Progress updates in console
+- Network tab shows 206 responses
 
 **Fail criteria:**
 - Artwork flashes then blue logo
 - Player state goes IDLE with reason ERROR
 - No audio
+- Network tab shows 200 responses to Range requests
+
+## Receiver-Side Errors & Fixes
+
+### Error: `MEDIA_ERR_SRC_NOT_SUPPORTED`
+
+**Cause:** Audio URL doesn't support Range requests or wrong Content-Type
+
+**Check in receiver Network tab:**
+- Is the audio request returning `200` instead of `206`?
+- Is `Accept-Ranges: bytes` missing?
+
+**Fix:** Ensure audio proxy returns 206 + Content-Range for Range requests
+
+### Error: `net::ERR_FAILED`
+
+**Cause:** CORS issue or URL not accessible from Cast device
+
+**Check:**
+- Is `Access-Control-Allow-Origin: *` present?
+- Can the Cast device reach the URL? (same network?)
+- Is it HTTPS? (required for Cast)
+
+### Error: Artwork shows then blue logo
+
+**Cause:** Media load succeeded but stream failed (usually Range request issue)
+
+**Receiver Console shows:**
+```
+Media element error: MEDIA_ERR_SRC_NOT_SUPPORTED
+```
+
+**Fix:** The audio proxy must:
+1. Return `206 Partial Content` for Range requests (not 200)
+2. Include `Content-Range: bytes 0-1023/TOTAL` header
+3. Include `Accept-Ranges: bytes` header
+
+**Test:**
+```bash
+curl -I -H "Range: bytes=0-1023" https://noot.smol.xyz/api/audio/SONG_ID
+```
+
+Should return:
+```
+HTTP/2 206
+content-range: bytes 0-1023/3456789
+accept-ranges: bytes
+content-type: audio/mpeg
+```
 
 ## Files Modified for Cast Fixes
 
