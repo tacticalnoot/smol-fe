@@ -401,24 +401,8 @@
     // INPUT HANDLING
     // ======================
 
-    function handleKeyDown(e: KeyboardEvent) {
-        // ESC to toggle pause
-        if (
-            e.key === "Escape" &&
-            (gameState === "playing" || gameState === "paused")
-        ) {
-            togglePause();
-            return;
-        }
-
+    function handleInputStart(laneIndex: number) {
         if (gameState !== "playing") return;
-
-        const key = e.key.toLowerCase();
-        if (pressedKeys.has(key)) return; // Prevent key repeat
-        pressedKeys.add(key);
-
-        const laneIndex = LANE_KEYS.indexOf(key);
-        if (laneIndex === -1) return;
 
         // Visual feedback
         pressedLanes[laneIndex] = true;
@@ -450,7 +434,32 @@
             accuracy = "ok";
             handleHit(note, accuracy);
         }
-        // else: too early, ignore
+    }
+
+    function handleInputEnd(laneIndex: number) {
+        pressedLanes[laneIndex] = false;
+    }
+
+    function handleKeyDown(e: KeyboardEvent) {
+        // ESC to toggle pause
+        if (
+            e.key === "Escape" &&
+            (gameState === "playing" || gameState === "paused")
+        ) {
+            togglePause();
+            return;
+        }
+
+        if (gameState !== "playing") return;
+
+        const key = e.key.toLowerCase();
+        if (pressedKeys.has(key)) return; // Prevent key repeat
+        pressedKeys.add(key);
+
+        const laneIndex = LANE_KEYS.indexOf(key);
+        if (laneIndex === -1) return;
+
+        handleInputStart(laneIndex);
     }
 
     function handleKeyUp(e: KeyboardEvent) {
@@ -459,7 +468,7 @@
 
         const laneIndex = LANE_KEYS.indexOf(key);
         if (laneIndex !== -1) {
-            pressedLanes[laneIndex] = false;
+            handleInputEnd(laneIndex);
         }
     }
 
@@ -1402,7 +1411,18 @@
                 <div class="absolute inset-0 flex">
                     {#each [0, 1, 2] as lane}
                         <div
-                            class="flex-1 border-r border-[#222] last:border-r-0 relative"
+                            class="flex-1 border-r border-[#222] last:border-r-0 relative touch-none"
+                            onpointerdown={(e) => {
+                                e.preventDefault();
+                                handleInputStart(lane);
+                            }}
+                            onpointerup={(e) => {
+                                e.preventDefault();
+                                handleInputEnd(lane);
+                            }}
+                            onpointerleave={(e) => {
+                                handleInputEnd(lane);
+                            }}
                         >
                             <!-- Lane background -->
                             <div
@@ -1552,7 +1572,7 @@
 
             <!-- Controls hint -->
             <div class="mt-4 text-center text-[10px] text-[#333]">
-                Press D, F, J to hit notes • ESC to pause
+                Press D, F, J or Tap Lanes • ESC to pause
             </div>
         </div>
 
