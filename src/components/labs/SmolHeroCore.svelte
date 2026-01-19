@@ -87,7 +87,7 @@
 
     // Audio
     let audio: HTMLAudioElement | null = null;
-    let audioContext: AudioContext | null = null;
+    let audioContext: AudioContext | any = null; // Use any to allow webkitAudioContext
     let analyser: AnalyserNode | null = null;
     let gainNode: GainNode | null = null;
     let cachedDecodedBuffer: AudioBuffer | null = null; // Cache for pause menu
@@ -175,7 +175,9 @@
         if (!audio) return;
 
         try {
-            audioContext = new AudioContext();
+            const Ctx =
+                window.AudioContext || (window as any).webkitAudioContext;
+            audioContext = new Ctx();
             const source = audioContext.createMediaElementSource(audio);
 
             // Main gain node
@@ -682,7 +684,10 @@
                     const arrayBuffer = await response.arrayBuffer();
                     analyzingProgress = 20;
 
-                    const tempCtx = new AudioContext();
+                    const Ctx =
+                        window.AudioContext ||
+                        (window as any).webkitAudioContext;
+                    const tempCtx = new Ctx();
                     audioBuffer = await tempCtx.decodeAudioData(arrayBuffer);
                     cachedDecodedBuffer = audioBuffer; // Cache for pause menu
                     analyzingProgress = 40;
@@ -691,7 +696,10 @@
 
                 // 2. Render 3 distinct frequency bands using OfflineAudioContext
                 // We map: Channel 0 = Bass, Channel 1 = Mid, Channel 2 = Treble
-                const offlineCtx = new OfflineAudioContext(
+                const OfflineCtx =
+                    window.OfflineAudioContext ||
+                    (window as any).webkitOfflineAudioContext;
+                const offlineCtx = new OfflineCtx(
                     3,
                     audioBuffer.length,
                     audioBuffer.sampleRate,
