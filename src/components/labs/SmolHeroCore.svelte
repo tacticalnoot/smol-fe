@@ -75,6 +75,8 @@
     let searchQuery = $state("");
     let filterLikedOnly = $state(false);
     let sortMode = $state<"latest" | "artist" | "liked">("latest");
+    let visibleLimit = $state(50);
+    let filteredTracksCount = $state(0);
 
     // Pre-analysis for iOS support
     let isIOS = $state(false);
@@ -618,8 +620,17 @@
         // Actually, virtual scrolling is hard in simple svelte loop. Let's cap at 100 for now.
         // playableTracks = filtered.slice(0, 100);
         // User asked for "pick all songs".
-        playableTracks = filtered.slice(0, 200); // 200 is safer.
+        filteredTracksCount = filtered.length;
+        playableTracks = filtered.slice(0, visibleLimit);
     }
+
+    // Reset visible limit when filters change
+    $effect(() => {
+        const _q = searchQuery;
+        const _l = filterLikedOnly;
+        const _s = sortMode;
+        visibleLimit = 50; // Reset pagination on filter change
+    });
 
     // React to filter changes
     $effect(() => {
@@ -1208,12 +1219,25 @@
                     </button>
                 </div>
                 <div class="text-[10px] text-[#444] text-right">
-                    Showing {playableTracks.length} / {allTracks.length} tracks
+                    Showing {playableTracks.length} / {filteredTracksCount} tracks
                 </div>
             </div>
 
             <div
                 class="grid grid-cols-1 md:grid-cols-2 gap-3 max-h-96 overflow-y-auto pr-1"
+                onscroll={(e) => {
+                    const el = e.currentTarget;
+                    // Auto-load more when scrolling near bottom
+                    if (
+                        el.scrollHeight - el.scrollTop - el.clientHeight <
+                        200
+                    ) {
+                        if (visibleLimit < filteredTracksCount) {
+                            visibleLimit += 50;
+                            applyFilters(); // Re-slice
+                        }
+                    }
+                }}
             >
                 {#each playableTracks as track (track.Id)}
                     <div class="relative group">
@@ -1251,6 +1275,19 @@
                         </div>
                     </div>
                 {/each}
+                {#if visibleLimit < filteredTracksCount}
+                    <div class="col-span-1 md:col-span-2 text-center py-4">
+                        <button
+                            onclick={() => {
+                                visibleLimit += 50;
+                                applyFilters();
+                            }}
+                            class="text-xs text-[#9ae600] border border-[#9ae600] px-4 py-2 rounded hover:bg-[#9ae600] hover:text-black"
+                        >
+                            LOAD MORE
+                        </button>
+                    </div>
+                {/if}
             </div>
         </div>
     {:else if gameState === "playing"}
