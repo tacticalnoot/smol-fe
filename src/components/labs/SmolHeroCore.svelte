@@ -1,8 +1,9 @@
 <script lang="ts">
     import { onMount, onDestroy } from "svelte";
-    import { safeFetchSmols } from "../../services/api/smols";
+    import { safeFetchSmols, fetchLikedSmols } from "../../services/api/smols";
     import { getSongUrl } from "../../utils/apiUrl";
     import confetti from "canvas-confetti";
+    import LikeButton from "../../components/ui/LikeButton.svelte";
 
     // ======================
     // TYPES & INTERFACES
@@ -65,8 +66,15 @@
         "menu" | "analyzing" | "calibrating" | "playing" | "paused" | "finished"
     >("menu");
     let currentTrack = $state<any | null>(null);
-    let playableTracks = $state<any[]>([]);
+    let playableTracks = $state<any[]>([]); // The currently displayed/filtered list
+    let allTracks = $state<any[]>([]); // All tracks in memory
+    let likedTrackIds = $state<Set<string>>(new Set());
     let loading = $state(false);
+
+    // Filters & Sorts
+    let searchQuery = $state("");
+    let filterLikedOnly = $state(false);
+    let sortMode = $state<"latest" | "artist" | "liked">("latest");
 
     // Pre-analysis for iOS support
     let isIOS = $state(false);
@@ -536,17 +544,82 @@
     async function loadTracks() {
         loading = true;
         try {
-            if (fetchOnMount) {
-                const data = await safeFetchSmols({ limit: 100 });
-                smols = data;
-            }
-            playableTracks = smols.filter((s) => s.Song_1).slice(0, 20);
+            // Parallel fetch: All Smols + User Likes
+            const [smolsData, likes] = await Promise.all([
+                fetchOnMount
+                    ? safeFetchSmols({ limit: 5000 })
+                    : Promise.resolve(smols),
+                fetchLikedSmols(),
+            ]);
+
+            smols = smolsData;
+            likedTrackIds = new Set(likes);
+            allTracks = smols.filter((s) => s.Song_1); // Only playable songs
+
+            applyFilters();
             loading = false;
         } catch (e) {
             console.error("[SmolHero] Failed to load tracks:", e);
             loading = false;
         }
     }
+
+    function applyFilters() {
+        let filtered = [...allTracks];
+
+        // 1. Text Search
+        if (searchQuery) {
+            const q = searchQuery.toLowerCase();
+            filtered = filtered.filter(
+                (t) =>
+                    (t.Title || "").toLowerCase().includes(q) ||
+                    (t.Creator || "").toLowerCase().includes(q),
+            );
+        }
+
+        // 2. Liked Filter
+        if (filterLikedOnly) {
+            filtered = filtered.filter((t) => likedTrackIds.has(t.Id));
+        }
+
+        // 3. Sorting
+        filtered.sort((a, b) => {
+            if (sortMode === "latest") {
+                // Assuming newer IDs are higher? Or just index.
+                // Let's rely on original order (often latest first) or simple ID compare if numeric strings
+                return b.Id.localeCompare(a.Id);
+            }
+            if (sortMode === "artist") {
+                const nameA = (a.Creator || "Unknown").toLowerCase();
+                const nameB = (b.Creator || "Unknown").toLowerCase();
+                return nameA.localeCompare(nameB);
+            }
+            if (sortMode === "liked") {
+                const aLiked = likedTrackIds.has(a.Id);
+                const bLiked = likedTrackIds.has(b.Id);
+                // Liked first
+                return (bLiked ? 1 : 0) - (aLiked ? 1 : 0);
+            }
+            return 0;
+        });
+
+        // Limit display for performance if search is empty
+        // logic: if user is searching/filtering, show all matches. If raw list, cap at 100?
+        // Actually, virtual scrolling is hard in simple svelte loop. Let's cap at 100 for now.
+        // playableTracks = filtered.slice(0, 100);
+        // User asked for "pick all songs".
+        playableTracks = filtered.slice(0, 200); // 200 is safer.
+    }
+
+    // React to filter changes
+    $effect(() => {
+        // We reference these so the effect re-runs when they change
+        const _q = searchQuery;
+        const _l = filterLikedOnly;
+        const _s = sortMode;
+        // Don't run initially if empty to avoid double-set, but filteredTracks needs init.
+        if (allTracks.length > 0) applyFilters();
+    });
 
     async function analyzeTrack(track: any): Promise<Beatmap> {
         gameState = "analyzing";
@@ -1077,21 +1150,93 @@
                 </button>
             </div>
 
+            <!-- FILTERS -->
             <div
-                class="grid grid-cols-1 md:grid-cols-2 gap-3 max-h-96 overflow-y-auto"
+                class="flex flex-col gap-3 mb-4 sticky top-0 bg-black z-10 pb-2"
             >
-                {#each playableTracks as track}
+                <input
+                    type="text"
+                    bind:value={searchQuery}
+                    placeholder="Search songs or artists..."
+                    class="w-full bg-[#111] border border-[#333] rounded px-3 py-2 text-xs text-white focus:outline-none focus:border-[#9ae600]"
+                />
+                <div class="flex gap-2 justify-between flex-wrap">
+                    <div class="flex gap-1">
+                        <button
+                            onclick={() => (sortMode = "latest")}
+                            class="px-2 py-1 text-[10px] border rounded {sortMode ===
+                            'latest'
+                                ? 'bg-[#9ae600] text-black border-[#9ae600]'
+                                : 'bg-black border-[#333] text-[#555]'}"
+                            >LATEST</button
+                        >
+                        <button
+                            onclick={() => (sortMode = "artist")}
+                            class="px-2 py-1 text-[10px] border rounded {sortMode ===
+                            'artist'
+                                ? 'bg-[#9ae600] text-black border-[#9ae600]'
+                                : 'bg-black border-[#333] text-[#555]'}"
+                            >ARTIST</button
+                        >
+                        <button
+                            onclick={() => (sortMode = "liked")}
+                            class="px-2 py-1 text-[10px] border rounded {sortMode ===
+                            'liked'
+                                ? 'bg-[#9ae600] text-black border-[#9ae600]'
+                                : 'bg-black border-[#333] text-[#555]'}"
+                            >LIKED</button
+                        >
+                    </div>
+
                     <button
-                        onclick={() => selectTrack(track)}
-                        class="p-4 border border-[#333] rounded bg-[#111] hover:border-[#9ae600] hover:bg-[#222] transition-all text-left"
+                        onclick={() => (filterLikedOnly = !filterLikedOnly)}
+                        class="px-2 py-1 text-[10px] border rounded flex items-center gap-1 {filterLikedOnly
+                            ? 'bg-[#f91880] text-white border-[#f91880]'
+                            : 'bg-black border-[#333] text-[#555]'}"
                     >
-                        <div class="text-sm text-white font-bold truncate">
-                            {track.Title}
-                        </div>
-                        <div class="text-[10px] text-[#555] truncate">
-                            {track.Creator || "Unknown"}
-                        </div>
+                        ♥ LIKED ONLY
                     </button>
+                </div>
+                <div class="text-[10px] text-[#444] text-right">
+                    Showing {playableTracks.length} / {allTracks.length} tracks
+                </div>
+            </div>
+
+            <div
+                class="grid grid-cols-1 md:grid-cols-2 gap-3 max-h-96 overflow-y-auto pr-1"
+            >
+                {#each playableTracks as track (track.Id)}
+                    <div class="relative group">
+                        <button
+                            onclick={() => selectTrack(track)}
+                            class="w-full p-4 border border-[#333] rounded bg-[#111] hover:border-[#9ae600] hover:bg-[#222] transition-all text-left pr-12"
+                        >
+                            <div class="text-sm text-white font-bold truncate">
+                                {track.Title}
+                            </div>
+                            <div class="text-[10px] text-[#555] truncate">
+                                {track.Creator || "Unknown"}
+                            </div>
+                        </button>
+                        <div
+                            class="absolute right-2 top-1/2 -translate-y-1/2"
+                            onclick={(e) => e.stopPropagation()}
+                        >
+                            <LikeButton
+                                smolId={track.Id}
+                                liked={likedTrackIds.has(track.Id)}
+                                iconSize="size-4"
+                                on:likeChanged={(e) => {
+                                    // Update local set to reflect change immediately UI-wise
+                                    const newSet = new Set(likedTrackIds);
+                                    if (e.detail.liked)
+                                        newSet.add(e.detail.smolId);
+                                    else newSet.delete(e.detail.smolId);
+                                    likedTrackIds = newSet;
+                                }}
+                            />
+                        </div>
+                    </div>
                 {/each}
             </div>
         </div>
