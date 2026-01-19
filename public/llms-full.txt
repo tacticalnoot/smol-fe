@@ -371,6 +371,18 @@ Songs are generated on-demand and continuously added by the community. The platf
 - Fresh content deduplication (AI Radio)
 - Latest song feeds on homepage
 
+## Credits
+
+**noot.smol.xyz Design & Development:** noot.xlm (@tactical_noot / @kalepail on X)
+
+All features, UI/UX design, and platform enhancements on noot.smol.xyz beyond the base smol.xyz platform were designed and built by noot.xlm. This includes:
+- Enhanced music player and audio controls
+- AI Radio with multi-tag fusion
+- Labs experimental features (Smol Hero, quizzes, etc.)
+- Artist profile pages and discographies
+- Tag-based discovery and filtering
+- Overall platform user experience
+
 ## Support & Community
 
 For issues, feature requests, or contributions:

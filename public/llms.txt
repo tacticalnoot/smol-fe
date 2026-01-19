@@ -78,6 +78,11 @@ Official Twitter for updates and announcements.
 - Authentication: PasskeyKit (WebAuthn)
 - Music Generation: AI-powered (text-to-song)
 
+## Credits
+noot.smol.xyz design and development by noot.xlm (@tactical_noot / @kalepail on X)
+All features, UI/UX, and enhancements beyond base smol.xyz platform.
+Enhanced player interface, AI Radio, Labs experiments, artist profiles.
+
 ## API Endpoints (Programmatic Access)
 Note: API endpoints are not crawlable for SEO (see robots.txt) but available for authenticated use.
 
