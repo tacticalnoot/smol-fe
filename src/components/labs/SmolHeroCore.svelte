@@ -15,15 +15,12 @@
         hitTime: number; // When note should be hit
         position: number; // 0-100, position down the lane
         hit: boolean;
-        holding: boolean; // Is it currently being held?
-        duration: number; // Length in seconds
         accuracy: "perfect" | "great" | "ok" | "miss" | null;
     }
 
     interface CachedOnset {
         lane: number;
         time: number; // Time in seconds when onset occurs
-        duration: number;
     }
 
     interface Beatmap {
@@ -160,14 +157,6 @@
     >([]); // Visual hit particles
 
     // ======================
-    // CANVAS RENDERER STATE
-    // ======================
-    let canvas: HTMLCanvasElement;
-    let ctx: CanvasRenderingContext2D;
-    let canvasWidth = 800;
-    let canvasHeight = 600;
-
-    // ======================
     // BEAT DETECTION CORE
     // ======================
 
@@ -271,8 +260,6 @@
                     hitTime: onset.time,
                     position: 0,
                     hit: false,
-                    holding: false,
-                    duration: onset.duration || 0,
                     accuracy: null,
                 };
                 notes = [...notes, note];
@@ -281,36 +268,11 @@
         });
     }
 
-    function spawnNote(lane: number, detectionTime: number) {
-        // Apply difficulty filtering
-        if (settings.difficulty === "easy" && lane !== 0) return; // Bass only
-        if (settings.difficulty === "medium" && lane === 2) return; // Bass + Mid only
-
-        const hitTime = detectionTime + NOTE_SPAWN_LEAD_TIME / 1000; // Convert ms to seconds
-
-        const note: Note = {
-            id: `${lane}-${detectionTime}-${Math.random()}`,
-            lane,
-            spawnTime: detectionTime,
-            hitTime,
-            position: 0,
-            hit: false,
-            holding: false,
-            duration: 0, // Real-time doesn't support hold notes yet
-            accuracy: null,
-        };
-
-        notes = [...notes, note];
-    }
-
     function detectOnsets() {
-        if (!bassAnalyser || !midAnalyser || !trebleAnalyser || !audio) return;
-
-        // Skip if using cached beatmap (sanity check)
-        if (cachedBeatmap) return;
+        if (!bassAnalyser || !midAnalyser || !trebleAnalyser) return;
 
         const analysers = [bassAnalyser, midAnalyser, trebleAnalyser];
-        const currentTime = audio.currentTime;
+        const currentTime = audio?.currentTime || 0;
 
         analysers.forEach((analyser, lane) => {
             const bufferLength = analyser.frequencyBinCount;
@@ -340,12 +302,11 @@
 
             // Detect onset: current energy significantly above average
             const threshold = avgEnergy * onsetThresholdMultiplier;
-            const minTimeBetweenOnsets = 0.15; // 150ms minimum
+            const minTimeBetweenOnsets = 0.1; // 100ms minimum between onsets in same lane
 
             if (
                 rms > threshold &&
-                currentTime - lastOnsetTimes[lane] > minTimeBetweenOnsets &&
-                rms > 10 // Minimum noise floor
+                currentTime - lastOnsetTimes[lane] > minTimeBetweenOnsets
             ) {
                 // ONSET DETECTED!
                 spawnNote(lane, currentTime);
@@ -354,8 +315,28 @@
         });
     }
 
+    function spawnNote(lane: number, detectionTime: number) {
+        // Apply difficulty filtering
+        if (settings.difficulty === "easy" && lane !== 0) return; // Bass only
+        if (settings.difficulty === "medium" && lane === 2) return; // Bass + Mid only
+
+        const hitTime = detectionTime + NOTE_SPAWN_LEAD_TIME / 1000; // Convert ms to seconds
+
+        const note: Note = {
+            id: `${lane}-${detectionTime}-${Math.random()}`,
+            lane,
+            spawnTime: detectionTime,
+            hitTime,
+            position: 0,
+            hit: false,
+            accuracy: null,
+        };
+
+        notes = [...notes, note];
+    }
+
     // ======================
-    // GAME LOOP (FRAME)
+    // GAME LOOP
     // ======================
 
     function gameLoop() {
@@ -372,257 +353,37 @@
             detectOnsets();
         }
 
-        // --- UPDATE LOGIC ---
+        // Update note positions
+        notes = notes.map((note) => {
+            if (note.hit) return note;
 
-        // 1. Check for Misses or Hold Completion
-        notes.forEach((note) => {
-            // If missed (passed hit line + tolerance + duration)
-            if (
-                !note.hit &&
-                currentTime >
-                    note.hitTime + MISS_THRESHOLD / 1000 + note.duration
-            ) {
+            // Calculate position based on time until hit
+            const timeUntilHit = note.hitTime - currentTime;
+            const progress = 1 - timeUntilHit / (NOTE_SPAWN_LEAD_TIME / 1000);
+            const newPosition = Math.max(0, Math.min(100, progress * 100));
+
+            // Check if note passed hit zone (miss)
+            if (newPosition > 100 && !note.hit && !note.accuracy) {
                 handleMiss(note);
-                note.accuracy = "miss"; // Mark locally to prevent re-processing
+                return { ...note, accuracy: "miss", position: newPosition };
             }
 
-            // Hold Logic: If holding, check if done
-            if (note.holding) {
-                if (currentTime >= note.hitTime + note.duration) {
-                    note.holding = false;
-                    // Bonus score for full hold?
-                    stats.score += 50;
-                } else {
-                    // Tick score while holding
-                    stats.score += 1;
-                }
-            }
+            return { ...note, position: newPosition };
         });
 
-        // 2. Render Canvas
-        renderFrame(currentTime);
+        // Clean up old notes
+        notes = notes.filter((note) => {
+            const timeSinceHit = currentTime - note.hitTime;
+            return timeSinceHit < 2; // Keep for 2 seconds after hit time
+        });
+
+        // Clean up old hit feedback
+        const now = Date.now();
+        hitFeedback = hitFeedback.filter((f) => now - f.timestamp < 1000); // Keep for 1 second
+        hitEffects = hitEffects.filter((e) => now - e.timestamp < 500); // Keep particles for 500ms
 
         // Continue loop
         animationFrameId = requestAnimationFrame(gameLoop);
-    }
-
-    function renderFrame(time: number) {
-        if (!canvas) return;
-        if (!ctx) {
-            const c = canvas.getContext("2d");
-            if (c) ctx = c;
-            else return;
-        }
-
-        // Clear
-        ctx.fillStyle = "black";
-        ctx.fillRect(0, 0, canvasWidth, canvasHeight);
-
-        // Settings
-        const HORIZON_Y = 100;
-        const BOTTOM_Y = 550;
-        const BOTTOM_WIDTH = 600;
-        const TOP_WIDTH = 100;
-        const HIT_Y = 500;
-
-        const centerX = canvasWidth / 2;
-
-        // Perspective Helper
-        // Z = 0 (Bottom) -> Z = 1 (Horizon)
-        function project(lane: number, z: number) {
-            const widthAtZ = BOTTOM_WIDTH + (TOP_WIDTH - BOTTOM_WIDTH) * z;
-            const y = BOTTOM_Y - (BOTTOM_Y - HORIZON_Y) * z;
-
-            // Map lane (-1, 0, 1) to x position
-            // Lane 0 = Left (-1), Lane 1 = Center (0), Lane 2 = Right (1)
-            const laneOffset = (lane - 1.0) * (widthAtZ / 3);
-            const x = centerX + laneOffset;
-
-            return { x, y, w: widthAtZ / 3 };
-        }
-
-        // Draw Lanes
-        ctx.globalCompositeOperation = "source-over";
-        for (let i = 0; i < 3; i++) {
-            const pBottom = project(i, 0);
-            const pTop = project(i, 1);
-
-            // Lane Background
-            const grad = ctx.createLinearGradient(0, pBottom.y, 0, pTop.y);
-            const isPressed = pressedLanes[i];
-            grad.addColorStop(
-                0,
-                isPressed
-                    ? "rgba(154, 230, 0, 0.4)"
-                    : "rgba(255, 255, 255, 0.05)",
-            );
-            grad.addColorStop(1, "rgba(0, 0, 0, 0)");
-
-            ctx.fillStyle = grad;
-            ctx.beginPath();
-            ctx.moveTo(pBottom.x - pBottom.w / 2, pBottom.y);
-            ctx.lineTo(pBottom.x + pBottom.w / 2, pBottom.y);
-            ctx.lineTo(pTop.x + pTop.w / 2, pTop.y);
-            ctx.lineTo(pTop.x - pTop.w / 2, pTop.y);
-            ctx.closePath();
-            ctx.fill();
-
-            // Lane Borders
-            ctx.strokeStyle = "rgba(255, 255, 255, 0.1)";
-            ctx.lineWidth = 1;
-            ctx.beginPath();
-            ctx.moveTo(pBottom.x - pBottom.w / 2, pBottom.y);
-            ctx.lineTo(pTop.x - pTop.w / 2, pTop.y);
-            ctx.stroke();
-        }
-        // Rightmost border
-        const pBottomRight = project(2, 0);
-        const pTopRight = project(2, 1);
-        ctx.beginPath();
-        ctx.moveTo(pBottomRight.x + pBottomRight.w / 2, pBottomRight.y);
-        ctx.lineTo(pTopRight.x + pTopRight.w / 2, pTopRight.y);
-        ctx.stroke();
-
-        // Draw Hit Line
-        const zHit = (BOTTOM_Y - HIT_Y) / (BOTTOM_Y - HORIZON_Y);
-        const pHitLeft = project(0, zHit);
-        const pHitRight = project(2, zHit);
-
-        ctx.strokeStyle = "white";
-        ctx.lineWidth = 2;
-        ctx.beginPath();
-        // Spans all 3 lanes
-        ctx.moveTo(pHitLeft.x - pHitLeft.w / 2, pHitLeft.y);
-        ctx.lineTo(pHitRight.x + pHitRight.w / 2, pHitRight.y);
-        ctx.stroke();
-
-        // Glow Effect
-        ctx.shadowBlur = 15;
-        ctx.shadowColor = "#9ae600"; // Neon Green
-
-        // Draw Notes
-        ctx.globalCompositeOperation = "lighter";
-
-        notes.forEach((note) => {
-            if (note.hit && !note.holding) return; // Skip if fully processed
-            if (
-                note.hit &&
-                note.holding &&
-                time - note.hitTime > note.duration
-            ) {
-                // Hold complete
-                return;
-            }
-
-            // Calc Z position based on time
-            // 2 seconds lead time
-            const timeUntilHit = note.hitTime - time;
-
-            // If it's a hold note being held, clamp head to hit line
-            let effectiveTimeUntilHit = timeUntilHit;
-            if (note.holding) effectiveTimeUntilHit = 0;
-
-            const progress =
-                1 - effectiveTimeUntilHit / (NOTE_SPAWN_LEAD_TIME / 1000);
-
-            // Map progress 0..1 to Z (1..0)
-            // Progress 0 = Top, Progress 1 = Hit Line (Z_HIT)
-            // But our 'z' var is 0 at bottom, 1 at horizon.
-
-            // Visual Z (0 = Bottom, 1 = Horizon)
-            // Start at 1 (Horizon), End at zHit
-            const zStart = 1;
-            const zEnd = zHit; // Target (Hit Line)
-
-            let z = zStart - progress * (zStart - zEnd);
-
-            if (z < -0.2) return; // Passed screen
-            if (z > 1.2) return; // Not yet visible
-
-            const p = project(note.lane, z);
-
-            // Determine Color
-            const color =
-                note.lane === 0
-                    ? "#FF0055"
-                    : note.lane === 1
-                      ? "#00FFDD"
-                      : "#FFE600";
-            ctx.fillStyle = color;
-            ctx.shadowColor = color;
-            ctx.shadowBlur = 20;
-
-            if (note.duration > 0) {
-                // DRAW HOLD TAIL
-                const tailDuration = note.duration;
-                const tailProgressStart = progress; // Head
-                // Duration Scale: 2 seconds of scroll = full screen. We need to map seconds to Z-distance.
-                // This is a bit tricky with perspective. Let's approximate.
-                // progress moves 1 unit in 2 seconds. so duration D is D/2 units of progress.
-                const tailProgressEnd =
-                    progress - tailDuration / (NOTE_SPAWN_LEAD_TIME / 1000);
-
-                const zTailStart = z;
-                const zTailEnd = zStart - tailProgressEnd * (zStart - zEnd);
-
-                const pTailStart = p;
-                const pTailEnd = project(
-                    note.lane,
-                    Math.max(zEnd, Math.min(1, zTailEnd)),
-                );
-
-                // Draw Trapezoid for tail
-                ctx.beginPath();
-                ctx.moveTo(
-                    pTailStart.x - (pTailStart.w / 2) * 0.8,
-                    pTailStart.y,
-                );
-                ctx.lineTo(
-                    pTailStart.x + (pTailStart.w / 2) * 0.8,
-                    pTailStart.y,
-                );
-                ctx.lineTo(pTailEnd.x + (pTailEnd.w / 2) * 0.6, pTailEnd.y);
-                ctx.lineTo(pTailEnd.x - (pTailEnd.w / 2) * 0.6, pTailEnd.y);
-                ctx.fillStyle = color + "80"; // 50% opacity
-                ctx.fill();
-            }
-
-            // Draw Note Head
-            if (!note.holding || Date.now() % 100 < 50) {
-                // Flicker if holding
-                const size = 20 * (1 - z) + 5;
-                ctx.fillStyle = color;
-                ctx.beginPath();
-                ctx.arc(p.x, p.y, size, 0, Math.PI * 2);
-                ctx.fill();
-            }
-        });
-
-        // Hit Effects & Particles
-        hitEffects.forEach((effect) => {
-            const age = Date.now() - effect.timestamp;
-            if (age > 500) return;
-
-            const p = project(effect.lane, zHit);
-            const alpha = 1 - age / 500;
-            const size = age / 5 + 10;
-
-            ctx.strokeStyle = effect.color;
-            ctx.lineWidth = 3;
-            ctx.globalAlpha = alpha;
-            ctx.beginPath();
-            ctx.arc(p.x, p.y, size, 0, Math.PI * 2);
-            ctx.stroke();
-            ctx.globalAlpha = 1;
-        });
-
-        // DEBUG OVERLAY
-        ctx.fillStyle = "white";
-        ctx.font = "12px monospace";
-        ctx.textAlign = "left";
-        ctx.fillText(`Notes: ${notes.length}`, 10, 20);
-        ctx.fillText(`Time: ${time.toFixed(2)}`, 10, 35);
-        ctx.fillText(`Context: OK`, 10, 50);
     }
 
     // ======================
@@ -682,24 +443,15 @@
         const key = e.key.toLowerCase();
         pressedKeys.delete(key);
 
-        const lane = LANE_KEYS.indexOf(key);
-        if (lane !== -1) {
-            pressedLanes[lane] = false;
-            // Handle Hold Note Release
-            notes.forEach((n) => {
-                if (n.lane === lane && n.holding) {
-                    n.holding = false;
-                }
-            });
+        const laneIndex = LANE_KEYS.indexOf(key);
+        if (laneIndex !== -1) {
+            pressedLanes[laneIndex] = false;
         }
     }
 
     function handleHit(note: Note, accuracy: "perfect" | "great" | "ok") {
         note.hit = true;
         note.accuracy = accuracy;
-        if (note.duration > 0) {
-            note.holding = true;
-        }
 
         // Update stats
         stats[accuracy]++;
@@ -713,6 +465,22 @@
             accuracy === "perfect" ? 300 : accuracy === "great" ? 200 : 100;
         const comboMultiplier = 1 + stats.combo / 10;
         stats.score += Math.floor(baseScore * comboMultiplier);
+
+        // Add hit feedback text
+        const feedbackText =
+            accuracy === "perfect"
+                ? "PERFECT!"
+                : accuracy === "great"
+                  ? "GREAT!"
+                  : "OK";
+        hitFeedback = [
+            ...hitFeedback,
+            {
+                text: feedbackText,
+                lane: note.lane,
+                timestamp: Date.now(),
+            },
+        ];
 
         // Add visual hit effect
         if (accuracy !== "miss") {
@@ -800,6 +568,7 @@
                 analyzingProgress = 40;
 
                 // 2. Render 3 distinct frequency bands using OfflineAudioContext
+                // We map: Channel 0 = Bass, Channel 1 = Mid, Channel 2 = Treble
                 const offlineCtx = new OfflineAudioContext(
                     3,
                     audioBuffer.length,
@@ -826,38 +595,38 @@
                 trebleFilter.frequency.value = 3000; // Tuned for crisp hats
                 trebleFilter.Q.value = 1.0;
 
+                // Merger (3 channels)
                 const merger = offlineCtx.createChannelMerger(3);
 
                 source.connect(bassFilter);
-                bassFilter.connect(merger, 0, 0);
+                bassFilter.connect(merger, 0, 0); // Connect to input 0 of merger (Bass -> Ch 0)
 
                 source.connect(midFilter);
-                midFilter.connect(merger, 0, 1);
+                midFilter.connect(merger, 0, 1); // Connect to input 1 of merger (Mid -> Ch 1)
 
                 source.connect(trebleFilter);
-                trebleFilter.connect(merger, 0, 2);
+                trebleFilter.connect(merger, 0, 2); // Connect to input 2 of merger (Treble -> Ch 2)
 
                 merger.connect(offlineCtx.destination);
 
                 source.start(0);
 
-                console.log(
-                    "[SmolHero] Rendering spectral bands for Hold/Impact analysis...",
-                );
+                console.log("[SmolHero] Rendering spectral bands...");
                 const renderedBuffer = await offlineCtx.startRendering();
                 analyzingProgress = 70;
 
                 // 3. Analyze the rendered bands
-                console.log("[SmolHero] Detecting beats & holds...");
+                console.log("[SmolHero] Detecting beats...");
                 const detectedOnsets: CachedOnset[] = [];
                 const sampleRate = renderedBuffer.sampleRate;
                 const windowSize = Math.floor(sampleRate / 60); // ~60fps windows
 
                 // Detection State per lane
+                // Detection State per lane
                 const lastOnsetTimes = [0, 0, 0];
                 const energyHistory: number[][] = [[], [], []];
 
-                // Peak Centering & Hold State
+                // Peak Centering Sate
                 const laneState = [
                     {
                         isTracking: false,
@@ -918,34 +687,34 @@
                         if (settings.difficulty === "medium") minSpacing = 0.3;
                         if (settings.difficulty === "hard") minSpacing = 0.2;
 
-                        // -- PEAK CENTERING & HOLD LOGIC --
+                        // -- PEAK CENTERING LOGIC --
                         const state = laneState[lane];
 
                         if (state.isTracking) {
-                            // Update Peak
+                            // If we are tracking a peak, check if this is a new max
                             if (rms > state.peakRMS) {
                                 state.peakRMS = rms;
                                 state.peakTime = currentTime;
                             }
 
-                            // Check for End of Note
-                            // Condition: Energy drops below 60% of Peak OR Max Hold Length reached (3s)
+                            // If window expired or energy dropped significantly, commit the note
                             if (
-                                rms < state.peakRMS * 0.6 ||
-                                currentTime - state.startTime > 3.0
+                                currentTime - state.startTime > PEAK_WINDOW ||
+                                rms < state.peakRMS * 0.5
                             ) {
-                                const duration = currentTime - state.startTime;
-                                const isHold = duration > 0.25; // >250ms is a hold
+                                // Only add if we respect the density spacing
+                                if (
+                                    state.peakTime - lastOnsetTimes[lane] >
+                                    minSpacing
+                                ) {
+                                    detectedOnsets.push({
+                                        lane,
+                                        time: state.peakTime,
+                                    });
+                                    lastOnsetTimes[lane] = state.peakTime;
+                                }
 
-                                // Commit the note
-                                detectedOnsets.push({
-                                    lane,
-                                    time: state.startTime, // Start at the beginning of the impulse
-                                    duration: isHold ? duration : 0,
-                                });
-                                lastOnsetTimes[lane] = currentTime;
-
-                                // Reset
+                                // Reset and cooldown
                                 state.isTracking = false;
                                 state.peakRMS = 0;
                             }
@@ -955,7 +724,7 @@
                                 rms > threshold &&
                                 currentTime - lastOnsetTimes[lane] >
                                     minSpacing &&
-                                rms > 0.01
+                                rms > 0.01 // Noise floor
                             ) {
                                 state.isTracking = true;
                                 state.startTime = currentTime;
@@ -1055,7 +824,7 @@
         // Create and setup audio
         audio = new Audio();
         audio.crossOrigin = "anonymous";
-        audio.src = getSongUrl(currentTrack.Song_1); // Use shared utility
+        audio.src = `${import.meta.env.PUBLIC_API_URL}/song/${currentTrack.Song_1}.mp3`;
         audio.volume = 0.7;
 
         // Init analysis (only if not using pre-computed beatmap)
@@ -1086,6 +855,7 @@
                 console.error("[SmolHero] Playback failed:", e);
             });
 
+        // Handle track end
         audio.onended = () => {
             finishGame();
         };
@@ -1096,7 +866,22 @@
         isAnalyzing = false;
         if (animationFrameId) {
             cancelAnimationFrame(animationFrameId);
-            animationFrameId = null;
+        }
+
+        // Epic confetti if good score
+        const totalNotes = stats.perfect + stats.great + stats.ok + stats.miss;
+        const accuracy =
+            totalNotes > 0
+                ? ((stats.perfect + stats.great) / totalNotes) * 100
+                : 0;
+
+        if (accuracy >= 90) {
+            confetti({
+                particleCount: 100,
+                spread: 70,
+                origin: { y: 0.6 },
+                colors: ["#9ae600", "#f91880", "#FDDA24"],
+            });
         }
     }
 
@@ -1125,19 +910,9 @@
         // On iOS, force Sync Mode (no option)
         if (isIOS) usePreAnalysis = true;
 
-        // Init Canvas context if available (will be available when gameState=playing)
-        // But here gameState=menu, so canvas is undefined.
-        // We check inside the render loop or use a reactive statement based on bind.
-
         loadTracks();
         window.addEventListener("keydown", handleKeyDown);
         window.addEventListener("keyup", handleKeyUp);
-    });
-
-    $effect(() => {
-        if (canvas && !ctx) {
-            ctx = canvas.getContext("2d")!;
-        }
     });
 
     onDestroy(() => {
@@ -1166,124 +941,158 @@
                 LOADING TRACKS...
             </div>
         </div>
-    {:else if gameState === "menu"}
-        <!-- MENU SCREEN -->
-        <div
-            class="flex flex-col gap-6 p-8 border-2 border-[#333] rounded-lg bg-[#111]"
-        >
+    {:else if gameState === "analyzing"}
+        <!-- ANALYZING TRACK -->
+        <div class="flex flex-col items-center justify-center h-96 gap-6 p-4">
             <div class="text-center">
-                <h1
-                    class="text-4xl font-bold text-[#9ae600] mb-2 drop-shadow-[0_0_10px_rgba(154,230,0,0.5)]"
-                >
-                    SMOL <span class="text-white">HERO</span>
-                </h1>
-                <p class="text-xs text-[#555]">RHYTHM ACTION</p>
+                <h2 class="text-2xl font-bold text-[#9ae600] mb-2">
+                    ANALYZING TRACK
+                </h2>
+                <p class="text-xs text-[#555]">
+                    {currentTrack?.Title || "Unknown Track"}
+                </p>
+                <p class="text-[10px] text-[#333] mt-1">
+                    Detecting beats from audio...
+                </p>
             </div>
 
-            <!-- Settings -->
-            <div class="flex justify-center gap-4 mb-4">
-                <div class="flex items-center gap-2">
-                    <span class="text-xs text-[#555]">DIFFICULTY:</span>
-                    <button
-                        onclick={() => (settings.difficulty = "easy")}
-                        class="px-2 py-1 text-xs border border-[#333] rounded {settings.difficulty ===
-                        'easy'
-                            ? 'bg-[#9ae600] text-black'
-                            : 'text-[#555]'}"
-                    >
-                        EASY
-                    </button>
-                    <button
-                        onclick={() => (settings.difficulty = "medium")}
-                        class="px-2 py-1 text-xs border border-[#333] rounded {settings.difficulty ===
-                        'medium'
-                            ? 'bg-[#9ae600] text-black'
-                            : 'text-[#555]'}"
-                    >
-                        MEDIUM
-                    </button>
-                    <button
-                        onclick={() => (settings.difficulty = "hard")}
-                        class="px-2 py-1 text-xs border border-[#333] rounded {settings.difficulty ===
-                        'hard'
-                            ? 'bg-[#9ae600] text-black'
-                            : 'text-[#555]'}"
-                    >
-                        HARD
-                    </button>
-                    <button
-                        onclick={() => (settings.difficulty = "expert")}
-                        class="px-2 py-1 text-xs border border-[#333] rounded {settings.difficulty ===
-                        'expert'
-                            ? 'bg-[#f91880] text-white animate-pulse'
-                            : 'text-[#555]'}"
-                    >
-                        EXPERT
-                    </button>
+            <!-- Progress bar -->
+            <div class="w-full max-w-md">
+                <div
+                    class="h-2 bg-[#222] rounded-full overflow-hidden border border-[#333]"
+                >
+                    <div
+                        class="h-full bg-gradient-to-r from-[#9ae600] to-[#f91880] transition-all duration-300"
+                        style="width: {analyzingProgress}%"
+                    ></div>
+                </div>
+                <div class="text-center mt-2 text-sm text-[#9ae600] font-mono">
+                    {analyzingProgress}%
                 </div>
             </div>
 
-            <div class="flex justify-center gap-4 mb-8">
-                <!-- Sync Mode Toggle -->
-                <div class="flex items-center gap-2">
-                    <span class="text-xs text-[#555]">MODE:</span>
+            <div class="flex gap-1">
+                {#each Array(3) as _, i}
+                    <div
+                        class="w-2 h-2 bg-[#9ae600] rounded-full animate-bounce"
+                        style="animation-delay: {i * 0.2}s"
+                    ></div>
+                {/each}
+            </div>
+
+            {#if isIOS}
+                <div class="text-center space-y-2">
+                    <p class="text-[10px] text-[#555] max-w-xs">
+                        📱 iOS Pre-Analysis Mode
+                    </p>
+                    <p class="text-[8px] text-[#333] max-w-xs">
+                        This process takes ~15-30 seconds.<br />
+                        Audio is being analyzed silently.
+                    </p>
+                </div>
+            {/if}
+
+            <button
+                onclick={() => {
+                    gameState = "menu";
+                    currentTrack = null;
+                }}
+                class="mt-4 px-4 py-2 text-xs border border-[#333] rounded bg-black text-[#555] hover:border-[#f91880] hover:text-[#f91880] transition-all"
+            >
+                Cancel
+            </button>
+        </div>
+    {:else if gameState === "menu"}
+        <!-- TRACK SELECTION MENU -->
+        <div class="flex flex-col gap-6">
+            <div class="text-center border-b border-[#333] pb-6">
+                <h1 class="text-4xl font-bold text-[#9ae600] mb-2">
+                    SMOL HERO
+                </h1>
+                <p class="text-xs text-[#555] uppercase tracking-widest">
+                    Rhythm Game • Beat Detection Engine
+                </p>
+                {#if isIOS}
+                    <div
+                        class="mt-3 inline-block px-3 py-1 bg-[#9ae600]/10 border border-[#9ae600] rounded text-[10px] text-[#9ae600]"
+                    >
+                        ✓ iOS COMPATIBLE • Pre-Analysis Mode Active
+                    </div>
+                {:else}
                     <button
                         onclick={() => (usePreAnalysis = !usePreAnalysis)}
-                        class="px-2 py-1 text-xs border border-[#333] rounded transition-colors {usePreAnalysis
-                            ? 'bg-[#00FFDD] text-black'
-                            : 'text-[#777]'}"
-                        title={usePreAnalysis
-                            ? "Analyzes track before playing for perfect sync"
-                            : "Starts immediately but notes may be reactive"}
+                        class="mt-3 inline-flex items-center gap-2 px-3 py-1 border rounded text-[10px] transition-all {usePreAnalysis
+                            ? 'bg-[#9ae600]/10 border-[#9ae600] text-[#9ae600]'
+                            : 'bg-[#222] border-[#333] text-[#555] hover:border-[#666]'}"
                     >
                         {usePreAnalysis
-                            ? "SYNC MODE (BEST)"
-                            : "INSTANT START (LAGGY)"}
+                            ? "✓ SYNC MODE (BEST)"
+                            : "○ INSTANT START (LAGGY)"}
                     </button>
-                </div>
+                    {#if usePreAnalysis}
+                        <p class="text-[8px] text-[#555] mt-1">
+                            Analyzes track before playing for perfect beat
+                            syncing.
+                        </p>
+                    {/if}
+                {/if}
+            </div>
+
+            <div class="flex gap-4 justify-center mb-4">
+                <button
+                    onclick={() => (settings.difficulty = "easy")}
+                    class="px-4 py-2 text-xs border rounded {settings.difficulty ===
+                    'easy'
+                        ? 'bg-[#9ae600] text-black border-[#9ae600]'
+                        : 'bg-black border-[#333] text-[#555] hover:border-[#9ae600]'}"
+                >
+                    EASY
+                </button>
+                <button
+                    onclick={() => (settings.difficulty = "medium")}
+                    class="px-4 py-2 text-xs border rounded {settings.difficulty ===
+                    'medium'
+                        ? 'bg-[#9ae600] text-black border-[#9ae600]'
+                        : 'bg-black border-[#333] text-[#555] hover:border-[#9ae600]'}"
+                >
+                    MEDIUM
+                </button>
+                <button
+                    onclick={() => (settings.difficulty = "hard")}
+                    class="px-4 py-2 text-xs border rounded {settings.difficulty ===
+                    'hard'
+                        ? 'bg-[#9ae600] text-black border-[#9ae600]'
+                        : 'bg-black border-[#333] text-[#555] hover:border-[#9ae600]'}"
+                >
+                    HARD
+                </button>
+                <button
+                    onclick={() => (settings.difficulty = "expert")}
+                    class="px-4 py-2 text-xs border rounded {settings.difficulty ===
+                    'expert'
+                        ? 'bg-[#9ae600] text-black border-[#9ae600]'
+                        : 'bg-black border-[#333] text-[#555] hover:border-[#9ae600]'}"
+                >
+                    EXPERT
+                </button>
             </div>
 
             <div
-                class="grid gap-2 max-h-96 overflow-y-auto pr-2 custom-scrollbar"
+                class="grid grid-cols-1 md:grid-cols-2 gap-3 max-h-96 overflow-y-auto"
             >
                 {#each playableTracks as track}
                     <button
                         onclick={() => selectTrack(track)}
-                        class="flex items-center justify-between p-4 border border-[#333] rounded hover:border-[#9ae600] hover:bg-[#1a1a1a] transition-all group text-left"
+                        class="p-4 border border-[#333] rounded bg-[#111] hover:border-[#9ae600] hover:bg-[#222] transition-all text-left"
                     >
-                        <div>
-                            <div
-                                class="font-bold text-white group-hover:text-[#9ae600]"
-                            >
-                                {track.Title}
-                            </div>
-                            <div class="text-xs text-[#555]">
-                                {track.Creator || "Unknown"}
-                            </div>
+                        <div class="text-sm text-white font-bold truncate">
+                            {track.Title}
                         </div>
-                        <div class="text-[#333] group-hover:text-[#9ae600]">
-                            ▶
+                        <div class="text-[10px] text-[#555] truncate">
+                            {track.Creator || "Unknown"}
                         </div>
                     </button>
                 {/each}
-            </div>
-        </div>
-    {:else if gameState === "analyzing"}
-        <!-- ANALYZING SCREEN -->
-        <div class="flex flex-col items-center justify-center h-96 gap-4">
-            <div class="text-[#00FFDD] text-xl font-bold animate-pulse">
-                ANALYZING TRACK...
-            </div>
-            <!-- Progress Bar -->
-            <div class="w-64 h-2 bg-[#222] rounded-full overflow-hidden">
-                <div
-                    class="h-full bg-[#00FFDD] transition-all duration-300"
-                    style="width: {analyzingProgress}%"
-                ></div>
-            </div>
-            <div class="text-xs text-[#555]">
-                Creating distinct beatmap for {settings.difficulty.toUpperCase()}
-                difficulty...
             </div>
         </div>
     {:else if gameState === "playing"}
@@ -1320,33 +1129,144 @@
                 </div>
             </div>
 
-            <!-- GAME FIELD (CANVAS) -->
+            <!-- GAME FIELD -->
             <div
-                class="relative bg-black border-2 border-[#333] rounded-lg overflow-hidden flex justify-center items-center"
+                class="relative bg-black border-2 border-[#333] rounded-lg overflow-hidden"
+                style="height: {laneHeight}px;"
             >
-                <canvas
-                    bind:this={canvas}
-                    width={canvasWidth}
-                    height={canvasHeight}
-                    class="w-full h-auto max-w-full object-contain"
-                    style="image-rendering: pixelated;"
-                ></canvas>
+                <!-- Lanes -->
+                <div class="absolute inset-0 flex">
+                    {#each [0, 1, 2] as lane}
+                        <div
+                            class="flex-1 border-r border-[#222] last:border-r-0 relative"
+                        >
+                            <!-- Lane background -->
+                            <div
+                                class="absolute inset-0 bg-gradient-to-b from-transparent via-[#111] to-black transition-all duration-75"
+                                style="opacity: {pressedLanes[lane]
+                                    ? 0.8
+                                    : 0.5}; background-color: {pressedLanes[
+                                    lane
+                                ]
+                                    ? 'rgba(154, 230, 0, 0.1)'
+                                    : 'transparent'}; box-shadow: {pressedLanes[
+                                    lane
+                                ]
+                                    ? 'inset 0 0 20px rgba(154,230,0,0.1)'
+                                    : 'none'};"
+                            ></div>
 
-                <!-- Controls hint overlay -->
-                <div
-                    class="absolute bottom-4 left-0 w-full text-center pointer-events-none"
-                >
-                    <div class="text-[10px] text-[#888] mb-1">LANES</div>
-                    <div
-                        class="flex justify-center gap-12 text-sm font-bold text-white opacity-50"
-                    >
-                        <span>D</span>
-                        <span>F</span>
-                        <span>J</span>
-                    </div>
+                            <!-- Hit zone indicator -->
+                            <div
+                                class="absolute w-full h-2 border-y-2 transition-all duration-75"
+                                style="top: {hitZoneY}px; background-color: {pressedLanes[
+                                    lane
+                                ]
+                                    ? 'rgba(154, 230, 0, 0.6)'
+                                    : 'rgba(154, 230, 0, 0.3)'}; border-color: {pressedLanes[
+                                    lane
+                                ]
+                                    ? '#9ae600'
+                                    : '#9ae600'}; box-shadow: {pressedLanes[
+                                    lane
+                                ]
+                                    ? '0 0 20px #9ae600'
+                                    : 'none'};"
+                            ></div>
+
+                            <!-- Key hint -->
+                            <div
+                                class="absolute bottom-4 left-1/2 -translate-x-1/2 text-[#333] text-2xl font-bold {pressedLanes[
+                                    lane
+                                ]
+                                    ? 'text-[#9ae600] scale-110'
+                                    : ''} transition-all duration-75"
+                            >
+                                {LANE_KEYS[lane].toUpperCase()}
+                            </div>
+
+                            <!-- Hit feedback text -->
+                            {#each hitFeedback.filter((f) => f.lane === lane) as feedback (feedback.timestamp)}
+                                {@const age =
+                                    (Date.now() - feedback.timestamp) / 1000}
+                                {@const opacity = Math.max(0, 1 - age)}
+                                {@const yOffset = age * 50}
+                                <div
+                                    class="absolute left-1/2 -translate-x-1/2 text-xs font-bold pointer-events-none"
+                                    style="top: {hitZoneY -
+                                        yOffset}px; opacity: {opacity}; color: {feedback.text ===
+                                    'PERFECT!'
+                                        ? '#9ae600'
+                                        : feedback.text === 'GREAT!'
+                                          ? '#FDDA24'
+                                          : feedback.text === 'OK'
+                                            ? '#f91880'
+                                            : '#666'}; text-shadow: 0 0 10px currentColor;"
+                                >
+                                    {feedback.text}
+                                </div>
+                            {/each}
+
+                            <!-- Hit effects -->
+                            {#each hitEffects.filter((e) => e.lane === lane) as effect (effect.id)}
+                                <div
+                                    class="absolute left-1/2 -translate-x-1/2 w-full aspect-square pointer-events-none"
+                                    style="top: {hitZoneY - 20}px;"
+                                >
+                                    <div
+                                        class="absolute inset-0 rounded-full animate-ping opacity-75"
+                                        style="background-color: {effect.color}"
+                                    ></div>
+                                    <div
+                                        class="absolute inset-0 rounded-full animate-pulse opacity-50"
+                                        style="background-color: {effect.color}; filter: blur(4px)"
+                                    ></div>
+                                </div>
+                            {/each}
+
+                            <!-- Notes in this lane -->
+                            {#each notes.filter((n) => n.lane === lane) as note (note.id)}
+                                <div
+                                    class="absolute left-1/2 -translate-x-1/2 rounded-full transition-all duration-75"
+                                    style="
+                                        top: {(note.position / 100) *
+                                        laneHeight}px;
+                                        width: {noteSize}px;
+                                        height: {noteSize}px;
+                                        background: {note.hit
+                                        ? note.accuracy === 'perfect'
+                                            ? '#9ae600'
+                                            : note.accuracy === 'great'
+                                              ? '#FDDA24'
+                                              : '#f91880'
+                                        : lane === 0
+                                          ? '#9ae600'
+                                          : lane === 1
+                                            ? '#FDDA24'
+                                            : '#f91880'};
+                                        opacity: {note.hit ? 0.3 : 1};
+                                        box-shadow: 0 0 20px currentColor;
+                                    "
+                                >
+                                    {#if note.hit && note.accuracy}
+                                        <div
+                                            class="absolute inset-0 flex items-center justify-center text-black text-[8px] font-bold"
+                                        >
+                                            {note.accuracy === "perfect"
+                                                ? "★"
+                                                : note.accuracy === "great"
+                                                  ? "✓"
+                                                  : "·"}
+                                        </div>
+                                    {/if}
+                                </div>
+                            {/each}
+                        </div>
+                    {/each}
                 </div>
             </div>
 
+            <!-- Controls hint -->
             <div class="mt-4 text-center text-[10px] text-[#333]">
                 Press D, F, J to hit notes • ESC to quit
             </div>
@@ -1430,18 +1350,5 @@
 <style>
     .smol-hero-container {
         min-height: 600px;
-    }
-    .custom-scrollbar::-webkit-scrollbar {
-        width: 8px;
-    }
-    .custom-scrollbar::-webkit-scrollbar-track {
-        background: #111;
-    }
-    .custom-scrollbar::-webkit-scrollbar-thumb {
-        background: #333;
-        border-radius: 4px;
-    }
-    .custom-scrollbar::-webkit-scrollbar-thumb:hover {
-        background: #555;
     }
 </style>
