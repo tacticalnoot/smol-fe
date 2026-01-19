@@ -1226,6 +1226,26 @@
 
                             <!-- Notes in this lane -->
                             {#each notes.filter((n) => n.lane === lane) as note (note.id)}
+                                <!-- Hold Note Tail -->
+                                {#if (note.duration || 0) > 0.2}
+                                    <div
+                                        class="absolute left-1/2 -translate-x-1/2 w-2 opacity-40 rounded-b-full"
+                                        style="
+                                             top: {(note.position / 100) *
+                                            laneHeight -
+                                            note.duration *
+                                                settings.noteSpeed}px;
+                                             height: {note.duration *
+                                            settings.noteSpeed}px;
+                                             background: {lane === 0
+                                            ? '#9ae600'
+                                            : lane === 1
+                                              ? '#FDDA24'
+                                              : '#f91880'};
+                                         "
+                                    ></div>
+                                {/if}
+
                                 <div
                                     class="absolute left-1/2 -translate-x-1/2 rounded-full transition-all duration-75"
                                     style="
