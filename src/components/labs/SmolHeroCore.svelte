@@ -578,23 +578,22 @@
                 const source = offlineCtx.createBufferSource();
                 source.buffer = audioBuffer;
 
-                // Bass Path
                 const bassFilter = offlineCtx.createBiquadFilter();
                 bassFilter.type = "lowpass";
-                bassFilter.frequency.value = 200;
-                bassFilter.Q.value = 0.7;
+                bassFilter.frequency.value = 150; // Tuned for kick drums
+                bassFilter.Q.value = 1.0;
 
                 // Mid Path
                 const midFilter = offlineCtx.createBiquadFilter();
                 midFilter.type = "bandpass";
                 midFilter.frequency.value = 1000;
-                midFilter.Q.value = 0.7;
+                midFilter.Q.value = 1.0; // Wider band
 
                 // Treble Path
                 const trebleFilter = offlineCtx.createBiquadFilter();
                 trebleFilter.type = "highpass";
-                trebleFilter.frequency.value = 2000;
-                trebleFilter.Q.value = 0.7;
+                trebleFilter.frequency.value = 3000; // Tuned for crisp hats
+                trebleFilter.Q.value = 1.0;
 
                 // Merger (3 channels)
                 const merger = offlineCtx.createChannelMerger(3);
@@ -623,8 +622,32 @@
                 const windowSize = Math.floor(sampleRate / 60); // ~60fps windows
 
                 // Detection State per lane
+                // Detection State per lane
                 const lastOnsetTimes = [0, 0, 0];
                 const energyHistory: number[][] = [[], [], []];
+
+                // Peak Centering Sate
+                const laneState = [
+                    {
+                        isTracking: false,
+                        peakRMS: 0,
+                        peakTime: 0,
+                        startTime: 0,
+                    },
+                    {
+                        isTracking: false,
+                        peakRMS: 0,
+                        peakTime: 0,
+                        startTime: 0,
+                    },
+                    {
+                        isTracking: false,
+                        peakRMS: 0,
+                        peakTime: 0,
+                        startTime: 0,
+                    },
+                ];
+                const PEAK_WINDOW = 0.05; // 50ms window to find the peak
 
                 // Process each "frame"
                 for (let i = 0; i < renderedBuffer.length; i += windowSize) {
@@ -633,7 +656,7 @@
                     for (let lane = 0; lane < 3; lane++) {
                         const channelData = renderedBuffer.getChannelData(lane);
 
-                        // Calculate RMS for this window
+                        // Calculate RMS
                         let sum = 0;
                         const end = Math.min(
                             i + windowSize,
@@ -658,13 +681,42 @@
                             energyHistory[lane].length;
                         const threshold = avgEnergy * onsetThresholdMultiplier;
 
-                        // Threshold check + Cooldown (0.1s)
-                        if (
-                            rms > threshold &&
-                            currentTime - lastOnsetTimes[lane] > 0.1
-                        ) {
-                            detectedOnsets.push({ lane, time: currentTime });
-                            lastOnsetTimes[lane] = currentTime;
+                        // -- PEAK CENTERING LOGIC --
+                        const state = laneState[lane];
+
+                        if (state.isTracking) {
+                            // If we are tracking a peak, check if this is a new max
+                            if (rms > state.peakRMS) {
+                                state.peakRMS = rms;
+                                state.peakTime = currentTime;
+                            }
+
+                            // If window expired or energy dropped significantly, commit the note
+                            if (
+                                currentTime - state.startTime > PEAK_WINDOW ||
+                                rms < state.peakRMS * 0.5
+                            ) {
+                                detectedOnsets.push({
+                                    lane,
+                                    time: state.peakTime,
+                                });
+                                lastOnsetTimes[lane] = state.peakTime;
+
+                                // Reset and cooldown
+                                state.isTracking = false;
+                                state.peakRMS = 0;
+                            }
+                        } else {
+                            // Start tracking if over threshold and cooldown passed
+                            if (
+                                rms > threshold &&
+                                currentTime - lastOnsetTimes[lane] > 0.1
+                            ) {
+                                state.isTracking = true;
+                                state.startTime = currentTime;
+                                state.peakRMS = rms;
+                                state.peakTime = currentTime;
+                            }
                         }
                     }
 
