@@ -1225,7 +1225,10 @@
                                 {track.Title}
                             </div>
                             <div class="text-[10px] text-[#555] truncate">
-                                {track.Creator || "Unknown"}
+                                {track.Creator ||
+                                    track.Address ||
+                                    track.Minted_By ||
+                                    "Unknown"}
                             </div>
                         </button>
                         <div
@@ -1262,7 +1265,10 @@
                         {currentTrack?.Title || "Unknown Track"}
                     </div>
                     <div class="text-[10px] text-[#555]">
-                        {currentTrack?.Creator || "Unknown Artist"}
+                        {currentTrack?.Creator ||
+                            currentTrack?.Address ||
+                            currentTrack?.Minted_By ||
+                            "Unknown Artist"}
                     </div>
                 </div>
                 <div class="flex gap-6 text-right">
