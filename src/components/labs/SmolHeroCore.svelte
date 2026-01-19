@@ -281,9 +281,77 @@
         });
     }
 
+    function spawnNote(lane: number, detectionTime: number) {
+        // Apply difficulty filtering
+        if (settings.difficulty === "easy" && lane !== 0) return; // Bass only
+        if (settings.difficulty === "medium" && lane === 2) return; // Bass + Mid only
+
+        const hitTime = detectionTime + NOTE_SPAWN_LEAD_TIME / 1000; // Convert ms to seconds
+
+        const note: Note = {
+            id: `${lane}-${detectionTime}-${Math.random()}`,
+            lane,
+            spawnTime: detectionTime,
+            hitTime,
+            position: 0,
+            hit: false,
+            holding: false,
+            duration: 0, // Real-time doesn't support hold notes yet
+            accuracy: null,
+        };
+
+        notes = [...notes, note];
+    }
+
     function detectOnsets() {
-        // Placeholder for real-time fallback logic (same as before)
-        // Omitted for brevity in this Canvas update as Sync Mode is preferred
+        if (!bassAnalyser || !midAnalyser || !trebleAnalyser || !audio) return;
+
+        // Skip if using cached beatmap (sanity check)
+        if (cachedBeatmap) return;
+
+        const analysers = [bassAnalyser, midAnalyser, trebleAnalyser];
+        const currentTime = audio.currentTime;
+
+        analysers.forEach((analyser, lane) => {
+            const bufferLength = analyser.frequencyBinCount;
+            const dataArray = new Uint8Array(bufferLength);
+            analyser.getByteFrequencyData(dataArray);
+
+            // Calculate RMS energy
+            let sum = 0;
+            for (let i = 0; i < bufferLength; i++) {
+                sum += dataArray[i] * dataArray[i];
+            }
+            const rms = Math.sqrt(sum / bufferLength);
+
+            // Add to history
+            energyHistory[lane].push(rms);
+            if (energyHistory[lane].length > ENERGY_HISTORY_SIZE) {
+                energyHistory[lane].shift();
+            }
+
+            // Need enough history for detection
+            if (energyHistory[lane].length < ENERGY_HISTORY_SIZE) return;
+
+            // Calculate average energy
+            const avgEnergy =
+                energyHistory[lane].reduce((a, b) => a + b, 0) /
+                energyHistory[lane].length;
+
+            // Detect onset: current energy significantly above average
+            const threshold = avgEnergy * onsetThresholdMultiplier;
+            const minTimeBetweenOnsets = 0.15; // 150ms minimum
+
+            if (
+                rms > threshold &&
+                currentTime - lastOnsetTimes[lane] > minTimeBetweenOnsets &&
+                rms > 10 // Minimum noise floor
+            ) {
+                // ONSET DETECTED!
+                spawnNote(lane, currentTime);
+                lastOnsetTimes[lane] = currentTime;
+            }
+        });
     }
 
     // ======================
@@ -301,7 +369,7 @@
         if (cachedBeatmap) {
             detectOnsetsFromCache(currentTime);
         } else {
-            // detectOnsets(); // Real-time fallback disabled for now to focus on Canvas perf
+            detectOnsets();
         }
 
         // --- UPDATE LOGIC ---
@@ -339,7 +407,12 @@
     }
 
     function renderFrame(time: number) {
-        if (!canvas || !ctx) return;
+        if (!canvas) return;
+        if (!ctx) {
+            const c = canvas.getContext("2d");
+            if (c) ctx = c;
+            else return;
+        }
 
         // Clear
         ctx.fillStyle = "black";
@@ -542,6 +615,14 @@
             ctx.stroke();
             ctx.globalAlpha = 1;
         });
+
+        // DEBUG OVERLAY
+        ctx.fillStyle = "white";
+        ctx.font = "12px monospace";
+        ctx.textAlign = "left";
+        ctx.fillText(`Notes: ${notes.length}`, 10, 20);
+        ctx.fillText(`Time: ${time.toFixed(2)}`, 10, 35);
+        ctx.fillText(`Context: OK`, 10, 50);
     }
 
     // ======================
@@ -1094,7 +1175,7 @@
                 <h1
                     class="text-4xl font-bold text-[#9ae600] mb-2 drop-shadow-[0_0_10px_rgba(154,230,0,0.5)]"
                 >
-                    SMOL HERO
+                    SMOL <span class="text-white">HERO</span>
                 </h1>
                 <p class="text-xs text-[#555]">RHYTHM ACTION</p>
             </div>
