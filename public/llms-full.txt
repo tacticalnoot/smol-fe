@@ -237,7 +237,7 @@ Note: API routes are disallowed in robots.txt for SEO but available for programm
 
 ## External Links & Profiles
 
-https://github.com/smol-ai
+https://github.com/Kalepail
 Open-source repositories and technical documentation.
 
 https://twitter.com/smolxyz
@@ -374,7 +374,7 @@ Songs are generated on-demand and continuously added by the community. The platf
 ## Support & Community
 
 For issues, feature requests, or contributions:
-- GitHub: https://github.com/smol-ai
+- GitHub: https://github.com/Kalepail
 - Twitter: https://twitter.com/smolxyz
 
 ## Last Updated
