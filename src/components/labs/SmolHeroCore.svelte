@@ -90,6 +90,7 @@
     let audioContext: AudioContext | null = null;
     let analyser: AnalyserNode | null = null;
     let gainNode: GainNode | null = null;
+    let cachedDecodedBuffer: AudioBuffer | null = null; // Cache for pause menu
 
     // Frequency band filters for 3-lane detection
     let bassFilter: BiquadFilterNode | null = null;
@@ -401,9 +402,12 @@
     // ======================
 
     function handleKeyDown(e: KeyboardEvent) {
-        // ESC to quit
-        if (e.key === "Escape" && gameState === "playing") {
-            finishGame();
+        // ESC to toggle pause
+        if (
+            e.key === "Escape" &&
+            (gameState === "playing" || gameState === "paused")
+        ) {
+            togglePause();
             return;
         }
 
@@ -642,24 +646,39 @@
         if (allTracks.length > 0) applyFilters();
     });
 
-    async function analyzeTrack(track: any): Promise<Beatmap> {
+    async function analyzeTrack(
+        track: any,
+        existingBuffer: AudioBuffer | null = null,
+    ): Promise<Beatmap> {
         gameState = "analyzing";
         analyzingProgress = 0;
 
         return new Promise(async (resolve, reject) => {
             try {
-                // 1. Fetch and Decode Audio (Offline)
-                console.log("[SmolHero] Fetching audio for analysis...");
-                const response = await fetch(getSongUrl(track.Song_1));
-                if (!response.ok)
-                    throw new Error(`Fetch failed: ${response.status}`);
+                let audioBuffer: AudioBuffer;
 
-                const arrayBuffer = await response.arrayBuffer();
-                analyzingProgress = 20;
+                if (existingBuffer) {
+                    console.log(
+                        "[SmolHero] Using cached buffer for analysis...",
+                    );
+                    audioBuffer = existingBuffer;
+                    analyzingProgress = 40;
+                } else {
+                    // 1. Fetch and Decode Audio (Offline)
+                    console.log("[SmolHero] Fetching audio for analysis...");
+                    const response = await fetch(getSongUrl(track.Song_1));
+                    if (!response.ok)
+                        throw new Error(`Fetch failed: ${response.status}`);
 
-                const tempCtx = new AudioContext();
-                const audioBuffer = await tempCtx.decodeAudioData(arrayBuffer);
-                analyzingProgress = 40;
+                    const arrayBuffer = await response.arrayBuffer();
+                    analyzingProgress = 20;
+
+                    const tempCtx = new AudioContext();
+                    audioBuffer = await tempCtx.decodeAudioData(arrayBuffer);
+                    cachedDecodedBuffer = audioBuffer; // Cache for pause menu
+                    analyzingProgress = 40;
+                    tempCtx.close();
+                }
 
                 // 2. Render 3 distinct frequency bands using OfflineAudioContext
                 // We map: Channel 0 = Bass, Channel 1 = Mid, Channel 2 = Treble
@@ -976,6 +995,53 @@
                 origin: { y: 0.6 },
                 colors: ["#9ae600", "#f91880", "#FDDA24"],
             });
+        }
+    }
+
+    function togglePause() {
+        if (!audio) return;
+
+        if (gameState === "playing") {
+            gameState = "paused";
+            audio.pause();
+            if (animationFrameId) cancelAnimationFrame(animationFrameId);
+        } else if (gameState === "paused") {
+            gameState = "playing";
+            audio.play();
+            gameLoop();
+        }
+    }
+
+    async function switchDifficulty(diff: GameSettings["difficulty"]) {
+        if (settings.difficulty === diff) return;
+        settings.difficulty = diff;
+
+        // Re-analyze using cached buffer (fast!)
+        // Keep gameState as "analyzing" but we need to stop current "paused" loop?
+        // Actually since we are paused, loop is stopped.
+        // We set gamestate to analyzing so UI shows spinner? Or just keep paused UI?
+        // Let's toggle gameState to "analyzing" so we don't spam Resume.
+        const prev = gameState;
+        gameState = "analyzing";
+
+        try {
+            const newBeatmap = await analyzeTrack(
+                currentTrack,
+                cachedDecodedBuffer,
+            );
+            cachedBeatmap = newBeatmap;
+            spawnedCachedOnsets.clear(); // Reset spawn tracking
+            notes = []; // Clear old difficulty notes
+
+            // Sync notes to current time?
+            // The GameLoop does this automatically via detectOnsetsFromCache
+            // We just need to ensure existing notes are cleared (done above).
+
+            // Done, go back to paused
+            gameState = "paused";
+        } catch (e) {
+            console.error("Failed to switch difficulty:", e);
+            gameState = "paused";
         }
     }
 
@@ -1486,9 +1552,86 @@
 
             <!-- Controls hint -->
             <div class="mt-4 text-center text-[10px] text-[#333]">
-                Press D, F, J to hit notes • ESC to quit
+                Press D, F, J to hit notes • ESC to pause
             </div>
         </div>
+
+        <!-- PAUSE MENU OVERLAY -->
+        {#if gameState === "paused"}
+            <div
+                class="absolute inset-0 bg-black/80 backdrop-blur-sm z-50 flex flex-col items-center justify-center catch-pointer-events"
+                onclick={(e) => e.stopPropagation()}
+            >
+                <h2 class="text-4xl font-bold text-white mb-8 tracking-widest">
+                    PAUSED
+                </h2>
+
+                <div class="flex flex-col gap-4 w-64">
+                    <button
+                        onclick={togglePause}
+                        class="bg-[#9ae600] text-black font-bold py-3 rounded hover:scale-105 transition-transform"
+                    >
+                        RESUME
+                    </button>
+
+                    <div
+                        class="flex flex-col gap-2 mt-4 border-t border-[#333] pt-4"
+                    >
+                        <span
+                            class="text-xs text-[#555] text-center uppercase tracking-widest"
+                            >Difficulty</span
+                        >
+                        <div class="grid grid-cols-2 gap-2">
+                            {#each ["easy", "medium", "hard", "expert"] as d}
+                                <button
+                                    onclick={() => switchDifficulty(d)}
+                                    class="px-2 py-2 text-[10px] border rounded uppercase transition-colors {settings.difficulty ===
+                                    d
+                                        ? 'bg-white text-black border-white'
+                                        : 'bg-transparent text-[#555] border-[#333] hover:border-white'}"
+                                >
+                                    {d}
+                                </button>
+                            {/each}
+                        </div>
+                    </div>
+
+                    <button
+                        onclick={() => {
+                            // Restart track
+                            spawnedCachedOnsets.clear();
+                            notes = [];
+                            stats = {
+                                perfect: 0,
+                                great: 0,
+                                ok: 0,
+                                miss: 0,
+                                combo: 0,
+                                maxCombo: 0,
+                                score: 0,
+                            };
+                            if (audio) {
+                                audio.currentTime = 0;
+                                gameState = "playing";
+                                audio.play();
+                                gameLoop();
+                            }
+                        }}
+                        class="mt-4 border border-[#333] text-[#777] hover:text-white hover:border-white py-2 rounded text-xs"
+                    >
+                        RESTART SONG
+                    </button>
+                    <button
+                        onclick={() => {
+                            if (confirm("Exit to menu?")) finishGame();
+                        }}
+                        class="border border-[#333] text-[#777] hover:text-[#f91880] hover:border-[#f91880] py-2 rounded text-xs"
+                    >
+                        EXIT TO MENU
+                    </button>
+                </div>
+            </div>
+        {/if}
     {:else if gameState === "finished"}
         <!-- RESULTS SCREEN -->
         <div
