@@ -573,7 +573,9 @@
             filtered = filtered.filter(
                 (t) =>
                     (t.Title || "").toLowerCase().includes(q) ||
-                    (t.Creator || "").toLowerCase().includes(q),
+                    (t.Creator || "").toLowerCase().includes(q) ||
+                    (t.Address || "").toLowerCase().includes(q) ||
+                    (t.Minted_By || "").toLowerCase().includes(q),
             );
         }
 
@@ -590,8 +592,16 @@
                 return b.Id.localeCompare(a.Id);
             }
             if (sortMode === "artist") {
-                const nameA = (a.Creator || "Unknown").toLowerCase();
-                const nameB = (b.Creator || "Unknown").toLowerCase();
+                const nameA = (
+                    a.Creator ||
+                    a.Address ||
+                    "Unknown"
+                ).toLowerCase();
+                const nameB = (
+                    b.Creator ||
+                    b.Address ||
+                    "Unknown"
+                ).toLowerCase();
                 return nameA.localeCompare(nameB);
             }
             if (sortMode === "liked") {
