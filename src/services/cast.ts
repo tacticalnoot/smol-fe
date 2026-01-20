@@ -13,7 +13,7 @@ declare const cast: any;
 // Cast debug flag: check localStorage or env
 const CAST_DEBUG = typeof window !== "undefined" &&
     (localStorage.getItem("CAST_DEBUG") === "true" ||
-     import.meta.env.PUBLIC_CAST_DEBUG === "true");
+        import.meta.env.PUBLIC_CAST_DEBUG === "true");
 
 class CastService {
     private initialized = false;
@@ -62,6 +62,7 @@ class CastService {
             });
 
             this.initialized = true;
+            audioState.isCastAvailable = true;
             console.log("[Cast] Initialized with CastContext");
 
             // Listen for session state changes
