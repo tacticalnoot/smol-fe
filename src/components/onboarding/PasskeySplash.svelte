@@ -366,7 +366,22 @@
                             }}
                             on:error={(e) => {
                                 console.error("Turnstile Error:", e);
-                                error = "Verification failed. Please refresh.";
+                                // Check for common "Domain Not Allowed" error (110200)
+                                // Note: e.detail may contain the code, or we infer from context
+                                if (
+                                    window.location.hostname.includes(
+                                        "pages.dev",
+                                    ) ||
+                                    window.location.hostname.includes(
+                                        "localhost",
+                                    )
+                                ) {
+                                    error =
+                                        "Turnstile Error: Domain not authorized. Add to Cloudflare whitelist.";
+                                } else {
+                                    error =
+                                        "Verification failed. Please refresh.";
+                                }
                             }}
                             theme="dark"
                             appearance="interaction-only"
