@@ -1,7 +1,7 @@
 ---
 import Layout from "../../layouts/Layout.astro";
 import BackLink from "../../components/labs/BackLink.astro";
-import SmolHeroGame from "../../components/labs/hero/SmolHeroGame.svelte";
+import SmolHeroCore from "../../components/labs/SmolHeroCore.svelte";
 import { SMOL_IDENTITY } from "../../utils/seo-schema";
 
 const schema = [{
@@ -34,7 +34,7 @@ const schema = [{
       <BackLink href="/labs" />
 
       <div class="mt-8">
-        <SmolHeroGame client:only="svelte" fetchOnMount={true} />
+        <SmolHeroCore client:only="svelte" fetchOnMount={true} />
       </div>
 
       <!-- Instructions -->
