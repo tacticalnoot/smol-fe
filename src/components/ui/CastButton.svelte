@@ -11,7 +11,7 @@
 </script>
 
 <button
-    class="flex items-center justify-center transition-colors {classNames} {audioState.isCasting
+    class="flex items-center justify-center transition-colors relative z-[9999] cursor-pointer {classNames} {audioState.isCasting
         ? 'text-[#4285F4]'
         : 'text-slate-400 hover:text-white'}"
     onclick={(e) => {
