@@ -16,6 +16,12 @@
     // Check for Direct Relayer Mode (Dev/Preview)
     const isDirectRelayer = !!import.meta.env.PUBLIC_RELAYER_API_KEY;
 
+    console.log("[Debug] Relayer Config:", {
+        isDirectRelayer,
+        hasKey: !!import.meta.env.PUBLIC_RELAYER_API_KEY,
+        mode: import.meta.env.MODE,
+    });
+
     const authHook = useAuthentication();
 
     // One-liners
@@ -254,6 +260,12 @@
             class="mb-6 md:mb-8 text-center shrink-0"
             in:fade={{ duration: 800 }}
         >
+            <!-- DEBUG: Relayer Mode Indicator -->
+            <div
+                class="absolute top-0 right-0 p-2 text-[8px] text-white/20 font-mono pointer-events-none"
+            >
+                MODE: {isDirectRelayer ? "DIRECT" : "DEFAULT"}
+            </div>
             <!-- Rotating One-Liner -->
             <!-- Shift right slightly to align center with the '.' in SMOL.XYZ -->
             <div
