@@ -7,6 +7,12 @@ export const GET: APIRoute = async ({ params, request }) => {
         return new Response('Missing audio ID', { status: 400 });
     }
 
+    // Input Validation: Ensure ID is alphanumeric/dash only to prevent traversal/injection
+    const safeId = id.replace(/[^a-zA-Z0-9-]/g, '');
+    if (safeId !== id || safeId.length > 64) {
+        return new Response('Invalid ID format', { status: 400 });
+    }
+
     // Construct upstream URL (defaulting to api.smol.xyz if env not set)
     // Note: We use the .mp3 extension as that's what the backend expects
     const baseUrl = import.meta.env.PUBLIC_API_URL || 'https://api.smol.xyz';
