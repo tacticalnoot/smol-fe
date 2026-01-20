@@ -16,7 +16,7 @@ PUBLIC_SOROSWAP_API_KEY = "sk_4841707489b6c8a0ec4614bfa917be0b6518b0fd8b1f0cb08c
 PUBLIC_RELAYER_URL = "https://api.kalefarm.xyz"
 # PUBLIC_RELAYER_API_KEY = "..." # Set this for Dev/Preview (Bypasses Turnstile)
 # If set, defaults to OZ Channels URL: https://channels.openzeppelin.com
-# Note: OpenZeppelin Channels integration not currently implemented
-# Relayer uses KaleFarm API (https://api.kalefarm.xyz) with Turnstile verification
+# Note: OpenZeppelin Channels integration is enabled when PUBLIC_RELAYER_API_KEY is present
+# Otherwise defaults to KaleFarm API (https://api.kalefarm.xyz) with Turnstile verification
 # PUBLIC_CHANNELS_API_KEY set in CF Dashboard (unused)
 
