@@ -19,7 +19,7 @@ export function getSafeRpId(hostname: string): string | undefined {
     // If domain logic fails or it matches the suffix (e.g. co.uk), use Origin
     // Also block known shared suffixes like pages.dev where tldts might return the generic platform domain
     const blockedDomains = ['pages.dev', 'vercel.app', 'netlify.app', 'herokuapp.com'];
-    if (!domain || !suffix || domain === suffix || blockedDomains.includes(domain)) {
+    if (!domain || !suffix || domain === suffix || blockedDomains.includes(domain) || blockedDomains.includes(suffix)) {
         return undefined;
     }
 
