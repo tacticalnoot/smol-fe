@@ -14,6 +14,7 @@ let image_url: string | null = id ? `${API_URL}/image/${id}.png` : null;
 let schema: any[] = [];
 let lyricsDisplay = "";
 let rawPrompt = "";
+let createdDate = "";
 
 if (id) {
     // PREVENT ROUTING CONFLICT: Explicitly reject known static routes that might fall through
@@ -53,7 +54,7 @@ if (id) {
              
             // Schema
             const tags = data.kv_do?.tags || [];
-            const created = data.d1?.Created || new Date().toISOString();
+            createdDate = data.d1?.Created || new Date().toISOString();
 
             schema = [{
                 "@context": "https://schema.org",
@@ -144,7 +145,7 @@ if (id) {
             <section>
                 <h3>Details</h3>
                 <p>Prompt: {rawPrompt}</p>
-                <p>Created: {data.d1?.Created || "Unknown"}</p>
+                <p>Created: {createdDate || "Unknown"}</p>
             </section>
         </div>
 	</div>
