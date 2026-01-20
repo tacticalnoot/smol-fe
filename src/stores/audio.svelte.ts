@@ -46,6 +46,7 @@ export const audioState = $state<{
   duration: number;
   repeatMode: "off" | "once" | "one";
   isCasting: boolean;
+  isCastAvailable: boolean;
   // Track if audio was interrupted (not user-paused)
   wasInterrupted: boolean;
   // Next song for pre-caching
@@ -63,6 +64,7 @@ export const audioState = $state<{
   duration: savedState.duration ?? 0,
   repeatMode: savedState.repeatMode ?? "off",
   isCasting: false,
+  isCastAvailable: false,
   wasInterrupted: false,
   nextSong: null,
 });
