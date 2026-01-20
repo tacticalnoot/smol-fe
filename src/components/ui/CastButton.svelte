@@ -16,11 +16,19 @@
         : 'text-slate-400 hover:text-white'}"
     onclick={(e) => {
         e.stopPropagation();
+        if (!castService.isAvailable) {
+            alert("Google Cast is not available on this device/browser.");
+            return;
+        }
         castService.requestSession();
     }}
     ontouchend={(e) => {
         e.preventDefault();
         e.stopPropagation();
+        if (!castService.isAvailable) {
+            alert("Google Cast is not available on this device/browser.");
+            return;
+        }
         castService.requestSession();
     }}
     aria-label="Google Cast"
