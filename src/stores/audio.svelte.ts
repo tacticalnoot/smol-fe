@@ -6,6 +6,32 @@ import type { Smol } from '../types/domain';
  */
 
 // Core reactive state
+const AUDIO_STORAGE_KEY = "smol_audio_v1";
+
+// Load from localStorage if available
+function loadState(): Partial<typeof audioState> {
+  if (typeof window === "undefined") return {};
+  try {
+    const saved = localStorage.getItem(AUDIO_STORAGE_KEY);
+    if (!saved) return {};
+    const parsed = JSON.parse(saved);
+    // Validate that we have a valid song object (sanity check)
+    if (parsed.currentSong && !parsed.currentSong.Id) return {};
+    return {
+      playingId: parsed.playingId,
+      currentSong: parsed.currentSong,
+      progress: parsed.progress || 0,
+      duration: parsed.duration || 0,
+      repeatMode: parsed.repeatMode || "off"
+    };
+  } catch (e) {
+    console.error("Failed to load audio state", e);
+    return {};
+  }
+}
+
+const savedState = loadState();
+
 export const audioState = $state<{
   playingId: string | null;
   currentSong: Smol | null;
@@ -22,21 +48,37 @@ export const audioState = $state<{
   isCasting: boolean;
   // Track if audio was interrupted (not user-paused)
   wasInterrupted: boolean;
+  // Next song for pre-caching
+  nextSong: Smol | null;
 }>({
-  playingId: null,
-  currentSong: null,
+  playingId: savedState.playingId ?? null,
+  currentSong: savedState.currentSong ?? null,
   audioElement: null,
-  progress: 0,
+  progress: savedState.progress ?? 0,
   songNextCallback: null,
   songPrevCallback: null,
   audioContext: null,
   analyser: null,
   sourceNode: null,
-  duration: 0,
-  repeatMode: "off",
+  duration: savedState.duration ?? 0,
+  repeatMode: savedState.repeatMode ?? "off",
   isCasting: false,
   wasInterrupted: false,
+  nextSong: null,
 });
+
+// Helper to save state (called by effects)
+export function saveState() {
+  if (typeof window === "undefined") return;
+  const stateToSave = {
+    playingId: audioState.playingId,
+    currentSong: audioState.currentSong,
+    progress: audioState.progress,
+    duration: audioState.duration,
+    repeatMode: audioState.repeatMode
+  };
+  localStorage.setItem(AUDIO_STORAGE_KEY, JSON.stringify(stateToSave));
+}
 
 // Cross-tab synchronization (Golfed)
 const bId = crypto.randomUUID(), ch = typeof window !== 'undefined' && 'BroadcastChannel' in window && new BroadcastChannel("smol_audio_sync");
