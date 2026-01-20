@@ -10,7 +10,6 @@
     setAudioElement,
     updateProgress,
     togglePlayPause,
-    togglePlayPause,
     playNextSong,
     saveState,
     seek,
