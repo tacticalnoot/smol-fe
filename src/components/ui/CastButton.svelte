@@ -14,7 +14,15 @@
     class="flex items-center justify-center transition-colors {classNames} {audioState.isCasting
         ? 'text-[#4285F4]'
         : 'text-slate-400 hover:text-white'}"
-    onclick={() => castService.requestSession()}
+    onclick={(e) => {
+        e.stopPropagation();
+        castService.requestSession();
+    }}
+    ontouchend={(e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        castService.requestSession();
+    }}
     aria-label="Google Cast"
     title="Cast to device"
 >
