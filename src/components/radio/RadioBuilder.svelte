@@ -944,7 +944,9 @@
 <div
   class="container mx-auto px-4 {isCompact
     ? 'pt-1 pb-2'
-    : 'py-1'} relative z-10 w-full flex-1 min-h-0 flex flex-col overflow-hidden"
+    : 'py-1'} {audioState.currentSong
+    ? 'pb-28'
+    : ''} relative z-10 w-full flex-1 min-h-0 flex flex-col overflow-hidden"
 >
   <!-- Eigengrau Void (Removed) -->
 
