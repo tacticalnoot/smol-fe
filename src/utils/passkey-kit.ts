@@ -90,9 +90,25 @@ export async function send<T>(
         xdr = txn;
     }
 
-    // Kale Farm API endpoint (sponsored transactions with Turnstile verification)
-    const relayerUrl = import.meta.env.PUBLIC_RELAYER_URL || "https://api.kalefarm.xyz";
-    const relayerApiKey = import.meta.env.PUBLIC_RELAYER_API_KEY;
+    // Determine URL and Mode
+    const envApiKey = import.meta.env.PUBLIC_RELAYER_API_KEY;
+    const envUrl = import.meta.env.PUBLIC_RELAYER_URL;
+
+    // Default to Channels if Key is present but no URL (or if explicitly set to Channels)
+    let relayerUrl = envUrl;
+    let useChannels = false;
+
+    if (envApiKey) {
+        if (!relayerUrl) {
+            relayerUrl = "https://channels.openzeppelin.com";
+            useChannels = true;
+        } else if (relayerUrl.includes("channels.openzeppelin.com")) {
+            useChannels = true;
+        }
+    } else {
+        // Fallback to proxy
+        relayerUrl = relayerUrl || "https://api.kalefarm.xyz";
+    }
 
     let lastError: Error | null = null;
 
@@ -118,20 +134,65 @@ export async function send<T>(
             let headers: Record<string, string> = { 'Content-Type': 'application/json' };
             let body: any = {};
 
-            if (relayerApiKey) {
-                // Direct OpenZeppelin Relayer Mode
-                // Assume relayerUrl is the exact endpoint (e.g. /transactions)
-                headers['Authorization'] = `Bearer ${relayerApiKey}`;
-                body = {
-                    transaction_xdr: xdr,
-                    fee_token: "native", // Assumed
-                    fee_bump: true
-                };
+            if (envApiKey) {
+                headers['Authorization'] = `Bearer ${envApiKey}`;
+
+                if (useChannels) {
+                    // OZ Channels Format: { func: "base64", auth: ["base64"] }
+                    // We must extract these from the signed transaction XDR
+                    try {
+                        const { Transaction, Networks } = await import("@stellar/stellar-sdk");
+                        // Parse XDR to inspect operations
+                        const tx = Transaction.fromXDR(xdr, import.meta.env.PUBLIC_NETWORK_PASSPHRASE || Networks.PUBLIC);
+
+                        if (tx.operations.length !== 1) {
+                            throw new Error(`Channels requires exactly 1 operation, found ${tx.operations.length}`);
+                        }
+
+                        const op = tx.operations[0];
+                        // Operations in SDK are objects, need to map to HostFunction XDR
+                        // But getting the raw XDR of the function and auth is tricky from the Operation object alone
+                        // correctly matching the "func" and "auth" expected by Channels.
+                        // Actually, looking at the SDK, we can just grab the operation XDR components.
+
+                        // Re-parsing to XDR to get the raw components safely
+                        // The 'op' object is the high-level representation.
+                        // We need op.toXDROperation() -> body -> invokeHostFunctionOp
+
+                        const opXdr = op.toXDROperation();
+                        if (opXdr.body().switch().name !== 'invokeHostFunction') {
+                            throw new Error(`Channels requires InvokeHostFunction operation`);
+                        }
+
+                        const invokeOp = opXdr.body().invokeHostFunctionOp();
+                        const funcXdr = invokeOp.hostFunction().toXDR('base64');
+                        const authXdr = invokeOp.auth().map(a => a.toXDR('base64'));
+
+                        body = {
+                            func: funcXdr,
+                            auth: authXdr
+                        };
+                        // Note: Channel URL usually requires a trailing slash or specific path?
+                        // scripts/test-oz-flow.mjs used `${OZ_CHANNELS_URL}/`
+                        if (!fetchUrl.endsWith('/')) fetchUrl += '/';
+
+                        console.log("[Relayer] Using OZ Channels format");
+
+                    } catch (e) {
+                        console.error("[Relayer] Failed to parse XDR for Channels:", e);
+                        throw new Error(`Failed to prepare Channels payload: ${e.message}`);
+                    }
+                } else {
+                    // Fallback Direct Mode (if URL is not Channels, e.g. generic Relayer)
+                    body = {
+                        transaction_xdr: xdr,
+                        fee_token: "native",
+                        fee_bump: true
+                    };
+                }
             } else {
                 // KaleFarm Proxy Mode (Default)
-                // Normalize URL
                 if (!fetchUrl.endsWith('/')) fetchUrl += '/';
-
                 headers['X-Turnstile-Response'] = turnstileToken;
                 body = { xdr };
             }
