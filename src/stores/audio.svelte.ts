@@ -69,8 +69,11 @@ export const audioState = $state<{
   nextSong: null,
 });
 
-// Helper to save state (called by effects)
-export function saveState() {
+// Helper to save state (throttled to avoid UI jank)
+let saveTimeout: number | null = null;
+
+// Force immediate save (for beforeunload)
+function forceSaveState() {
   if (typeof window === "undefined") return;
   const stateToSave = {
     playingId: audioState.playingId,
@@ -80,6 +83,24 @@ export function saveState() {
     repeatMode: audioState.repeatMode
   };
   localStorage.setItem(AUDIO_STORAGE_KEY, JSON.stringify(stateToSave));
+}
+
+// Throttled save (publicly exported as saveState)
+export function saveState() {
+  if (typeof window === "undefined") return;
+
+  // If a save is already scheduled, do nothing (throttle)
+  if (saveTimeout !== null) return;
+
+  saveTimeout = window.setTimeout(() => {
+    forceSaveState();
+    saveTimeout = null;
+  }, 2000); // Save at most once every 2 seconds
+}
+
+// Ensure we save on exit
+if (typeof window !== "undefined") {
+  window.addEventListener("beforeunload", forceSaveState);
 }
 
 // Cross-tab synchronization (Golfed)
