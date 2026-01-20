@@ -257,14 +257,29 @@
             updateTopTags(smols);
             isUrlStateLoaded = true; // Data ready
 
-            // Update Cache
-            localStorage.setItem(
-                "smol_global_data_v2",
-                JSON.stringify({
-                    smols: smols.slice(0, 2000), // Safety limit for storage
-                    timestamp: Date.now(),
-                }),
-            );
+            // Update Cache (Safe Mode)
+            try {
+                // Strip heavy fields to save space (lyrics are huge)
+                const lightSmols = smols.slice(0, 500).map((s) => ({
+                    ...s,
+                    unique_lyrics: undefined,
+                    style: undefined, // stylistic description can be long
+                }));
+
+                localStorage.setItem(
+                    "smol_global_data_v2",
+                    JSON.stringify({
+                        smols: lightSmols,
+                        timestamp: Date.now(),
+                    }),
+                );
+            } catch (storageErr) {
+                console.warn(
+                    "[GlobalPlayer] Cache full, clearing to ensure auth works:",
+                    storageErr,
+                );
+                localStorage.removeItem("smol_global_data_v2");
+            }
 
             // Auto-select first song if nothing playing
             if (!audioState.currentSong && liveDiscography.length > 0) {
