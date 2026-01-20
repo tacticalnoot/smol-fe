@@ -417,14 +417,21 @@
         }
     }
 
-    // Auto-Scroll to Active Song
+    // Auto-Scroll to Active Song and Update Next Song
     $effect(() => {
         if (displayPlaylist.length > 0 && currentSong) {
             const foundIndex = displayPlaylist.findIndex(
                 (s) => s.Id === currentSong.Id,
             );
-            if (foundIndex !== -1 && foundIndex !== currentIndex) {
-                currentIndex = foundIndex;
+            if (foundIndex !== -1) {
+                if (foundIndex !== currentIndex) {
+                    currentIndex = foundIndex;
+                }
+                // Pre-cache next song
+                const nextIndex = (foundIndex + 1) % displayPlaylist.length;
+                if (displayPlaylist[nextIndex]) {
+                    audioState.nextSong = displayPlaylist[nextIndex];
+                }
             }
         }
     });
