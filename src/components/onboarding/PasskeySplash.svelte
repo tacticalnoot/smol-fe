@@ -135,22 +135,15 @@
             // Login failed/cancelled
             console.log("Login failed or cancelled:", e.message);
 
-            // Check for user cancellation/abort
-            const message = e.message?.toLowerCase() || "";
-            const isCancellation =
-                message.includes("abort") ||
-                message.includes("cancel") ||
-                message.includes("not allowed");
+            // ALWAYS return to intro on failure/cancellation
+            // Do not assume they want to sign up; they can click 'Create Account' for that.
+            step = "intro";
 
-            if (isCancellation) {
-                // Return to intro on cancellation instead of forcing username input
-                step = "intro";
-                logEvent("passkey_smart_login_cancelled");
-            } else {
-                // assume new user -> sign up flow
-                step = "username";
-                logEvent("passkey_smart_login_fallback_signup");
-            }
+            // Optional: Show error if it wasn't a cancellation
+            /*     const message = e.message?.toLowerCase() || "";
+            if (!message.includes("abort") && !message.includes("cancel")) {
+                 error = "Login failed. Try again or create account.";
+            } */
         }
     }
 
@@ -263,32 +256,50 @@
                     class="w-full flex flex-col items-center gap-3 md:gap-6"
                     in:fade={{ duration: 300 }}
                 >
-                    <!-- PRIMARY CTA: SMART LOGIN (Handles Both) -->
-                    <button
-                        onclick={handleSmartLogin}
-                        class="group relative w-full max-w-xs py-5 px-8 bg-[#1d293d] text-lime-400 font-pixel font-bold uppercase tracking-widest text-sm md:text-base rounded-lg
-                           hover:bg-[#2a3b55] hover:-translate-y-1 hover:shadow-[0_8px_0_rgba(15,23,42,1)]
-                           active:translate-y-1 active:shadow-none active:bg-[#151e2e]
-                           transition-all duration-100 shadow-[0_4px_0_rgba(15,23,42,1)]
-                           focus:outline-none focus:ring-4 focus:ring-lime-400/20 border-2 border-lime-400/20"
-                        aria-label="Passkey Login"
-                    >
-                        <span
-                            class="relative z-10 flex items-center justify-center gap-3"
+                    <!-- PRIMARY CTA: LOGIN & CREATE -->
+                    <div class="flex flex-col w-full gap-3">
+                        <button
+                            onclick={handleSmartLogin}
+                            class="group relative w-full py-4 px-6 bg-[#1d293d] text-lime-400 font-pixel font-bold uppercase tracking-widest text-sm rounded-lg
+                               hover:bg-[#2a3b55] hover:-translate-y-1 hover:shadow-[0_8px_0_rgba(15,23,42,1)]
+                               active:translate-y-1 active:shadow-none active:bg-[#151e2e]
+                               transition-all duration-100 shadow-[0_4px_0_rgba(15,23,42,1)]
+                               focus:outline-none focus:ring-4 focus:ring-lime-400/20 border-2 border-lime-400/20"
+                            aria-label="Passkey Login"
                         >
-                            <img
-                                src="https://cdn.jsdelivr.net/npm/emoji-datasource-apple/img/apple/64/1f96c.png"
-                                alt="Kale"
-                                class="w-5 h-5 md:w-6 md:h-6 object-contain"
-                            /> PASSKEY LOGIN
-                        </span>
-                    </button>
+                            <span
+                                class="relative z-10 flex items-center justify-center gap-3"
+                            >
+                                <img
+                                    src="https://cdn.jsdelivr.net/npm/emoji-datasource-apple/img/apple/64/1f96c.png"
+                                    alt="Kale"
+                                    class="w-5 h-5 object-contain"
+                                /> LOGIN WITH PASSKEY
+                            </span>
+                        </button>
+
+                        <button
+                            onclick={() => {
+                                step = "username";
+                                logEvent("passkey_create_start");
+                            }}
+                            class="group relative w-full py-4 px-6 bg-lime-500 text-black font-pixel font-bold uppercase tracking-widest text-sm rounded-lg
+                               hover:bg-lime-400 hover:-translate-y-1 hover:shadow-[0_8px_0_rgba(65,130,22,0.6)]
+                               active:translate-y-1 active:shadow-none active:bg-lime-600
+                               transition-all duration-100 shadow-[0_4px_0_rgba(65,130,22,0.6)]
+                               focus:outline-none focus:ring-4 focus:ring-lime-400/50"
+                            aria-label="Create Account"
+                        >
+                            <span
+                                class="relative z-10 flex items-center justify-center gap-3"
+                            >
+                                📝 CREATE NEW ACCOUNT
+                            </span>
+                        </button>
+                    </div>
 
                     <!-- INFO TEXT -->
-                    <div class="mt-4 text-center space-y-1">
-                        <p class="text-[10px] md:text-xs text-white font-pixel">
-                            NO PASSWORDS. INSTANT LOGIN.
-                        </p>
+                    <div class="mt-2 text-center space-y-1">
                         <p
                             class="text-[10px] md:text-xs text-white/60 font-pixel"
                         >
@@ -299,7 +310,7 @@
                     <!-- ESCAPE HATCH -->
                     <button
                         onclick={handleSkip}
-                        class="mt-4 md:mt-8 text-lime-400 hover:text-lime-300 font-pixel uppercase text-[10px] tracking-widest
+                        class="mt-4 text-lime-400 hover:text-lime-300 font-pixel uppercase text-[10px] tracking-widest
                            focus:outline-none focus:text-lime-300"
                     >
                         Enter as Guest
@@ -340,7 +351,29 @@
                         </p>
                     {/if}
 
-                    <div class="flex w-full gap-3 mt-4">
+                    <!-- Turnstile moved above buttons for better visibility -->
+                    <div
+                        class="flex justify-center my-2 scale-90 origin-center min-h-[65px]"
+                    >
+                        <Turnstile
+                            siteKey={import.meta.env.PUBLIC_TURNSTILE_SITE_KEY}
+                            on:callback={(e) => {
+                                turnstileToken = e.detail.token;
+                                error = null;
+                            }}
+                            on:expired={() => {
+                                turnstileToken = "";
+                            }}
+                            on:error={(e) => {
+                                console.error("Turnstile Error:", e);
+                                error = "Verification failed. Please refresh.";
+                            }}
+                            theme="dark"
+                            appearance="interaction-only"
+                        />
+                    </div>
+
+                    <div class="flex w-full gap-3 mt-2">
                         <button
                             onclick={() => (step = "intro")}
                             class="flex-1 py-3 border-2 border-white/10 text-white/60 font-pixel uppercase text-xs rounded-lg hover:bg-white/5 hover:text-white transition-colors"
@@ -348,28 +381,26 @@
                             Back
                         </button>
                         <button
-                            onclick={submitUsername}
-                            disabled={!username.trim() || !turnstileToken}
+                            onclick={() => {
+                                if (!username.trim()) {
+                                    error = "Please enter a username.";
+                                    return;
+                                }
+                                if (!turnstileToken) {
+                                    error =
+                                        "Please complete the verification check above.";
+                                    return;
+                                }
+                                submitUsername();
+                            }}
                             class="flex-[2] py-3 bg-lime-500 text-black font-pixel font-bold uppercase text-xs rounded-lg shadow-[0_4px_0_rgba(65,130,22,0.6)]
-                               hover:bg-lime-400 active:translate-y-1 active:shadow-none disabled:opacity-50 disabled:cursor-not-allowed
-                               transition-all"
+                               hover:bg-lime-400 active:translate-y-1 active:shadow-none transition-all
+                               {!username.trim() || !turnstileToken
+                                ? 'opacity-80 cursor-not-allowed'
+                                : ''}"
                         >
                             Start Game
                         </button>
-                    </div>
-
-                    <div class="flex justify-center -mb-2 scale-75 origin-top">
-                        <Turnstile
-                            siteKey={import.meta.env.PUBLIC_TURNSTILE_SITE_KEY}
-                            on:callback={(e) => {
-                                turnstileToken = e.detail.token;
-                            }}
-                            on:expired={() => {
-                                turnstileToken = "";
-                            }}
-                            theme="dark"
-                            appearance="interaction-only"
-                        />
                     </div>
 
                     <div
