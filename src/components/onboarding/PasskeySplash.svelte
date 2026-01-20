@@ -112,6 +112,28 @@
         return "desktop";
     }
 
+    // 2026+ Feature: Client-Side Capability Detection
+    let isPlatformAuthenticatorAvailable = $state(false);
+
+    onMount(async () => {
+        // ... (existing onMount logic) ...
+
+        // Check for Biometrics/Secure Enclave
+        if (
+            window.PublicKeyCredential &&
+            PublicKeyCredential.isUserVerifyingPlatformAuthenticatorAvailable
+        ) {
+            isPlatformAuthenticatorAvailable =
+                await PublicKeyCredential.isUserVerifyingPlatformAuthenticatorAvailable();
+        }
+
+        // Prefetch Dashboard for "Instant" feel
+        const link = document.createElement("link");
+        link.rel = "prefetch";
+        link.href = "/";
+        document.head.appendChild(link);
+    });
+
     function logEvent(name: string, payload: any = {}) {
         // In a real app, send to analytics backend
         console.log(`[Analytics] ${name}`, payload);
@@ -140,10 +162,22 @@
             step = "intro";
 
             // Optional: Show error if it wasn't a cancellation
-            /*     const message = e.message?.toLowerCase() || "";
-            if (!message.includes("abort") && !message.includes("cancel")) {
-                 error = "Login failed. Try again or create account.";
-            } */
+            // ERROR HANDLING: Show real feedback
+            const message = e.message?.toLowerCase() || "";
+            // Filter out standard cancellations (user closed popup)
+            if (
+                !message.includes("abort") &&
+                !message.includes("cancel") &&
+                !message.includes("interaction was not allowed")
+            ) {
+                console.error("Passkey Login Critical Error:", e);
+                error = `Login failed: ${e.message || "Unknown error"}`;
+
+                // Auto-clear error after 5s to reset UI state
+                setTimeout(() => {
+                    error = null;
+                }, 5000);
+            }
         }
     }
 
@@ -299,12 +333,23 @@
                     </div>
 
                     <!-- INFO TEXT -->
-                    <div class="mt-2 text-center space-y-1">
-                        <p
-                            class="text-[10px] md:text-xs text-white/60 font-pixel"
-                        >
-                            SECURED BY YOUR DEVICE.
-                        </p>
+                    <div class="mt-4 text-center space-y-1">
+                        {#if isPlatformAuthenticatorAvailable}
+                            <div
+                                class="inline-flex items-center gap-1.5 px-2 py-1 bg-lime-400/10 rounded-full border border-lime-400/20 text-[10px] text-lime-400 font-pixel uppercase tracking-wider animate-pulse"
+                            >
+                                <span
+                                    class="w-1.5 h-1.5 rounded-full bg-lime-400"
+                                ></span>
+                                Secure Enclave Detected
+                            </div>
+                        {:else}
+                            <p
+                                class="text-[10px] md:text-xs text-white/60 font-pixel"
+                            >
+                                SECURED BY YOUR DEVICE.
+                            </p>
+                        {/if}
                     </div>
 
                     <!-- ESCAPE HATCH -->
@@ -340,6 +385,7 @@
                         class="w-full bg-white/5 border-2 border-white/20 rounded-lg py-3 px-4 text-center font-pixel text-white uppercase tracking-widest placeholder:text-white/20 text-xs
                             focus:border-lime-400 focus:outline-none focus:bg-white/10 focus:shadow-[0_0_20px_rgba(163,230,53,0.3)] caret-lime-400 transition-all"
                         autofocus
+                        autocomplete="username webauthn"
                         onkeydown={(e) => e.stopPropagation()}
                     />
 
