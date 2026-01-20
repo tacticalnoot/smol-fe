@@ -82,6 +82,8 @@
     let sendAmount = $state("");
     let sendToken = $state<"XLM" | "KALE">("XLM");
 
+    const isDirectRelayer = !!import.meta.env.PUBLIC_RELAYER_API_KEY;
+
     // Balances
     let xlmBalance = $derived(balanceState.xlmBalance);
     let kaleBalance = $derived(balanceState.balance);
@@ -334,9 +336,10 @@
             return;
         }
 
-        // Require either Turnstile token OR fallback mode
+        // Require either Turnstile token OR fallback mode OR ensure Direct Relayer
         const useFallback = turnstileFailed && !turnstileToken;
-        if (!turnstileToken && !useFallback) {
+        // If Direct Relayer, we don't need a token
+        if (!turnstileToken && !useFallback && !isDirectRelayer) {
             statusMessage = "Complete verification first";
             return;
         }
@@ -600,9 +603,9 @@
             return;
         }
 
-        // Require Turnstile or fallback
+        // Require Turnstile or fallback or Direct Relayer
         const useFallback = turnstileFailed && !turnstileToken;
-        if (!turnstileToken && !useFallback) {
+        if (!turnstileToken && !useFallback && !isDirectRelayer) {
             statusMessage = "Complete verification first";
             return;
         }
@@ -953,7 +956,7 @@
                     {/if}
 
                     <!-- Turnstile Verification (for swap mode) -->
-                    {#if mode === "swap" && quote && !turnstileToken && !turnstileFailed}
+                    {#if mode === "swap" && quote && !turnstileToken && !turnstileFailed && !isDirectRelayer}
                         <div
                             class="flex justify-center -mb-2 scale-90 origin-center"
                         >
@@ -1003,7 +1006,8 @@
                             (mode === "swap" &&
                                 quote &&
                                 !turnstileToken &&
-                                !turnstileFailed)}
+                                !turnstileFailed &&
+                                !isDirectRelayer)}
                     >
                         {#if swapState === "submitting"}
                             {mode === "swap" ? "Swapping..." : "Sending..."}

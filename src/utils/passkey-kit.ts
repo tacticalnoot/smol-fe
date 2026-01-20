@@ -92,6 +92,7 @@ export async function send<T>(
 
     // Kale Farm API endpoint (sponsored transactions with Turnstile verification)
     const relayerUrl = import.meta.env.PUBLIC_RELAYER_URL || "https://api.kalefarm.xyz";
+    const relayerApiKey = import.meta.env.PUBLIC_RELAYER_API_KEY;
 
     let lastError: Error | null = null;
 
@@ -112,14 +113,33 @@ export async function send<T>(
         try {
             const startTime = Date.now();
 
-            // Submit XDR to Kale Farm API with Turnstile token
-            const response = await fetch(`${relayerUrl}/`, {
+            // Prepare Request based on Mode
+            let fetchUrl = relayerUrl;
+            let headers: Record<string, string> = { 'Content-Type': 'application/json' };
+            let body: any = {};
+
+            if (relayerApiKey) {
+                // Direct OpenZeppelin Relayer Mode
+                // Assume relayerUrl is the exact endpoint (e.g. /transactions)
+                headers['Authorization'] = `Bearer ${relayerApiKey}`;
+                body = {
+                    transaction_xdr: xdr,
+                    fee_token: "native", // Assumed
+                    fee_bump: true
+                };
+            } else {
+                // KaleFarm Proxy Mode (Default)
+                // Normalize URL
+                if (!fetchUrl.endsWith('/')) fetchUrl += '/';
+
+                headers['X-Turnstile-Response'] = turnstileToken;
+                body = { xdr };
+            }
+
+            const response = await fetch(fetchUrl, {
                 method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                    'X-Turnstile-Response': turnstileToken,
-                },
-                body: JSON.stringify({ xdr }),
+                headers,
+                body: JSON.stringify(body),
                 signal: controller.signal,
             });
 
