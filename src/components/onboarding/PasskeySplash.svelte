@@ -281,9 +281,20 @@
         >
             <!-- DEBUG: Relayer Mode Indicator -->
             <div
-                class="absolute top-0 right-0 p-2 text-[8px] text-white/20 font-mono pointer-events-none"
+                class="fixed top-0 right-0 p-2 text-[10px] bg-black/80 backdrop-blur border-b border-l border-lime-400/20 text-lime-400 font-mono z-[10000] text-right pointer-events-none"
             >
-                MODE: {isDirectRelayer ? "DIRECT" : "DEFAULT"}
+                <div>
+                    MODE: {isDirectRelayer
+                        ? "DIRECT (BYPASS)"
+                        : "PROXY (TURNSTILE)"}
+                </div>
+                <div>
+                    HOST: {typeof window !== "undefined"
+                        ? window.location.hostname
+                        : "SERVER"}
+                </div>
+                <div>KEY: {hasApiKey ? "PRESENT" : "MISSING"}</div>
+                <div>IS_DEV: {isPagesDev || isLocalhost ? "YES" : "NO"}</div>
             </div>
             <!-- Rotating One-Liner -->
             <!-- Shift right slightly to align center with the '.' in SMOL.XYZ -->
