@@ -16,11 +16,15 @@
     // Check for Direct Relayer Mode (Dev/Preview)
     const isDirectRelayer = !!import.meta.env.PUBLIC_RELAYER_API_KEY;
 
-    console.log("[Debug] Relayer Config:", {
-        isDirectRelayer,
-        hasKey: !!import.meta.env.PUBLIC_RELAYER_API_KEY,
-        mode: import.meta.env.MODE,
-    });
+    console.log(
+        "[Debug] Relayer Config:",
+        JSON.stringify({
+            isDirectRelayer,
+            hasKey: !!import.meta.env.PUBLIC_RELAYER_API_KEY,
+            mode: import.meta.env.MODE,
+            baseUrl: import.meta.env.BASE_URL,
+        }),
+    );
 
     const authHook = useAuthentication();
 
