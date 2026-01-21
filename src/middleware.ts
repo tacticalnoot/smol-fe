@@ -24,8 +24,11 @@ export const onRequest: MiddlewareHandler = async (ctx, next) => {
 
     const host = url.hostname;
 
-    // 1) Prevent preview deployments from being indexed (EXCEPT embed routes for Twitter/oEmbed)
-    if (host.endsWith(".pages.dev") && !url.pathname.startsWith('/embed/')) {
+    // 1) Prevent preview deployments from being indexed (EXCEPT embed routes or Social Bots)
+    const ua = ctx.request.headers.get("user-agent") || "";
+    const isSocialBot = /Twitterbot|facebookexternalhit|Discordbot/i.test(ua);
+
+    if (host.endsWith(".pages.dev") && !url.pathname.startsWith('/embed/') && !isSocialBot) {
         res.headers.set("X-Robots-Tag", "noindex");
         return res;
     }
