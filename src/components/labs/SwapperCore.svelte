@@ -99,8 +99,6 @@
     let sendAmount = $state("");
     let sendToken = $state<"XLM" | "KALE">("XLM");
 
-    const isDirectRelayer = !!import.meta.env.PUBLIC_RELAYER_API_KEY;
-
     // Balances
     let xlmBalance = $derived(balanceState.xlmBalance);
     let kaleBalance = $derived(balanceState.balance);
