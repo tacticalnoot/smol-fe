@@ -1,3 +1,4 @@
+---
 const { id } = Astro.params;
 
 const API_URL = import.meta.env.PUBLIC_API_URL || "https://api.smol.xyz";
@@ -228,17 +229,55 @@ if (id) {
             cursor: pointer;
         }
     </style>
-    <script is:inline>
-        document.addEventListener('DOMContentLoaded', () => {
-            const audio = document.getElementById('audio');
-            const toggle = document.getElementById('toggle');
-            const overlay = document.getElementById('overlay-click');
-            const iconPlay = document.getElementById('icon-play');
-            const iconPause = document.getElementById('icon-pause');
-            const loading = document.getElementById('loading');
+</head>
+<body>
+    {found && song_url ? (
+        <>
+            <!-- Blurred Background -->
+            <div class="background-art" style={`background-image: url('${image_url}')`}></div>
+
+            <div class="main-content">
+                <!-- Central Art -->
+                <div class="art-container">
+                    <img src={image_url} alt="Cover Art" class="art" crossorigin="anonymous" />
+                </div>
+
+                <!-- Info -->
+                <div class="info">
+                    <div class="title">{title}</div>
+                    <div class="artist">{artist}</div>
+                </div>
+
+                <!-- Big Play Button -->
+                <button class="play-btn" id="toggle" aria-label="Play">
+                    <!-- Play Icon -->
+                    <svg class="icon" id="icon-play" viewBox="0 0 24 24">
+                        <path d="M8 5v14l11-7z"/>
+                    </svg>
+                    <!-- Pause Icon -->
+                    <svg class="icon icon-pause hidden" id="icon-pause" viewBox="0 0 24 24">
+                        <path d="M6 19h4V5H6v14zm8-14v14h4V5h-4z"/>
+                    </svg>
+                    <!-- Loading Spinner -->
+                    <div class="spinner hidden" id="loading"></div>
+                </button>
+                
+                <a href={`/${id}`} target="_blank" class="logo-tag">smol.xyz</a>
+            </div>
             
-            // Only run if elements exist (meaning content was found)
-            if (audio && toggle) {
+            <!-- Click overlay to toggle play when clicking anywhere on background -->
+            <div class="click-overlay" id="overlay-click"></div>
+
+            <audio id="audio" src={song_url} preload="metadata" crossorigin="anonymous"></audio>
+
+            <script>
+                const audio = document.getElementById('audio');
+                const toggle = document.getElementById('toggle');
+                const overlay = document.getElementById('overlay-click');
+                const iconPlay = document.getElementById('icon-play');
+                const iconPause = document.getElementById('icon-pause');
+                const loading = document.getElementById('loading');
+                
                 let isPlaying = false;
                 let isLoading = false;
 
@@ -291,82 +330,43 @@ if (id) {
                 
                 if (overlay) overlay.addEventListener('click', togglePlay);
 
-                audio.addEventListener('play', () => {
-                    isPlaying = true;
-                    isLoading = false;
-                    updateState();
-                });
+                if (audio) {
+                    audio.addEventListener('play', () => {
+                        isPlaying = true;
+                        isLoading = false;
+                        updateState();
+                    });
 
-                audio.addEventListener('pause', () => {
-                    isPlaying = false;
-                    isLoading = false;
-                    updateState();
-                });
+                    audio.addEventListener('pause', () => {
+                        isPlaying = false;
+                        isLoading = false;
+                        updateState();
+                    });
 
-                audio.addEventListener('waiting', () => {
-                    isLoading = true;
-                    updateState();
-                });
+                    audio.addEventListener('waiting', () => {
+                        isLoading = true;
+                        updateState();
+                    });
 
-                audio.addEventListener('playing', () => {
-                    isLoading = false;
-                    updateState();
-                });
-                
-                audio.addEventListener('ended', () => {
-                    isPlaying = false;
-                    audio.currentTime = 0;
-                    updateState();
-                });
+                    audio.addEventListener('playing', () => {
+                        isLoading = false;
+                        updateState();
+                    });
+                    
+                    audio.addEventListener('ended', () => {
+                        isPlaying = false;
+                        audio.currentTime = 0;
+                        updateState();
+                    });
 
-                // Check for autoplay param
-                const urlParams = new URLSearchParams(window.location.search);
-                if (urlParams.get('autoplay') === '1' || urlParams.get('auto_play') === 'true') {
-                    togglePlay();
+                    // Check for autoplay param
+                    const urlParams = new URLSearchParams(window.location.search);
+                    if (urlParams.get('autoplay') === '1' || urlParams.get('auto_play') === 'true') {
+                        // Attempt autoplay (might be blocked by browser policy without interaction)
+                        togglePlay();
+                    }
                 }
-            }
-        });
-    </script>
-</head>
-<body>
-    {found && song_url ? (
-        <>
-            <!-- Blurred Background -->
-            <div class="background-art" style={`background-image: url('${image_url}')`}></div>
-
-            <div class="main-content">
-                <!-- Central Art -->
-                <div class="art-container">
-                    <img src={image_url} alt="Cover Art" class="art" crossorigin="anonymous" />
-                </div>
-
-                <!-- Info -->
-                <div class="info">
-                    <div class="title">{title}</div>
-                    <div class="artist">{artist}</div>
-                </div>
-
-                <!-- Big Play Button -->
-                <button class="play-btn" id="toggle" aria-label="Play">
-                    <!-- Play Icon -->
-                    <svg class="icon" id="icon-play" viewBox="0 0 24 24">
-                        <path d="M8 5v14l11-7z"/>
-                    </svg>
-                    <!-- Pause Icon -->
-                    <svg class="icon icon-pause hidden" id="icon-pause" viewBox="0 0 24 24">
-                        <path d="M6 19h4V5H6v14zm8-14v14h4V5h-4z"/>
-                    </svg>
-                    <!-- Loading Spinner -->
-                    <div class="spinner hidden" id="loading"></div>
-                </button>
-                
-                <a href={`/${id}`} target="_blank" class="logo-tag">smol.xyz</a>
-            </div>
-            
-            <!-- Click overlay to toggle play when clicking anywhere on background -->
-            <div class="click-overlay" id="overlay-click"></div>
-
-            <audio id="audio" src={song_url} preload="metadata" crossorigin="anonymous"></audio>
+            </script>
         </>
     ) : (
         <div style="display:flex; flex-direction:column; align-items:center; justify-content:center; height:100vh; color:rgba(255,255,255,0.5);">
@@ -374,6 +374,5 @@ if (id) {
             <a href="/" target="_blank" style="color: #d836ff; font-size: 12px; text-decoration: none;">Go to smol.xyz</a>
         </div>
     )}
-
 </body>
 </html>
