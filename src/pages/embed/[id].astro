@@ -1,5 +1,5 @@
----
 const { id } = Astro.params;
+export const prerender = false;
 
 const API_URL = import.meta.env.PUBLIC_API_URL || "https://api.smol.xyz";
 const AUDIO_PROXY_URL = import.meta.env.PUBLIC_AUDIO_PROXY_URL;
