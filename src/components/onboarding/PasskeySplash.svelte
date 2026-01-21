@@ -16,8 +16,12 @@
     // Check for Direct Relayer Mode (Dev/Preview)
     // Direct Relayer (OZ Channels) should ONLY be used on dev/preview environments to bypass Turnstile.
     // Production (smol.xyz) must ALWAYS use KaleFarm Turnstile Proxy.
-    const isPagesDev = typeof window !== 'undefined' && window.location.hostname.includes('pages.dev');
-    const isLocalhost = typeof window !== 'undefined' && window.location.hostname.includes('localhost');
+    const isPagesDev =
+        typeof window !== "undefined" &&
+        window.location.hostname.includes("pages.dev");
+    const isLocalhost =
+        typeof window !== "undefined" &&
+        window.location.hostname.includes("localhost");
     const hasApiKey = !!import.meta.env.PUBLIC_RELAYER_API_KEY;
 
     const isDirectRelayer = (isPagesDev || isLocalhost) && hasApiKey;
@@ -31,8 +35,9 @@
             hasKey: hasApiKey,
             mode: import.meta.env.MODE,
             baseUrl: import.meta.env.BASE_URL,
-            availableKeys: Object.keys(import.meta.env).filter(k => k.startsWith('PUBLIC_'))
-        }));
+            availableKeys: Object.keys(import.meta.env).filter((k) =>
+                k.startsWith("PUBLIC_"),
+            ),
         }),
     );
 
