@@ -23,6 +23,8 @@
             hasKey: !!import.meta.env.PUBLIC_RELAYER_API_KEY,
             mode: import.meta.env.MODE,
             baseUrl: import.meta.env.BASE_URL,
+            availableKeys: Object.keys(import.meta.env).filter(k => k.startsWith('PUBLIC_'))
+        }));
         }),
     );
 
