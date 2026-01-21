@@ -104,14 +104,13 @@ export async function send<T>(
     const isSafeDevEnv = isPagesDev || isLocalhost;
 
     if (envApiKey && isSafeDevEnv) {
-        if (!relayerUrl) {
-            relayerUrl = "https://channels.openzeppelin.com";
-            useChannels = true;
-        } else if (relayerUrl.includes("channels.openzeppelin.com")) {
-            useChannels = true;
-        }
+        // FORCE OZ Channels on safe dev environments (pages.dev, localhost)
+        // This ignores PUBLIC_RELAYER_URL to ensure we bypass Turnstile
+        relayerUrl = "https://channels.openzeppelin.com";
+        useChannels = true;
+        console.log("[Relayer] Dev Mode: Forcing OZ Channels bypass");
     } else {
-        // Fallback to proxy
+        // Production: Use configured URL or fallback to proxy
         relayerUrl = relayerUrl || "https://api.kalefarm.xyz";
     }
 
