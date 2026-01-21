@@ -24,8 +24,8 @@ export const onRequest: MiddlewareHandler = async (ctx, next) => {
 
     const host = url.hostname;
 
-    // 1) Prevent preview deployments from being indexed
-    if (host.endsWith(".pages.dev")) {
+    // 1) Prevent preview deployments from being indexed (EXCEPT embed routes for Twitter/oEmbed)
+    if (host.endsWith(".pages.dev") && !url.pathname.startsWith('/embed/')) {
         res.headers.set("X-Robots-Tag", "noindex");
         return res;
     }
