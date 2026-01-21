@@ -1,7 +1,7 @@
 ---
-import Layout from "../../layouts/Layout.astro";
-
 const { id } = Astro.params;
+console.log("[Embed] Requested path:", Astro.url.pathname);
+
 const API_URL = import.meta.env.PUBLIC_API_URL || "https://api.smol.xyz";
 const AUDIO_PROXY_URL = import.meta.env.PUBLIC_AUDIO_PROXY_URL;
 
