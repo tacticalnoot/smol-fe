@@ -94,11 +94,16 @@ export async function send<T>(
     const envApiKey = import.meta.env.PUBLIC_RELAYER_API_KEY;
     const envUrl = import.meta.env.PUBLIC_RELAYER_URL;
 
-    // Default to Channels if Key is present but no URL (or if explicitly set to Channels)
+    // Default to Channels if Key is present AND we are on a safe domain (localhost/pages.dev)
     let relayerUrl = envUrl;
     let useChannels = false;
 
-    if (envApiKey) {
+    // Safety Check: Hostname verification
+    const isPagesDev = typeof window !== 'undefined' && window.location.hostname.includes('pages.dev');
+    const isLocalhost = typeof window !== 'undefined' && window.location.hostname.includes('localhost');
+    const isSafeDevEnv = isPagesDev || isLocalhost;
+
+    if (envApiKey && isSafeDevEnv) {
         if (!relayerUrl) {
             relayerUrl = "https://channels.openzeppelin.com";
             useChannels = true;
