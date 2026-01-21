@@ -268,104 +268,6 @@ if (id) {
             <div class="click-overlay" id="overlay-click"></div>
 
             <audio id="audio" src={song_url} preload="metadata" crossorigin="anonymous"></audio>
-
-            <script>
-                const audio = document.getElementById('audio');
-                const toggle = document.getElementById('toggle');
-                const overlay = document.getElementById('overlay-click');
-                const iconPlay = document.getElementById('icon-play');
-                const iconPause = document.getElementById('icon-pause');
-                const loading = document.getElementById('loading');
-                
-                let isPlaying = false;
-                let isLoading = false;
-
-                function updateState() {
-                    if (isLoading) {
-                        iconPlay.classList.add('hidden');
-                        iconPause.classList.add('hidden');
-                        loading.classList.remove('hidden');
-                    } else if (isPlaying) {
-                        iconPlay.classList.add('hidden');
-                        iconPause.classList.remove('hidden');
-                        loading.classList.add('hidden');
-                    } else {
-                        iconPlay.classList.remove('hidden');
-                        iconPause.classList.add('hidden');
-                        loading.classList.add('hidden');
-                    }
-                }
-
-                function togglePlay() {
-                    if (audio.paused) {
-                        const playPromise = audio.play();
-                        
-                        if (audio.readyState < 3) {
-                            isLoading = true;
-                            updateState();
-                        }
-
-                        if (playPromise !== undefined) {
-                            playPromise
-                                .then(() => {
-                                    // Started
-                                })
-                                .catch(error => {
-                                    console.error("Playback failed:", error);
-                                    isLoading = false;
-                                    isPlaying = false;
-                                    updateState();
-                                });
-                        }
-                    } else {
-                        audio.pause();
-                    }
-                }
-
-                if (toggle) toggle.addEventListener('click', (e) => {
-                    e.stopPropagation();
-                    togglePlay();
-                });
-                
-                if (overlay) overlay.addEventListener('click', togglePlay);
-
-                if (audio) {
-                    audio.addEventListener('play', () => {
-                        isPlaying = true;
-                        isLoading = false;
-                        updateState();
-                    });
-
-                    audio.addEventListener('pause', () => {
-                        isPlaying = false;
-                        isLoading = false;
-                        updateState();
-                    });
-
-                    audio.addEventListener('waiting', () => {
-                        isLoading = true;
-                        updateState();
-                    });
-
-                    audio.addEventListener('playing', () => {
-                        isLoading = false;
-                        updateState();
-                    });
-                    
-                    audio.addEventListener('ended', () => {
-                        isPlaying = false;
-                        audio.currentTime = 0;
-                        updateState();
-                    });
-
-                    // Check for autoplay param
-                    const urlParams = new URLSearchParams(window.location.search);
-                    if (urlParams.get('autoplay') === '1' || urlParams.get('auto_play') === 'true') {
-                        // Attempt autoplay (might be blocked by browser policy without interaction)
-                        togglePlay();
-                    }
-                }
-            </script>
         </>
     ) : (
         <div style="display:flex; flex-direction:column; align-items:center; justify-content:center; height:100vh; color:rgba(255,255,255,0.5);">
@@ -373,5 +275,103 @@ if (id) {
             <a href="/" target="_blank" style="color: #d836ff; font-size: 12px; text-decoration: none;">Go to smol.xyz</a>
         </div>
     )}
+
+    <script is:inline>
+        const audio = document.getElementById('audio');
+        const toggle = document.getElementById('toggle');
+        const overlay = document.getElementById('overlay-click');
+        const iconPlay = document.getElementById('icon-play');
+        const iconPause = document.getElementById('icon-pause');
+        const loading = document.getElementById('loading');
+        
+        // Only run if elements exist (meaning content was found)
+        if (audio && toggle) {
+            let isPlaying = false;
+            let isLoading = false;
+
+            function updateState() {
+                if (isLoading) {
+                    iconPlay.classList.add('hidden');
+                    iconPause.classList.add('hidden');
+                    loading.classList.remove('hidden');
+                } else if (isPlaying) {
+                    iconPlay.classList.add('hidden');
+                    iconPause.classList.remove('hidden');
+                    loading.classList.add('hidden');
+                } else {
+                    iconPlay.classList.remove('hidden');
+                    iconPause.classList.add('hidden');
+                    loading.classList.add('hidden');
+                }
+            }
+
+            function togglePlay() {
+                if (audio.paused) {
+                    const playPromise = audio.play();
+                    
+                    if (audio.readyState < 3) {
+                        isLoading = true;
+                        updateState();
+                    }
+
+                    if (playPromise !== undefined) {
+                        playPromise
+                            .then(() => {
+                                // Started
+                            })
+                            .catch(error => {
+                                console.error("Playback failed:", error);
+                                isLoading = false;
+                                isPlaying = false;
+                                updateState();
+                            });
+                    }
+                } else {
+                    audio.pause();
+                }
+            }
+
+            if (toggle) toggle.addEventListener('click', (e) => {
+                e.stopPropagation();
+                togglePlay();
+            });
+            
+            if (overlay) overlay.addEventListener('click', togglePlay);
+
+            audio.addEventListener('play', () => {
+                isPlaying = true;
+                isLoading = false;
+                updateState();
+            });
+
+            audio.addEventListener('pause', () => {
+                isPlaying = false;
+                isLoading = false;
+                updateState();
+            });
+
+            audio.addEventListener('waiting', () => {
+                isLoading = true;
+                updateState();
+            });
+
+            audio.addEventListener('playing', () => {
+                isLoading = false;
+                updateState();
+            });
+            
+            audio.addEventListener('ended', () => {
+                isPlaying = false;
+                audio.currentTime = 0;
+                updateState();
+            });
+
+            // Check for autoplay param
+            const urlParams = new URLSearchParams(window.location.search);
+            if (urlParams.get('autoplay') === '1' || urlParams.get('auto_play') === 'true') {
+                togglePlay();
+            }
+        }
+    </script>
 </body>
 </html>
