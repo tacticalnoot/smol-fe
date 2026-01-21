@@ -295,6 +295,14 @@
                 </div>
                 <div>KEY: {hasApiKey ? "PRESENT" : "MISSING"}</div>
                 <div>IS_DEV: {isPagesDev || isLocalhost ? "YES" : "NO"}</div>
+                <div>
+                    CFG_URL: {import.meta.env.PUBLIC_RELAYER_URL || "N/A"}
+                </div>
+                <div>
+                    TARGET: {isDirectRelayer
+                        ? "channels.openzeppelin.com"
+                        : "api.kalefarm.xyz"}
+                </div>
             </div>
             <!-- Rotating One-Liner -->
             <!-- Shift right slightly to align center with the '.' in SMOL.XYZ -->
