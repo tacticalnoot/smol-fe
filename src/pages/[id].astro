@@ -3,7 +3,6 @@ import SmolResults from "../components/smol/SmolResults.svelte";
 import Layout from "../layouts/Layout.astro";
 
 const { id } = Astro.params;
-console.log(`[Song Page] Requested ID: ${id}, URL: ${Astro.url.pathname}`);
 
 
 const API_URL = import.meta.env.PUBLIC_API_URL || "https://api.smol.xyz";
