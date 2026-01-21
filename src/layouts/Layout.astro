@@ -98,7 +98,7 @@ const fullSchema = [...siteSchema, ...schema];
 
 		<meta property="og:title" content={title} />
 		<meta property="og:description" content={description} />
-		<meta property="og:type" content="music.song" />
+		<meta property="og:type" content={twitter_player ? "video.other" : "music.song"} />
 		<meta property="og:url" content={canonical} />
 		<meta property="og:site_name" content="Smol" />
 		<meta property="og:image" content={image_url ? `${image_url}?scale=16` : `${siteOrigin}/meta.png`} />
@@ -117,6 +117,17 @@ const fullSchema = [...siteSchema, ...schema];
 				<meta name="twitter:player" content={twitter_player || song_url} />
 				<meta name="twitter:player:width" content="480" />
 				<meta name="twitter:player:height" content="480" />
+			</>
+		)}
+
+		{/* Discord Video Embed - tricks Discord into showing iframe player */}
+		{twitter_player && (
+			<>
+				<meta property="og:video" content={twitter_player} />
+				<meta property="og:video:secure_url" content={twitter_player} />
+				<meta property="og:video:type" content="text/html" />
+				<meta property="og:video:width" content="480" />
+				<meta property="og:video:height" content="480" />
 			</>
 		)}
 
