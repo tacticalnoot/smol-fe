@@ -358,6 +358,13 @@ if (id) {
                         audio.currentTime = 0;
                         updateState();
                     });
+
+                    // Check for autoplay param
+                    const urlParams = new URLSearchParams(window.location.search);
+                    if (urlParams.get('autoplay') === '1' || urlParams.get('auto_play') === 'true') {
+                        // Attempt autoplay (might be blocked by browser policy without interaction)
+                        togglePlay();
+                    }
                 }
             </script>
         </>
