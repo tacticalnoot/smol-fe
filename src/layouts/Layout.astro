@@ -17,6 +17,7 @@ interface Props {
 	image_url?: string | null;
 	hideBottomBar?: boolean;
     schema?: any[]; // page-specific JSON-LD blocks
+	twitter_player?: string | null;
 }
 
 const {
@@ -25,7 +26,8 @@ const {
 	song_url = "https://api.smol.xyz/song/491bb94b-79df-41bb-b09b-2d295f1dfd05.mp3",
 	image_url,
 	hideBottomBar = false,
-    schema = []
+    schema = [],
+	twitter_player = null
 } = Astro.props;
 
 const siteOrigin = "https://noot.smol.xyz";
@@ -112,9 +114,9 @@ const fullSchema = [...siteSchema, ...schema];
 		
 		{song_url && (
 			<>
-				<meta name="twitter:player" content={song_url} />
-				<meta name="twitter:player:width" content="500" />
-				<meta name="twitter:player:height" content="80" />
+				<meta name="twitter:player" content={twitter_player || song_url} />
+				<meta name="twitter:player:width" content="480" />
+				<meta name="twitter:player:height" content="480" />
 			</>
 		)}
 
