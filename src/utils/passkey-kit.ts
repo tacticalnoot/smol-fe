@@ -145,15 +145,33 @@ export async function send<T>(
                     // OZ Channels Format: { func: "base64", auth: ["base64"] }
                     // We must extract these from the signed transaction XDR
                     try {
-                        const { Transaction, Networks } = await import("@stellar/stellar-sdk");
+                        const { TransactionBuilder, Networks } = await import("@stellar/stellar-sdk");
                         // Parse XDR to inspect operations
-                        const tx = Transaction.fromXDR(xdr, import.meta.env.PUBLIC_NETWORK_PASSPHRASE || Networks.PUBLIC);
-
-                        if (tx.operations.length !== 1) {
-                            throw new Error(`Channels requires exactly 1 operation, found ${tx.operations.length}`);
+                        let tx;
+                        try {
+                            tx = TransactionBuilder.fromXDR(xdr, Networks.PUBLIC);
+                        } catch (primaryError) {
+                            console.warn(
+                                "[Relayer] Networks.PUBLIC failed, falling back to string passphrase",
+                                primaryError
+                            );
+                            try {
+                                tx = TransactionBuilder.fromXDR(xdr, "Public Global Stellar Network ; September 2015");
+                            } catch (fallbackError) {
+                                console.error("[Relayer] Failed to parse transaction XDR", fallbackError);
+                                throw new Error(
+                                    "Transaction processing failed — try refreshing or use a different wallet."
+                                );
+                            }
                         }
 
-                        const op = tx.operations[0];
+                        const operations = 'innerTransaction' in tx ? tx.innerTransaction.operations : tx.operations;
+
+                        if (operations.length !== 1) {
+                            throw new Error(`Channels requires exactly 1 operation, found ${operations.length}`);
+                        }
+
+                        const op = operations[0];
                         // Operations in SDK are objects, need to map to HostFunction XDR
                         // But getting the raw XDR of the function and auth is tricky from the Operation object alone
                         // correctly matching the "func" and "auth" expected by Channels.
