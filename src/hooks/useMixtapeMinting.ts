@@ -1,12 +1,13 @@
 import { Asset } from '@stellar/stellar-sdk/minimal';
 import { Client as SmolClient } from 'smol-sdk';
+import { account } from '../utils/passkey-kit';
 import { getSafeRpId } from '../utils/domains';
 import type { Smol } from '../types/domain';
 import type { MixtapeSmolData } from '../services/api/mixtapes';
 import { getLatestSequence } from '../utils/base';
-import { account } from '../utils/passkey-kit';
 import { RPC_URL } from '../utils/rpc';
 import { MINT_POLL_INTERVAL, MINT_POLL_TIMEOUT } from '../utils/mint';
+import { isUserCancellation } from '../utils/transaction-helpers';
 
 interface MintingState {
   mintIntervals: Map<string, NodeJS.Timeout>;
@@ -280,15 +281,7 @@ export function useMixtapeMinting() {
         console.error(`Error processing batch ${chunkIndex + 1}/${chunks.length}:`, error);
 
         // Check if user explicitly cancelled (don't retry cancellations)
-        const errorName = error instanceof Error ? error.name : '';
-        const errorMessage = error instanceof Error ? error.message : String(error);
-        const isCancellation =
-          errorName === 'NotAllowedError' ||
-          errorMessage.toLowerCase().includes('abort') ||
-          errorMessage.toLowerCase().includes('cancel') ||
-          errorMessage.toLowerCase().includes('not allowed');
-
-        if (isCancellation) {
+        if (isUserCancellation(error)) {
           // User cancelled - report error but CONTINUE with remaining batches
           onBatchError(chunkIndex, error as Error);
           console.log(`User cancelled batch ${chunkIndex + 1}, continuing with remaining batches...`);
