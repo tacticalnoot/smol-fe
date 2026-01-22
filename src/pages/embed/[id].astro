@@ -205,21 +205,32 @@ if (id) {
             to { transform: rotate(360deg); }
         }
 
-        /* Logo tag */
-        .logo-tag {
+        /* Button bar */
+        .button-bar {
             position: absolute;
             bottom: 20px;
-            font-size: 12px;
-            color: rgba(255,255,255,0.5);
+            display: flex;
+            gap: 12px;
+            z-index: 20;
+        }
+
+        .embed-btn {
+            font-family: var(--font-pixel), monospace;
+            font-size: 8px;
+            padding: 10px 16px;
+            border: 2px solid var(--primary);
+            background: rgba(216, 54, 255, 0.2);
+            color: #fff;
             text-decoration: none;
-            font-weight: 600;
             text-transform: uppercase;
-            letter-spacing: 0.15em;
-            transition: color 0.2s;
+            letter-spacing: 0.1em;
+            transition: all 0.2s;
+            cursor: pointer;
         }
         
-        .logo-tag:hover {
-            color: var(--primary);
+        .embed-btn:hover {
+            background: var(--primary);
+            box-shadow: 0 0 15px rgba(216, 54, 255, 0.5);
         }
 
         /* Full Click Area for usability */
@@ -267,7 +278,11 @@ if (id) {
                     <div class="spinner hidden" id="loading"></div>
                 </button>
                 
-                <a href={`/${id}`} target="_blank" class="logo-tag">smol.xyz</a>
+                <!-- Button bar -->
+                <div class="button-bar">
+                    <a href={`/${id}`} target="_blank" class="embed-btn">Listen</a>
+                    <a href="https://smol.xyz" target="_blank" class="embed-btn">smol.xyz</a>
+                </div>
             </div>
             
             <!-- Click overlay to toggle play when clicking anywhere on background -->
