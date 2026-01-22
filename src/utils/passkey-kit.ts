@@ -138,7 +138,7 @@ export async function send<T>(
             let headers: Record<string, string> = { 'Content-Type': 'application/json' };
             let body: any = {};
 
-            if (envApiKey) {
+            if (envApiKey && isSafeDevEnv) {
                 headers['Authorization'] = `Bearer ${envApiKey}`;
 
                 if (useChannels) {
