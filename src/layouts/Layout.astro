@@ -96,6 +96,11 @@ const fullSchema = [...siteSchema, ...schema];
         <meta name="keywords" content="AI music generator, AI songs, create music with AI, onchain music, crypto music, text to song, AI mixtape, Suno AI alternative, Udio alternative, make AI music" />
 		<link rel="canonical" href={canonical}>
 
+		{/* oEmbed discovery for Discord/social platforms */}
+		{twitter_player && (
+			<link rel="alternate" type="application/json+oembed" href={`${Astro.url.origin}/api/oembed?url=${encodeURIComponent(canonical)}`} title={title} />
+		)}
+
 		<meta property="og:title" content={title} />
 		<meta property="og:description" content={description} />
 		<meta property="og:type" content={twitter_player ? "video.other" : "music.song"} />
