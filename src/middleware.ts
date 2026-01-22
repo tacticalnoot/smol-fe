@@ -33,6 +33,17 @@ export const onRequest: MiddlewareHandler = async (ctx, next) => {
         return res;
     }
 
+    // 2) Allow embed routes to be loaded in iframes from any origin (required for Twitter/Discord player cards)
+    if (url.pathname.startsWith('/embed/')) {
+        // Remove any restrictive X-Frame-Options
+        res.headers.delete("X-Frame-Options");
+        // Allow framing from anywhere (required for Twitter mobile, Discord, etc.)
+        res.headers.set("Content-Security-Policy", "frame-ancestors *");
+        // Cross-origin isolation for media playback
+        res.headers.set("Cross-Origin-Embedder-Policy", "unsafe-none");
+        res.headers.set("Cross-Origin-Resource-Policy", "cross-origin");
+    }
+
     // 2) Cache HTML at the edge for public indexable routes AND generic root IDs (songs)
     // Our song routes are at root `/[id]`, so we can't easily adhere to `/song/` prefix restriction purely.
     // We can check if it looks like a resource or a page.
