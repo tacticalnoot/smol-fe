@@ -3,7 +3,7 @@
     import { fade, scale } from "svelte/transition";
     import { account, kale, send } from "../../utils/passkey-kit";
     import { getLatestSequence, truncate } from "../../utils/base";
-    import { userState } from "../../stores/user.svelte";
+    import { userState, ensureWalletConnected } from "../../stores/user.svelte";
     import { unlockUpgrade } from "../../stores/upgrades.svelte";
     import { Turnstile } from "svelte-turnstile";
     import {
@@ -49,6 +49,15 @@
             console.warn("Invalid artist address at mount, closing modal");
             onClose();
             return;
+        }
+
+        // Ensure wallet is connected before attempting any transactions
+        try {
+            await ensureWalletConnected();
+        } catch (err) {
+            console.error("Failed to connect wallet", err);
+            // The ensureWalletConnected function will auto-clear auth if connection fails
+            // so we don't need to do anything here
         }
 
         try {
@@ -106,6 +115,14 @@
 
         if (!userState.contractId || !userState.keyId) {
             error = "Please connect your wallet first.";
+            return;
+        }
+
+        // Ensure wallet is connected before attempting to sign
+        try {
+            await ensureWalletConnected();
+        } catch (err) {
+            error = "Failed to connect wallet. Please try logging in again.";
             return;
         }
 
