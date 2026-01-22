@@ -55,9 +55,11 @@
 
   onDestroy(() => {
     if (loadingInterval) clearInterval(loadingInterval);
-    document.removeEventListener("astro:before-preparation", startLoading);
-    document.removeEventListener("astro:after-swap", stopLoading);
-    document.removeEventListener("astro:page-load", stopLoading);
+    if (typeof document !== "undefined") {
+      document.removeEventListener("astro:before-preparation", startLoading);
+      document.removeEventListener("astro:after-swap", stopLoading);
+      document.removeEventListener("astro:page-load", stopLoading);
+    }
   });
 </script>
 
