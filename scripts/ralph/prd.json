@@ -79,6 +79,16 @@
                 "Ohloss adapter compiles and can be toggled via config",
                 "Policy hooks enforce Aquarius-only swap calls"
             ]
+        },
+        {
+            "id": "P0-UX-001",
+            "title": "Core music UX audit report (playback, loading, navigation)",
+            "priority": 0,
+            "passes": true,
+            "acceptanceCriteria": [
+                "Audit covers playback, data loading, and navigation flows",
+                "Report includes state machine, findings, patch plan, and quick wins"
+            ]
         }
     ]
 }
