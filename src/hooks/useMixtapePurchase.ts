@@ -6,6 +6,7 @@ import {
   type GetFreshTokenCallback,
   type SignAndSendResult,
 } from '../utils/transaction-helpers';
+import { account } from '../utils/passkey-kit';
 
 type SignableTransaction = Parameters<ReturnType<typeof account.get>['sign']>[0];
 
