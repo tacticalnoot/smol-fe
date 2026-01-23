@@ -46,8 +46,8 @@
             },
             upgrades: upgradesState,
             balance: {
-                kale: balanceState.kale,
-                xlm: balanceState.xlm
+                kale: balanceState.balance,
+                xlm: balanceState.xlmBalance
             },
             localStorage: {
                 contractId: localStorage.getItem('smol:contractId'),
@@ -152,7 +152,7 @@
             <div class="state-display">
                 <div><strong>Contract ID:</strong> {userState.contractId ? `${userState.contractId.substring(0, 8)}...` : 'None'}</div>
                 <div><strong>Wallet Connected:</strong> {userState.walletConnected ? '✅' : '❌'}</div>
-                <div><strong>KALE Balance:</strong> {balanceState.kale !== null ? `${balanceState.kale.toLocaleString()} KALE` : 'Loading...'}</div>
+                <div><strong>KALE Balance:</strong> {balanceState.balance !== null ? `${balanceState.balance.toLocaleString()} KALE` : 'Loading...'}</div>
             </div>
         </div>
     </div>
