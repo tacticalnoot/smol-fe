@@ -12,6 +12,23 @@
     let username = $state("");
     let error = $state<string | null>(null);
     let turnstileToken = $state("");
+    let shouldRedirect = $state(false);
+
+    // Early authentication check to prevent flash
+    // Check immediately if user is already authenticated
+    const checkAuth = () => {
+        if (typeof window === 'undefined') return false;
+        const skipped = localStorage.getItem("smol_passkey_skipped");
+        const hasContractId = userState.contractId;
+
+        if (hasContractId || (skipped && step !== "success")) {
+            return hasContractId;
+        }
+        return false;
+    };
+
+    // Perform check synchronously on component initialization
+    shouldRedirect = checkAuth();
 
     // Check for Direct Relayer Mode (Dev/Preview)
     // Direct Relayer (OZ Channels) should ONLY be used on dev/preview environments to bypass Turnstile.
@@ -105,16 +122,10 @@
         // Enable high-performance background mode
         setBackgroundAnimations(true);
 
-        // Check if already auth'd or skipped - redirect if so
-        const skipped = localStorage.getItem("smol_passkey_skipped");
-        if (userState.contractId || (skipped && step !== "success")) {
-            if (!userState.contractId && skipped) {
-                // Only skip if explicitly skipped
-            }
-            if (userState.contractId) {
-                window.location.href = "/";
-                return;
-            }
+        // Perform redirect if shouldRedirect was set during initialization
+        if (shouldRedirect) {
+            window.location.href = "/";
+            return;
         }
 
         // Analytics
@@ -256,6 +267,7 @@
 
 <svelte:window onkeydown={handleKeydown} />
 
+{#if !shouldRedirect}
 <div
     class="fixed inset-0 bg-transparent text-white overflow-y-auto font-pixel z-[9999]"
 >
@@ -555,6 +567,7 @@
         <!-- FOOTER CONTROLS REMOVED -->
     </main>
 </div>
+{/if}
 
 <style>
     /* Safely handle specific safe areas */
