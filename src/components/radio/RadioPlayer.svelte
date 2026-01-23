@@ -13,7 +13,7 @@
   import { navigate } from "astro:transitions/client";
 
   import LikeButton from "../ui/LikeButton.svelte";
-  import AudioManager from "../audio/AudioManager.svelte";
+  // import AudioManager from "../audio/AudioManager.svelte"; // Removed: Global BarAudioPlayer handles this
   import { userState } from "../../stores/user.svelte";
   import { buildRadioUrl } from "../../utils/radio";
   import CastButton from "../ui/CastButton.svelte";
@@ -492,8 +492,8 @@
     : ''}"
   onmousemove={handleMouseMove}
 >
-  <!-- AudioManager works fine inside div -->
-  <AudioManager {playlist} />
+  <!-- AudioManager removed: Global BarAudioPlayer handles this logic -->
+  <!-- <AudioManager {playlist} /> -->
 
   <!-- FULLSCREEN BACKGROUND (BLURRED ART) -->
   {#if isFullscreen && coverUrl}
