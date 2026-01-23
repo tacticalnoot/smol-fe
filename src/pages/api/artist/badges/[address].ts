@@ -73,12 +73,25 @@ export const GET: APIRoute = async ({ params }) => {
     // Query Horizon for operations
     try {
         const result = { premiumHeader: false, goldenKale: false, showcaseReel: false, vibeMatrix: false };
+
+        // First, check if the account/contract exists on the network
+        const accountCheckUrl = `https://horizon.stellar.org/accounts/${address}`;
+        const accountCheck = await fetch(accountCheckUrl);
+
+        if (!accountCheck.ok) {
+            // Account doesn't exist yet - return false for all badges and cache the result
+            cache.set(address, { data: result, expires: Date.now() + CACHE_TTL });
+            return new Response(JSON.stringify(result), {
+                headers: { 'Content-Type': 'application/json' }
+            });
+        }
+
         const limit = 200;
         const url = `https://horizon.stellar.org/accounts/${address}/operations?limit=${limit}&order=desc&include_failed=false`;
 
         const res = await fetch(url);
         if (!res.ok) {
-            // Account might not exist or have no operations
+            // Operations query failed - return false for all badges
             cache.set(address, { data: result, expires: Date.now() + CACHE_TTL });
             return new Response(JSON.stringify(result), {
                 headers: { 'Content-Type': 'application/json' }

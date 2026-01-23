@@ -50,6 +50,18 @@ export async function verifyPastPurchases(userAddress: string) {
     }
 
     try {
+        // First, check if the account/contract exists on the network
+        // This prevents 400 errors when querying operations for non-existent accounts
+        const accountCheckUrl = `https://horizon.stellar.org/accounts/${trimmedAddress}`;
+        const accountCheck = await fetch(accountCheckUrl);
+
+        if (!accountCheck.ok) {
+            // Account doesn't exist yet (likely a new passkey wallet that hasn't been used)
+            // This is normal - silently return without querying operations
+            console.log('[SmolMart] Account not found on network, skipping upgrade verification');
+            return;
+        }
+
         // Horizon Operations Endpoint
         // We look for 'invoke_host_function' where the function is 'transfer'
         // and the args match our store.
