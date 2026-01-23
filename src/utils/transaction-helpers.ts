@@ -140,17 +140,6 @@ export async function signAndSend<T>(
 
         console.log('[SignAndSend] Transaction submitted:', result);
 
-        // Update balance if requested
-        if (updateBalance && contractId) {
-            try {
-                await updateContractBalance(contractId);
-                console.log('[SignAndSend] Balance updated');
-            } catch (balanceError) {
-                console.warn('[SignAndSend] Failed to update balance:', balanceError);
-                // Don't fail the transaction if balance update fails
-            }
-        }
-
         return {
             success: true,
             result,
@@ -166,6 +155,17 @@ export async function signAndSend<T>(
         if (useLock) {
             releaseTransactionLock();
             console.log('[SignAndSend] Lock released');
+        }
+
+        // Update balance AFTER lock is released
+        if (updateBalance && contractId) {
+            try {
+                await updateContractBalance(contractId);
+                console.log('[SignAndSend] Balance updated');
+            } catch (balanceError) {
+                console.warn('[SignAndSend] Failed to update balance:', balanceError);
+                // Don't fail the transaction if balance update fails
+            }
         }
     }
 }
@@ -261,15 +261,6 @@ export async function signSendAndVerify<T>(
             }
         }
 
-        // Update balance if requested
-        if (updateBalance && contractId) {
-            try {
-                await updateContractBalance(contractId);
-            } catch (balanceError) {
-                console.warn('[SignSendVerify] Failed to update balance:', balanceError);
-            }
-        }
-
         return {
             success: true,
             result,
@@ -284,6 +275,17 @@ export async function signSendAndVerify<T>(
     } finally {
         if (useLock) {
             releaseTransactionLock();
+            console.log('[SignSendVerify] Lock released');
+        }
+
+        // Update balance AFTER lock is released
+        if (updateBalance && contractId) {
+            try {
+                await updateContractBalance(contractId);
+                console.log('[SignSendVerify] Balance updated');
+            } catch (balanceError) {
+                console.warn('[SignSendVerify] Failed to update balance:', balanceError);
+            }
         }
     }
 }
