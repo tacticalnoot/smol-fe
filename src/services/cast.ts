@@ -179,7 +179,7 @@ class CastService {
         console.error(`[Cast Error] ${errorMsg}`);
 
         // Show toast notification to user
-        if (typeof window !== "undefined" && window.alert) {
+        if (typeof window !== "undefined") {
             // TODO: Replace with proper toast UI component when available
             alert(`Cast Error: ${message}\n\nMedia URL: ${contentId}`);
         }

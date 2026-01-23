@@ -1,33 +1,40 @@
 # Testing Guide
 
-## Unit / Regression Tests
-The project uses `node --test` for lightweight unit and regression testing.
+## Prerequisites
+- Node.js 18+
+- pnpm (`pnpm install`)
 
-### Running Tests
+## Unit/Regression Tests
 ```bash
 pnpm test
 ```
 
-## E2E Tests (Playwright)
-We use Playwright for End-to-End testing of critical user flows ("Gold Paths").
-
-### Prerequisites
-1. Install Playwright browsers:
-   ```bash
-   pnpm exec playwright install
-   ```
-2. Start the dev server in a separate terminal:
-   ```bash
-   pnpm dev
-   ```
-
-### Running E2E Tests
+## Typecheck
 ```bash
-pnpm exec playwright test
+pnpm run check
 ```
 
-### Debugging
-Run tests with UI mode to inspect failures:
+## Build
 ```bash
-pnpm exec playwright test --ui
+pnpm run build
 ```
+
+## E2E (Playwright)
+### Install browsers
+```bash
+pnpm exec playwright install
+```
+
+### Run E2E tests (headless)
+```bash
+pnpm run test:e2e
+```
+
+### Run E2E tests (headed, for debugging)
+```bash
+pnpm run test:e2e -- --headed
+```
+
+### Notes
+- The Playwright config starts the dev server on `http://localhost:4321`.
+- The E2E suite uses a public sample song ID for the detail-page schema check.

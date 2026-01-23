@@ -2,6 +2,15 @@ import { PasskeyKit, SACClient } from "passkey-kit";
 import { AssembledTransaction } from "@stellar/stellar-sdk/minimal/contract";
 import type { Tx } from "@stellar/stellar-sdk/minimal/contract";
 import { RPC_URL } from "./rpc";
+import {
+    createCircuitBreakerError,
+    createRelayerError,
+    createTimeoutError,
+    createNetworkError,
+    createXDRParsingError,
+    logError,
+    type SmolError,
+} from "./errors";
 
 // Lazy-initialized singletons (avoid SSR initialization on CF Workers)
 let _account: PasskeyKit | null = null;
@@ -57,13 +66,93 @@ export const kale = { get: getKale };
 export const xlm = { get: getXlm };
 
 /**
+ * Circuit Breaker Pattern Implementation
+ *
+ * Protects the relayer service from being overwhelmed during outages.
+ * Based on industry-standard resilience patterns:
+ * - CLOSED: Normal operation, requests flow through
+ * - OPEN: Service is failing, reject all requests for timeout period
+ * - HALF_OPEN: Testing recovery with limited requests
+ *
+ * References:
+ * - https://www.codecentric.de/en/knowledge-hub/blog/resilience-design-patterns-retry-fallback-timeout-circuit-breaker
+ * - https://dev.to/rafaeljcamara/downstream-resiliency-the-timeout-retry-and-circuit-breaker-patterns-2bej
+ */
+interface CircuitBreakerState {
+    failures: number;
+    lastFailureTime: number;
+    state: 'CLOSED' | 'OPEN' | 'HALF_OPEN';
+}
+
+const circuitBreaker: CircuitBreakerState = {
+    failures: 0,
+    lastFailureTime: 0,
+    state: 'CLOSED'
+};
+
+const CIRCUIT_BREAKER_THRESHOLD = 5; // Open after 5 consecutive failures (recommended: 3-5)
+const CIRCUIT_BREAKER_TIMEOUT = 30000; // Reset after 30s (recommended: 30-60s)
+const CIRCUIT_BREAKER_HALF_OPEN_MAX_RETRIES = 1; // Only 1 retry in HALF_OPEN state
+
+function checkCircuitBreaker(): void {
+    const now = Date.now();
+
+    if (circuitBreaker.state === 'OPEN') {
+        // Check if timeout has passed
+        if (now - circuitBreaker.lastFailureTime > CIRCUIT_BREAKER_TIMEOUT) {
+            console.log('[CircuitBreaker] Transitioning to HALF_OPEN after timeout');
+            circuitBreaker.state = 'HALF_OPEN';
+            circuitBreaker.failures = 0;
+        } else {
+            const error = createCircuitBreakerError();
+            logError(error);
+            throw error;
+        }
+    }
+}
+
+function recordCircuitBreakerSuccess(): void {
+    if (circuitBreaker.state === 'HALF_OPEN') {
+        console.log('[CircuitBreaker] Success in HALF_OPEN, closing circuit');
+        circuitBreaker.state = 'CLOSED';
+    }
+    circuitBreaker.failures = 0;
+}
+
+function recordCircuitBreakerFailure(): void {
+    circuitBreaker.failures++;
+    circuitBreaker.lastFailureTime = Date.now();
+
+    if (circuitBreaker.failures >= CIRCUIT_BREAKER_THRESHOLD) {
+        console.warn(`[CircuitBreaker] Opening circuit after ${circuitBreaker.failures} failures`);
+        circuitBreaker.state = 'OPEN';
+    }
+}
+
+/**
  * Send a transaction via Kale Farm Relayer (Raw XDR)
  *
- * Uses Turnstile for Sybil resistance and sponsored transaction fees.
- * Includes retry logic, timeout protection, and telemetry.
+ * Implements enterprise-grade resilience patterns for blockchain transaction submission:
+ * - **Circuit Breaker**: Protects relayer from cascading failures (CLOSED → OPEN → HALF_OPEN)
+ * - **Exponential Backoff**: Progressively longer waits between retries (2s, 4s, 8s, 16s)
+ * - **Jitter**: Random variance (±25%) prevents thundering herd problem
+ * - **Timeout Protection**: 60s default with AbortController
+ * - **Typed Errors**: SmolError with user-friendly messages and recovery suggestions
  *
- * Note: OpenZeppelin Channels integration is not currently implemented.
- * The relayer endpoint is hardcoded to KaleFarm API for now.
+ * **Relayer Integration:**
+ * - Production: KaleFarm relayer with Turnstile verification (sponsored fees)
+ * - Dev/Preview: OpenZeppelin Channels with API key authentication
+ *
+ * **Best Practices References:**
+ * - https://developers.stellar.org/docs/build/guides/transactions/fee-bump-transactions
+ * - https://docs.openzeppelin.com/relayer/stellar
+ * - https://www.codecentric.de/en/knowledge-hub/blog/resilience-design-patterns-retry-fallback-timeout-circuit-breaker
+ *
+ * @param txn - AssembledTransaction, Tx, or raw XDR string to submit
+ * @param turnstileToken - Cloudflare Turnstile token for Sybil resistance
+ * @param options - Optional configuration for retries, timeout, and delay
+ * @returns Promise resolving to relayer response (includes transaction hash)
+ * @throws SmolError with categorized error types (NETWORK, RELAYER, TIMEOUT, etc.)
  */
 export async function send<T>(
     txn: AssembledTransaction<T> | Tx | string,
@@ -74,8 +163,11 @@ export async function send<T>(
         retryDelayMs?: number;
     } = {}
 ) {
+    // Check circuit breaker before attempting
+    checkCircuitBreaker();
+
     const {
-        maxRetries = 3,
+        maxRetries = circuitBreaker.state === 'HALF_OPEN' ? CIRCUIT_BREAKER_HALF_OPEN_MAX_RETRIES : 3,
         timeoutMs = 60000, // 60s default fetch timeout
         retryDelayMs = 2000, // Base delay for exponential backoff
     } = options;
@@ -116,13 +208,19 @@ export async function send<T>(
 
     let lastError: Error | null = null;
 
-    // Retry loop with exponential backoff
+    // Retry loop with exponential backoff + jitter
+    // Jitter prevents "thundering herd" where many clients retry simultaneously
     for (let attempt = 0; attempt <= maxRetries; attempt++) {
         const isRetry = attempt > 0;
 
         if (isRetry) {
-            const delay = retryDelayMs * Math.pow(2, attempt - 1);
-            console.log(`[Relayer] Retry attempt ${attempt}/${maxRetries} after ${delay}ms...`);
+            // Exponential backoff: 2s, 4s, 8s, 16s...
+            const baseDelay = retryDelayMs * Math.pow(2, attempt - 1);
+            // Add jitter: ±25% randomness to prevent synchronized retries
+            const jitter = baseDelay * 0.25 * (Math.random() * 2 - 1);
+            const delay = Math.max(0, baseDelay + jitter);
+
+            console.log(`[Relayer] Retry attempt ${attempt}/${maxRetries} after ${delay.toFixed(0)}ms...`);
             await new Promise(resolve => setTimeout(resolve, delay));
         }
 
@@ -138,53 +236,121 @@ export async function send<T>(
             let headers: Record<string, string> = { 'Content-Type': 'application/json' };
             let body: any = {};
 
-            if (envApiKey) {
+            if (envApiKey && isSafeDevEnv) {
                 headers['Authorization'] = `Bearer ${envApiKey}`;
 
                 if (useChannels) {
                     // OZ Channels Format: { func: "base64", auth: ["base64"] }
                     // We must extract these from the signed transaction XDR
                     try {
-                        const { Transaction, Networks } = await import("@stellar/stellar-sdk");
+                        const { TransactionBuilder, Networks } = await import("@stellar/stellar-sdk");
                         // Parse XDR to inspect operations
-                        const tx = Transaction.fromXDR(xdr, import.meta.env.PUBLIC_NETWORK_PASSPHRASE || Networks.PUBLIC);
-
-                        if (tx.operations.length !== 1) {
-                            throw new Error(`Channels requires exactly 1 operation, found ${tx.operations.length}`);
+                        let tx;
+                        try {
+                            tx = TransactionBuilder.fromXDR(xdr, Networks.PUBLIC);
+                        } catch (primaryError) {
+                            console.warn(
+                                "[Relayer] Networks.PUBLIC failed, falling back to string passphrase",
+                                primaryError
+                            );
+                            try {
+                                tx = TransactionBuilder.fromXDR(xdr, "Public Global Stellar Network ; September 2015");
+                            } catch (fallbackError) {
+                                const xdrError = createXDRParsingError(
+                                    'Failed to parse transaction XDR',
+                                    fallbackError as Error
+                                );
+                                logError(xdrError);
+                                throw xdrError;
+                            }
                         }
 
-                        const op = tx.operations[0];
-                        // Operations in SDK are objects, need to map to HostFunction XDR
-                        // But getting the raw XDR of the function and auth is tricky from the Operation object alone
-                        // correctly matching the "func" and "auth" expected by Channels.
-                        // Actually, looking at the SDK, we can just grab the operation XDR components.
+                        // Validate transaction structure
+                        const operations = 'innerTransaction' in tx ? tx.innerTransaction.operations : tx.operations;
 
-                        // Re-parsing to XDR to get the raw components safely
-                        // The 'op' object is the high-level representation.
-                        // We need op.toXDROperation() -> body -> invokeHostFunctionOp
-
-                        const opXdr = op.toXDROperation();
-                        if (opXdr.body().switch().name !== 'invokeHostFunction') {
-                            throw new Error(`Channels requires InvokeHostFunction operation`);
+                        if (!operations || !Array.isArray(operations)) {
+                            const xdrError = createXDRParsingError('Invalid transaction structure: no operations found');
+                            logError(xdrError);
+                            throw xdrError;
                         }
 
-                        const invokeOp = opXdr.body().invokeHostFunctionOp();
+                        if (operations.length !== 1) {
+                            const xdrError = createXDRParsingError(
+                                `Channels requires exactly 1 operation, found ${operations.length}`
+                            );
+                            logError(xdrError);
+                            throw xdrError;
+                        }
+
+                        const op = operations[0];
+                        const opXdr = op as { body?: () => any };
+
+                        // Validate operation has required methods
+                        if (!opXdr || typeof opXdr.body !== 'function') {
+                            const xdrError = createXDRParsingError('Invalid operation structure');
+                            logError(xdrError);
+                            throw xdrError;
+                        }
+
+                        // Validate operation type
+                        const opBody = opXdr.body();
+                        const opSwitch = opBody?.switch?.();
+                        if (!opSwitch || opSwitch.name !== 'invokeHostFunction') {
+                            const xdrError = createXDRParsingError(
+                                `Channels requires InvokeHostFunction operation, got ${opSwitch?.name || 'unknown'}`
+                            );
+                            logError(xdrError);
+                            throw xdrError;
+                        }
+
+                        const invokeOp = opBody?.invokeHostFunctionOp?.();
+
+                        // Validate invoke operation structure
+                        if (!invokeOp || typeof invokeOp.hostFunction !== 'function') {
+                            const xdrError = createXDRParsingError('Invalid InvokeHostFunction structure');
+                            logError(xdrError);
+                            throw xdrError;
+                        }
+
                         const funcXdr = invokeOp.hostFunction().toXDR('base64');
-                        const authXdr = invokeOp.auth().map(a => a.toXDR('base64'));
+                        const authEntries = invokeOp.auth();
+
+                        // Validate auth entries
+                        if (!Array.isArray(authEntries)) {
+                            const xdrError = createXDRParsingError('Invalid auth entries structure');
+                            logError(xdrError);
+                            throw xdrError;
+                        }
+
+                        const authXdr = authEntries.map(a => {
+                            if (!a || typeof a.toXDR !== 'function') {
+                                throw createXDRParsingError('Invalid auth entry');
+                            }
+                            return a.toXDR('base64');
+                        });
 
                         body = {
                             func: funcXdr,
                             auth: authXdr
                         };
-                        // Note: Channel URL usually requires a trailing slash or specific path?
-                        // scripts/test-oz-flow.mjs used `${OZ_CHANNELS_URL}/`
+
+                        // Note: Channel URL usually requires a trailing slash or specific path
                         if (!fetchUrl.endsWith('/')) fetchUrl += '/';
 
-                        console.log("[Relayer] Using OZ Channels format");
+                        console.log("[Relayer] Using OZ Channels format with", authXdr.length, "auth entries");
 
-                    } catch (e) {
-                        console.error("[Relayer] Failed to parse XDR for Channels:", e);
-                        throw new Error(`Failed to prepare Channels payload: ${e.message}`);
+                    } catch (e: any) {
+                        // If it's already a SmolError, re-throw
+                        if (e.name === 'SmolError') {
+                            throw e;
+                        }
+
+                        const xdrError = createXDRParsingError(
+                            `Failed to prepare Channels payload: ${e.message}`,
+                            e
+                        );
+                        logError(xdrError);
+                        throw xdrError;
                     }
                 } else {
                     // Fallback Direct Mode (if URL is not Channels, e.g. generic Relayer)
@@ -220,18 +386,37 @@ export async function send<T>(
                 // Distinguish between different error types
                 if (response.status >= 500 && attempt < maxRetries) {
                     // Server error - retry
-                    lastError = new Error(`Relayer server error (${response.status}): ${errorText}`);
-                    console.warn(`[Relayer] Server error, will retry: ${lastError.message}`);
+                    const error = createRelayerError(
+                        `Relayer server error: ${errorText}`,
+                        response.status
+                    );
+                    lastError = error;
+                    console.warn(`[Relayer] Server error, will retry: ${error.message}`);
                     continue;
                 } else if (response.status === 429 && attempt < maxRetries) {
-                    // Rate limit - retry with longer backoff
-                    lastError = new Error(`Relayer rate limit exceeded (${response.status})`);
-                    console.warn(`[Relayer] Rate limited, will retry: ${lastError.message}`);
-                    await new Promise(resolve => setTimeout(resolve, retryDelayMs * 2));
+                    // Rate limit - retry with longer backoff + jitter
+                    const error = createRelayerError(
+                        'Relayer rate limit exceeded',
+                        response.status
+                    );
+                    lastError = error;
+                    console.warn(`[Relayer] Rate limited, will retry: ${error.message}`);
+
+                    // Double the delay for rate limits + jitter
+                    const baseDelay = retryDelayMs * 2;
+                    const jitter = baseDelay * 0.25 * (Math.random() * 2 - 1);
+                    const delay = Math.max(0, baseDelay + jitter);
+
+                    await new Promise(resolve => setTimeout(resolve, delay));
                     continue;
                 } else {
                     // Client error or final retry - don't retry
-                    throw new Error(`Relayer submission failed (${response.status} ${response.statusText}): ${errorText}`);
+                    const error = createRelayerError(
+                        `Relayer submission failed: ${errorText}`,
+                        response.status
+                    );
+                    logError(error);
+                    throw error;
                 }
             }
 
@@ -240,35 +425,56 @@ export async function send<T>(
                 console.log(`[Relayer] Success after ${attempt} retries`);
             }
 
+            // Record circuit breaker success
+            recordCircuitBreakerSuccess();
+
             return response.json();
 
         } catch (error: any) {
             clearTimeout(timeoutId);
 
+            // If it's already a SmolError, re-throw it
+            if (error.name === 'SmolError') {
+                throw error;
+            }
+
             // Distinguish between timeout and network errors
             if (error.name === 'AbortError') {
-                lastError = new Error(`Relayer request timeout after ${timeoutMs}ms (attempt ${attempt + 1}/${maxRetries + 1})`);
-                console.error(`[Relayer] Timeout: ${lastError.message}`);
+                const timeoutError = createTimeoutError('Relayer request', timeoutMs);
+                lastError = timeoutError;
+                console.error(`[Relayer] Timeout: ${timeoutError.message}`);
 
                 if (attempt < maxRetries) {
                     console.log(`[Relayer] Will retry after timeout...`);
                     continue;
                 }
             } else if (error.message?.includes('fetch')) {
-                lastError = new Error(`Relayer network error: ${error.message}`);
-                console.error(`[Relayer] Network error: ${lastError.message}`);
+                const networkError = createNetworkError(error.message, error);
+                lastError = networkError;
+                console.error(`[Relayer] Network error: ${networkError.message}`);
 
                 if (attempt < maxRetries) {
                     console.log(`[Relayer] Will retry after network error...`);
                     continue;
                 }
             } else {
-                // Non-retryable error (e.g., validation error)
+                // Non-retryable error (e.g., validation error, XDR parsing error)
                 throw error;
             }
         }
     }
 
-    // All retries exhausted
-    throw lastError || new Error(`Relayer submission failed after ${maxRetries + 1} attempts`);
+    // All retries exhausted - record circuit breaker failure
+    recordCircuitBreakerFailure();
+
+    if (lastError && 'name' in lastError && lastError.name === 'SmolError') {
+        logError(lastError as any as SmolError);
+        throw lastError;
+    }
+
+    const finalError = createRelayerError(
+        `Relayer submission failed after ${maxRetries + 1} attempts`
+    );
+    logError(finalError);
+    throw finalError;
 }
