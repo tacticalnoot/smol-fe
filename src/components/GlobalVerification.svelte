@@ -3,13 +3,22 @@
     import { verifyPastPurchases } from "../services/api/verifyUpgrades";
     import { validateAndRevertTheme, preferences } from "../stores/preferences.svelte";
     import { upgradesState } from "../stores/upgrades.svelte";
+    import { StrKey } from '@stellar/stellar-sdk';
 
     let checkedAddress = $state<string | null>(null);
 
     $effect(() => {
         const address = userState.contractId;
 
+        // Validate address before calling API
         if (address && address !== checkedAddress) {
+            // Additional validation: ensure it's a valid contract address
+            const trimmed = address.trim();
+            if (!trimmed || !StrKey.isValidContract(trimmed)) {
+                console.warn('[GlobalVerification] Invalid or empty contract address, skipping verification');
+                return;
+            }
+
             checkedAddress = address;
             verifyPastPurchases(address).then(() => {
                 // After upgrades are verified, validate theme eligibility
