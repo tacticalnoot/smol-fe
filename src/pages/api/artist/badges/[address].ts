@@ -1,5 +1,6 @@
 import type { APIRoute } from 'astro';
 import { getVIPAccess } from '../../../../utils/vip';
+import { StrKey } from '@stellar/stellar-sdk';
 
 const ADMIN_ADDRESS = "CBNORBI4DCE7LIC42FWMCIWQRULWAUGF2MH2Z7X2RNTFAYNXIACJ33IM";
 const KALE_ISSUER = "GAKDNXUGEIRGESAXOPUHU7YNQNQN4RVD7ZS665HXBQJ4CEJJAXIUWE"; // Official KALE token issuer
@@ -32,6 +33,21 @@ export const GET: APIRoute = async ({ params }) => {
 
     if (!address) {
         return new Response(JSON.stringify({ error: 'Address required' }), {
+            status: 400,
+            headers: { 'Content-Type': 'application/json' }
+        });
+    }
+
+    // Validate address format
+    const trimmed = address.trim();
+    if (!trimmed || !StrKey.isValidContract(trimmed)) {
+        return new Response(JSON.stringify({
+            error: 'Invalid contract address format',
+            premiumHeader: false,
+            goldenKale: false,
+            showcaseReel: false,
+            vibeMatrix: false
+        }), {
             status: 400,
             headers: { 'Content-Type': 'application/json' }
         });
