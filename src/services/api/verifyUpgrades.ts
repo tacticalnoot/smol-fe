@@ -20,12 +20,26 @@ const SMOL_MART_AMOUNTS = {
  * This effectively "Restores Purchases" from the blockchain.
  */
 export async function verifyPastPurchases(userAddress: string) {
+    // Validate address is not empty or null
     if (!userAddress) return;
+
+    // Validate address is a properly formatted Stellar contract address
+    const trimmedAddress = userAddress.trim();
+    if (!trimmedAddress) {
+        console.warn('[SmolMart] Empty address provided to verifyPastPurchases');
+        return;
+    }
+
+    // Validate it's a valid contract address (starts with C and proper format)
+    if (!StrKey.isValidContract(trimmedAddress)) {
+        console.warn('[SmolMart] Invalid contract address format:', trimmedAddress);
+        return;
+    }
 
 
 
     // VIP check - instant unlock for whitelisted addresses (granular)
-    const vipAccess = getVIPAccess(userAddress);
+    const vipAccess = getVIPAccess(trimmedAddress);
     if (vipAccess) {
 
         if (vipAccess.premiumHeader) unlockUpgrade('premiumHeader');
@@ -40,7 +54,7 @@ export async function verifyPastPurchases(userAddress: string) {
         // We look for 'invoke_host_function' where the function is 'transfer'
         // and the args match our store.
         const limit = 200;
-        const url = `https://horizon.stellar.org/accounts/${userAddress}/operations?limit=${limit}&order=desc&include_failed=false`;
+        const url = `https://horizon.stellar.org/accounts/${trimmedAddress}/operations?limit=${limit}&order=desc&include_failed=false`;
 
         const res = await fetch(url);
         if (!res.ok) return;
