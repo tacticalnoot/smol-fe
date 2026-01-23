@@ -360,13 +360,16 @@
     }
 
     function share() {
+        // Create clean URL without query parameters for better social media compatibility
+        const cleanUrl = `${window.location.origin}${window.location.pathname}`;
+
         navigator
             .share?.({
                 title: data?.d1?.Title,
-                url: window.location.href,
+                url: cleanUrl,
             })
             .catch(() => {
-                navigator.clipboard.writeText(window.location.href);
+                navigator.clipboard.writeText(cleanUrl);
                 alert("Link copied!");
             });
     }
