@@ -16,6 +16,7 @@
         buildSwapTransactionForCAddress,
         isCAddress,
     } from "../../utils/swap-builder";
+    import { getLatestSequence } from "../../utils/base";
     import {
         userState,
         setUserAuth,
