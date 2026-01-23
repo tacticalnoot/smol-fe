@@ -249,18 +249,18 @@ export async function send<T>(
                         }
 
                         const op = operations[0];
+                        const opXdr = op as { body?: () => any };
 
                         // Validate operation has required methods
-                        if (!op || typeof op.toXDROperation !== 'function') {
+                        if (!opXdr || typeof opXdr.body !== 'function') {
                             const xdrError = createXDRParsingError('Invalid operation structure');
                             logError(xdrError);
                             throw xdrError;
                         }
 
-                        const opXdr = op.toXDROperation();
-
                         // Validate operation type
-                        const opSwitch = opXdr.body().switch();
+                        const opBody = opXdr.body();
+                        const opSwitch = opBody?.switch?.();
                         if (!opSwitch || opSwitch.name !== 'invokeHostFunction') {
                             const xdrError = createXDRParsingError(
                                 `Channels requires InvokeHostFunction operation, got ${opSwitch?.name || 'unknown'}`
@@ -269,7 +269,7 @@ export async function send<T>(
                             throw xdrError;
                         }
 
-                        const invokeOp = opXdr.body().invokeHostFunctionOp();
+                        const invokeOp = opBody?.invokeHostFunctionOp?.();
 
                         // Validate invoke operation structure
                         if (!invokeOp || typeof invokeOp.hostFunction !== 'function') {

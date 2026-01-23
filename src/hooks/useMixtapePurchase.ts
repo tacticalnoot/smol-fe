@@ -5,6 +5,8 @@ import { getLatestSequence, pollTransaction } from '../utils/base';
 import { account, send } from '../utils/passkey-kit';
 import { RPC_URL } from '../utils/rpc';
 
+type SignableTransaction = Parameters<ReturnType<typeof account.get>['sign']>[0];
+
 interface PurchaseBatchParams {
   tokensOut: string[];
   cometAddresses: string[];
@@ -36,7 +38,8 @@ export function useMixtapePurchase() {
     });
 
     const sequence = await getLatestSequence();
-    await account.get().sign(tx, {
+    const signableTx = tx as unknown as SignableTransaction;
+    await account.get().sign(signableTx, {
       rpId: getSafeRpId(window.location.hostname),
       keyId: userKeyId,
       expiration: sequence + 60,
@@ -52,7 +55,7 @@ export function useMixtapePurchase() {
 
     try {
       // Submit transaction via passkey server
-      await send(tx, turnstileToken);
+      await send(signableTx, turnstileToken);
 
       // Even on success, poll to ensure ledger state is ready for next batch
       if (txHash) {

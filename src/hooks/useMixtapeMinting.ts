@@ -8,6 +8,8 @@ import { account } from '../utils/passkey-kit';
 import { RPC_URL } from '../utils/rpc';
 import { MINT_POLL_INTERVAL, MINT_POLL_TIMEOUT } from '../utils/mint';
 
+type SignableTransaction = Parameters<ReturnType<typeof account.get>['sign']>[0];
+
 interface MintingState {
   mintIntervals: Map<string, NodeJS.Timeout>;
   mintTimeouts: Map<string, NodeJS.Timeout>;
@@ -158,15 +160,16 @@ export function useMixtapeMinting() {
     });
 
     const sequence = await getLatestSequence();
-    at = await account.get().sign(at, {
+    const signable = at as unknown as SignableTransaction;
+    const signed = await account.get().sign(signable, {
       rpId: getSafeRpId(window.location.hostname),
       keyId: userKeyId,
       expiration: sequence + 60,
     });
 
-    const xdrString = at.built?.toXDR();
-    if (at.built) {
-      console.log("Mint Tx Hash:", at.built.hash().toString('hex'));
+    const xdrString = signed.built?.toXDR();
+    if (signed.built) {
+      console.log("Mint Tx Hash:", signed.built.hash().toString('hex'));
     }
 
     if (!xdrString) {
