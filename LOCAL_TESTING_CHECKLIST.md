@@ -37,8 +37,8 @@ location.reload();
 1. Navigate to `/onboarding/passkey`
 2. Click "CREATE NEW ACCOUNT"
 3. Enter username
-4. Complete Turnstile
-5. Approve passkey creation in browser
+4. Approve passkey creation in browser
+   - **Note:** Turnstile is bypassed in dev mode (localhost), only required in production
 
 **Expected Logs:**
 ```
