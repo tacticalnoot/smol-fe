@@ -1,6 +1,4 @@
 import type { APIRoute } from 'astro';
-
-import type { APIRoute } from 'astro';
 import { fetchSmols } from '../services/api/smols';
 
 export const GET: APIRoute = async ({ request }) => {

@@ -19,7 +19,7 @@
     const checkAuth = () => {
         if (typeof window === 'undefined') return false;
         const skipped = localStorage.getItem("smol_passkey_skipped");
-        const hasContractId = userState.contractId;
+        const hasContractId = Boolean(userState.contractId);
 
         if (hasContractId || (skipped && step !== "success")) {
             return hasContractId;
