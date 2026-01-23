@@ -65,7 +65,19 @@ export const sac = { get: getSac };
 export const kale = { get: getKale };
 export const xlm = { get: getXlm };
 
-// Circuit Breaker State
+/**
+ * Circuit Breaker Pattern Implementation
+ *
+ * Protects the relayer service from being overwhelmed during outages.
+ * Based on industry-standard resilience patterns:
+ * - CLOSED: Normal operation, requests flow through
+ * - OPEN: Service is failing, reject all requests for timeout period
+ * - HALF_OPEN: Testing recovery with limited requests
+ *
+ * References:
+ * - https://www.codecentric.de/en/knowledge-hub/blog/resilience-design-patterns-retry-fallback-timeout-circuit-breaker
+ * - https://dev.to/rafaeljcamara/downstream-resiliency-the-timeout-retry-and-circuit-breaker-patterns-2bej
+ */
 interface CircuitBreakerState {
     failures: number;
     lastFailureTime: number;
@@ -78,8 +90,8 @@ const circuitBreaker: CircuitBreakerState = {
     state: 'CLOSED'
 };
 
-const CIRCUIT_BREAKER_THRESHOLD = 5; // Open after 5 consecutive failures
-const CIRCUIT_BREAKER_TIMEOUT = 30000; // Reset after 30s
+const CIRCUIT_BREAKER_THRESHOLD = 5; // Open after 5 consecutive failures (recommended: 3-5)
+const CIRCUIT_BREAKER_TIMEOUT = 30000; // Reset after 30s (recommended: 30-60s)
 const CIRCUIT_BREAKER_HALF_OPEN_MAX_RETRIES = 1; // Only 1 retry in HALF_OPEN state
 
 function checkCircuitBreaker(): void {
@@ -120,11 +132,27 @@ function recordCircuitBreakerFailure(): void {
 /**
  * Send a transaction via Kale Farm Relayer (Raw XDR)
  *
- * Uses Turnstile for Sybil resistance and sponsored transaction fees.
- * Includes retry logic, timeout protection, circuit breaker, and telemetry.
+ * Implements enterprise-grade resilience patterns for blockchain transaction submission:
+ * - **Circuit Breaker**: Protects relayer from cascading failures (CLOSED → OPEN → HALF_OPEN)
+ * - **Exponential Backoff**: Progressively longer waits between retries (2s, 4s, 8s, 16s)
+ * - **Jitter**: Random variance (±25%) prevents thundering herd problem
+ * - **Timeout Protection**: 60s default with AbortController
+ * - **Typed Errors**: SmolError with user-friendly messages and recovery suggestions
  *
- * Note: OpenZeppelin Channels integration is not currently implemented.
- * The relayer endpoint is hardcoded to KaleFarm API for now.
+ * **Relayer Integration:**
+ * - Production: KaleFarm relayer with Turnstile verification (sponsored fees)
+ * - Dev/Preview: OpenZeppelin Channels with API key authentication
+ *
+ * **Best Practices References:**
+ * - https://developers.stellar.org/docs/build/guides/transactions/fee-bump-transactions
+ * - https://docs.openzeppelin.com/relayer/stellar
+ * - https://www.codecentric.de/en/knowledge-hub/blog/resilience-design-patterns-retry-fallback-timeout-circuit-breaker
+ *
+ * @param txn - AssembledTransaction, Tx, or raw XDR string to submit
+ * @param turnstileToken - Cloudflare Turnstile token for Sybil resistance
+ * @param options - Optional configuration for retries, timeout, and delay
+ * @returns Promise resolving to relayer response (includes transaction hash)
+ * @throws SmolError with categorized error types (NETWORK, RELAYER, TIMEOUT, etc.)
  */
 export async function send<T>(
     txn: AssembledTransaction<T> | Tx | string,
@@ -180,13 +208,19 @@ export async function send<T>(
 
     let lastError: Error | null = null;
 
-    // Retry loop with exponential backoff
+    // Retry loop with exponential backoff + jitter
+    // Jitter prevents "thundering herd" where many clients retry simultaneously
     for (let attempt = 0; attempt <= maxRetries; attempt++) {
         const isRetry = attempt > 0;
 
         if (isRetry) {
-            const delay = retryDelayMs * Math.pow(2, attempt - 1);
-            console.log(`[Relayer] Retry attempt ${attempt}/${maxRetries} after ${delay}ms...`);
+            // Exponential backoff: 2s, 4s, 8s, 16s...
+            const baseDelay = retryDelayMs * Math.pow(2, attempt - 1);
+            // Add jitter: ±25% randomness to prevent synchronized retries
+            const jitter = baseDelay * 0.25 * (Math.random() * 2 - 1);
+            const delay = Math.max(0, baseDelay + jitter);
+
+            console.log(`[Relayer] Retry attempt ${attempt}/${maxRetries} after ${delay.toFixed(0)}ms...`);
             await new Promise(resolve => setTimeout(resolve, delay));
         }
 
@@ -360,14 +394,20 @@ export async function send<T>(
                     console.warn(`[Relayer] Server error, will retry: ${error.message}`);
                     continue;
                 } else if (response.status === 429 && attempt < maxRetries) {
-                    // Rate limit - retry with longer backoff
+                    // Rate limit - retry with longer backoff + jitter
                     const error = createRelayerError(
                         'Relayer rate limit exceeded',
                         response.status
                     );
                     lastError = error;
                     console.warn(`[Relayer] Rate limited, will retry: ${error.message}`);
-                    await new Promise(resolve => setTimeout(resolve, retryDelayMs * 2));
+
+                    // Double the delay for rate limits + jitter
+                    const baseDelay = retryDelayMs * 2;
+                    const jitter = baseDelay * 0.25 * (Math.random() * 2 - 1);
+                    const delay = Math.max(0, baseDelay + jitter);
+
+                    await new Promise(resolve => setTimeout(resolve, delay));
                     continue;
                 } else {
                     // Client error or final retry - don't retry
