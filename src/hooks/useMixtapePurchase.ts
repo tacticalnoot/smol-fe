@@ -7,6 +7,8 @@ import {
   type SignAndSendResult,
 } from '../utils/transaction-helpers';
 
+type SignableTransaction = Parameters<ReturnType<typeof account.get>['sign']>[0];
+
 interface PurchaseBatchParams {
   tokensOut: string[];
   cometAddresses: string[];
