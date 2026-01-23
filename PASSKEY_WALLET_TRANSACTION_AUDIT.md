@@ -316,33 +316,69 @@
 
 ## 4. HORIZON API CALLS
 
+### 4.0 Unified Horizon Utility (NEW)
+**File:** `src/utils/horizon.ts`
+
+This is a comprehensive utility module that consolidates all Horizon API operations across the codebase. All Horizon calls should use these utilities.
+
+#### `accountExists(address: string): Promise<boolean>`
+- **What it does:** Checks if account/contract exists on Stellar network
+- **Validation:** Accepts both G (account) and C (contract) addresses, validates with StrKey
+- **Deduplication:** Uses inflightRequests Map to prevent parallel requests for same address
+- **Error handling:** Returns false on network errors, logs warnings for invalid addresses
+- **Status:** ✅ Production-ready
+
+#### `scanAccountOperations(address, options): Promise<OperationsScanResult>`
+- **What it does:** Scans operations for an account with pagination support
+- **Features:**
+  - Automatic account existence check (returns empty if not found)
+  - Parses XDR for transfer operations
+  - Supports pagination (maxPages parameter)
+  - Can stop early via stopAtTransfer callback
+  - Request deduplication
+- **Options:**
+  - `limit`: Operations per page (default 200)
+  - `includeFailedTransactions`: Include failed txs (default false)
+  - `maxPages`: Max pages to scan (default 1)
+  - `stopAtTransfer`: Callback to stop early when transfer found
+- **Returns:** `{ transfers, operationsScanned, hasMore }`
+- **Status:** ✅ Production-ready
+
+#### `findTransfersToRecipient(address, recipient, amounts, options): Promise<Map<number, boolean>>`
+- **What it does:** Convenience method to find specific payment patterns
+- **Use case:** Verifying purchases/upgrades by looking for specific amounts
+- **Features:**
+  - Automatically stops when all amounts found (efficient)
+  - Can filter by contract address (token type)
+  - Amount matching with 0.1 tolerance
+- **Status:** ✅ Production-ready, used by verifyUpgrades and badges API
+
+#### `parseTransferOperation(op): ParsedTransfer | null`
+- **What it does:** Parses XDR from Horizon operation to extract transfer details
+- **Returns:** `{ from, to, amount, contractAddress, functionName }`
+- **Error handling:** Returns null on parse errors (not all ops are parseable)
+- **Status:** ✅ Production-ready
+
 ### 4.1 Upgrade Verification
-**File:** `src/services/api/verifyUpgrades.ts`
+**File:** `src/services/api/verifyUpgrades.ts` (Refactored 2026-01-23)
 
-#### Lines 55-72: Account existence check
-- **What it does:** Checks if account exists on Horizon before querying operations
-- **URL:** `https://horizon.stellar.org/accounts/${address}`
-- **What could go wrong:** New passkey wallets don't exist yet (expected)
-- **Current validation:** ✅ Silently returns on 404 (expected for new wallets)
-- **Status:** ✅ Fixed (2026-01-23)
-
-#### Lines 69-151: Operations scan for upgrade purchases
-- **What it does:** Fetches last 200 operations, parses XDR to find KALE transfers to admin
-- **URL:** `https://horizon.stellar.org/accounts/${address}/operations?limit=200&order=desc&include_failed=false`
-- **What could go wrong:** XDR parsing errors, pagination issues (only gets 200), payment in operation 201+
-- **Current validation:** XDR parsing in try/catch, validates operation structure
-- **Error handling:** Ignores parse errors, continues
-- **Improvements needed:** Pagination to scan all operations, cache results
+#### Lines 46-87: Unified verification using Horizon utility
+- **What it does:** Uses `findTransfersToRecipient()` to scan for admin payments
+- **Validation:** ✅ Uses shared Horizon utility with deduplication
+- **Error handling:** ✅ Proper error handling via utility
+- **Benefits:** -43% code reduction, no duplicate XDR parsing
+- **Status:** ✅ Refactored (2026-01-23)
 
 ### 4.2 Badge Verification API
-**File:** `src/pages/api/artist/badges/[address].ts`
+**File:** `src/pages/api/artist/badges/[address].ts` (Refactored 2026-01-23)
 
-#### Lines 78-99: Account check + operations query
-- **Pattern:** Same as verifyUpgrades.ts
+#### Lines 73-106: Unified verification using Horizon utility
+- **What it does:** Uses `findTransfersToRecipient()` to scan for admin payments
 - **Additional:** 5-minute cache for badge status
-- **What could go wrong:** Cache staleness after purchase
-- **Improvements needed:** Invalidate cache on known events
-- **Status:** ✅ Fixed with account existence check (2026-01-23)
+- **Validation:** ✅ Uses shared Horizon utility with deduplication
+- **Fixed:** Was using asset_balance_changes (classic assets) instead of XDR parsing (Soroban)
+- **Benefits:** -23% code reduction, correct Soroban XDR parsing
+- **Status:** ✅ Refactored (2026-01-23)
 
 ---
 
@@ -768,7 +804,7 @@
 9. **Passkey Re-auth:** Prompt user to re-authenticate before AUTO-BURN on stale keyId
 
 ### 10.3 MEDIUM (Robustness)
-10. **Horizon Pagination:** Scan all operations for upgrade verification
+10. ~~**Horizon Pagination:** Scan all operations for upgrade verification~~ ✅ **DONE** - Horizon utility supports pagination via maxPages parameter
 11. **RPC Failover:** Implement automatic failover on RPC failure
 12. **JWT Refresh:** Add token refresh before expiration
 13. **Telemetry:** Add error reporting to monitoring system
@@ -801,6 +837,33 @@
   - New passkey wallets don't exist until first transaction
   - Files: `src/services/api/verifyUpgrades.ts`, `src/pages/api/artist/badges/[address].ts`
 
+### 2026-01-23: Unified Horizon API Utility
+- **Created:** Comprehensive Horizon utility module `src/utils/horizon.ts` (260 lines)
+  - `accountExists()` - Account existence check with deduplication
+  - `scanAccountOperations()` - Operations query with pagination support
+  - `findTransfersToRecipient()` - Convenience method for payment verification
+  - `parseTransferOperation()` - XDR parsing for contract invocations
+  - Request deduplication via inflightRequests Map
+
+- **Refactored:** `src/services/api/verifyUpgrades.ts`
+  - Reduced from 156 lines to 88 lines (-43%)
+  - Removed ~70 lines of duplicate XDR parsing
+  - Now uses shared Horizon utility
+
+- **Refactored:** `src/pages/api/artist/badges/[address].ts`
+  - Reduced from 193 lines to 149 lines (-23%)
+  - Fixed incorrect use of asset_balance_changes (classic assets) → now uses XDR parsing (Soroban)
+  - Now uses shared Horizon utility
+  - Removed ~40 lines of duplicate/incorrect code
+
+- **Benefits:**
+  - DRY principle - single source of truth for Horizon operations
+  - Automatic request deduplication prevents parallel fetches
+  - Pagination support (expandable via maxPages parameter)
+  - More robust error handling
+  - Better testability (can mock horizon.ts)
+  - ~110 lines of duplicate code eliminated
+
 ---
 
 ## MAINTENANCE INSTRUCTIONS
@@ -811,7 +874,11 @@
 3. Add to this document under section 3 (Transaction Building)
 
 ### When Adding New API Calls
-1. Check if account exists before querying operations
+1. **Horizon API:** Use utilities from `src/utils/horizon.ts`
+   - Use `accountExists()` to check if account exists
+   - Use `scanAccountOperations()` for general operations queries
+   - Use `findTransfersToRecipient()` for payment verification
+   - Never duplicate XDR parsing logic
 2. Use StrKey validation for all addresses
 3. Add to relevant section (4 for Horizon, 5 for RPC)
 
