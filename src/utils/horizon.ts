@@ -10,8 +10,10 @@
  */
 
 import { xdr, StrKey, scValToNative } from '@stellar/stellar-sdk';
+import logger, { LogCategory, createScopedLogger } from './debug-logger';
 
 const HORIZON_URL = 'https://horizon.stellar.org';
+const log = createScopedLogger(LogCategory.HORIZON);
 
 /**
  * In-flight request tracker to prevent duplicate parallel requests
@@ -45,14 +47,19 @@ export interface OperationsScanResult {
  * @returns true if account exists, false otherwise
  */
 export async function accountExists(address: string): Promise<boolean> {
+    log.trace('accountExists() called', { address });
+
     // Validate address format first
     const trimmed = address.trim();
-    if (!trimmed) return false;
+    if (!trimmed) {
+        log.warn('accountExists: Empty address provided');
+        return false;
+    }
 
     // Accept both account (G) and contract (C) addresses
     const isValid = StrKey.isValidEd25519PublicKey(trimmed) || StrKey.isValidContract(trimmed);
     if (!isValid) {
-        console.warn('[Horizon] Invalid address format:', address);
+        log.warn('accountExists: Invalid address format', { address: trimmed });
         return false;
     }
 
@@ -60,16 +67,37 @@ export async function accountExists(address: string): Promise<boolean> {
 
     // Deduplicate parallel requests
     if (inflightRequests.has(cacheKey)) {
+        log.trace('accountExists: Using deduplicated request', { address: trimmed });
         return inflightRequests.get(cacheKey)!;
     }
+
+    log.debug('accountExists: Starting account check', { address: trimmed });
+    log.startTimer(`accountExists:${trimmed}`);
 
     const request = (async () => {
         try {
             const url = `${HORIZON_URL}/accounts/${trimmed}`;
+            log.trace('accountExists: Fetching', { url });
+
             const response = await fetch(url);
-            return response.ok;
+            const exists = response.ok;
+
+            log.endTimer(`accountExists:${trimmed}`);
+
+            if (exists) {
+                log.debug('accountExists: Account found', { address: trimmed });
+            } else {
+                log.info('accountExists: Account not found (404)', {
+                    address: trimmed,
+                    status: response.status,
+                    statusText: response.statusText
+                });
+            }
+
+            return exists;
         } catch (error) {
-            console.error('[Horizon] Account existence check failed:', error);
+            log.endTimer(`accountExists:${trimmed}`);
+            log.error('accountExists: Network error', { address: trimmed }, error as Error);
             return false;
         } finally {
             inflightRequests.delete(cacheKey);
@@ -103,17 +131,20 @@ export async function scanAccountOperations(
         stopAtTransfer
     } = options;
 
+    log.trace('scanAccountOperations() called', { address, options });
+
     // Validate address
     const trimmed = address.trim();
     if (!trimmed || !StrKey.isValidContract(trimmed)) {
-        console.warn('[Horizon] Invalid contract address for operations scan:', address);
+        log.warn('scanAccountOperations: Invalid contract address', { address });
         return { transfers: [], operationsScanned: 0, hasMore: false };
     }
 
     // Check if account exists first
+    log.debug('scanAccountOperations: Checking account existence', { address: trimmed });
     const exists = await accountExists(trimmed);
     if (!exists) {
-        console.log('[Horizon] Account not found on network, skipping operations scan');
+        log.info('scanAccountOperations: Account not found, returning empty', { address: trimmed });
         return { transfers: [], operationsScanned: 0, hasMore: false };
     }
 
@@ -121,8 +152,17 @@ export async function scanAccountOperations(
 
     // Deduplicate parallel requests
     if (inflightRequests.has(cacheKey)) {
+        log.trace('scanAccountOperations: Using deduplicated request', { address: trimmed });
         return inflightRequests.get(cacheKey)!;
     }
+
+    log.debug('scanAccountOperations: Starting operations scan', {
+        address: trimmed,
+        limit,
+        maxPages,
+        includeFailedTransactions
+    });
+    log.startTimer(`scanOps:${trimmed}`);
 
     const request = (async () => {
         try {
@@ -133,16 +173,31 @@ export async function scanAccountOperations(
             let shouldStop = false;
 
             while (currentUrl && pagesScanned < maxPages && !shouldStop) {
+                log.trace('scanAccountOperations: Fetching page', {
+                    pageNumber: pagesScanned + 1,
+                    url: currentUrl
+                });
+
                 const response = await fetch(currentUrl);
 
                 if (!response.ok) {
-                    console.warn('[Horizon] Operations query failed:', response.status);
+                    log.warn('scanAccountOperations: Operations query failed', {
+                        status: response.status,
+                        statusText: response.statusText,
+                        pageNumber: pagesScanned + 1
+                    });
                     break;
                 }
 
                 const data = await response.json();
                 const operations = data._embedded?.records || [];
                 operationsScanned += operations.length;
+
+                log.debug('scanAccountOperations: Page fetched', {
+                    pageNumber: pagesScanned + 1,
+                    operationsInPage: operations.length,
+                    totalScanned: operationsScanned
+                });
 
                 for (const op of operations) {
                     // Only process Soroban contract invocations
@@ -151,9 +206,19 @@ export async function scanAccountOperations(
                     const parsed = parseTransferOperation(op);
                     if (parsed) {
                         transfers.push(parsed);
+                        log.trace('scanAccountOperations: Transfer found', {
+                            from: parsed.from,
+                            to: parsed.to,
+                            amount: parsed.amount,
+                            contract: parsed.contractAddress
+                        });
 
                         // Check if caller wants to stop early
                         if (stopAtTransfer && stopAtTransfer(parsed)) {
+                            log.debug('scanAccountOperations: Early stop triggered', {
+                                transfersFound: transfers.length,
+                                operationsScanned
+                            });
                             shouldStop = true;
                             break;
                         }
@@ -165,13 +230,25 @@ export async function scanAccountOperations(
                 pagesScanned++;
             }
 
+            const duration = log.endTimer(`scanOps:${trimmed}`);
+
+            log.info('scanAccountOperations: Scan complete', {
+                address: trimmed,
+                transfersFound: transfers.length,
+                operationsScanned,
+                pagesScanned,
+                hasMore: !!currentUrl && pagesScanned >= maxPages,
+                durationMs: duration
+            });
+
             return {
                 transfers,
                 operationsScanned,
                 hasMore: !!currentUrl && pagesScanned >= maxPages
             };
         } catch (error) {
-            console.error('[Horizon] Operations scan failed:', error);
+            log.endTimer(`scanOps:${trimmed}`);
+            log.error('scanAccountOperations: Scan failed', { address: trimmed }, error as Error);
             return { transfers: [], operationsScanned: 0, hasMore: false };
         } finally {
             inflightRequests.delete(cacheKey);
@@ -211,7 +288,13 @@ function parseTransferOperation(op: any): ParsedTransfer | null {
         const valArgs = args.args();
 
         // transfer(from, to, amount)
-        if (valArgs.length !== 3) return null;
+        if (valArgs.length !== 3) {
+            log.trace('parseTransferOperation: Invalid transfer args length', {
+                length: valArgs.length,
+                contract: contractAddress
+            });
+            return null;
+        }
 
         const fromVal = valArgs[0];
         const toVal = valArgs[1];
@@ -224,6 +307,14 @@ function parseTransferOperation(op: any): ParsedTransfer | null {
         // Convert amount from token units (7 decimals) to decimal
         const amount = Number(amountRaw) / 10000000;
 
+        log.trace('parseTransferOperation: Transfer parsed', {
+            from,
+            to,
+            amount,
+            contractAddress,
+            functionName
+        });
+
         return {
             from,
             to,
@@ -233,6 +324,9 @@ function parseTransferOperation(op: any): ParsedTransfer | null {
         };
     } catch (error) {
         // Silently ignore parse errors - not all operations will be parseable
+        log.trace('parseTransferOperation: Parse failed (expected for non-transfer ops)', {
+            error: (error as Error).message
+        });
         return null;
     }
 }
@@ -259,19 +353,38 @@ export async function findTransfersToRecipient(
         contractAddress?: string; // Optional: filter by specific token contract
     } = {}
 ): Promise<Map<number, boolean>> {
+    log.debug('findTransfersToRecipient() called', {
+        address,
+        recipient,
+        amounts,
+        options
+    });
+    log.startTimer(`findTransfers:${address}`);
+
     const result = new Map<number, boolean>();
     amounts.forEach(amount => result.set(amount, false));
 
     const amountsRemaining = new Set(amounts);
+    let matchedCount = 0;
 
     const scanResult = await scanAccountOperations(address, {
         ...options,
         stopAtTransfer: (transfer) => {
             // Check if this transfer matches our criteria
-            if (transfer.to !== recipient) return false;
+            if (transfer.to !== recipient) {
+                log.trace('findTransfersToRecipient: Transfer recipient mismatch', {
+                    expected: recipient,
+                    actual: transfer.to
+                });
+                return false;
+            }
 
             // If contractAddress specified, must match
             if (options.contractAddress && transfer.contractAddress !== options.contractAddress) {
+                log.trace('findTransfersToRecipient: Contract address mismatch', {
+                    expected: options.contractAddress,
+                    actual: transfer.contractAddress
+                });
                 return false;
             }
 
@@ -280,14 +393,38 @@ export async function findTransfersToRecipient(
                 if (Math.abs(transfer.amount - targetAmount) < 0.1) {
                     result.set(targetAmount, true);
                     amountsRemaining.delete(targetAmount);
+                    matchedCount++;
+
+                    log.debug('findTransfersToRecipient: Amount matched', {
+                        targetAmount,
+                        actualAmount: transfer.amount,
+                        matchedSoFar: matchedCount,
+                        remaining: amountsRemaining.size
+                    });
 
                     // Stop if we found all amounts
-                    return amountsRemaining.size === 0;
+                    if (amountsRemaining.size === 0) {
+                        log.info('findTransfersToRecipient: All amounts found, stopping early');
+                        return true;
+                    }
+                    return false;
                 }
             }
 
             return false;
         }
+    });
+
+    const duration = log.endTimer(`findTransfers:${address}`);
+
+    log.info('findTransfersToRecipient: Search complete', {
+        address,
+        recipient,
+        totalAmounts: amounts.length,
+        foundAmounts: matchedCount,
+        operationsScanned: scanResult.operationsScanned,
+        durationMs: duration,
+        results: Object.fromEntries(result)
     });
 
     return result;
@@ -298,5 +435,7 @@ export async function findTransfersToRecipient(
  * Useful for testing or forcing fresh requests
  */
 export function clearRequestCache(): void {
+    const count = inflightRequests.size;
     inflightRequests.clear();
+    log.info('clearRequestCache: Cache cleared', { requestsCleared: count });
 }
