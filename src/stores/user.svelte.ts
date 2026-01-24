@@ -2,8 +2,6 @@
  * User authentication state using Svelte 5 runes
  */
 
-import { getSafeRpId } from '../utils/domains';
-
 // Initialize from localStorage if available (client-side only)
 const storedContractId = typeof localStorage !== "undefined" ? localStorage.getItem("smol:contractId") : null;
 const storedKeyId = typeof localStorage !== "undefined" ? localStorage.getItem("smol:keyId") : null;
@@ -79,22 +77,28 @@ export function clearUserAuth() {
  * Ensure the passkey account wallet is connected
  * This should be called once during app initialization when user is authenticated
  *
- * PERFORMANCE: Uses dynamic import to lazy-load passkey-kit only when needed
+ * PERFORMANCE: Uses dynamic import to lazy-load smart-account-kit only when needed
  */
 export async function ensureWalletConnected(): Promise<void> {
   // Only connect if we have auth credentials and haven't connected yet
   if (userState.contractId && userState.keyId && !userState.walletConnected) {
-    const hostname = window.location.hostname;
-
     try {
-      // Lazy load passkey-kit module (reduces initial bundle size by ~2.5MB)
-      const { account } = await import('../utils/passkey-kit');
+      // Lazy load smart-account-kit module (reduces initial bundle size)
+      const { getLastConnection, silentRestore } = await import('../lib/wallet/smartAccount');
 
-      await account.get().connectWallet({
-        rpId: getSafeRpId(hostname),
-        keyId: userState.keyId, // Pass saved keyId for targeted reconnection
+      const connected = await silentRestore({
+        credentialId: userState.keyId,
+        contractId: userState.contractId,
       });
-      userState.walletConnected = true;
+      const session = getLastConnection();
+
+      if (connected && session?.contractId) {
+        setUserAuth(session.contractId, session.credentialId);
+        userState.walletConnected = true;
+        return;
+      }
+
+      throw new Error('No stored smart account session found');
     } catch (error) {
       console.error('[userState] Failed to connect wallet (stale?):', error);
       // AUTO-BURN: If the saved key fails to connect, wipe it so the user isn't stuck.
