@@ -58,6 +58,57 @@
         alert('State copied to clipboard!');
     }
 
+    function copyAllLogs() {
+        const allLogs = logger.getLogs();
+        const state = {
+            timestamp: new Date().toISOString(),
+            url: window.location.href,
+            userAgent: navigator.userAgent,
+            viewport: `${window.innerWidth}x${window.innerHeight}`,
+
+            // Application State
+            state: {
+                user: {
+                    contractId: userState.contractId,
+                    keyId: userState.keyId,
+                    walletConnected: userState.walletConnected
+                },
+                upgrades: upgradesState,
+                balance: {
+                    kale: balanceState.balance,
+                    xlm: balanceState.xlmBalance
+                }
+            },
+
+            // LocalStorage (sanitized)
+            localStorage: Object.keys(localStorage).reduce((acc, key) => {
+                // Don't include sensitive keys
+                if (!key.includes('token') && !key.includes('private')) {
+                    acc[key] = localStorage.getItem(key);
+                }
+                return acc;
+            }, {} as Record<string, string | null>),
+
+            // Debug Logs
+            logs: allLogs,
+            logStats: logger.getStats(),
+
+            // Performance
+            performance: {
+                memory: (performance as any).memory ? {
+                    usedJSHeapSize: (performance as any).memory.usedJSHeapSize,
+                    totalJSHeapSize: (performance as any).memory.totalJSHeapSize,
+                    jsHeapSizeLimit: (performance as any).memory.jsHeapSizeLimit
+                } : 'not available',
+                navigation: performance.getEntriesByType('navigation')[0]
+            }
+        };
+
+        navigator.clipboard.writeText(JSON.stringify(state, null, 2))
+            .then(() => alert('✅ Complete debug report copied to clipboard!'))
+            .catch(() => alert('❌ Failed to copy logs'));
+    }
+
     function togglePanel() {
         isOpen = !isOpen;
     }
@@ -140,9 +191,12 @@
         <div class="debug-section">
             <h4>Actions</h4>
             <div class="action-buttons">
+                <button onclick={copyAllLogs} class="primary-action" title="Copy complete debug report including logs, state, network, performance">
+                    📋 Copy FULL Report
+                </button>
                 <button onclick={downloadLogs}>📥 Download Logs</button>
+                <button onclick={copyState}>📄 Copy State Only</button>
                 <button onclick={clearLogs}>🗑️ Clear Logs</button>
-                <button onclick={copyState}>📋 Copy State</button>
                 <button onclick={() => logger.printSummary()}>📊 Print Summary</button>
             </div>
         </div>
@@ -353,6 +407,20 @@
     .action-buttons button:hover {
         background: #333;
         border-color: #00ff00;
+    }
+
+    .action-buttons button.primary-action {
+        grid-column: 1 / -1;
+        background: #00ff00;
+        color: #000;
+        font-weight: bold;
+        border-color: #00ff00;
+        box-shadow: 0 2px 8px rgba(0, 255, 0, 0.3);
+    }
+
+    .action-buttons button.primary-action:hover {
+        background: #00cc00;
+        box-shadow: 0 4px 12px rgba(0, 255, 0, 0.5);
     }
 
     .state-display {

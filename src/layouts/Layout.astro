@@ -9,6 +9,7 @@ import PasskeyReprompt from '../components/retention/PasskeyReprompt.svelte'
 import DynamicBackground from '../components/layout/DynamicBackground.svelte'
 import DebugPanel from '../components/dev/DebugPanel.svelte'
 import AppInitializer from '../components/AppInitializer.svelte'
+import Toast from '../components/ui/Toast.svelte'
 import '../styles/global.css'
 import { buildCanonical, robotsMetaForUrl, jsonLd } from '../lib/seo';
 
@@ -253,5 +254,8 @@ const fullSchema = [...siteSchema, ...schema];
 
 		<!-- Debug Panel (only shows in dev mode or with ?debug=true) -->
 		<DebugPanel client:only="svelte" />
+
+		<!-- Toast Notifications -->
+		<Toast client:load transition:persist="toast" />
 	</body>
 </html>
