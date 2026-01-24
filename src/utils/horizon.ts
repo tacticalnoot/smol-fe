@@ -21,6 +21,34 @@ const log = createScopedLogger(LogCategory.HORIZON);
 const inflightRequests = new Map<string, Promise<any>>();
 
 /**
+ * Result cache with TTL (5 minutes default)
+ */
+interface CachedResult<T> {
+    result: T;
+    timestamp: number;
+    ttl: number;
+}
+const resultCache = new Map<string, CachedResult<any>>();
+
+function getCached<T>(key: string): T | null {
+    const cached = resultCache.get(key);
+    if (!cached) return null;
+
+    const age = Date.now() - cached.timestamp;
+    if (age > cached.ttl) {
+        resultCache.delete(key);
+        return null;
+    }
+
+    log.trace('Using cached result', { key, ageMs: age });
+    return cached.result as T;
+}
+
+function setCache<T>(key: string, result: T, ttlMs: number = 300000) {
+    resultCache.set(key, { result, timestamp: Date.now(), ttl: ttlMs });
+}
+
+/**
  * Transfer operation parsed from XDR
  */
 export interface ParsedTransfer {
@@ -87,11 +115,27 @@ export async function accountExists(address: string): Promise<boolean> {
             if (exists) {
                 log.debug('accountExists: Account found', { address: trimmed });
             } else {
-                log.info('accountExists: Account not found (404)', {
-                    address: trimmed,
-                    status: response.status,
-                    statusText: response.statusText
-                });
+                // Distinguish between 404 (not found) and 400 (bad request/invalid address)
+                if (response.status === 404) {
+                    log.info('accountExists: Account not found (404)', {
+                        address: trimmed,
+                        status: response.status,
+                        statusText: response.statusText
+                    });
+                } else if (response.status === 400) {
+                    log.warn('accountExists: Invalid account address (400 Bad Request)', {
+                        address: trimmed,
+                        status: response.status,
+                        statusText: response.statusText,
+                        hint: 'The address format may be invalid or malformed'
+                    });
+                } else {
+                    log.warn('accountExists: Unexpected response', {
+                        address: trimmed,
+                        status: response.status,
+                        statusText: response.statusText
+                    });
+                }
             }
 
             return exists;
@@ -351,14 +395,29 @@ export async function findTransfersToRecipient(
         limit?: number;
         maxPages?: number;
         contractAddress?: string; // Optional: filter by specific token contract
+        caller?: string; // Optional: identify caller for debugging
+        noCache?: boolean; // Optional: bypass cache
     } = {}
 ): Promise<Map<number, boolean>> {
+    const callStack = new Error().stack?.split('\n')[2]?.trim() || 'unknown';
     log.debug('findTransfersToRecipient() called', {
         address,
         recipient,
         amounts,
-        options
+        options,
+        caller: options.caller || callStack
     });
+
+    // Check cache first (unless noCache option is set)
+    const cacheKey = `transfers:${address}:${recipient}:${amounts.sort().join(',')}`;
+    if (!options.noCache) {
+        const cached = getCached<Map<number, boolean>>(cacheKey);
+        if (cached) {
+            log.debug('findTransfersToRecipient: Using cached result', { address, recipient });
+            return cached;
+        }
+    }
+
     log.startTimer(`findTransfers:${address}`);
 
     const result = new Map<number, boolean>();
@@ -426,6 +485,11 @@ export async function findTransfersToRecipient(
         durationMs: duration,
         results: Object.fromEntries(result)
     });
+
+    // Cache the result for 5 minutes
+    if (!options.noCache) {
+        setCache(cacheKey, result, 300000);
+    }
 
     return result;
 }

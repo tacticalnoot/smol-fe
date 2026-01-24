@@ -6,6 +6,7 @@
  */
 
 import { audioState } from "../stores/audio.svelte";
+import { toastState } from "../stores/toast.svelte";
 
 declare const chrome: any;
 declare const cast: any;
@@ -180,8 +181,7 @@ class CastService {
 
         // Show toast notification to user
         if (typeof window !== "undefined") {
-            // TODO: Replace with proper toast UI component when available
-            alert(`Cast Error: ${message}\n\nMedia URL: ${contentId}`);
+            toastState.error(`Cast Error: ${message}`, 8000);
         }
     }
 

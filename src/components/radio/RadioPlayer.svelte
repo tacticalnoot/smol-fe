@@ -17,6 +17,7 @@
   import { userState } from "../../stores/user.svelte";
   import { buildRadioUrl } from "../../utils/radio";
   import CastButton from "../ui/CastButton.svelte";
+  import { preferences } from "../../stores/preferences.svelte";
 
   let {
     playlist = [],
@@ -270,6 +271,9 @@
   });
 
   function startVis() {
+    // Skip visualization in fast mode for performance
+    if (preferences.renderMode === 'fast') return;
+
     if (!canvasRef) return;
     const canvas = canvasRef;
     const ctx = canvas.getContext("2d");
@@ -734,16 +738,18 @@
           >
 
           <!-- Visualizer Canvas (Bottom Bar) -->
-          <div
-            class="absolute bottom-20 left-0 right-0 h-24 z-30 pointer-events-none opacity-90"
-          >
-            <canvas
-              bind:this={canvasRef}
-              width="1024"
-              height="128"
-              class="w-full h-full"
-            ></canvas>
-          </div>
+          {#if preferences.renderMode === 'thinking'}
+            <div
+              class="absolute bottom-20 left-0 right-0 h-24 z-30 pointer-events-none opacity-90"
+            >
+              <canvas
+                bind:this={canvasRef}
+                width="1024"
+                height="128"
+                class="w-full h-full"
+              ></canvas>
+            </div>
+          {/if}
 
           <!-- CONTEXT AWARE BACK BUTTON (BOTTOM LEFT) - Hidden on Song ID pages -->
           {#if backContext && !isFullscreen && !isSongDetailPage}

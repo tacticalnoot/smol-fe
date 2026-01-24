@@ -17,6 +17,7 @@
   import { useVisibilityTracking } from "../../hooks/useVisibilityTracking";
   import { useInfiniteScroll } from "../../hooks/useInfiniteScroll";
   import { useGridMediaSession } from "../../hooks/useGridMediaSession";
+  import { preferences } from "../../stores/preferences.svelte";
 
   interface Props {
     playlist?: string | null;
@@ -310,7 +311,10 @@
 
   // Speculative Image Preloading: Load images for the NEXT page of results
   // This ensures that when the user scrolls down, images are already cached
+  // DISABLED IN FAST MODE to save memory
   $effect(() => {
+    if (preferences.renderMode !== 'thinking') return;
+
     const nextLimit = displayLimit + 50;
     const nextBatch = filteredResults.slice(displayLimit, nextLimit);
 
