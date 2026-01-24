@@ -2,7 +2,7 @@
 import { StrKey } from '@stellar/stellar-sdk';
 import { unlockUpgrade } from '../../stores/upgrades.svelte';
 import { getVIPAccess } from '../../utils/vip';
-import { findTransfersToRecipient } from '../../utils/horizon';
+import { findTokenTransfers } from '../../utils/event-scanner';
 
 const ADMIN_ADDRESS = "CBNORBI4DCE7LIC42FWMCIWQRULWAUGF2MH2Z7X2RNTFAYNXIACJ33IM";
 const SMOL_MART_AMOUNTS = {
@@ -44,45 +44,57 @@ export async function verifyPastPurchases(userAddress: string): Promise<void> {
     }
 
     try {
-        // Scan for transfers to admin address with specific amounts
-        const purchaseAmounts = [
-            SMOL_MART_AMOUNTS.PREMIUM_HEADER,
-            SMOL_MART_AMOUNTS.GOLDEN_KALE,
-            SMOL_MART_AMOUNTS.SHOWCASE_REEL,
-            SMOL_MART_AMOUNTS.VIBE_MATRIX
-        ];
+        const kaleContractId = import.meta.env.PUBLIC_KALE_SAC_ID;
+        if (!kaleContractId) {
+            console.error('[SmolMart] Missing PUBLIC_KALE_SAC_ID');
+            return;
+        }
 
-        const foundTransfers = await findTransfersToRecipient(
+        // Use RPC Events to find transfers (works for both Smart Wallets and G-accounts)
+        const foundTransfers = await findTokenTransfers(
             trimmedAddress,
             ADMIN_ADDRESS,
-            purchaseAmounts,
+            kaleContractId,
             {
-                limit: 200,
-                maxPages: 1 // Scan last 200 operations (can increase if needed)
+                limit: 100 // Check last 100 transfer events between these addresses
             }
         );
 
-        // Unlock upgrades based on found transfers
-        if (foundTransfers.get(SMOL_MART_AMOUNTS.PREMIUM_HEADER)) {
-            unlockUpgrade('premiumHeader');
+        // Check if any transfer matches our target amounts
+        for (const transfer of foundTransfers) {
+            // Check for tolerance (e.g. 0.0000001 difference)
+            const amount = transfer.amount;
+
+            if (isApproximateMatch(amount, SMOL_MART_AMOUNTS.PREMIUM_HEADER)) {
+                unlockUpgrade('premiumHeader');
+                console.log('[SmolMart] Unlocked Premium Header');
+            }
+
+            if (isApproximateMatch(amount, SMOL_MART_AMOUNTS.GOLDEN_KALE)) {
+                unlockUpgrade('goldenKale');
+                console.log('[SmolMart] Unlocked Golden Kale');
+            }
+
+            if (isApproximateMatch(amount, SMOL_MART_AMOUNTS.SHOWCASE_REEL)) {
+                unlockUpgrade('showcaseReel');
+                // Bundle unlock
+                unlockUpgrade('premiumHeader');
+                unlockUpgrade('goldenKale');
+                unlockUpgrade('vibeMatrix');
+                console.log('[SmolMart] Unlocked Showcase Reel Bundle');
+            }
+
+            if (isApproximateMatch(amount, SMOL_MART_AMOUNTS.VIBE_MATRIX)) {
+                unlockUpgrade('vibeMatrix');
+                console.log('[SmolMart] Unlocked Vibe Matrix');
+            }
         }
 
-        if (foundTransfers.get(SMOL_MART_AMOUNTS.GOLDEN_KALE)) {
-            unlockUpgrade('goldenKale');
-        }
-
-        if (foundTransfers.get(SMOL_MART_AMOUNTS.SHOWCASE_REEL)) {
-            // Showcase Reel is the ultimate bundle - unlocks everything
-            unlockUpgrade('showcaseReel');
-            unlockUpgrade('premiumHeader');
-            unlockUpgrade('goldenKale');
-            unlockUpgrade('vibeMatrix');
-        }
-
-        if (foundTransfers.get(SMOL_MART_AMOUNTS.VIBE_MATRIX)) {
-            unlockUpgrade('vibeMatrix');
-        }
     } catch (err) {
         console.error('[SmolMart] Verification failed', err);
     }
+}
+
+function isApproximateMatch(val1: number, val2: number, tolerance = 0.1): boolean {
+    return Math.abs(val1 - val2) < tolerance;
 }
