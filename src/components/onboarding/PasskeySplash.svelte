@@ -9,6 +9,10 @@
     import Loader from "../ui/Loader.svelte";
     import { Turnstile } from "svelte-turnstile";
     import logger, { LogCategory } from "../../utils/debug-logger";
+    import {
+        safeLocalStorageGet,
+        safeLocalStorageSet,
+    } from "../../utils/storage";
 
     console.log("[PasskeySplash] All imports loaded");
 
@@ -23,7 +27,7 @@
     // Check immediately if user is already authenticated
     const checkAuth = () => {
         if (typeof window === "undefined") return false;
-        const skipped = localStorage.getItem("smol_passkey_skipped");
+        const skipped = safeLocalStorageGet("smol_passkey_skipped");
         const hasContractId = Boolean(userState.contractId);
 
         if (hasContractId || (skipped && step !== "success")) {
@@ -139,7 +143,7 @@
         // Analytics
         logEvent("passkey_splash_view", {
             variant: "arcade",
-            is_new_user: !localStorage.getItem("smol_passkey_skipped"),
+            is_new_user: !safeLocalStorageGet("smol_passkey_skipped"),
             platform: getPlatform(),
         });
 
@@ -282,8 +286,8 @@
 
     function handleSkip() {
         logEvent("passkey_skip_click");
-        localStorage.setItem("smol_passkey_skipped", "true");
-        localStorage.setItem("smol_onboarding_complete", "true"); // Mark onboarding as done
+        safeLocalStorageSet("smol_passkey_skipped", "true");
+        safeLocalStorageSet("smol_onboarding_complete", "true"); // Mark onboarding as done
         window.location.href = "/";
     }
 
