@@ -130,7 +130,7 @@ export async function findTokenTransfers(
                 if (json.error.code === -32600 && json.error.message.includes('ledger range')) {
                     const match = json.error.message.match(/range: (\d+) -/);
                     if (match && match[1]) {
-                        const validStart = parseInt(match[1], 10);
+                        const validStart = parseInt(match[1], 10) + 10; // Add buffer to avoid race condition
                         // Only retry if we haven't already forced a start ledger (prevent infinite loop)
                         if (!forceStartLedger) {
                             log.warn(LogCategory.RPC, `RPC requires recent startLedger. Retrying with ${validStart}...`);
