@@ -213,7 +213,8 @@
             const isNoCredentials =
                 message.includes("failed to connect wallet") ||
                 message.includes("no credentials available") ||
-                message.includes("credential") && message.includes("not found");
+                (message.includes("credential") &&
+                    message.includes("not found"));
 
             // Filter out standard cancellations (user closed popup or timed out)
             if (
@@ -224,7 +225,8 @@
             ) {
                 // Provide more helpful error message for no credentials case
                 if (isNoCredentials) {
-                    error = "No passkey found. Please create a new account instead.";
+                    error =
+                        "No passkey found. Please create a new account instead.";
                     logger.debug(
                         LogCategory.PASSKEY,
                         "No passkey credentials found for login",
@@ -302,7 +304,7 @@
 
 {#if !shouldRedirect}
     <div
-        class="fixed inset-0 bg-transparent text-white overflow-y-auto font-pixel z-[9999]"
+        class="fixed inset-0 bg-transparent text-white overflow-y-auto font-pixel z-[100]"
     >
         <!-- Background Art (Handled globally by Layout/DynamicBackground) -->
 
