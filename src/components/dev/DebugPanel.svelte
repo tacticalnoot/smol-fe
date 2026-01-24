@@ -59,8 +59,11 @@
     }
 
     function copyAllLogs() {
-        // Limit to last 200 logs to prevent clipboard crash
-        const allLogs = logger.getLogs().slice(-200);
+        // Limit to last 200 logs and exclude TRACE (level 4) to prevent bloat
+        const allLogs = logger
+            .getLogs()
+            .filter((l) => l.level !== 4) // Exclude TRACE
+            .slice(-200);
 
         const state = {
             timestamp: new Date().toISOString(),
