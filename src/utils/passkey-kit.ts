@@ -352,7 +352,8 @@ export async function send<T>(
                                     // Extract components
                                     // SourceAccount creds might not have an address field, but they have expirations/signatures
                                     // standard stellar-sdk structures:
-                                    const sourceCreds = creds.sourceAccount(); // SorobanCredentialsSourceAccount
+                                    // Use generic .value() accessor as .sourceAccount() failed (might be .sorobanCredentialsSourceAccount() or just .value())
+                                    const sourceCreds = creds.value() as any;
                                     const signature = sourceCreds.signature();
 
                                     // Note: In newer SDKs, it might be different structure. 
