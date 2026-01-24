@@ -284,8 +284,6 @@ export async function send<T>(
 
                         // Validate operation structure (Decoded Object from stellar-sdk)
                         // It is NOT a raw XDR object, so verify properties directly.
-                        console.log("[Relayer] Inspecting Operation:", op);
-
                         if (!op || typeof op !== 'object') {
                             const xdrError = createXDRParsingError('Invalid operation structure: not an object');
                             logError(xdrError);
