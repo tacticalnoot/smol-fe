@@ -453,7 +453,7 @@ export async function send<T>(
                     // Transaction XDR mode for OZ Channels (wallet deployments)
                     // Send the full transaction XDR instead of parsed func/auth
                     console.log("[Relayer] Using OZ Channels transaction XDR mode (wallet deployment)");
-                    body = { transaction: xdr };
+                    body = { xdr: xdr };
                     if (!fetchUrl.endsWith('/')) fetchUrl += '/';
                 }
             } else {
