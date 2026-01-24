@@ -59,13 +59,49 @@
     }
 
     function copyAllLogs() {
-        // Limit to last 200 logs and exclude TRACE (level 4) to prevent bloat
+        // Helper to recursively sanitize data for clipboard
+        const sanitizeForClipboard = (data: any, depth = 0): any => {
+            if (depth > 4) return "[Deep Nested]"; // Prevent infinite recursion
+            if (data === null || data === undefined) return data;
+
+            if (typeof data === "string") {
+                return data.length > 500
+                    ? data.substring(0, 500) + `... (${data.length} chars)`
+                    : data;
+            }
+
+            if (Array.isArray(data)) {
+                // Limit arrays to 50 items
+                const arr =
+                    data.length > 50
+                        ? data.slice(0, 50).concat(["... (truncated array)"])
+                        : data;
+                return arr.map((item) => sanitizeForClipboard(item, depth + 1));
+            }
+
+            if (typeof data === "object") {
+                const clean: any = {};
+                for (const key in data) {
+                    // Exclude massive keys if they slip through
+                    if (key === "lyrics" || key === "audioData") {
+                        clean[key] = "[Redacted Large Data]";
+                        continue;
+                    }
+                    clean[key] = sanitizeForClipboard(data[key], depth + 1);
+                }
+                return clean;
+            }
+
+            return data;
+        };
+
+        // Limit to last 200 logs and exclude TRACE (level 4)
         const allLogs = logger
             .getLogs()
             .filter((l) => l.level !== 4) // Exclude TRACE
             .slice(-200);
 
-        const state = {
+        const rawState = {
             timestamp: new Date().toISOString(),
             url: window.location.href,
             userAgent: navigator.userAgent,
@@ -122,12 +158,15 @@
         };
 
         try {
-            const reportStr = JSON.stringify(state, null, 2);
+            // Apply strict sanitization to the entire final object
+            const safeState = sanitizeForClipboard(rawState);
+            const reportStr = JSON.stringify(safeState, null, 2);
+
             navigator.clipboard
                 .writeText(reportStr)
                 .then(() =>
                     alert(
-                        `✅ Debug report copied (${allLogs.length} logs). Size: ${(reportStr.length / 1024).toFixed(1)}KB`,
+                        `✅ Debug report copied! Size: ${(reportStr.length / 1024).toFixed(1)}KB`,
                     ),
                 )
                 .catch(() =>
