@@ -78,3 +78,21 @@ Thread: Svelte-check cleanup for passkey-kit + SmolHeroCore
 	•	Resolved type errors in passkey-kit XDR parsing and minting/purchase flows.
 	•	Aligned SmolHeroCore typing and pause/difficulty controls for clean checks.
 	•	Verified pnpm run check passes.
+
+[2026-01-24 20:34] - P0-AUTH-001
+Thread: Passkey login hotfix + SmartAccountKit migration
+	•	Added SmartAccountKit wallet wrapper with IndexedDB storage and relayer config.
+	•	Updated auth flow to use SmartAccountKit, added /login debug logging, and ensured credentialed requests.
+	•	Added production passkey smoke test checklist and documented WebAuthn verifier env var.
+	•	Files changed: src/lib/wallet/smartAccount.ts, src/hooks/useAuthentication.ts, src/stores/user.svelte.ts, src/env.d.ts, src/utils/env-validation.ts, docs/PROD_PASSKEY_SMOKE_TEST.md, docs/passkey-relayer-mainnet.md, package.json, pnpm-lock.yaml, scripts/ralph/prd.json.
+	•	Learnings for future iterations:
+		- SmartAccountKit requires a WebAuthn verifier contract address in env.
+	•	Gotchas encountered:
+		- svelte-check currently fails on pre-existing type errors in SmolResults and Mixtape purchase flow.
+	•	Test note: pnpm run check failed due to existing type errors (SmolResults.svelte, useMixtapePurchase.ts).
+
+[2026-01-24 22:05] - P0-AUTH-001
+Thread: Passkey login hotfix follow-up
+	•	Fixed typecheck blockers by loosening transaction helper typing and adding Created_At to Smol detail response type.
+	•	Installed smart-account-kit in node_modules for type resolution.
+	•	Tests: pnpm run check (pass).
