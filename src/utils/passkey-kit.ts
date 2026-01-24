@@ -350,10 +350,29 @@ export async function send<T>(
                                     console.log("[Relayer] Patching SourceAccount credential to Address credential");
 
                                     // Extract components
-                                    // SourceAccount creds might not have an address field, but they have expirations/signatures
-                                    // standard stellar-sdk structures:
-                                    // Use generic .value() accessor as .sourceAccount() failed (might be .sorobanCredentialsSourceAccount() or just .value())
-                                    const sourceCreds = creds.value() as any;
+                                    // Note: In newer SDKs, it might be different structure. 
+                                    // Let's assume standard XDR structure for SorobanCredentials
+
+                                    // Debugging: Log keys to find the correct accessor
+                                    console.log("[Relayer] Inspecting SourceAccount creds structure:", JSON.stringify(creds, null, 2));
+                                    const proto = Object.getPrototypeOf(creds);
+                                    console.log("[Relayer] Prototype methods:", Object.getOwnPropertyNames(proto));
+
+                                    // Try strict property access first (some versions unwrap unions to properties)
+                                    let sourceCreds = (creds as any).value ? (creds as any).value() : undefined;
+                                    if (!sourceCreds && (creds as any).sorobanCredentialsSourceAccount) {
+                                        sourceCreds = typeof (creds as any).sorobanCredentialsSourceAccount === 'function'
+                                            ? (creds as any).sorobanCredentialsSourceAccount()
+                                            : (creds as any).sorobanCredentialsSourceAccount;
+                                    }
+
+                                    // Fallback: Check if 'creds' itself is the value (if specific union type)
+                                    if (!sourceCreds) sourceCreds = creds;
+
+                                    if (!sourceCreds || !sourceCreds.signature) {
+                                        throw new Error(`Could not extract sourceCreds. Keys: ${Object.keys(creds)}`);
+                                    }
+
                                     const signature = sourceCreds.signature();
 
                                     // Note: In newer SDKs, it might be different structure. 
