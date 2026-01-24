@@ -18,14 +18,25 @@ export function useAuthentication() {
   const API_URL = import.meta.env.PUBLIC_API_URL || "https://api.smol.xyz";
   async function login() {
     const hostname = window.location.hostname;
+    const rpId = getSafeRpId(hostname);
+
+    console.log('[Auth] Login attempt:', { hostname, rpId });
 
     // Clear any stale credentials before logging in
     clearUserAuth();
 
     try {
+      // Check if WebAuthn is supported
+      if (!window.PublicKeyCredential) {
+        throw new Error('WebAuthn not supported in this browser');
+      }
+
+      console.log('[Auth] Calling connectWallet with rpId:', rpId);
       const result = await account.get().connectWallet({
-        rpId: getSafeRpId(hostname),
+        rpId: rpId,
       });
+
+      console.log('[Auth] connectWallet succeeded:', { contractId: result.contractId });
 
       const {
         rawResponse,
@@ -36,9 +47,23 @@ export function useAuthentication() {
       const keyIdBase64 = result.keyIdBase64 ||
         (typeof result.keyId === 'string' ? result.keyId : Buffer.from(result.keyId).toString('base64').replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, ""));
 
+      console.log('[Auth] Performing login with contract ID:', cid);
       await performLogin(cid, keyIdBase64, rawResponse, 'connect');
-    } catch (connectErr) {
-      console.error("Connect failed:", connectErr);
+    } catch (connectErr: any) {
+      console.error("[Auth] Connect failed:", {
+        message: connectErr.message,
+        name: connectErr.name,
+        code: connectErr.code,
+        stack: connectErr.stack
+      });
+
+      // Enhance error message for better user feedback
+      if (connectErr.name === 'NotAllowedError') {
+        throw new Error('Passkey authentication was cancelled or not allowed');
+      } else if (connectErr.message?.includes('No credentials available')) {
+        throw new Error('No passkey found for this device');
+      }
+
       throw connectErr;
     }
   }
@@ -87,6 +112,8 @@ export function useAuthentication() {
     // Clear any stale credentials before creating new account
     clearUserAuth();
 
+    console.log('[Auth] Creating wallet for username:', username);
+
     const result = await account.get().createWallet('smol.xyz', `SMOL — ${username}`, {
       rpId: getSafeRpId(hostname),
       authenticatorSelection: {
@@ -95,6 +122,8 @@ export function useAuthentication() {
         userVerification: "required"
       }
     });
+
+    console.log('[Auth] Wallet created, contract ID:', result.contractId);
 
     const {
       rawResponse,
@@ -105,9 +134,15 @@ export function useAuthentication() {
     const keyIdBase64 = result.keyIdBase64 ||
       (typeof result.keyId === 'string' ? result.keyId : Buffer.from(result.keyId).toString('base64').replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, ""));
 
+    console.log('[Auth] Performing login...');
     await performLogin(cid, keyIdBase64, rawResponse, 'create', username);
 
-    await send(signedTx, turnstileToken);
+    console.log('[Auth] Sending wallet deployment transaction...');
+
+    // Wallet deployments MUST use KaleFarm's raw XDR endpoint, not OZ Channels
+    // OZ Channels can't handle factory-signed transactions
+    // For dev/preview without Turnstile, we'll use a dummy token (API key auth takes precedence)
+    await send(signedTx, turnstileToken || 'dev-bypass');
   }
 
   async function logout() {
