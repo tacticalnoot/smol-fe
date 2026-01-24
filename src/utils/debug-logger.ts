@@ -109,15 +109,54 @@ class DebugLogger {
         return level <= this.currentLevel;
     }
 
+    private truncateData(data: any): any {
+        if (!data) return data;
+
+        // Deep clone to avoid mutating original data
+        // Handle simple types first
+        if (typeof data === 'string') {
+            // If the string itself is massive (e.g. log message payload), truncate it
+            if (data.length > 500) return data.substring(0, 500) + '... (truncated)';
+            return data;
+        }
+
+        if (typeof data !== 'object') return data;
+
+        // Recursively handle arrays
+        if (Array.isArray(data)) {
+            return data.map(item => this.truncateData(item));
+        }
+
+        const sanitized: any = {};
+        for (const key in data) {
+            if (Object.prototype.hasOwnProperty.call(data, key)) {
+                const value = data[key];
+
+                // Truncate lyrics specifically
+                if (key.toLowerCase().includes('lyrics') && typeof value === 'string') {
+                    sanitized[key] = value.length > 100
+                        ? value.substring(0, 100) + `... (${value.length} chars truncated)`
+                        : value;
+                } else {
+                    sanitized[key] = this.truncateData(value);
+                }
+            }
+        }
+        return sanitized;
+    }
+
     private log(level: LogLevel, category: LogCategory, message: string, data?: any, error?: Error): void {
         if (!this.shouldLog(level)) return;
+
+        // Truncate huge fields (like lyrics) in data object to prevent 3MB log files
+        const sanitizedData = data ? this.truncateData(data) : undefined;
 
         const entry: LogEntry = {
             timestamp: Date.now(),
             level,
             category,
             message,
-            data
+            data: sanitizedData
         };
 
         if (error) {
@@ -139,11 +178,11 @@ class DebugLogger {
 
         const prefix = `${emoji} [${timestamp}] [${category}]`;
 
-        if (data !== undefined || error) {
+        if (sanitizedData !== undefined || error) {
             console.log(
                 `%c${prefix} ${message}`,
                 `color: ${color}; font-weight: bold;`,
-                data !== undefined ? data : '',
+                sanitizedData !== undefined ? sanitizedData : '',
                 error || ''
             );
         } else {
