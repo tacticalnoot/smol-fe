@@ -282,38 +282,43 @@ export async function send<T>(
                             throw xdrError;
                         }
 
-                        const op = operations[0];
-                        const opXdr = op as { body?: () => any };
+                        // Validate operation structure (Decoded Object from stellar-sdk)
+                        // It is NOT a raw XDR object, so verify properties directly.
+                        console.log("[Relayer] Inspecting Operation:", op);
 
-                        // Validate operation has required methods
-                        if (!opXdr || typeof opXdr.body !== 'function') {
-                            const xdrError = createXDRParsingError('Invalid operation structure');
+                        if (!op || typeof op !== 'object') {
+                            const xdrError = createXDRParsingError('Invalid operation structure: not an object');
                             logError(xdrError);
                             throw xdrError;
                         }
 
-                        // Validate operation type
-                        const opBody = opXdr.body();
-                        const opSwitch = opBody?.switch?.();
-                        if (!opSwitch || opSwitch.name !== 'invokeHostFunction') {
+                        // Check for InvokeHostFunction type
+                        // stellar-sdk decodes this as type: 'invokeHostFunction'
+                        // but the property containing the function might be 'func' or 'function' depending on SDK version
+                        if (op.type !== 'invokeHostFunction') {
                             const xdrError = createXDRParsingError(
-                                `Channels requires InvokeHostFunction operation, got ${opSwitch?.name || 'unknown'}`
+                                `Channels requires InvokeHostFunction operation, got ${op.type || 'unknown'}`
                             );
                             logError(xdrError);
                             throw xdrError;
                         }
 
-                        const invokeOp = opBody?.invokeHostFunctionOp?.();
+                        // In stellar-sdk, InvokeHostFunction op has properties:
+                        // func: HostFunction
+                        // auth: SorobanAuthorizationEntry[]
+                        const invokeOp = op as any;
 
-                        // Validate invoke operation structure
-                        if (!invokeOp || typeof invokeOp.hostFunction !== 'function') {
-                            const xdrError = createXDRParsingError('Invalid InvokeHostFunction structure');
+                        if (!invokeOp.func || typeof invokeOp.func.toXDR !== 'function') {
+                            // Fallback: Check if it's 'function' property (older SDKs)
+                            // or if it's already encoded? No, fromXDR returns hydrated objects.
+                            console.error("[Relayer] Missing 'func' in op:", invokeOp);
+                            const xdrError = createXDRParsingError('Invalid InvokeHostFunction: missing func');
                             logError(xdrError);
                             throw xdrError;
                         }
 
-                        const funcXdr = invokeOp.hostFunction().toXDR('base64');
-                        const authEntries = invokeOp.auth();
+                        const funcXdr = invokeOp.func.toXDR('base64');
+                        const authEntries = invokeOp.auth || [];
 
                         // Validate auth entries
                         if (!Array.isArray(authEntries)) {
@@ -322,7 +327,7 @@ export async function send<T>(
                             throw xdrError;
                         }
 
-                        const authXdr = authEntries.map(a => {
+                        const authXdr = authEntries.map((a: any) => {
                             if (!a || typeof a.toXDR !== 'function') {
                                 throw createXDRParsingError('Invalid auth entry');
                             }
