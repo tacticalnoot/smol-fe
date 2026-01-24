@@ -44,6 +44,9 @@ importers:
       passkey-kit:
         specifier: ^0.12.0
         version: 0.12.0
+      smart-account-kit:
+        specifier: 0.2.9
+        version: 0.2.9(@stellar/stellar-sdk@14.4.3)
       smol-sdk:
         specifier: link:ext/smol-sdk
         version: link:ext/smol-sdk
@@ -3011,6 +3014,21 @@ packages:
     resolution: {integrity: sha512-LwktpJcyZDoa0IL6KT++lQ53pbSrx2c9ge41/SeLTyqy2XUNA6uR4+P9u5IVo5lPeL2arAcOKn1aZAxoYbCKlQ==}
     engines: {node: '>=14.0.0', npm: '>=6.0.0'}
     hasBin: true
+
+  smart-account-kit-bindings@0.1.1:
+    resolution: {integrity: sha512-S1JeMcZRueaADUD/7FdLGeFSVNTymt6TnkdObrCkJD95GD+VCuxePlx936FjeMrcrkQBkY1ChFcFlah9WkHNdw==}
+    peerDependencies:
+      '@stellar/stellar-sdk': '>=14.0.0'
+
+  smart-account-kit@0.2.9:
+    resolution: {integrity: sha512-Wm5L18Upd+mNXmkIdVtOAMD+saLnD3Nu1oW7kqAQPtJJ1KbECRsyjMd+EBczeL1f+9PntqxFuAjzoZo1Ctid4w==}
+    engines: {node: '>=22.0.0', pnpm: '>=10.0.0'}
+    peerDependencies:
+      '@creit-tech/stellar-wallets-kit': '>=2.0.0'
+      '@stellar/stellar-sdk': '>=14.0.0'
+    peerDependenciesMeta:
+      '@creit-tech/stellar-wallets-kit':
+        optional: true
 
   smol-toml@1.4.2:
     resolution: {integrity: sha512-rInDH6lCNiEyn3+hH8KVGFdbjc099j47+OSgbMrfDYX1CmXLfdKd7qi6IfcWj2wFxvSVkuI46M+wPGYfEOEj6g==}
@@ -6865,6 +6883,18 @@ snapshots:
       '@types/sax': 1.2.7
       arg: 5.0.2
       sax: 1.4.4
+
+  smart-account-kit-bindings@0.1.1(@stellar/stellar-sdk@14.4.3):
+    dependencies:
+      '@stellar/stellar-sdk': 14.4.3
+      buffer: 6.0.3
+
+  smart-account-kit@0.2.9(@stellar/stellar-sdk@14.4.3):
+    dependencies:
+      '@simplewebauthn/browser': 13.2.2
+      '@stellar/stellar-sdk': 14.4.3
+      base64url: 3.0.1
+      smart-account-kit-bindings: 0.1.1(@stellar/stellar-sdk@14.4.3)
 
   smol-toml@1.4.2: {}
 

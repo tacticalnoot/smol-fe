@@ -21,6 +21,7 @@ const REQUIRED_ENV_VARS = [
     'PUBLIC_NETWORK_PASSPHRASE',
     'PUBLIC_RPC_URL',
     'PUBLIC_SMOL_CONTRACT_ID',
+    'PUBLIC_WEBAUTHN_VERIFIER_ADDRESS',
     'PUBLIC_WALLET_WASM_HASH',
     'PUBLIC_TURNSTILE_SITE_KEY',
 ] as const;
@@ -105,6 +106,7 @@ export function validateEnvironment(): EnvValidationResult {
 
             case 'PUBLIC_KALE_SAC_ID':
             case 'PUBLIC_SMOL_CONTRACT_ID':
+            case 'PUBLIC_WEBAUTHN_VERIFIER_ADDRESS':
                 if (!isValidContractAddress(value)) {
                     result.invalid.push(`${varName} (invalid contract address: ${value})`);
                     result.valid = false;

@@ -1,18 +1,9 @@
 import Cookies from 'js-cookie';
 import { getDomain } from 'tldts';
 import { getSafeRpId } from '../utils/domains';
-import { account, send } from '../utils/passkey-kit';
+import { send } from '../utils/passkey-kit';
+import { connectWithPrompt, createWallet } from '../lib/wallet/smartAccount';
 import { setUserAuth, clearUserAuth, userState } from '../stores/user.svelte';
-
-interface ConnectResult {
-  rawResponse: unknown;
-  keyIdBase64: string;
-  contractId: string;
-}
-
-interface CreateResult extends ConnectResult {
-  signedTx: string;
-}
 
 export function useAuthentication() {
   const API_URL = import.meta.env.PUBLIC_API_URL || "https://api.smol.xyz";
@@ -32,23 +23,18 @@ export function useAuthentication() {
       }
 
       console.log('[Auth] Calling connectWallet with rpId:', rpId);
-      const result = await account.get().connectWallet({
-        rpId: rpId,
-      });
+      const result = await connectWithPrompt();
 
       console.log('[Auth] connectWallet succeeded:', { contractId: result.contractId });
 
       const {
         rawResponse,
         contractId: cid,
+        credentialId,
       } = result;
 
-      // Ensure we get a string keyId (passkey-kit v0.6+ vs older)
-      const keyIdBase64 = result.keyIdBase64 ||
-        (typeof result.keyId === 'string' ? result.keyId : Buffer.from(result.keyId).toString('base64').replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, ""));
-
       console.log('[Auth] Performing login with contract ID:', cid);
-      await performLogin(cid, keyIdBase64, rawResponse, 'connect');
+      await performLogin(cid, credentialId, rawResponse, 'connect');
     } catch (connectErr: any) {
       console.error("[Auth] Connect failed:", {
         message: connectErr.message,
@@ -70,22 +56,61 @@ export function useAuthentication() {
 
   async function performLogin(cid: string, keyIdBase64: string, rawResponse: any, type: 'connect' | 'create', username?: string) {
     const API_URL = import.meta.env.PUBLIC_API_URL || "https://api.smol.xyz";
-    const jwt = await fetch(`${API_URL}/login`, {
+    const debugEnabled =
+      typeof window !== 'undefined' &&
+      new URLSearchParams(window.location.search).has('debug');
+    const payload = {
+      type,
+      keyId: keyIdBase64,
+      contractId: cid,
+      response: rawResponse,
+      username,
+    };
+
+    if (debugEnabled) {
+      console.log('[Auth][Debug] /login request', {
+        url: `${API_URL}/login`,
+        bodyKeys: Object.keys(payload),
+        origin: window.location.origin,
+        host: window.location.host,
+      });
+    }
+
+    const res = await fetch(`${API_URL}/login`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
       },
-      body: JSON.stringify({
-        type,
-        keyId: keyIdBase64,
-        contractId: cid,
-        response: rawResponse,
-        username
-      }),
-    }).then(async (res) => {
-      if (res.ok) return res.text();
-      throw await res.text();
+      credentials: 'include',
+      body: JSON.stringify(payload),
     });
+
+    const responseText = await res.text();
+    let responseJson: any = null;
+    try {
+      responseJson = JSON.parse(responseText);
+    } catch {
+      responseJson = null;
+    }
+
+    if (debugEnabled) {
+      console.log('[Auth][Debug] /login response', {
+        status: res.status,
+        ok: res.ok,
+        body: responseJson || responseText,
+      });
+    }
+
+    if (!res.ok) {
+      const errorCode = responseJson?.error || responseJson?.code;
+      const debugId = responseJson?.debugId;
+      const message = errorCode
+        ? `Auth failed: ${errorCode}${debugId ? ` (debugId=${debugId})` : ''}`
+        : responseText || `Login failed (${res.status})`;
+      throw new Error(message);
+    }
+
+    const jwt = responseText;
 
     setUserAuth(cid, keyIdBase64);
     // Mark wallet as connected since connectWallet was just called
@@ -107,20 +132,16 @@ export function useAuthentication() {
   }
 
   async function signUp(username: string, turnstileToken: string) {
-    const hostname = window.location.hostname;
-
     // Clear any stale credentials before creating new account
     clearUserAuth();
 
     console.log('[Auth] Creating wallet for username:', username);
 
-    const result = await account.get().createWallet('smol.xyz', `SMOL — ${username}`, {
-      rpId: getSafeRpId(hostname),
+    const result = await createWallet('smol.xyz', `SMOL — ${username}`, {
       authenticatorSelection: {
         residentKey: "required",
-        requireResidentKey: true,
         userVerification: "required"
-      }
+      },
     });
 
     console.log('[Auth] Wallet created, contract ID:', result.contractId);
@@ -128,21 +149,22 @@ export function useAuthentication() {
     const {
       rawResponse,
       contractId: cid,
-      signedTx,
+      signedTransaction,
+      credentialId,
+      submitResult,
     } = result;
 
-    const keyIdBase64 = result.keyIdBase64 ||
-      (typeof result.keyId === 'string' ? result.keyId : Buffer.from(result.keyId).toString('base64').replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, ""));
-
     console.log('[Auth] Performing login...');
-    await performLogin(cid, keyIdBase64, rawResponse, 'create', username);
+    await performLogin(cid, credentialId, rawResponse, 'create', username);
 
     console.log('[Auth] Sending wallet deployment transaction...');
 
     // Wallet deployments MUST use KaleFarm's raw XDR endpoint, not OZ Channels
     // OZ Channels can't handle factory-signed transactions
     // For dev/preview without Turnstile, we'll use a dummy token (API key auth takes precedence)
-    await send(signedTx, turnstileToken || 'dev-bypass');
+    if (!submitResult?.success) {
+      await send(signedTransaction, turnstileToken || 'dev-bypass');
+    }
   }
 
   async function logout() {
@@ -175,6 +197,7 @@ export function useAuthentication() {
 
     await fetch(`${API_URL}/logout`, {
       method: 'POST',
+      credentials: 'include',
     });
 
     location.reload();
