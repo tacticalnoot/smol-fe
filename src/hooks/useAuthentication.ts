@@ -19,6 +19,9 @@ export function useAuthentication() {
   async function login() {
     const hostname = window.location.hostname;
 
+    // Clear any stale credentials before logging in
+    clearUserAuth();
+
     try {
       const result = await account.get().connectWallet({
         rpId: getSafeRpId(hostname),
@@ -81,6 +84,9 @@ export function useAuthentication() {
   async function signUp(username: string, turnstileToken: string) {
     const hostname = window.location.hostname;
 
+    // Clear any stale credentials before creating new account
+    clearUserAuth();
+
     const result = await account.get().createWallet('smol.xyz', `SMOL — ${username}`, {
       rpId: getSafeRpId(hostname),
       authenticatorSelection: {
@@ -119,17 +125,15 @@ export function useAuthentication() {
 
     Cookies.remove('smol_token', cookieOptions);
 
+    // Clear all smol: related data from localStorage and sessionStorage
     Object.keys(localStorage).forEach((key) => {
-      // Preserve keyId and contractId for "Soft Logout" (Wallet Remembered)
-      // This allows 'Targeted Authentication' which is required for localhost stability.
-      // If the key is invalid, ensureWalletConnected will auto-burn it (see stores/user.svelte.ts).
-      if (key.includes('smol:') && key !== 'smol:contractId' && key !== 'smol:keyId') {
+      if (key.includes('smol:')) {
         localStorage.removeItem(key);
       }
     });
 
     Object.keys(sessionStorage).forEach((key) => {
-      if (key.includes('smol:') && key !== 'smol:contractId' && key !== 'smol:keyId') {
+      if (key.includes('smol:')) {
         sessionStorage.removeItem(key);
       }
     });
