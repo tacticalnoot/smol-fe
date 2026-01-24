@@ -118,6 +118,7 @@
             "title": "Passkey login hotfix + SmartAccountKit migration",
             "priority": 0,
             "passes": true,
+            "lastValidated": "2026-01-24",
             "acceptanceCriteria": [
                 "Passkey login uses SmartAccountKit with IndexedDB session storage",
                 "Debug mode logs /login request/response metadata",

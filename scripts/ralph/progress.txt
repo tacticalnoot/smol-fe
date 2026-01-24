@@ -96,3 +96,7 @@ Thread: Passkey login hotfix follow-up
 	•	Fixed typecheck blockers by loosening transaction helper typing and adding Created_At to Smol detail response type.
 	•	Installed smart-account-kit in node_modules for type resolution.
 	•	Tests: pnpm run check (pass).
+
+[2026-01-24 22:10] - P0-AUTH-001
+Thread: Passkey onboarding debug load fix
+	•	Hardened passkey onboarding/local auth state against localStorage access failures to prevent blank loads.

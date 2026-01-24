@@ -2,9 +2,15 @@
  * User authentication state using Svelte 5 runes
  */
 
+import {
+  safeLocalStorageGet,
+  safeLocalStorageRemove,
+  safeLocalStorageSet,
+} from "../utils/storage";
+
 // Initialize from localStorage if available (client-side only)
-const storedContractId = typeof localStorage !== "undefined" ? localStorage.getItem("smol:contractId") : null;
-const storedKeyId = typeof localStorage !== "undefined" ? localStorage.getItem("smol:keyId") : null;
+const storedContractId = safeLocalStorageGet("smol:contractId");
+const storedKeyId = safeLocalStorageGet("smol:keyId");
 
 export const userState = $state<{
   contractId: string | null;
@@ -26,10 +32,8 @@ export function isAuthenticated(): boolean {
  */
 export function setContractId(id: string | null) {
   userState.contractId = id;
-  if (typeof localStorage !== "undefined") {
-    if (id) localStorage.setItem("smol:contractId", id);
-    else localStorage.removeItem("smol:contractId");
-  }
+  if (id) safeLocalStorageSet("smol:contractId", id);
+  else safeLocalStorageRemove("smol:contractId");
 }
 
 /**
@@ -37,10 +41,8 @@ export function setContractId(id: string | null) {
  */
 export function setKeyId(id: string | null) {
   userState.keyId = id;
-  if (typeof localStorage !== "undefined") {
-    if (id) localStorage.setItem("smol:keyId", id);
-    else localStorage.removeItem("smol:keyId");
-  }
+  if (id) safeLocalStorageSet("smol:keyId", id);
+  else safeLocalStorageRemove("smol:keyId");
 }
 
 /**
@@ -50,10 +52,8 @@ export function setUserAuth(contractId: string | null, keyId: string | null) {
   userState.contractId = contractId;
   userState.keyId = keyId;
 
-  if (typeof localStorage !== "undefined") {
-    if (contractId) localStorage.setItem("smol:contractId", contractId);
-    if (keyId) localStorage.setItem("smol:keyId", keyId);
-  }
+  if (contractId) safeLocalStorageSet("smol:contractId", contractId);
+  if (keyId) safeLocalStorageSet("smol:keyId", keyId);
 }
 
 /**
@@ -65,12 +65,10 @@ export function clearUserAuth() {
   userState.keyId = null;
   userState.walletConnected = false;
 
-  if (typeof localStorage !== "undefined") {
-    // Hard logout: Remove credentials to prevent stale passkey issues
-    localStorage.removeItem("smol:contractId");
-    localStorage.removeItem("smol:keyId");
-    localStorage.removeItem("smol:skip_intro"); // Optional: reset intro
-  }
+  // Hard logout: Remove credentials to prevent stale passkey issues
+  safeLocalStorageRemove("smol:contractId");
+  safeLocalStorageRemove("smol:keyId");
+  safeLocalStorageRemove("smol:skip_intro"); // Optional: reset intro
 }
 
 /**
