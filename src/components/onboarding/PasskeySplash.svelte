@@ -33,7 +33,11 @@
     };
 
     // Perform check synchronously on component initialization
-    shouldRedirect = checkAuth();
+    // But ALLOW override if ?debug is present to let devs/triage stay on the page
+    const hasDebug =
+        typeof window !== "undefined" &&
+        new URLSearchParams(window.location.search).has("debug");
+    shouldRedirect = checkAuth() && !hasDebug;
 
     // Check for Direct Relayer Mode (Dev/Preview)
     // Direct Relayer (OZ Channels) should ONLY be used on dev/preview environments to bypass Turnstile.
@@ -48,20 +52,19 @@
 
     const isDirectRelayer = (isPagesDev || isLocalhost) && hasApiKey;
 
-    console.log(
-        "[Debug] Relayer Config:",
-        JSON.stringify({
-            isDirectRelayer,
-            isPagesDev,
-            isLocalhost,
-            hasKey: hasApiKey,
-            mode: import.meta.env.MODE,
-            baseUrl: import.meta.env.BASE_URL,
-            availableKeys: Object.keys(import.meta.env).filter((k) =>
-                k.startsWith("PUBLIC_"),
-            ),
-        }),
-    );
+    if (typeof window !== "undefined") {
+        console.log(
+            "[Debug] Relayer Config:",
+            JSON.stringify({
+                isDirectRelayer,
+                isPagesDev,
+                isLocalhost,
+                hasKey: hasApiKey,
+                mode: import.meta.env.MODE,
+                baseUrl: import.meta.env.BASE_URL,
+            }),
+        );
+    }
 
     const authHook = useAuthentication();
 
@@ -328,7 +331,7 @@
             >
                 <!-- DEBUG: Relayer Mode Indicator -->
                 <div
-                    class="fixed top-0 right-0 p-2 text-[10px] bg-black/80 backdrop-blur border-b border-l border-lime-400/20 text-lime-400 font-mono z-[10000] text-right pointer-events-none"
+                    class="fixed bottom-0 right-0 p-2 text-[10px] bg-black/80 backdrop-blur border-t border-l border-lime-400/20 text-lime-400 font-mono z-[50] text-right pointer-events-none"
                 >
                     <div>
                         MODE: {isDirectRelayer
