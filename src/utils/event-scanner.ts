@@ -104,28 +104,47 @@ export async function findTokenTransfers(
         const rpcUrl = getBestRpcUrl();
         log.debug(LogCategory.RPC, 'Querying getEvents', { rpcUrl });
 
-        const response = await fetch(rpcUrl, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-                jsonrpc: '2.0',
-                id: 1,
-                method: RPC_METHOD,
-                params: requestBody
-            })
-        });
+        // Helper to perform the fetch with one automatic retry for ledger range errors
+        const fetchEvents = async (forceStartLedger?: number): Promise<EventResponse> => {
+            requestBody.startLedger = forceStartLedger ?? (requestBody.startLedger || 1);
 
-        if (!response.ok) {
-            throw new Error(`RPC HTTP error: ${response.status} ${response.statusText}`);
-        }
+            const response = await fetch(rpcUrl, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    jsonrpc: '2.0',
+                    id: 1,
+                    method: RPC_METHOD,
+                    params: requestBody
+                })
+            });
 
-        const json = await response.json();
+            if (!response.ok) {
+                throw new Error(`RPC HTTP error: ${response.status} ${response.statusText}`);
+            }
 
-        if (json.error) {
-            throw new Error(`RPC error: ${json.error.message} (code ${json.error.code})`);
-        }
+            const json = await response.json();
 
-        const result = json.result as EventResponse;
+            if (json.error) {
+                // "startLedger must be within the ledger range: 60792655 - 60913614"
+                if (json.error.code === -32600 && json.error.message.includes('ledger range')) {
+                    const match = json.error.message.match(/range: (\d+) -/);
+                    if (match && match[1]) {
+                        const validStart = parseInt(match[1], 10);
+                        // Only retry if we haven't already forced a start ledger (prevent infinite loop)
+                        if (!forceStartLedger) {
+                            log.warn(LogCategory.RPC, `RPC requires recent startLedger. Retrying with ${validStart}...`);
+                            return fetchEvents(validStart);
+                        }
+                    }
+                }
+                throw new Error(`RPC error: ${json.error.message} (code ${json.error.code})`);
+            }
+
+            return json.result as EventResponse;
+        };
+
+        const result = await fetchEvents(startLedger);
 
         if (!result.events || result.events.length === 0) {
             log.info(LogCategory.RPC, 'No transfer events found');
