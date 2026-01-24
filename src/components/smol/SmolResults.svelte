@@ -911,7 +911,7 @@
                                             class="text-white/60 font-mono text-[10px]"
                                         >
                                             {new Date(
-                                                data.d1?.Created || "",
+                                                data.d1?.Created_At || "",
                                             ).toLocaleDateString()}
                                         </div>
                                     </div>
@@ -1190,7 +1190,7 @@
                                                         class="text-white/60 font-mono text-[10px]"
                                                     >
                                                         {new Date(
-                                                            data.d1?.Created ||
+                                                            data.d1?.Created_At ||
                                                                 "",
                                                         ).toLocaleDateString()}
                                                     </div>

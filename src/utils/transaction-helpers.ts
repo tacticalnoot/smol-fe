@@ -66,6 +66,8 @@ export interface SignAndSendResult {
     error?: string;
 }
 
+type SignableTransaction = AssembledTransaction<unknown> | Tx | unknown;
+
 /**
  * Unified sign and send pattern
  *
@@ -81,7 +83,7 @@ export interface SignAndSendResult {
  * @returns Result with success status and optional transaction hash
  */
 export async function signAndSend<T>(
-    transaction: AssembledTransaction<T> | Tx,
+    transaction: SignableTransaction,
     options: SignAndSendOptions
 ): Promise<SignAndSendResult> {
     const {
@@ -123,7 +125,7 @@ export async function signAndSend<T>(
 
         // Sign transaction
         const rpId = getSafeRpId(window.location.hostname);
-        const signedTx = await account.get().sign(transaction, {
+        const signedTx = await account.get().sign(transaction as any, {
             rpId,
             keyId,
             expiration: expirationSequence,
@@ -181,7 +183,7 @@ export async function signAndSend<T>(
  * @returns Result with success status
  */
 export async function signSendAndVerify<T>(
-    transaction: AssembledTransaction<T> | Tx,
+    transaction: SignableTransaction,
     options: SignAndSendOptions
 ): Promise<SignAndSendResult> {
     const {
@@ -218,7 +220,7 @@ export async function signSendAndVerify<T>(
 
         // Sign transaction
         const rpId = getSafeRpId(window.location.hostname);
-        const signedTx = await account.get().sign(transaction, {
+        const signedTx = await account.get().sign(transaction as any, {
             rpId,
             keyId,
             expiration: expirationSequence,
