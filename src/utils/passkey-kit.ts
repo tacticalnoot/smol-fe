@@ -20,13 +20,33 @@ let _xlm: ReturnType<SACClient['getSACClient']> | null = null;
 
 function getAccount(): PasskeyKit {
     if (!_account) {
-        // console.log("[DEBUG] Initializing PasskeyKit with RPC:", RPC_URL);
-        _account = new PasskeyKit({
+        const config = {
             rpcUrl: RPC_URL,
             networkPassphrase: import.meta.env.PUBLIC_NETWORK_PASSPHRASE,
             walletWasmHash: import.meta.env.PUBLIC_WALLET_WASM_HASH,
             timeoutInSeconds: 60, // Increased from 30s to handle complex transactions
+        };
+
+        console.log("[PasskeyKit] Initializing with config:", {
+            rpcUrl: config.rpcUrl,
+            networkPassphrase: config.networkPassphrase,
+            walletWasmHash: config.walletWasmHash?.substring(0, 16) + '...',
+            timeoutInSeconds: config.timeoutInSeconds,
         });
+
+        // Validate configuration
+        if (!config.rpcUrl) {
+            throw new Error('PUBLIC_RPC_URL is not configured');
+        }
+        if (!config.networkPassphrase) {
+            throw new Error('PUBLIC_NETWORK_PASSPHRASE is not configured');
+        }
+        if (!config.walletWasmHash) {
+            throw new Error('PUBLIC_WALLET_WASM_HASH is not configured');
+        }
+
+        _account = new PasskeyKit(config);
+        console.log("[PasskeyKit] Initialized successfully");
     }
     return _account;
 }
@@ -195,9 +215,46 @@ export async function send<T>(
     const isLocalhost = typeof window !== 'undefined' && window.location.hostname.includes('localhost');
     const isSafeDevEnv = isPagesDev || isLocalhost;
 
-    if (envApiKey && isSafeDevEnv) {
-        // FORCE OZ Channels on safe dev environments (pages.dev, localhost)
-        // This ignores PUBLIC_RELAYER_URL to ensure we bypass Turnstile
+    // Detect wallet deployment transactions
+    // These have factory auth and can't use OZ Channels
+    let isWalletDeployment = false;
+    try {
+        const { TransactionBuilder, Networks } = await import("@stellar/stellar-sdk");
+        const tx = TransactionBuilder.fromXDR(xdr, "Public Global Stellar Network ; September 2015");
+        const operations = 'innerTransaction' in tx ? tx.innerTransaction.operations : tx.operations;
+
+        // Wallet deployment = InvokeHostFunction with factory source
+        if (operations.length === 1 && operations[0].type === 'invokeHostFunction') {
+            // Check if source is factory account (starts with GC2C7AWLS...)
+            const opSource = operations[0].source;
+            const txSource = 'source' in tx ? (tx as any).source : null;
+            const source = opSource || txSource;
+
+            if (source && source.toString().startsWith('GC2C7AWLS')) {
+                isWalletDeployment = true;
+                console.log('[Relayer] Detected wallet deployment transaction');
+            }
+        }
+    } catch (e) {
+        console.warn('[Relayer] Could not parse transaction for deployment detection:', e);
+    }
+
+    // Wallet deployments need special handling
+    if (isWalletDeployment) {
+        if (envApiKey && isSafeDevEnv) {
+            // Dev mode: Use OZ Channels but with raw XDR (not parsed func/auth)
+            // This avoids Turnstile requirement while still getting fee sponsorship
+            console.log('[Relayer] Wallet deployment in dev - using OZ Channels with raw XDR');
+            relayerUrl = "https://channels.openzeppelin.com";
+            useChannels = false; // Don't parse into func/auth format
+        } else {
+            // Production: Use KaleFarm with Turnstile
+            console.log('[Relayer] Wallet deployment in prod - using KaleFarm');
+            relayerUrl = envUrl || "https://api.kalefarm.xyz";
+            useChannels = false;
+        }
+    } else if (envApiKey && isSafeDevEnv) {
+        // Regular transactions in dev: Use OZ Channels with parsed format
         relayerUrl = "https://channels.openzeppelin.com";
         useChannels = true;
         console.log("[Relayer] Dev Mode: Forcing OZ Channels bypass");
@@ -328,7 +385,7 @@ export async function send<T>(
                         }
 
 
-                        const { hash, Keypair, ByteBuffer } = await import("@stellar/stellar-sdk/minimal");
+                        const { hash, Keypair } = await import("@stellar/stellar-sdk/minimal");
                         // Re-derive the PasskeyKit factory key (used for deployments)
                         // Source: passkey-kit/src/kit.ts
                         const factoryKeypair = Keypair.fromRawEd25519Seed(hash(Buffer.from('kalepail')));
@@ -348,13 +405,16 @@ export async function send<T>(
                                 const creds = a.credentials();
                                 const switchName = creds.switch().name;
 
+                                console.log("[Relayer] Auth entry type:", switchName);
+
                                 // Skip SourceAccount credentials - OZ Channels provides its own source auth
                                 if (switchName === 'sorobanCredentialsSourceAccount' || switchName === 'sourceAccount') {
                                     console.log("[Relayer] Filtering out SourceAccount credential (OZ handles source auth)");
                                     continue; // Skip this entry entirely
                                 }
 
-                                // Keep Address credentials
+                                // Keep Address credentials (needed for wallet deployment and invoker auth)
+                                console.log("[Relayer] Keeping auth entry:", switchName);
                                 validAuthEntries.push(a.toXDR('base64'));
                             } catch (credError) {
                                 // If we can't inspect credentials, include it anyway
@@ -390,12 +450,12 @@ export async function send<T>(
                         throw xdrError;
                     }
                 } else {
-                    // Fallback Direct Mode (if URL is not Channels, e.g. generic Relayer)
-                    body = {
-                        transaction_xdr: xdr,
-                        fee_token: "native",
-                        fee_bump: true
-                    };
+                    // Raw XDR mode for OZ Channels (wallet deployments)
+                    // OZ Channels accepts raw XDR string as the body
+                    console.log("[Relayer] Using OZ Channels raw XDR mode (wallet deployment)");
+                    body = xdr; // Just the raw XDR string
+                    headers['Content-Type'] = 'text/plain'; // Raw XDR is plain text
+                    if (!fetchUrl.endsWith('/')) fetchUrl += '/';
                 }
             } else {
                 // KaleFarm Proxy Mode (Default)
@@ -407,7 +467,7 @@ export async function send<T>(
             const response = await fetch(fetchUrl, {
                 method: 'POST',
                 headers,
-                body: JSON.stringify(body),
+                body: typeof body === 'string' ? body : JSON.stringify(body),
                 signal: controller.signal,
             });
 

@@ -204,6 +204,13 @@
             // Optional: Show error if it wasn't a cancellation
             // ERROR HANDLING: Show real feedback
             const message = e.message?.toLowerCase() || "";
+
+            // Check for specific error cases
+            const isNoCredentials =
+                message.includes("failed to connect wallet") ||
+                message.includes("no credentials available") ||
+                message.includes("credential") && message.includes("not found");
+
             // Filter out standard cancellations (user closed popup or timed out)
             if (
                 !message.includes("abort") &&
@@ -211,14 +218,23 @@
                 !message.includes("interaction was not allowed") &&
                 !message.includes("timed out or was not allowed")
             ) {
-                logger.error(
-                    LogCategory.PASSKEY,
-                    "Passkey Login Critical Error",
-                    undefined,
-                    e,
-                );
-                console.error("Passkey Login Critical Error:", e);
-                error = `Login failed: ${e.message || "Unknown error"}`;
+                // Provide more helpful error message for no credentials case
+                if (isNoCredentials) {
+                    error = "No passkey found. Please create a new account instead.";
+                    logger.debug(
+                        LogCategory.PASSKEY,
+                        "No passkey credentials found for login",
+                    );
+                } else {
+                    logger.error(
+                        LogCategory.PASSKEY,
+                        "Passkey Login Critical Error",
+                        undefined,
+                        e,
+                    );
+                    console.error("Passkey Login Critical Error:", e);
+                    error = `Login failed: ${e.message || "Unknown error"}`;
+                }
 
                 // Auto-clear error after 5s to reset UI state
                 setTimeout(() => {
