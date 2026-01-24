@@ -150,6 +150,57 @@ function recordCircuitBreakerFailure(): void {
 }
 
 /**
+ * Submit transaction directly to Stellar RPC
+ *
+ * Used for wallet deployments to bypass relayer timebounds restrictions.
+ * Does NOT provide fee sponsorship - transaction must pay its own fees.
+ *
+ * @param xdr - Signed transaction XDR string
+ * @returns Promise resolving to transaction result
+ * @throws SmolError if submission fails
+ */
+async function submitToRPC(xdr: string): Promise<any> {
+    console.log('[RPC] Submitting transaction directly to Stellar RPC');
+
+    try {
+        const response = await fetch(RPC_URL, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                jsonrpc: '2.0',
+                id: 1,
+                method: 'sendTransaction',
+                params: {
+                    transaction: xdr,
+                },
+            }),
+        });
+
+        if (!response.ok) {
+            throw new Error(`RPC request failed: ${response.status} ${response.statusText}`);
+        }
+
+        const result = await response.json();
+
+        if (result.error) {
+            console.error('[RPC] Submission failed:', result.error);
+            throw new Error(`RPC error: ${result.error.message || JSON.stringify(result.error)}`);
+        }
+
+        console.log('[RPC] Transaction submitted successfully:', result.result);
+        return result.result;
+    } catch (error: any) {
+        const rpcError = createRelayerError(
+            error.message || 'Failed to submit transaction to RPC',
+            undefined,
+            error instanceof Error ? error : new Error(String(error))
+        );
+        logError(rpcError);
+        throw rpcError;
+    }
+}
+
+/**
  * Send a transaction via Kale Farm Relayer (Raw XDR)
  *
  * Implements enterprise-grade resilience patterns for blockchain transaction submission:
@@ -241,18 +292,10 @@ export async function send<T>(
 
     // Wallet deployments need special handling
     if (isWalletDeployment) {
-        if (envApiKey && isSafeDevEnv) {
-            // Dev mode: Use OZ Channels but with raw XDR (not parsed func/auth)
-            // This avoids Turnstile requirement while still getting fee sponsorship
-            console.log('[Relayer] Wallet deployment in dev - using OZ Channels with raw XDR');
-            relayerUrl = "https://channels.openzeppelin.com";
-            useChannels = false; // Don't parse into func/auth format
-        } else {
-            // Production: Use KaleFarm with Turnstile
-            console.log('[Relayer] Wallet deployment in prod - using KaleFarm');
-            relayerUrl = envUrl || "https://api.kalefarm.xyz";
-            useChannels = false;
-        }
+        // Wallet deployments bypass relayers entirely and submit directly to RPC
+        // This avoids timebounds issues with OZ Channels and works in both dev/prod
+        console.log('[Relayer] Wallet deployment - submitting directly to RPC');
+        return await submitToRPC(xdr);
     } else if (envApiKey && isSafeDevEnv) {
         // Regular transactions in dev: Use OZ Channels with parsed format
         relayerUrl = "https://channels.openzeppelin.com";
