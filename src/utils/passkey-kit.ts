@@ -333,7 +333,7 @@ export async function send<T>(
                         // Source: passkey-kit/src/kit.ts
                         const factoryKeypair = Keypair.fromRawEd25519Seed(hash(Buffer.from('kalepail')));
 
-                        const authXdr = authEntries.map((a: any) => {
+                        const authXdr = await Promise.all(authEntries.map(async (a: any) => {
                             if (!a || typeof a.toXDR !== 'function') {
                                 throw createXDRParsingError('Invalid auth entry');
                             }
@@ -344,14 +344,15 @@ export async function send<T>(
                             // We can do this because the signature payload is independent of the credential type wrapper.
                             try {
                                 const creds = a.credentials();
-                                if (creds.switch().name === 'sorobanCredentialsSourceAccount') {
+                                // Handle both possible casing of switch().name (sdk versions vary)
+                                const switchName = creds.switch().name;
+                                if (switchName === 'sorobanCredentialsSourceAccount' || switchName === 'sourceAccount') {
                                     console.log("[Relayer] Patching SourceAccount credential to Address credential");
 
                                     // Extract components
                                     // SourceAccount creds might not have an address field, but they have expirations/signatures
                                     // standard stellar-sdk structures:
                                     const sourceCreds = creds.sourceAccount(); // SorobanCredentialsSourceAccount
-                                    const expiration = sourceCreds.expiration(); // deprecated? OR signatureExpirationLedger
                                     const signature = sourceCreds.signature();
 
                                     // Note: In newer SDKs, it might be different structure. 
@@ -379,7 +380,7 @@ export async function send<T>(
                             }
 
                             return a.toXDR('base64');
-                        });
+                        }));
 
                         body = {
                             func: funcXdr,
