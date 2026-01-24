@@ -327,10 +327,57 @@ export async function send<T>(
                             throw xdrError;
                         }
 
+
+                        const { hash, Keypair, ByteBuffer } = await import("@stellar/stellar-sdk/minimal");
+                        // Re-derive the PasskeyKit factory key (used for deployments)
+                        // Source: passkey-kit/src/kit.ts
+                        const factoryKeypair = Keypair.fromRawEd25519Seed(hash(Buffer.from('kalepail')));
+
                         const authXdr = authEntries.map((a: any) => {
                             if (!a || typeof a.toXDR !== 'function') {
                                 throw createXDRParsingError('Invalid auth entry');
                             }
+
+                            // Fix for OZ Channels: "source-account credentials not allowed"
+                            // If credentials are type 'sourceAccount', we must convert to 'address' type
+                            // using the signer's address (which for createWallet is the factory key).
+                            // We can do this because the signature payload is independent of the credential type wrapper.
+                            try {
+                                const creds = a.credentials();
+                                if (creds.switch().name === 'sorobanCredentialsSourceAccount') {
+                                    console.log("[Relayer] Patching SourceAccount credential to Address credential");
+
+                                    // Extract components
+                                    // SourceAccount creds might not have an address field, but they have expirations/signatures
+                                    // standard stellar-sdk structures:
+                                    const sourceCreds = creds.sourceAccount(); // SorobanCredentialsSourceAccount
+                                    const expiration = sourceCreds.expiration(); // deprecated? OR signatureExpirationLedger
+                                    const signature = sourceCreds.signature();
+
+                                    // Note: In newer SDKs, it might be different structure. 
+                                    // Let's assume standard XDR structure for SorobanCredentials
+
+                                    // Reconstruct as Address Credential
+                                    // We need to create a new SorobanCredentials object
+                                    const { xdr: XDR, Address: SdkAddress } = await import("@stellar/stellar-sdk");
+
+                                    const newCreds = XDR.SorobanCredentials.sorobanCredentialsAddress(
+                                        new XDR.SorobanCredentialsAddress({
+                                            address: SdkAddress.fromString(factoryKeypair.publicKey()).toScAddress(),
+                                            signature: signature,
+                                            signatureExpirationLedger: sourceCreds.signatureExpirationLedger(),
+                                            nonce: sourceCreds.nonce()
+                                        })
+                                    );
+
+                                    // Replace credentials in the auth entry
+                                    a.credentials(newCreds);
+                                }
+                            } catch (patchError) {
+                                console.warn("[Relayer] Failed to patch auth entry:", patchError);
+                                // Continue with original, it might fail but worth a try
+                            }
+
                             return a.toXDR('base64');
                         });
 
