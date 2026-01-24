@@ -333,74 +333,38 @@ export async function send<T>(
                         // Source: passkey-kit/src/kit.ts
                         const factoryKeypair = Keypair.fromRawEd25519Seed(hash(Buffer.from('kalepail')));
 
-                        const authXdr = await Promise.all(authEntries.map(async (a: any) => {
+                        // Filter and serialize auth entries
+                        // CRITICAL: OZ Channels rejects SourceAccount credentials because it uses its own
+                        // source account (channel account) for the transaction. We must FILTER OUT
+                        // any SourceAccount auth entries - OZ handles source auth automatically.
+                        const validAuthEntries: string[] = [];
+
+                        for (const a of authEntries) {
                             if (!a || typeof a.toXDR !== 'function') {
                                 throw createXDRParsingError('Invalid auth entry');
                             }
 
-                            // Fix for OZ Channels: "source-account credentials not allowed"
-                            // If credentials are type 'sourceAccount', we must convert to 'address' type
-                            // using the signer's address (which for createWallet is the factory key).
-                            // We can do this because the signature payload is independent of the credential type wrapper.
                             try {
                                 const creds = a.credentials();
-                                // Handle both possible casing of switch().name (sdk versions vary)
                                 const switchName = creds.switch().name;
+
+                                // Skip SourceAccount credentials - OZ Channels provides its own source auth
                                 if (switchName === 'sorobanCredentialsSourceAccount' || switchName === 'sourceAccount') {
-                                    console.log("[Relayer] Patching SourceAccount credential to Address credential");
-
-                                    // Extract components
-                                    // Note: In newer SDKs, it might be different structure. 
-                                    // Let's assume standard XDR structure for SorobanCredentials
-
-                                    // Debugging: Log keys to find the correct accessor
-                                    console.log("[Relayer] Inspecting SourceAccount creds structure:", JSON.stringify(creds, null, 2));
-                                    const proto = Object.getPrototypeOf(creds);
-                                    console.log("[Relayer] Prototype methods:", Object.getOwnPropertyNames(proto));
-
-                                    // Try strict property access first (some versions unwrap unions to properties)
-                                    let sourceCreds = (creds as any).value ? (creds as any).value() : undefined;
-                                    if (!sourceCreds && (creds as any).sorobanCredentialsSourceAccount) {
-                                        sourceCreds = typeof (creds as any).sorobanCredentialsSourceAccount === 'function'
-                                            ? (creds as any).sorobanCredentialsSourceAccount()
-                                            : (creds as any).sorobanCredentialsSourceAccount;
-                                    }
-
-                                    // Fallback: Check if 'creds' itself is the value (if specific union type)
-                                    if (!sourceCreds) sourceCreds = creds;
-
-                                    if (!sourceCreds || !sourceCreds.signature) {
-                                        throw new Error(`Could not extract sourceCreds. Keys: ${Object.keys(creds)}`);
-                                    }
-
-                                    const signature = sourceCreds.signature();
-
-                                    // Note: In newer SDKs, it might be different structure. 
-                                    // Let's assume standard XDR structure for SorobanCredentials
-
-                                    // Reconstruct as Address Credential
-                                    // We need to create a new SorobanCredentials object
-                                    const { xdr: XDR, Address: SdkAddress } = await import("@stellar/stellar-sdk");
-
-                                    const newCreds = XDR.SorobanCredentials.sorobanCredentialsAddress(
-                                        new XDR.SorobanCredentialsAddress({
-                                            address: SdkAddress.fromString(factoryKeypair.publicKey()).toScAddress(),
-                                            signature: signature,
-                                            signatureExpirationLedger: sourceCreds.signatureExpirationLedger(),
-                                            nonce: sourceCreds.nonce()
-                                        })
-                                    );
-
-                                    // Replace credentials in the auth entry
-                                    a.credentials(newCreds);
+                                    console.log("[Relayer] Filtering out SourceAccount credential (OZ handles source auth)");
+                                    continue; // Skip this entry entirely
                                 }
-                            } catch (patchError) {
-                                console.warn("[Relayer] Failed to patch auth entry:", patchError);
-                                // Continue with original, it might fail but worth a try
-                            }
 
-                            return a.toXDR('base64');
-                        }));
+                                // Keep Address credentials
+                                validAuthEntries.push(a.toXDR('base64'));
+                            } catch (credError) {
+                                // If we can't inspect credentials, include it anyway
+                                console.warn("[Relayer] Could not inspect auth entry, including as-is:", credError);
+                                validAuthEntries.push(a.toXDR('base64'));
+                            }
+                        }
+
+                        console.log(`[Relayer] Filtered auth: ${authEntries.length} -> ${validAuthEntries.length} entries`);
+                        const authXdr = validAuthEntries;
 
                         body = {
                             func: funcXdr,
