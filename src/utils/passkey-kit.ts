@@ -450,11 +450,10 @@ export async function send<T>(
                         throw xdrError;
                     }
                 } else {
-                    // Raw XDR mode for OZ Channels (wallet deployments)
-                    // OZ Channels accepts raw XDR string as the body
-                    console.log("[Relayer] Using OZ Channels raw XDR mode (wallet deployment)");
-                    body = xdr; // Just the raw XDR string
-                    headers['Content-Type'] = 'text/plain'; // Raw XDR is plain text
+                    // Transaction XDR mode for OZ Channels (wallet deployments)
+                    // Send the full transaction XDR instead of parsed func/auth
+                    console.log("[Relayer] Using OZ Channels transaction XDR mode (wallet deployment)");
+                    body = { transaction: xdr };
                     if (!fetchUrl.endsWith('/')) fetchUrl += '/';
                 }
             } else {
