@@ -1,14 +1,14 @@
 <script lang="ts">
-    import logger, { LogLevel, LogCategory } from '../../utils/debug-logger';
-    import { userState } from '../../stores/user.svelte';
-    import { upgradesState } from '../../stores/upgrades.svelte';
-    import { balanceState } from '../../stores/balance.svelte';
+    import logger, { LogLevel, LogCategory } from "../../utils/debug-logger";
+    import { userState } from "../../stores/user.svelte";
+    import { upgradesState } from "../../stores/upgrades.svelte";
+    import { balanceState } from "../../stores/balance.svelte";
 
     let isOpen = $state(false);
     let currentLevel = $state(logger.getLevel());
     let stats = $state(logger.getStats());
     let recentLogs = $state<any[]>([]);
-    let selectedCategory = $state<string>('ALL');
+    let selectedCategory = $state<string>("ALL");
 
     // Update stats periodically
     $effect(() => {
@@ -30,7 +30,7 @@
     }
 
     function clearLogs() {
-        if (confirm('Clear all logs?')) {
+        if (confirm("Clear all logs?")) {
             logger.clearLogs();
             stats = logger.getStats();
             recentLogs = [];
@@ -42,24 +42,26 @@
             user: {
                 contractId: userState.contractId,
                 keyId: userState.keyId,
-                walletConnected: userState.walletConnected
+                walletConnected: userState.walletConnected,
             },
             upgrades: upgradesState,
             balance: {
                 kale: balanceState.balance,
-                xlm: balanceState.xlmBalance
+                xlm: balanceState.xlmBalance,
             },
             localStorage: {
-                contractId: localStorage.getItem('smol:contractId'),
-                keyId: localStorage.getItem('smol:keyId')
-            }
+                contractId: localStorage.getItem("smol:contractId"),
+                keyId: localStorage.getItem("smol:keyId"),
+            },
         };
         navigator.clipboard.writeText(JSON.stringify(state, null, 2));
-        alert('State copied to clipboard!');
+        alert("State copied to clipboard!");
     }
 
     function copyAllLogs() {
-        const allLogs = logger.getLogs();
+        // Limit to last 200 logs to prevent clipboard crash
+        const allLogs = logger.getLogs().slice(-200);
+
         const state = {
             timestamp: new Date().toISOString(),
             url: window.location.href,
@@ -71,23 +73,30 @@
                 user: {
                     contractId: userState.contractId,
                     keyId: userState.keyId,
-                    walletConnected: userState.walletConnected
+                    walletConnected: userState.walletConnected,
                 },
                 upgrades: upgradesState,
                 balance: {
                     kale: balanceState.balance,
-                    xlm: balanceState.xlmBalance
-                }
+                    xlm: balanceState.xlmBalance,
+                },
             },
 
             // LocalStorage (sanitized)
-            localStorage: Object.keys(localStorage).reduce((acc, key) => {
-                // Don't include sensitive keys
-                if (!key.includes('token') && !key.includes('private')) {
-                    acc[key] = localStorage.getItem(key);
-                }
-                return acc;
-            }, {} as Record<string, string | null>),
+            localStorage: Object.keys(localStorage).reduce(
+                (acc, key) => {
+                    // Don't include sensitive keys or the massive logs dump itself
+                    if (
+                        !key.includes("token") &&
+                        !key.includes("private") &&
+                        key !== "smol:debug:logs"
+                    ) {
+                        acc[key] = localStorage.getItem(key);
+                    }
+                    return acc;
+                },
+                {} as Record<string, string | null>,
+            ),
 
             // Debug Logs
             logs: allLogs,
@@ -95,18 +104,36 @@
 
             // Performance
             performance: {
-                memory: (performance as any).memory ? {
-                    usedJSHeapSize: (performance as any).memory.usedJSHeapSize,
-                    totalJSHeapSize: (performance as any).memory.totalJSHeapSize,
-                    jsHeapSizeLimit: (performance as any).memory.jsHeapSizeLimit
-                } : 'not available',
-                navigation: performance.getEntriesByType('navigation')[0]
-            }
+                memory: (performance as any).memory
+                    ? {
+                          usedJSHeapSize: (performance as any).memory
+                              .usedJSHeapSize,
+                          totalJSHeapSize: (performance as any).memory
+                              .totalJSHeapSize,
+                          jsHeapSizeLimit: (performance as any).memory
+                              .jsHeapSizeLimit,
+                      }
+                    : "not available",
+                navigation: performance.getEntriesByType("navigation")[0],
+            },
         };
 
-        navigator.clipboard.writeText(JSON.stringify(state, null, 2))
-            .then(() => alert('✅ Complete debug report copied to clipboard!'))
-            .catch(() => alert('❌ Failed to copy logs'));
+        try {
+            const reportStr = JSON.stringify(state, null, 2);
+            navigator.clipboard
+                .writeText(reportStr)
+                .then(() =>
+                    alert(
+                        `✅ Debug report copied (${allLogs.length} logs). Size: ${(reportStr.length / 1024).toFixed(1)}KB`,
+                    ),
+                )
+                .catch(() =>
+                    alert("❌ Failed to copy logs: Clipboard API error"),
+                );
+        } catch (e) {
+            console.error("Failed to stringify debug report", e);
+            alert("❌ Failed to create report: JSON stringify error");
+        }
     }
 
     function togglePanel() {
@@ -115,103 +142,140 @@
 </script>
 
 <!-- Only show in development or when ?debug=true -->
-{#if import.meta.env.DEV || new URLSearchParams(window.location.search).has('debug')}
-<div class="debug-panel" class:open={isOpen}>
-    <!-- Toggle Button -->
-    <button class="debug-toggle" onclick={togglePanel} title="Debug Panel">
-        🐛
-    </button>
+{#if import.meta.env.DEV || new URLSearchParams(window.location.search).has("debug")}
+    <div class="debug-panel" class:open={isOpen}>
+        <!-- Toggle Button -->
+        <button class="debug-toggle" onclick={togglePanel} title="Debug Panel">
+            🐛
+        </button>
 
-    <!-- Panel Content -->
-    {#if isOpen}
-    <div class="debug-content">
-        <div class="debug-header">
-            <h3>🔍 Debug Panel</h3>
-            <button onclick={togglePanel}>✕</button>
-        </div>
-
-        <div class="debug-section">
-            <h4>Log Level</h4>
-            <div class="log-level-buttons">
-                <button
-                    class:active={currentLevel === LogLevel.ERROR}
-                    onclick={() => setLevel(LogLevel.ERROR)}
-                >
-                    ERROR
-                </button>
-                <button
-                    class:active={currentLevel === LogLevel.WARN}
-                    onclick={() => setLevel(LogLevel.WARN)}
-                >
-                    WARN
-                </button>
-                <button
-                    class:active={currentLevel === LogLevel.INFO}
-                    onclick={() => setLevel(LogLevel.INFO)}
-                >
-                    INFO
-                </button>
-                <button
-                    class:active={currentLevel === LogLevel.DEBUG}
-                    onclick={() => setLevel(LogLevel.DEBUG)}
-                >
-                    DEBUG
-                </button>
-                <button
-                    class:active={currentLevel === LogLevel.TRACE}
-                    onclick={() => setLevel(LogLevel.TRACE)}
-                >
-                    TRACE
-                </button>
-            </div>
-        </div>
-
-        <div class="debug-section">
-            <h4>Stats</h4>
-            <div class="stats-grid">
-                <div>Total Logs: <strong>{stats.total}</strong></div>
-                <div>Errors: <strong class="error">{stats.byLevel.ERROR || 0}</strong></div>
-                <div>Warnings: <strong class="warn">{stats.byLevel.WARN || 0}</strong></div>
-            </div>
-        </div>
-
-        <div class="debug-section">
-            <h4>Recent Logs (Last 10)</h4>
-            <div class="recent-logs">
-                {#each recentLogs as log}
-                <div class="log-entry" class:error={log.level === 0} class:warn={log.level === 1}>
-                    <span class="log-time">{new Date(log.timestamp).toLocaleTimeString()}</span>
-                    <span class="log-category">[{log.category}]</span>
-                    <span class="log-message">{log.message}</span>
+        <!-- Panel Content -->
+        {#if isOpen}
+            <div class="debug-content">
+                <div class="debug-header">
+                    <h3>🔍 Debug Panel</h3>
+                    <button onclick={togglePanel}>✕</button>
                 </div>
-                {/each}
-            </div>
-        </div>
 
-        <div class="debug-section">
-            <h4>Actions</h4>
-            <div class="action-buttons">
-                <button onclick={copyAllLogs} class="primary-action" title="Copy complete debug report including logs, state, network, performance">
-                    📋 Copy FULL Report
-                </button>
-                <button onclick={downloadLogs}>📥 Download Logs</button>
-                <button onclick={copyState}>📄 Copy State Only</button>
-                <button onclick={clearLogs}>🗑️ Clear Logs</button>
-                <button onclick={() => logger.printSummary()}>📊 Print Summary</button>
-            </div>
-        </div>
+                <div class="debug-section">
+                    <h4>Log Level</h4>
+                    <div class="log-level-buttons">
+                        <button
+                            class:active={currentLevel === LogLevel.ERROR}
+                            onclick={() => setLevel(LogLevel.ERROR)}
+                        >
+                            ERROR
+                        </button>
+                        <button
+                            class:active={currentLevel === LogLevel.WARN}
+                            onclick={() => setLevel(LogLevel.WARN)}
+                        >
+                            WARN
+                        </button>
+                        <button
+                            class:active={currentLevel === LogLevel.INFO}
+                            onclick={() => setLevel(LogLevel.INFO)}
+                        >
+                            INFO
+                        </button>
+                        <button
+                            class:active={currentLevel === LogLevel.DEBUG}
+                            onclick={() => setLevel(LogLevel.DEBUG)}
+                        >
+                            DEBUG
+                        </button>
+                        <button
+                            class:active={currentLevel === LogLevel.TRACE}
+                            onclick={() => setLevel(LogLevel.TRACE)}
+                        >
+                            TRACE
+                        </button>
+                    </div>
+                </div>
 
-        <div class="debug-section">
-            <h4>State</h4>
-            <div class="state-display">
-                <div><strong>Contract ID:</strong> {userState.contractId ? `${userState.contractId.substring(0, 8)}...` : 'None'}</div>
-                <div><strong>Wallet Connected:</strong> {userState.walletConnected ? '✅' : '❌'}</div>
-                <div><strong>KALE Balance:</strong> {balanceState.balance !== null ? `${balanceState.balance.toLocaleString()} KALE` : 'Loading...'}</div>
+                <div class="debug-section">
+                    <h4>Stats</h4>
+                    <div class="stats-grid">
+                        <div>Total Logs: <strong>{stats.total}</strong></div>
+                        <div>
+                            Errors: <strong class="error"
+                                >{stats.byLevel.ERROR || 0}</strong
+                            >
+                        </div>
+                        <div>
+                            Warnings: <strong class="warn"
+                                >{stats.byLevel.WARN || 0}</strong
+                            >
+                        </div>
+                    </div>
+                </div>
+
+                <div class="debug-section">
+                    <h4>Recent Logs (Last 10)</h4>
+                    <div class="recent-logs">
+                        {#each recentLogs as log}
+                            <div
+                                class="log-entry"
+                                class:error={log.level === 0}
+                                class:warn={log.level === 1}
+                            >
+                                <span class="log-time"
+                                    >{new Date(
+                                        log.timestamp,
+                                    ).toLocaleTimeString()}</span
+                                >
+                                <span class="log-category"
+                                    >[{log.category}]</span
+                                >
+                                <span class="log-message">{log.message}</span>
+                            </div>
+                        {/each}
+                    </div>
+                </div>
+
+                <div class="debug-section">
+                    <h4>Actions</h4>
+                    <div class="action-buttons">
+                        <button
+                            onclick={copyAllLogs}
+                            class="primary-action"
+                            title="Copy complete debug report including logs, state, network, performance"
+                        >
+                            📋 Copy FULL Report
+                        </button>
+                        <button onclick={downloadLogs}>📥 Download Logs</button>
+                        <button onclick={copyState}>📄 Copy State Only</button>
+                        <button onclick={clearLogs}>🗑️ Clear Logs</button>
+                        <button onclick={() => logger.printSummary()}
+                            >📊 Print Summary</button
+                        >
+                    </div>
+                </div>
+
+                <div class="debug-section">
+                    <h4>State</h4>
+                    <div class="state-display">
+                        <div>
+                            <strong>Contract ID:</strong>
+                            {userState.contractId
+                                ? `${userState.contractId.substring(0, 8)}...`
+                                : "None"}
+                        </div>
+                        <div>
+                            <strong>Wallet Connected:</strong>
+                            {userState.walletConnected ? "✅" : "❌"}
+                        </div>
+                        <div>
+                            <strong>KALE Balance:</strong>
+                            {balanceState.balance !== null
+                                ? `${balanceState.balance.toLocaleString()} KALE`
+                                : "Loading..."}
+                        </div>
+                    </div>
+                </div>
             </div>
-        </div>
+        {/if}
     </div>
-    {/if}
-</div>
 {/if}
 
 <style>
@@ -220,7 +284,7 @@
         bottom: 20px;
         right: 20px;
         z-index: 999999;
-        font-family: 'Courier New', monospace;
+        font-family: "Courier New", monospace;
         font-size: 12px;
     }
 
