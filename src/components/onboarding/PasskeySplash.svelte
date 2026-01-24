@@ -1,4 +1,6 @@
 <script lang="ts">
+    console.log("[PasskeySplash] Component loading - script executing");
+
     import { onMount } from "svelte";
     import { fade, fly, scale } from "svelte/transition";
     import { useAuthentication } from "../../hooks/useAuthentication";
@@ -7,6 +9,8 @@
     import Loader from "../ui/Loader.svelte";
     import { Turnstile } from "svelte-turnstile";
     import logger, { LogCategory } from "../../utils/debug-logger";
+
+    console.log("[PasskeySplash] All imports loaded");
 
     // State
     let step = $state<"intro" | "username" | "processing" | "success">("intro");
