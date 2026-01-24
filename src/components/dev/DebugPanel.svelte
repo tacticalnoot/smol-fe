@@ -59,42 +59,6 @@
     }
 
     function copyAllLogs() {
-        // Helper to recursively sanitize data for clipboard
-        const sanitizeForClipboard = (data: any, depth = 0): any => {
-            if (depth > 4) return "[Deep Nested]"; // Prevent infinite recursion
-            if (data === null || data === undefined) return data;
-
-            if (typeof data === "string") {
-                return data.length > 500
-                    ? data.substring(0, 500) + `... (${data.length} chars)`
-                    : data;
-            }
-
-            if (Array.isArray(data)) {
-                // Limit arrays to 50 items
-                const arr =
-                    data.length > 50
-                        ? data.slice(0, 50).concat(["... (truncated array)"])
-                        : data;
-                return arr.map((item) => sanitizeForClipboard(item, depth + 1));
-            }
-
-            if (typeof data === "object") {
-                const clean: any = {};
-                for (const key in data) {
-                    // Exclude massive keys if they slip through
-                    if (key === "lyrics" || key === "audioData") {
-                        clean[key] = "[Redacted Large Data]";
-                        continue;
-                    }
-                    clean[key] = sanitizeForClipboard(data[key], depth + 1);
-                }
-                return clean;
-            }
-
-            return data;
-        };
-
         // Limit to last 200 logs and exclude TRACE (level 4)
         const allLogs = logger
             .getLogs()
@@ -124,7 +88,6 @@
             // LocalStorage (sanitized)
             localStorage: Object.keys(localStorage).reduce(
                 (acc, key) => {
-                    // Don't include sensitive keys or the massive logs dump itself
                     if (
                         !key.includes("token") &&
                         !key.includes("private") &&
@@ -158,9 +121,28 @@
         };
 
         try {
-            // Apply strict sanitization to the entire final object
-            const safeState = sanitizeForClipboard(rawState);
-            const reportStr = JSON.stringify(safeState, null, 2);
+            // Use JSON.stringify replacer for safe, on-the-fly sanitization
+            const replacer = (key: string, value: any) => {
+                // Redact massive/sensitive keys
+                if (key === "lyrics" || key === "audioData")
+                    return "[Redacted Large Data]";
+
+                // Truncate long strings
+                if (typeof value === "string" && value.length > 500) {
+                    return (
+                        value.substring(0, 500) + `... (${value.length} chars)`
+                    );
+                }
+
+                // Limit arrays
+                if (Array.isArray(value) && value.length > 50) {
+                    return value.slice(0, 50).concat(["... (truncated array)"]);
+                }
+
+                return value;
+            };
+
+            const reportStr = JSON.stringify(rawState, replacer, 2);
 
             navigator.clipboard
                 .writeText(reportStr)
@@ -174,7 +156,9 @@
                 );
         } catch (e) {
             console.error("Failed to stringify debug report", e);
-            alert("❌ Failed to create report: JSON stringify error");
+            alert(
+                `❌ Failed to create report: ${e instanceof Error ? e.message : "Unknown error"}`,
+            );
         }
     }
 
