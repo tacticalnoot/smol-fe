@@ -3,7 +3,7 @@ export const prerender = false;
 import type { APIContext } from 'astro';
 
 const SOROSWAP_API_URL = 'https://api.soroswap.finance';
-const SUPPORTED_PROTOCOLS = ['soroswap', 'aqua', 'phoenix'];
+const SUPPORTED_PROTOCOLS = ['soroswap', 'aqua', 'aquarius', 'phoenix'];
 
 export async function POST({ request, locals }: APIContext) {
     try {
@@ -29,7 +29,7 @@ export async function POST({ request, locals }: APIContext) {
             assetOut: tokenOut,
             amount: amountIn,
             tradeType: 'EXACT_IN',
-            protocols: SUPPORTED_PROTOCOLS,
+            // protocols: SUPPORTED_PROTOCOLS, // Allow all protocols for best price
             slippageBps,
         };
 
