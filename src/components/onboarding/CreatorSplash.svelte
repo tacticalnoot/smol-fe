@@ -166,7 +166,7 @@
             <svg class="w-4 h-4 flex-shrink-0" viewBox="0 0 24 24" fill="currentColor">
                 <path d="M13 14H11V9H13M13 18H11V16H13M1 21H23L12 2L1 21Z" />
             </svg>
-            <span>Passkeys are unstable during our migration to OpenZeppelin Relayers. Use <a href="https://smol.xyz" class="underline hover:text-amber-100" target="_blank" rel="noopener">smol.xyz</a> for reliable access.</span>
+            <span>We're upgrading passkeys to OpenZeppelin Relayers. For now, use <a href="https://smol.xyz" class="underline hover:text-amber-100" target="_blank" rel="noopener">smol.xyz</a> to create and mint.</span>
         </div>
 
         <!-- HEADER -->
