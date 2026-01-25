@@ -1,7 +1,7 @@
 <script lang="ts">
     import { onMount, tick } from "svelte";
     import { fade, fly } from "svelte/transition";
-    import { userState } from "../../stores/user.svelte";
+    import { userState } from "../../stores/user.svelte.ts";
     import { getRepromptMessage } from "../../utils/reprompt-messages";
 
     let show = $state(false);

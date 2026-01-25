@@ -1,8 +1,8 @@
 <script lang="ts">
     import logger, { LogLevel, LogCategory } from "../../utils/debug-logger";
-    import { userState } from "../../stores/user.svelte";
-    import { upgradesState } from "../../stores/upgrades.svelte";
-    import { balanceState } from "../../stores/balance.svelte";
+    import { userState } from "../../stores/user.svelte.ts";
+    import { upgradesState } from "../../stores/upgrades.svelte.ts";
+    import { balanceState } from "../../stores/balance.svelte.ts";
 
     let isOpen = $state(false);
     let currentLevel = $state(logger.getLevel());

@@ -28,11 +28,11 @@
         userState,
         setUserAuth,
         ensureWalletConnected,
-    } from "../../stores/user.svelte";
+    } from "../../stores/user.svelte.ts";
     import {
         balanceState,
         updateAllBalances,
-    } from "../../stores/balance.svelte";
+    } from "../../stores/balance.svelte.ts";
     import { signSendAndVerify } from "../../utils/transaction-helpers";
     import KaleEmoji from "../ui/KaleEmoji.svelte";
     import { Turnstile } from "svelte-turnstile";

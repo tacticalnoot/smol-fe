@@ -2,7 +2,7 @@
     import { onMount } from "svelte";
     import { fade, fly, scale } from "svelte/transition";
     import { useAuthentication } from "../../hooks/useAuthentication";
-    import { userState } from "../../stores/user.svelte";
+    import { userState } from "../../stores/user.svelte.ts";
     import Loader from "../ui/Loader.svelte";
     import { Turnstile } from "svelte-turnstile";
 

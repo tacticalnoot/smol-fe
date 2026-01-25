@@ -1,7 +1,7 @@
 import { PasskeyKit, SACClient } from "passkey-kit";
 import { AssembledTransaction } from "@stellar/stellar-sdk/minimal/contract";
 import type { Tx } from "@stellar/stellar-sdk/minimal/contract";
-import { getTurnstileToken } from "../stores/turnstile.svelte";
+import { getTurnstileToken } from "../stores/turnstile.svelte.ts";
 
 export const account = {
     get: () => new PasskeyKit({

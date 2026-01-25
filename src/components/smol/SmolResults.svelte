@@ -5,15 +5,15 @@
         selectSong,
         togglePlayPause,
         isPlaying,
-    } from "../../stores/audio.svelte";
+    } from "../../stores/audio.svelte.ts";
     import { navigate } from "astro:transitions/client";
     import { onDestroy } from "svelte";
     import RadioPlayer from "../radio/RadioPlayer.svelte";
     import LikeButton from "../ui/LikeButton.svelte";
     import Loader from "../ui/Loader.svelte";
     import TokenBalancePill from "../ui/TokenBalancePill.svelte";
-    import { userState, isAuthenticated } from "../../stores/user.svelte";
-    import { updateContractBalance } from "../../stores/balance.svelte";
+    import { userState, isAuthenticated } from "../../stores/user.svelte.ts";
+    import { updateContractBalance } from "../../stores/balance.svelte.ts";
     import { useSmolMinting } from "../../hooks/useSmolMinting";
     import { sac } from "../../utils/passkey-kit";
     import { getTokenBalance } from "../../utils/balance";
