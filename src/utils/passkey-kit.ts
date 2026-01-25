@@ -80,13 +80,27 @@ export async function send<T>(txn: AssembledTransaction<T> | Tx | string, turnst
         body: JSON.stringify({ xdr }),
     });
 
-    if (!response.ok) {
-        const error = await response.text();
-        logger.error(LogCategory.TRANSACTION, `Relayer Error (${isDirectMode ? 'DIRECT' : 'PROXY'})`, { status: response.status, error });
-        throw new Error(`Relayer proxy error: ${error}`);
-    }
+});
 
-    const result = await response.json();
-    logger.info(LogCategory.TRANSACTION, "Relayer Success", { hash: result.hash || result.transactionHash });
-    return result;
+if (!response.ok) {
+    const errorText = await response.text();
+    // Construct a detailed debug object
+    const debugInfo = {
+        status: response.status,
+        statusText: response.statusText,
+        headers: Object.fromEntries(response.headers.entries()),
+        body: errorText,
+        url: relayerUrl,
+        mode: isDirectMode ? 'DIRECT' : 'PROXY'
+    };
+
+    logger.error(LogCategory.TRANSACTION, `Relayer Failure (${debugInfo.status})`, debugInfo);
+    console.error("Relayer Failure Details:", debugInfo); // Console backup for immediate inspection
+
+    throw new Error(`Relayer proxy error: ${errorText || response.statusText}`);
+}
+
+const result = await response.json();
+logger.info(LogCategory.TRANSACTION, "Relayer Success", { hash: result.hash || result.transactionHash });
+return result;
 }
