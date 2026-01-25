@@ -20,6 +20,8 @@ import {
 } from "@stellar/stellar-sdk";
 import { Server, Api, assembleTransaction } from "@stellar/stellar-sdk/rpc";
 import type { QuoteResponse, RawTradeDistribution } from "./soroswap";
+import logger, { LogCategory } from "./debug-logger";
+import { safeStringify } from "./soroswap";
 
 /**
  * Safe JSON stringification that handles BigInt values
@@ -97,32 +99,42 @@ export async function buildSwapTransactionForCAddress(
 
     console.log("[SwapBuilder] RawTrade:", safeStringify(rawTrade, 2));
 
-    // CRITICAL: Use top-level quote.amountIn (not rawTrade.amountIn)
-    // This matches Tyler's ohloss implementation pattern:
-    // - quote.amountIn: The actual input amount for the swap (top-level from API)
-    // - rawTrade.amountOutMin: The minimum output amount with slippage (nested in rawTrade)
-    let amountIn = quote.amountIn;
-    let amountOutMin = rawTrade.amountOutMin;
+    const tradeType = quote.tradeType || 'EXACT_IN';
+    console.log(`[SwapBuilder] Trade Type: ${tradeType}`);
 
-    if (!amountIn || !amountOutMin) {
-        throw new Error("Missing amountIn (quote) or amountOutMin (rawTrade) - API/Quote error");
+    // EXPLANATION:
+    // EXACT_IN (Default): We specify exactly how much to spend (amountIn), 
+    // and a minimum we are willing to receive (amountOutMin).
+    // Method: swap_exact_tokens_for_tokens(amount_in, amount_out_min, ...)
+    //
+    // EXACT_OUT (Strict Receive): We specify exactly how much to receive (amountOut),
+    // and a maximum we are willing to spend (amountInMax).
+    // Method: swap_tokens_for_exact_tokens(amount_out, amount_in_max, ...)
+
+    let arg1: string;
+    let arg2: string;
+    let methodName: string;
+
+    if (tradeType === 'EXACT_OUT') {
+        arg1 = rawTrade.amountOut || String(quote.amountOut);
+        arg2 = rawTrade.amountInMax || String(quote.amountIn);
+        methodName = "swap_tokens_for_exact_tokens";
+
+        if (!arg1 || !arg2) {
+            throw new Error("Missing amountOut (rawTrade) or amountInMax (rawTrade) for EXACT_OUT swap");
+        }
+    } else {
+        arg1 = String(quote.amountIn);
+        arg2 = rawTrade.amountOutMin || String(quote.amountOut);
+        methodName = "swap_exact_tokens_for_tokens";
+
+        if (!arg1 || !arg2) {
+            throw new Error("Missing amountIn (quote) or amountOutMin (rawTrade) for EXACT_IN swap");
+        }
     }
 
-    // Validate that amounts are valid numeric strings before BigInt conversion
-    const validateAmount = (value: string, fieldName: string): void => {
-        const trimmed = String(value).trim();
-        if (!trimmed || !/^\d+$/.test(trimmed)) {
-            throw new Error(`Invalid ${fieldName}: "${value}" - must be a positive integer string`);
-        }
-        try {
-            BigInt(trimmed);
-        } catch (error) {
-            throw new Error(`Cannot convert ${fieldName} to BigInt: "${value}" - ${error}`);
-        }
-    };
-
-    validateAmount(amountIn, 'amountIn');
-    validateAmount(amountOutMin, 'amountOutMin');
+    validateAmount(arg1, 'arg1');
+    validateAmount(arg2, 'arg2');
 
     // Deadline: 1 hour from now
     const deadline = BigInt(Math.floor(Date.now() / 1000) + 3600);
@@ -145,34 +157,41 @@ export async function buildSwapTransactionForCAddress(
     // Build distribution ScVal array with proper structure
     const distributionArg = buildDistributionArg(rawTrade.distribution);
 
-    // Build the contract invocation with all 7 required arguments
-    // Build the contract invocation with 5 arguments (tokens inferred from path)
     const invokeArgs = [
-
-        nativeToScVal(BigInt(amountIn), { type: "i128" }),  // amount_in
-        nativeToScVal(BigInt(amountOutMin), { type: "i128" }), // amount_out_min
-        distributionArg,                                    // distribution
-        nativeToScVal(new Address(fromAddress)),            // to (C-address)
-        nativeToScVal(deadline, { type: "u64" }),           // deadline
+        nativeToScVal(new Address(tokenIn)),
+        nativeToScVal(new Address(tokenOut)),
+        nativeToScVal(BigInt(arg1), { type: "i128" }),
+        nativeToScVal(BigInt(arg2), { type: "i128" }),
+        distributionArg,
+        nativeToScVal(new Address(fromAddress)),
+        nativeToScVal(deadline, { type: "u64" }),
     ];
 
-    console.log("[SwapBuilder] Contract Invocation Args:", {
+    console.log(`[SwapBuilder] Calling ${methodName} with args:`, {
         tokenIn,
         tokenOut,
-        amountIn,
-        amountOutMin,
+        arg1,
+        arg2,
         to: fromAddress,
-        deadline
+        deadline: deadline.toString()
     });
 
-    const invokeOp = contract.call("swap_exact_tokens_for_tokens", ...invokeArgs);
+    // For C-Addresses (Smart Wallets), we MUST invoke the wallet's "call" method
+    // which then calls the Aggregator. This ensures proper authorization.
+    // Signature: call(contract_id: Address, function_name: Symbol, args: Vec<Val>)
+    const walletContract = new Contract(fromAddress);
+    const walletCallOp = walletContract.call("call",
+        nativeToScVal(new Address(AGGREGATOR_CONTRACT)),
+        nativeToScVal(methodName, { type: "symbol" }),
+        xdr.ScVal.scvVec(invokeArgs)
+    );
 
     // Build transaction with NULL_ACCOUNT as source
     const tx = new TransactionBuilder(sourceAccount, {
         fee: "10000000", // 1 XLM max fee
         networkPassphrase: Networks.PUBLIC
     })
-        .addOperation(invokeOp)
+        .addOperation(walletCallOp)
         .setTimeout(300)
         .build();
 
@@ -185,9 +204,17 @@ export async function buildSwapTransactionForCAddress(
 
     // Assemble the transaction with simulation results
     const assembledTx = assembleTransaction(tx, simResult);
-    const builtTx = assembledTx.build();
+    const xdr = builtTx.toXDR();
 
-    return builtTx.toXDR();
+    // Log for Debug Panel to pick up
+    logger.info(LogCategory.TRANSACTION, "Swap Transaction Built", {
+        xdr,
+        tradeType,
+        method: methodName,
+        from: fromAddress
+    });
+
+    return xdr;
 }
 
 /**
@@ -244,11 +271,15 @@ function buildDexDistributionScVal(dist: ExtendedDistribution): xdr.ScVal {
         ? PROTOCOL_MAP[dist.protocol_id.toLowerCase()] ?? 0
         : dist.protocol_id;
 
-    // Fields in alphabetical order: bytes, parts, path, protocol_id
+    // Fields in alphabetical order: bytes, is_exact_in, parts, path, protocol_id
     const entries: xdr.ScMapEntry[] = [
         new xdr.ScMapEntry({
             key: xdr.ScVal.scvSymbol("bytes"),
             val: poolHashesToScVal(dist.poolHashes)
+        }),
+        new xdr.ScMapEntry({
+            key: xdr.ScVal.scvSymbol("is_exact_in"),
+            val: nativeToScVal(dist.is_exact_in, { type: "bool" })
         }),
         new xdr.ScMapEntry({
             key: xdr.ScVal.scvSymbol("parts"),
