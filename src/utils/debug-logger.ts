@@ -267,7 +267,9 @@ class DebugLogger {
      * Export logs as JSON for debugging
      */
     exportLogs(): string {
-        return JSON.stringify(this.logs, null, 2);
+        return JSON.stringify(this.logs, (key, value) =>
+            typeof value === 'bigint' ? value.toString() : value
+            , 2);
     }
 
     /**
@@ -278,7 +280,7 @@ class DebugLogger {
             const timestamp = new Date(log.timestamp).toISOString();
             const level = LogLevel[log.level].padEnd(5);
             const category = log.category.padEnd(10);
-            const data = log.data ? `\n  Data: ${JSON.stringify(log.data)}` : '';
+            const data = log.data ? `\n  Data: ${JSON.stringify(log.data, (k, v) => typeof v === 'bigint' ? v.toString() : v)}` : '';
             const stack = log.stack ? `\n  Stack: ${log.stack}` : '';
             return `[${timestamp}] [${level}] [${category}] ${log.message}${data}${stack}`;
         }).join('\n');
@@ -315,7 +317,7 @@ class DebugLogger {
         try {
             // Only save last 500 logs to localStorage (size limit)
             const logsToSave = this.logs.slice(-500);
-            safeLocalStorageSet(this.persistKey, JSON.stringify(logsToSave));
+            safeLocalStorageSet(this.persistKey, JSON.stringify(logsToSave, (k, v) => typeof v === 'bigint' ? v.toString() : v));
         } catch (e) {
             console.error('Failed to save logs to localStorage:', e);
         }
