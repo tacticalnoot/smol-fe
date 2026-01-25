@@ -195,6 +195,26 @@
         }
     }
 
+    function copyLastLoginProof() {
+        const logs = logger.getLogs();
+        const lastLoginLog = [...logs]
+            .reverse()
+            .find(
+                (l) =>
+                    l.category === LogCategory.AUTH &&
+                    l.message === "Login Payload",
+            );
+
+        if (lastLoginLog && lastLoginLog.data) {
+            navigator.clipboard.writeText(
+                JSON.stringify(lastLoginLog.data, null, 2),
+            );
+            alert("Last login proof copied to clipboard!");
+        } else {
+            alert("No login proof found in logs.");
+        }
+    }
+
     function togglePanel() {
         isOpen = !isOpen;
     }
@@ -315,6 +335,13 @@
                             title="Download the most recent XDR as a file"
                         >
                             💾 Save Last XDR
+                        </button>
+                        <button
+                            onclick={copyLastLoginProof}
+                            class="secondary-action"
+                            title="Copy the most recent login signature payload"
+                        >
+                            🔐 Copy Last Login Proof
                         </button>
                         <button onclick={downloadLogs}>📥 Download Logs</button>
                         <button onclick={copyState}>📄 Copy State Only</button>

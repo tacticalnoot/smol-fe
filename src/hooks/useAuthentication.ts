@@ -51,6 +51,8 @@ export function useAuthentication() {
       username,
     };
 
+    logger.info(LogCategory.AUTH, "Login Payload", payload);
+
     const res = await fetch(`${API_URL}/login`, {
       method: 'POST',
       headers: {
