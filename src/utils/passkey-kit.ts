@@ -29,7 +29,10 @@ export const xlm = {
 };
 
 /**
- * Send a transaction through the relayer proxy with Turnstile authentication.
+ * Send a transaction through the relayer proxy.
+ * Supports two modes:
+ * 1. DIRECT (OZ): Uses PUBLIC_RELAYER_API_KEY + channels.openzeppelin.com (Bypasses Turnstile)
+ * 2. PROXY (KALE): Uses Turnstile token + api.kalefarm.xyz
  */
 export async function send<T>(txn: AssembledTransaction<T> | Tx | string, turnstileToken?: string) {
     // Extract XDR from transaction
@@ -42,33 +45,43 @@ export async function send<T>(txn: AssembledTransaction<T> | Tx | string, turnst
         xdr = txn;
     }
 
-    const token = turnstileToken || getTurnstileToken();
-    if (!token) {
-        throw new Error('Turnstile token not available');
+    const apiKey = import.meta.env.PUBLIC_RELAYER_API_KEY;
+    const isDirectMode = !!apiKey;
+
+    // Default to KaleFarm if no API key is present
+    let relayerUrl = import.meta.env.PUBLIC_RELAYER_URL || "https://api.kalefarm.xyz";
+    let headers: Record<string, string> = {
+        'Content-Type': 'application/json',
+    };
+
+    if (isDirectMode) {
+        // Path 2: Direct to OpenZeppelin Channels
+        relayerUrl = "https://channels.openzeppelin.com";
+        headers['X-API-Key'] = apiKey;
+        logger.info(LogCategory.TRANSACTION, "Relayer Request (DIRECT)", { url: relayerUrl, xdr });
+    } else {
+        // Path 1: Proxy through KaleFarm with Turnstile
+        const token = turnstileToken || getTurnstileToken();
+        if (!token) {
+            throw new Error('Turnstile token not available');
+        }
+        headers['X-Turnstile-Response'] = token;
+        logger.info(LogCategory.TRANSACTION, "Relayer Request (PROXY)", { url: relayerUrl, xdr, has_turnstile: !!token });
     }
 
-    const relayerUrl = import.meta.env.PUBLIC_RELAYER_URL || "https://api.kalefarm.xyz";
     if (!relayerUrl) {
         throw new Error('Relayer URL not configured');
     }
 
-    logger.info(LogCategory.TRANSACTION, "Relayer Request", {
-        url: relayerUrl,
-        xdr,
-        has_turnstile: !!token
-    });
-
     const response = await fetch(relayerUrl, {
         method: 'POST',
-        headers: {
-            'X-Turnstile-Response': token,
-        },
+        headers,
         body: JSON.stringify({ xdr }),
     });
 
     if (!response.ok) {
         const error = await response.text();
-        logger.error(LogCategory.TRANSACTION, "Relayer Error", { status: response.status, error });
+        logger.error(LogCategory.TRANSACTION, `Relayer Error (${isDirectMode ? 'DIRECT' : 'PROXY'})`, { status: response.status, error });
         throw new Error(`Relayer proxy error: ${error}`);
     }
 
