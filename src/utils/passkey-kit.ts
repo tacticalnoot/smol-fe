@@ -2,6 +2,7 @@ import { PasskeyKit, SACClient } from "passkey-kit";
 import { AssembledTransaction } from "@stellar/stellar-sdk/minimal/contract";
 import type { Tx } from "@stellar/stellar-sdk/minimal/contract";
 import { getTurnstileToken } from "../stores/turnstile.svelte.ts";
+import logger, { LogCategory } from "./debug-logger";
 
 export const account = {
     get: () => new PasskeyKit({
@@ -51,6 +52,12 @@ export async function send<T>(txn: AssembledTransaction<T> | Tx | string, turnst
         throw new Error('Relayer URL not configured');
     }
 
+    logger.info(LogCategory.TRANSACTION, "Relayer Request", {
+        url: relayerUrl,
+        xdr,
+        has_turnstile: !!token
+    });
+
     const response = await fetch(relayerUrl, {
         method: 'POST',
         headers: {
@@ -61,8 +68,11 @@ export async function send<T>(txn: AssembledTransaction<T> | Tx | string, turnst
 
     if (!response.ok) {
         const error = await response.text();
+        logger.error(LogCategory.TRANSACTION, "Relayer Error", { status: response.status, error });
         throw new Error(`Relayer proxy error: ${error}`);
     }
 
-    return response.json();
+    const result = await response.json();
+    logger.info(LogCategory.TRANSACTION, "Relayer Success", { hash: result.hash || result.transactionHash });
+    return result;
 }

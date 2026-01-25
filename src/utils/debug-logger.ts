@@ -135,6 +135,11 @@ class DebugLogger {
                     sanitized[key] = value.length > 100
                         ? value.substring(0, 100) + `... (${value.length} chars truncated)`
                         : value;
+                } else if (key.toLowerCase().includes('xdr') && typeof value === 'string') {
+                    // Allow full XDR strings up to 5000 chars for debugging
+                    sanitized[key] = value.length > 5000
+                        ? value.substring(0, 5000) + `... (${value.length} chars truncated)`
+                        : value;
                 } else {
                     sanitized[key] = this.truncateData(value);
                 }
