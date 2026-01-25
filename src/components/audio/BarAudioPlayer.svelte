@@ -102,6 +102,9 @@
             error.name === "NotAllowedError"
           ) {
             audioState.wasInterrupted = true;
+            // CRITICAL: We MUST clear playingId to stop the toggle -> play -> error -> toggle loop
+            // The UI will revert to "Paused", user must click Play again (which checks out for interaction)
+            audioState.playingId = null;
           } else {
             // FATAL ERROR: Stop everything to prevent crash loop
             audioState.playingId = null;
