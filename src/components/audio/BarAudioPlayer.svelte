@@ -13,7 +13,7 @@
     playNextSong,
     saveState,
     seek,
-  } from "../../stores/audio.svelte";
+  } from "../../stores/audio.svelte.ts";
   import { onDestroy } from "svelte";
 
   const API_URL = import.meta.env.PUBLIC_API_URL || "https://api.smol.xyz";

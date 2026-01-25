@@ -1,15 +1,15 @@
 <script lang="ts">
-  import { userState } from "../../stores/user.svelte";
-  import { balanceState } from "../../stores/balance.svelte";
+  import { userState } from "../../stores/user.svelte.ts";
+  import { balanceState } from "../../stores/balance.svelte.ts";
   import { useCurrentPath } from "../../hooks/useCurrentPath.svelte";
   import { useAuthentication } from "../../hooks/useAuthentication";
-  import { uiState, closeMenu } from "../../stores/ui.svelte";
+  import { uiState, closeMenu } from "../../stores/ui.svelte.ts";
   import {
     mixtapeModeState,
     mixtapeDraftHasContent,
     enterMixtapeMode,
     exitMixtapeMode,
-  } from "../../stores/mixtape.svelte";
+  } from "../../stores/mixtape.svelte.ts";
 
   import UserBalance from "./UserBalance.svelte";
   import MixtapeModeToggle from "./MixtapeModeToggle.svelte";

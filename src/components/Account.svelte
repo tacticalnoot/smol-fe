@@ -8,11 +8,11 @@
   import { onMount } from "svelte";
     import { kale } from "../utils/passkey-kit";
     import { truncate } from "../utils/base";
-    import { userState } from "../stores/user.svelte";
+    import { userState } from "../stores/user.svelte.ts";
     import {
         balanceState,
         updateContractBalance,
-    } from "../stores/balance.svelte";
+    } from "../stores/balance.svelte.ts";
     import { signAndSend } from "../utils/transaction-helpers";
     import {
         validateAddress,

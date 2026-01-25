@@ -1,11 +1,11 @@
 <script lang="ts">
-    import { userState } from "../stores/user.svelte";
+    import { userState } from "../stores/user.svelte.ts";
     import { verifyPastPurchases } from "../services/api/verifyUpgrades";
     import {
         validateAndRevertTheme,
         preferences,
-    } from "../stores/preferences.svelte";
-    import { upgradesState } from "../stores/upgrades.svelte";
+    } from "../stores/preferences.svelte.ts";
+    import { upgradesState } from "../stores/upgrades.svelte.ts";
     import { StrKey } from "@stellar/stellar-sdk";
 
     let checkedAddress = $state<string | null>(null);

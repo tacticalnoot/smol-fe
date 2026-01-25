@@ -7,7 +7,7 @@
         weatherState,
     } from "../../hooks/useWeather.svelte";
     import { backgroundState, getEffectiveAnimationsEnabled } from "../../stores/background.svelte.ts";
-    import { preferences } from "../../stores/preferences.svelte";
+    import { preferences } from "../../stores/preferences.svelte.ts";
 
     // Derive effective animations from function
     const effectiveAnimationsEnabled = $derived(getEffectiveAnimationsEnabled());

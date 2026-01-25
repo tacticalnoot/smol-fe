@@ -1,6 +1,6 @@
 import { kale } from '../utils/passkey-kit';
 import { truncate } from '../utils/base';
-import { userState } from '../stores/user.svelte';
+import { userState } from '../stores/user.svelte.ts';
 import type { Smol } from '../types/domain';
 import { signAndSend, isUserCancellation, type GetFreshTokenCallback } from '../utils/transaction-helpers';
 

@@ -9,7 +9,7 @@
 import Cookies from 'js-cookie';
 import { getDomain } from 'tldts';
 import { account, send } from '../utils/passkey-kit';
-import { setUserAuth, clearUserAuth, userState } from '../stores/user.svelte';
+import { setUserAuth, clearUserAuth, userState } from '../stores/user.svelte.ts';
 
 export function useAuthentication() {
   const API_URL = import.meta.env.PUBLIC_API_URL || "https://api.smol.xyz";

@@ -3,13 +3,13 @@
     import { fade, scale } from "svelte/transition";
     import { kale } from "../../utils/passkey-kit";
     import { truncate } from "../../utils/base";
-    import { userState, ensureWalletConnected } from "../../stores/user.svelte";
-    import { unlockUpgrade } from "../../stores/upgrades.svelte";
+    import { userState, ensureWalletConnected } from "../../stores/user.svelte.ts";
+    import { unlockUpgrade } from "../../stores/upgrades.svelte.ts";
     import { Turnstile } from "svelte-turnstile";
     import {
         balanceState,
         isTransactionInProgress,
-    } from "../../stores/balance.svelte";
+    } from "../../stores/balance.svelte.ts";
     import { StrKey } from "@stellar/stellar-sdk";
     import Loader from "../ui/Loader.svelte";
     import {

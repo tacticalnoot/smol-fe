@@ -5,7 +5,7 @@
 import { account, send } from "./passkey-kit";
 import { getLatestSequence } from "./base";
 import { getSafeRpId } from "./domains";
-import { updateContractBalance } from "../stores/balance.svelte";
+import { updateContractBalance } from "../stores/balance.svelte.ts";
 
 export interface SignAndSendOptions {
     keyId: string;
