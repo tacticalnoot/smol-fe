@@ -1,5 +1,11 @@
-<script lang="ts">
-    import { onMount } from "svelte";
+  /**
+   * FACTORY FRESH: Account Management & KALE Transfers
+   * @see https://deepwiki.com/repo/kalepail/smol-fe#account
+   * 
+   * Provides the primary interface for KALE token transfers and balance viewing.
+   * Uses the unified signAndSend pattern for sponsored transaction submission.
+   */
+  import { onMount } from "svelte";
     import { kale } from "../utils/passkey-kit";
     import { truncate } from "../utils/base";
     import { userState } from "../stores/user.svelte";

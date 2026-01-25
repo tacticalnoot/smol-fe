@@ -17,8 +17,8 @@ import {
     TransactionBuilder,
     Networks,
     Account
-} from "@stellar/stellar-sdk/minimal";
-import { Server, Api, assembleTransaction } from "@stellar/stellar-sdk/minimal/rpc";
+} from "@stellar/stellar-sdk";
+import { Server, Api, assembleTransaction } from "@stellar/stellar-sdk/rpc";
 import type { QuoteResponse, RawTradeDistribution } from "./soroswap";
 
 /**
@@ -27,7 +27,7 @@ import type { QuoteResponse, RawTradeDistribution } from "./soroswap";
 function safeStringify(obj: unknown, space?: number): string {
     return JSON.stringify(obj, (key, value) =>
         typeof value === 'bigint' ? value.toString() : value
-    , space);
+        , space);
 }
 
 /**
@@ -35,7 +35,7 @@ function safeStringify(obj: unknown, space?: number): string {
  * Uses environment variable for consistency across the codebase
  * @see https://github.com/kalepail/ohloss/blob/main/ohloss-frontend/src/lib/swapService.ts
  */
-export const AGGREGATOR_CONTRACT = import.meta.env.PUBLIC_AGGREGATOR_CONTRACT_ID || "CAG5LRYQ5JVEUI5TEID72EYOVX44TTUJT5BQR2J6J77FH65PCCFAJDDH";
+export const AGGREGATOR_CONTRACT = import.meta.env.PUBLIC_AGGREGATOR_CONTRACT_ID || "CAYP3UWLJM7ZPTUKL6R6BFGTRWLZ46LRKOXTERI2K6BIJAWGYY62TXTO";
 
 /** Protocol ID mapping (matches aggregator contract enum) */
 const PROTOCOL_MAP: Record<string, number> = {

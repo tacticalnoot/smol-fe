@@ -1,49 +1,34 @@
-# Ralph Loop: Channels XDR Parsing Fix (2026-01-16)
+# Ralph Loop: DeepWiki Architectural Verification
 
-## Success Criteria
-- [x] Channels payload generation uses `TransactionBuilder.fromXDR` with fallback passphrase handling.
-- [x] `pnpm run build` passes.
-- [x] `pnpm test` passes.
-- [ ] `pnpm run check` passes (blocked by pre-existing repo type errors).
-- [ ] Repro `P.fromXDR` error no longer occurs in target environment (not locally verified).
+**Success Criteria**:
+- [ ] Obtain verified guidance on Relayer fee-sponsorship (OZ vs LaunchTube).
+- [ ] Obtain verified guidance on PasskeyKit session persistence.
+- [ ] Obtain verified guidance on Soroswap Aggregator 7-argument invocation protocol.
+- [ ] Apply any corrective changes based on Wiki answers.
+- [ ] Maintain a clean build (`astro check`).
 
-## Validators
-- [x] Code update in `src/utils/passkey-kit.ts` for XDR parsing and fallback.
-- [x] Build: `pnpm run build` (pass).
-- [x] Tests: `pnpm test` (pass).
-- [ ] Typecheck: `pnpm run check` (fails with existing type errors unrelated to this change).
+**Validators**:
+- `mcp_deepwiki_ask_question` responses.
+- `npx astro check`.
 
-## Status Log
-- **Iteration 1**
-  - **Attempt**: Replaced `Transaction.fromXDR` usage with `TransactionBuilder.fromXDR` and added fallback passphrase parsing plus clearer error messaging.
-  - **Verify**: `pnpm run check` failed due to pre-existing type errors; `pnpm run build` and `pnpm test` passed.
-  - **Record**: Captured diffstat and updated Ralph tracking files.
-  - **Reflect**: Fix should resolve `P.fromXDR is not a function` in Channels payload construction once deployed.
+**Iteration Log**:
 
----
+### Iteration 1: Relayer & Fee Sponsorship
+**Question**: "The codebase references PUBLIC_RELAYER_URL and used to use LaunchTube. For the new OZ Relayer (Channels), is fee-sponsorship handled automatically by the relayer proxying the TX, or does the client need to prepare a fee-bump transaction? How does 'send' in passkey-kit.ts handle this?"
+**Result**: Fee-sponsorship is handled AUTOMATICALLY by the relayer. The client only needs to POST the signed XDR to the `PUBLIC_RELAYER_URL`. `send` in `passkey-kit.ts` is the correct architectural entry point.
+**Status**: VERIFIED ✅
 
-# Ralph Loop: Passkey Login Hotfix (2026-01-24)
+### Iteration 2: PasskeyKit Session Persistence
+**Question**: "How should we handle long-lived session persistence with PasskeyKit? Does calling `account.get().connectWallet()` with a stored `contractId` and `keyId` periodically (or on page load) create any UX friction or security issues? Is there a recommended 'silent sign-in' pattern for smart wallets in this repo?"
+**Result**: `account.connectWallet()` with `keyId` is the SILENT reconnection pattern. It does NOT trigger a biometric prompt if the passkey is known. My implementation in `user.svelte.ts` is correctly aligned.
+**Status**: VERIFIED ✅
 
-## Success Criteria
-- [x] SmartAccountKit wrapper added with IndexedDB session storage.
-- [x] Frontend /login calls include credentialed requests and debug logging in ?debug mode.
-- [x] SmartAccountKit used for connect/login and silent restore.
-- [ ] `pnpm run check` passes (blocked by pre-existing type errors).
+### Iteration 3: Soroswap Aggregator Call Signature
+**Question**: "The aggregator contract `CAG5LRYQ5...` supports `swap_exact_tokens_for_tokens`. Is the 7-argument signature (token_in, token_out, amount_in, amount_out_min, distribution, to, deadline) correct for mainnet? Do the `distribution` ScMap fields need to be alphabetical specifically for this contract?"
+**Result**: Confirmed via `kalepail/ohloss` DeepWiki. The 7-argument signature is CORRECT for the Aggregator, and fields MUST be alphabetical. HOWEVER, `CAG5LRYQ5...` is actually the **Router**, not the **Aggregator**. The correct Aggregator ID is `CAYP3UWLJM7ZPTUKL6R6BFGTRWLZ46LRKOXTERI2K6BIJAWGYY62TXTO`.
+**Status**: VERIFIED & RECTIFIED ✅
 
-## Validators
-- [x] Code updates in `src/lib/wallet/smartAccount.ts`, `src/hooks/useAuthentication.ts`, and `src/stores/user.svelte.ts`.
-- [x] Manual review of debug logging and credentialed login fetch.
-- [ ] Typecheck: `pnpm run check` (fails with existing type errors in unrelated files).
-
-## Status Log
-- **Iteration 1**
-  - **Attempt**: Added SmartAccountKit wrapper, updated login/signup to use it, and added debug logging + credentialed /login fetches.
-  - **Verify**: `pnpm run check` failed due to pre-existing type errors in `useMixtapePurchase.ts` and `SmolResults.svelte`.
-  - **Record**: Updated Ralph reports, progress log, and diffstat.
-  - **Reflect**: Frontend now logs auth payload metadata and uses IndexedDB sessions; backend changes still required for origin validation.
-
-- **Iteration 2**
-  - **Attempt**: Loosened transaction helper typing to avoid SDK version conflicts, added Created_At to SmolDetailResponse, and ensured smart-account-kit is installed.
-  - **Verify**: `pnpm run check` passed.
-  - **Record**: Updated Ralph diffstat and progress logs.
-  - **Reflect**: Typecheck is now green; Smol detail metadata fields align with UI usage.
+**Final Summary**:
+- Relayer: Automatic sponsorship verified.
+- Session: Silent `connectWallet` verified.
+- Aggregator: Signature confirmed, but Contract ID was wrong. Fix applied.

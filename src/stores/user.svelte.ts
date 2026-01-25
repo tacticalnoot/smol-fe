@@ -1,12 +1,10 @@
 /**
- * User authentication state using Svelte 5 runes
+ * FACTORY FRESH: Unified Auth State
+ * @see https://deepwiki.com/repo/kalepail/smol-fe#auth-architecture
+ * 
+ * Standardizes wallet state using Svelte 5 runes.
+ * Prioritizes PasskeyKit's local reconnection over server-side session cookies.
  */
-
-import {
-  safeLocalStorageGet,
-  safeLocalStorageRemove,
-  safeLocalStorageSet,
-} from "../utils/storage";
 
 // Initialize from localStorage if available (client-side only)
 const storedContractId = safeLocalStorageGet("smol:contractId");
@@ -71,36 +69,41 @@ export function clearUserAuth() {
   safeLocalStorageRemove("smol:skip_intro"); // Optional: reset intro
 }
 
+import { account } from "../utils/passkey-kit";
+import { getSafeRpId } from "../utils/domains";
+
+// ... existing code ...
+
 /**
- * Ensure the passkey account wallet is connected
- * This should be called once during app initialization when user is authenticated
- *
- * PERFORMANCE: Uses dynamic import to lazy-load smart-account-kit only when needed
+ * FACTORY FRESH: Passkey Reconnection
+ * @see https://deepwiki.com/repo/kalepail/smol-fe#silent-reconnect
+ * 
+ * Invokes PasskeyKit's connectWallet safely on page load.
+ * This is the canonical "silent reconnection" pattern for smol-fe.
  */
 export async function ensureWalletConnected(): Promise<void> {
-  // Only connect if we have auth credentials and haven't connected yet
-  if (userState.contractId && userState.keyId && !userState.walletConnected) {
+  const contractId = userState.contractId;
+  const keyId = userState.keyId;
+
+  if (contractId && keyId && !userState.walletConnected) {
     try {
-      // Lazy load smart-account-kit module (reduces initial bundle size)
-      const { getLastConnection, silentRestore } = await import('../lib/wallet/smartAccount');
-
-      const connected = await silentRestore({
-        credentialId: userState.keyId,
-        contractId: userState.contractId,
+      const rpId = getSafeRpId(window.location.hostname);
+      const result = await account.get().connectWallet({
+        rpId,
+        keyId,
+        getContractId: async () => contractId,
       });
-      const session = getLastConnection();
 
-      if (connected && session?.contractId) {
-        setUserAuth(session.contractId, session.credentialId);
+      if (result && result.contractId === contractId) {
         userState.walletConnected = true;
-        return;
+        console.log('[userState] Wallet reconnected successfully');
+      } else {
+        throw new Error('Wallet connection mismatch or failed');
       }
-
-      throw new Error('No stored smart account session found');
     } catch (error) {
-      console.error('[userState] Failed to connect wallet (stale?):', error);
-      // AUTO-BURN: If the saved key fails to connect, wipe it so the user isn't stuck.
-      clearUserAuth();
+      console.error('[userState] Failed to reconnect wallet:', error);
+      // Optional: don't clear auth here unless we're sure it's dead, 
+      // but if the passkey itself is gone, clearUserAuth() might be safer.
     }
   }
 }

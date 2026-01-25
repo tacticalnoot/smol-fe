@@ -1,4 +1,10 @@
-<script lang="ts">
+  /**
+   * FACTORY FRESH: User Menu & SSR Reconnection
+   * @see https://deepwiki.com/repo/kalepail/smol-fe#user-menu
+   * 
+   * Handles the primary UI entry point for account management.
+   * Reconciles SSR session state with client-side PasskeyKit wallets.
+   */
   import { userState, ensureWalletConnected } from "../../stores/user.svelte";
   import {
     balanceState,
