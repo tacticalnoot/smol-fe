@@ -57,8 +57,7 @@ export async function send<T>(txn: AssembledTransaction<T> | Tx | string, turnst
     if (isDirectMode) {
         // Path 2: Direct to OpenZeppelin Channels
         relayerUrl = "https://channels.openzeppelin.com";
-        // NOTE: Commented out to avoid CORS 'header not allowed' error.
-        // headers['X-API-Key'] = apiKey; 
+        headers['X-API-Key'] = apiKey;
 
         // Log intent (pre-send)
         // logger.info(LogCategory.TRANSACTION, "Relayer Request (DIRECT)", { url: relayerUrl });
