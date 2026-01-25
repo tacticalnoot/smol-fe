@@ -57,9 +57,8 @@ export async function send<T>(txn: AssembledTransaction<T> | Tx | string, turnst
     if (isDirectMode) {
         // Path 2: Direct to OpenZeppelin Channels
         relayerUrl = "https://channels.openzeppelin.com";
-        // NOTE: Commented out to avoid CORS 'header not allowed' error.
         // headers['X-API-Key'] = apiKey; 
-        logger.info(LogCategory.TRANSACTION, "Relayer Request (DIRECT)", { url: relayerUrl, xdr });
+        // logger.info(LogCategory.TRANSACTION, "Relayer Request (DIRECT)", { url: relayerUrl, xdr });
     } else {
         // Path 1: Proxy through KaleFarm with Turnstile
         const token = turnstileToken || getTurnstileToken();

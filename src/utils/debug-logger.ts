@@ -30,6 +30,7 @@ export enum LogCategory {
     PASSKEY = 'PASSKEY',
     BALANCE = 'BALANCE',
     VALIDATION = 'VALIDATION',
+    RELAYER = 'RELAYER',
     GENERAL = 'GENERAL'
 }
 
