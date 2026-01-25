@@ -76,7 +76,10 @@
     }
 
     if (currentSong && playingId === currentSong.Id) {
-      if (audioState.playIntentId && audioState.playIntentId !== currentSong.Id) {
+      if (
+        audioState.playIntentId &&
+        audioState.playIntentId !== currentSong.Id
+      ) {
         return;
       }
       // Prevent redundant play() calls that cause glitches on iOS
@@ -88,15 +91,22 @@
       if (playPromise !== undefined) {
         playPromise.catch((error: unknown) => {
           console.error("Error playing audio:", error);
-          // Preserve intent on autoplay restrictions so we can resume later
-          if (error instanceof DOMException && error.name === "NotAllowedError") {
+
+          // Circuit Breaker: If we fail, STOP trying immediately
+          audioState.isBuffering = false;
+          audioState.playIntentId = null;
+
+          // Preserve intent on autoplay restrictions (NotAllowedError) so we can resume later
+          if (
+            error instanceof DOMException &&
+            error.name === "NotAllowedError"
+          ) {
             audioState.wasInterrupted = true;
           } else {
-            // Reset playing state on hard errors
+            // FATAL ERROR: Stop everything to prevent crash loop
             audioState.playingId = null;
+            // Optional: Show a toast or small UI error here if we had a toast system
           }
-          audioState.playIntentId = null;
-          audioState.isBuffering = false;
         });
       }
     } else {
@@ -153,9 +163,10 @@
 
     // Cooldown periods before auto-resume (prevents fighting with other media)
     const AGGRESSIVE_COOLDOWN_MS = 3000; // Bluetooth/CarPlay - faster resume for drivers
-    const POLITE_COOLDOWN_MS = 5000;     // Device speakers - wait for other media to finish
+    const POLITE_COOLDOWN_MS = 5000; // Device speakers - wait for other media to finish
 
-    const getResumeCooldown = () => isExternalAudio ? AGGRESSIVE_COOLDOWN_MS : POLITE_COOLDOWN_MS;
+    const getResumeCooldown = () =>
+      isExternalAudio ? AGGRESSIVE_COOLDOWN_MS : POLITE_COOLDOWN_MS;
 
     /**
      * Detect if audio is routed through Bluetooth or external speakers
@@ -170,25 +181,29 @@
         }
 
         const devices = await navigator.mediaDevices.enumerateDevices();
-        const audioOutputs = devices.filter(d => d.kind === 'audiooutput');
+        const audioOutputs = devices.filter((d) => d.kind === "audiooutput");
 
         // Check for Bluetooth or external audio devices
-        const hasExternalAudio = audioOutputs.some(device => {
+        const hasExternalAudio = audioOutputs.some((device) => {
           const label = device.label.toLowerCase();
           return (
-            label.includes('bluetooth') ||
-            label.includes('airpods') ||
-            label.includes('carplay') ||
-            label.includes('car audio') ||
-            label.includes('wireless') ||
-            label.includes('headphone') ||
-            label.includes('headset') ||
-            label.includes('speaker') && !label.includes('built-in') && !label.includes('internal')
+            label.includes("bluetooth") ||
+            label.includes("airpods") ||
+            label.includes("carplay") ||
+            label.includes("car audio") ||
+            label.includes("wireless") ||
+            label.includes("headphone") ||
+            label.includes("headset") ||
+            (label.includes("speaker") &&
+              !label.includes("built-in") &&
+              !label.includes("internal"))
           );
         });
 
-        console.log(`[Audio] External audio detected: ${hasExternalAudio}`,
-          audioOutputs.map(d => d.label).join(', '));
+        console.log(
+          `[Audio] External audio detected: ${hasExternalAudio}`,
+          audioOutputs.map((d) => d.label).join(", "),
+        );
 
         return hasExternalAudio;
       } catch (error) {
@@ -198,9 +213,11 @@
     };
 
     // Initial detection
-    detectExternalAudio().then(result => {
+    detectExternalAudio().then((result) => {
       isExternalAudio = result;
-      console.log(`[Audio] Initial audio mode: ${isExternalAudio ? 'AGGRESSIVE (external)' : 'POLITE (device speakers)'}`);
+      console.log(
+        `[Audio] Initial audio mode: ${isExternalAudio ? "AGGRESSIVE (external)" : "POLITE (device speakers)"}`,
+      );
     });
 
     // Listen for device changes (Bluetooth connect/disconnect)
@@ -209,18 +226,25 @@
       isExternalAudio = await detectExternalAudio();
 
       if (wasExternal !== isExternalAudio) {
-        console.log(`[Audio] Audio mode changed: ${isExternalAudio ? 'AGGRESSIVE (external)' : 'POLITE (device speakers)'}`);
+        console.log(
+          `[Audio] Audio mode changed: ${isExternalAudio ? "AGGRESSIVE (external)" : "POLITE (device speakers)"}`,
+        );
 
         // If we just connected to Bluetooth and were interrupted, try to resume
         if (isExternalAudio && audioState.wasInterrupted) {
-          console.log("[Audio] Bluetooth connected while interrupted - attempting resume");
+          console.log(
+            "[Audio] Bluetooth connected while interrupted - attempting resume",
+          );
           setTimeout(attemptResume, 500);
         }
       }
     };
 
     if (navigator.mediaDevices) {
-      navigator.mediaDevices.addEventListener('devicechange', handleDeviceChange);
+      navigator.mediaDevices.addEventListener(
+        "devicechange",
+        handleDeviceChange,
+      );
     }
 
     /**
@@ -238,7 +262,10 @@
     navigator.mediaSession.setActionHandler("play", () => {
       // Resume if paused OR if interrupted by another audio source
       // Media Session play action ALWAYS works (user pressed physical button)
-      if (audioState.currentSong && (!audioState.playingId || audioState.wasInterrupted)) {
+      if (
+        audioState.currentSong &&
+        (!audioState.playingId || audioState.wasInterrupted)
+      ) {
         console.log("[Audio] Media Session play action - resuming playback");
         // Reset cooldown since user explicitly requested play
         interruptionTime = null;
@@ -299,11 +326,15 @@
     const startResumePolling = () => {
       if (resumeCheckInterval) return; // Already polling
       if (!isExternalAudio) {
-        console.log("[Audio] Skipping resume polling - not in external audio mode");
+        console.log(
+          "[Audio] Skipping resume polling - not in external audio mode",
+        );
         return;
       }
 
-      console.log("[Audio] Starting resume polling for interruption recovery (external audio mode)");
+      console.log(
+        "[Audio] Starting resume polling for interruption recovery (external audio mode)",
+      );
       resumeCheckInterval = window.setInterval(() => {
         if (audioState.wasInterrupted && canAttemptResume()) {
           console.log("[Audio] Polling check - attempting resume");
@@ -326,7 +357,7 @@
       // If audio paused but playingId is still set, it's an interruption
       if (audioState.playingId && audioState.currentSong) {
         console.log(
-          `[Audio] Interruption detected - audio paused unexpectedly (mode: ${isExternalAudio ? 'aggressive' : 'polite'})`,
+          `[Audio] Interruption detected - audio paused unexpectedly (mode: ${isExternalAudio ? "aggressive" : "polite"})`,
         );
         audioState.wasInterrupted = true;
         interruptionTime = Date.now(); // Start cooldown timer
@@ -358,7 +389,7 @@
         canAttemptResume()
       ) {
         console.log(
-          `[Audio] Audio can play and was interrupted - attempting resume (${isExternalAudio ? 'aggressive' : 'polite'} mode)`,
+          `[Audio] Audio can play and was interrupted - attempting resume (${isExternalAudio ? "aggressive" : "polite"} mode)`,
         );
         setTimeout(attemptResume, 100);
       }
@@ -387,7 +418,9 @@
       if (!canAttemptResume()) {
         const cooldown = getResumeCooldown();
         const remaining = cooldown - (Date.now() - (interruptionTime || 0));
-        console.log(`[Audio] Cooldown active - ${remaining}ms remaining before resume attempt`);
+        console.log(
+          `[Audio] Cooldown active - ${remaining}ms remaining before resume attempt`,
+        );
         return;
       }
 
@@ -434,7 +467,9 @@
     // Handle visibility changes and audio focus returns
     const handleVisibilityChange = () => {
       if (document.visibilityState === "visible" && audioState.wasInterrupted) {
-        console.log(`[Audio] Page became visible - mode: ${isExternalAudio ? 'aggressive' : 'polite'}`);
+        console.log(
+          `[Audio] Page became visible - mode: ${isExternalAudio ? "aggressive" : "polite"}`,
+        );
 
         // Auto-resume in both modes after cooldown
         // Aggressive mode: faster resume (3s cooldown)
@@ -449,7 +484,9 @@
           const cooldown = getResumeCooldown();
           const elapsed = Date.now() - (interruptionTime || 0);
           const remaining = Math.max(0, cooldown - elapsed);
-          console.log(`[Audio] Scheduling resume after ${remaining}ms cooldown`);
+          console.log(
+            `[Audio] Scheduling resume after ${remaining}ms cooldown`,
+          );
           setTimeout(attemptResume, remaining + 100);
         }
       }
@@ -458,7 +495,9 @@
     // Handle window focus (returning from notifications, other tabs/apps releasing audio focus)
     const handleFocus = () => {
       if (audioState.wasInterrupted) {
-        console.log(`[Audio] Window gained focus - mode: ${isExternalAudio ? 'aggressive' : 'polite'}`);
+        console.log(
+          `[Audio] Window gained focus - mode: ${isExternalAudio ? "aggressive" : "polite"}`,
+        );
 
         // Auto-resume in both modes after cooldown
         if (canAttemptResume()) {
@@ -471,7 +510,9 @@
           const cooldown = getResumeCooldown();
           const elapsed = Date.now() - (interruptionTime || 0);
           const remaining = Math.max(0, cooldown - elapsed);
-          console.log(`[Audio] Scheduling resume after ${remaining}ms cooldown`);
+          console.log(
+            `[Audio] Scheduling resume after ${remaining}ms cooldown`,
+          );
           setTimeout(attemptResume, remaining + 100);
         }
       }
@@ -529,7 +570,7 @@
         canAttemptResume()
       ) {
         console.log(
-          `[Audio] Audio context resumed - attempting to resume playback (${isExternalAudio ? 'aggressive' : 'polite'} mode)`,
+          `[Audio] Audio context resumed - attempting to resume playback (${isExternalAudio ? "aggressive" : "polite"} mode)`,
         );
         setTimeout(attemptResume, 100);
       }
@@ -564,7 +605,10 @@
       stopResumePolling(); // Stop polling interval
 
       if (navigator.mediaDevices) {
-        navigator.mediaDevices.removeEventListener('devicechange', handleDeviceChange);
+        navigator.mediaDevices.removeEventListener(
+          "devicechange",
+          handleDeviceChange,
+        );
       }
 
       if ("mediaSession" in navigator) {
@@ -771,7 +815,9 @@
           </h3>
           {#if audioState.isBuffering}
             <div class="flex items-center gap-2 text-xs text-white/60">
-              <span class="inline-flex h-2 w-2 rounded-full bg-white/70 animate-pulse"></span>
+              <span
+                class="inline-flex h-2 w-2 rounded-full bg-white/70 animate-pulse"
+              ></span>
               Buffering…
             </div>
           {/if}
