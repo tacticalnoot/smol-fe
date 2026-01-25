@@ -184,22 +184,18 @@ export async function buildSwapTransactionForCAddress(
         deadline: deadline.toString()
     });
 
-    // For C-Addresses (Smart Wallets), we MUST invoke the wallet's "call" method
-    // which then calls the Aggregator. This ensures proper authorization.
-    // Signature: call(contract_id: Address, function_name: Symbol, args: Vec<Val>)
-    const walletContract = new Contract(fromAddress);
-    const walletCallOp = walletContract.call("call",
-        nativeToScVal(new Address(AGGREGATOR_CONTRACT)),
-        nativeToScVal(methodName, { type: "symbol" }),
-        xdr.ScVal.scvVec(invokeArgs)
-    );
+    // Build the contract invocation directly on the Aggregator.
+    // NOTE: For C-addresses (Smart Wallets), we do NOT need a "call" proxy.
+    // The simulation will detect the need for authorization and PasskeyKit
+    // will sign the resulting auth entry.
+    const invokeOp = contract.call(methodName, ...invokeArgs);
 
     // Build transaction with NULL_ACCOUNT as source
     const tx = new TransactionBuilder(sourceAccount, {
         fee: "10000000", // 1 XLM max fee
         networkPassphrase: Networks.PUBLIC
     })
-        .addOperation(walletCallOp)
+        .addOperation(invokeOp)
         .setTimeout(300)
         .build();
 
