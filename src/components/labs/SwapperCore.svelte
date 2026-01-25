@@ -26,7 +26,10 @@
         balanceState,
         updateAllBalances,
     } from "../../stores/balance.svelte.ts";
-    import { signSendAndVerify } from "../../utils/transaction-helpers";
+    import {
+        signSendAndVerify,
+        isUserCancellation,
+    } from "../../utils/transaction-helpers";
     import KaleEmoji from "../ui/KaleEmoji.svelte";
     import { Turnstile } from "svelte-turnstile";
     import { Transaction, Networks } from "@stellar/stellar-sdk";
