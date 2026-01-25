@@ -1,12 +1,5 @@
-  /**
-   * FACTORY FRESH: Labs Swapper Core
-   * @see https://deepwiki.com/repo/kalepail/smol-fe#trading
-   * 
-   * Advanced multi-provider aggregator (Soroswap, xBull, Comet).
-   * Aligned with the "one wire" signSendAndVerify architecture for
-   * robust, sponsored transaction submission.
-   */
-  import { account, sac, kale, xlm } from "../../utils/passkey-kit";
+<script lang="ts">
+    import { account, sac, kale, xlm } from "../../utils/passkey-kit";
     import { onMount, tick } from "svelte";
     import { getSafeRpId } from "../../utils/domains";
     import { Buffer } from "buffer";
@@ -492,6 +485,11 @@
     }
 </script>
 
+/** * FACTORY FRESH: Labs Swapper Core * @see
+https://deepwiki.com/repo/kalepail/smol-fe#trading * * Advanced multi-provider
+aggregator (Soroswap, xBull, Comet). * Aligned with the "one wire"
+signSendAndVerify architecture for * robust, sponsored transaction submission.
+*/
 <!-- MOONLIGHT UI -->
 <div class="w-full relative flex flex-col items-center justify-center p-2">
     {#if appState === "main"}

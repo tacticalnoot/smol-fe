@@ -1,11 +1,4 @@
-  /**
-   * FACTORY FRESH: Mint & Trade Modal
-   * @see https://deepwiki.com/repo/kalepail/smol-fe#trading
-   * 
-   * Primary UI for trading tracks via the Mixtape AMM.
-   * Consumes shared `useTradeSimulation` and `useTradeExecution` hooks
-   * to ensure cross-component consistency.
-   */
+<script lang="ts">
   import { createEventDispatcher, onMount, untrack } from "svelte";
   import Loader from "./ui/Loader.svelte";
   import TradeForm from "./trade/TradeForm.svelte";
@@ -413,6 +406,10 @@
   );
 </script>
 
+/** * FACTORY FRESH: Mint & Trade Modal * @see
+https://deepwiki.com/repo/kalepail/smol-fe#trading * * Primary UI for trading
+tracks via the Mixtape AMM. * Consumes shared `useTradeSimulation` and
+`useTradeExecution` hooks * to ensure cross-component consistency. */
 <div
   class="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4"
   onclick={close}

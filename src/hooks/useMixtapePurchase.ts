@@ -11,7 +11,6 @@ import type { Smol } from '../types/domain';
 import { RPC_URL } from '../utils/rpc';
 import {
   signSendAndVerify,
-  type GetFreshTokenCallback,
   type SignAndSendResult,
 } from '../utils/transaction-helpers';
 import { account } from '../utils/passkey-kit';
