@@ -477,7 +477,7 @@
                             <svg class="w-3 h-3 flex-shrink-0" viewBox="0 0 24 24" fill="currentColor">
                                 <path d="M13 14H11V9H13M13 18H11V16H13M1 21H23L12 2L1 21Z" />
                             </svg>
-                            <span>We're upgrading passkeys. Browse free, or use <a href="https://smol.xyz" class="underline hover:text-amber-100" target="_blank" rel="noopener">smol.xyz</a> to create.</span>
+                            <span>We're upgrading passkeys.<br/>Browse free, or use <a href="https://smol.xyz" class="underline hover:text-amber-100" target="_blank" rel="noopener">smol.xyz</a> to create.</span>
                         </div>
                     </div>
                 {:else if step === "username"}
