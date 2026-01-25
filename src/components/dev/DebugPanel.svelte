@@ -215,6 +215,30 @@
         }
     }
 
+    function saveRelayerDump() {
+        const logs = logger.getLogs();
+        // Find the most recent RELAYER category log
+        const relayerLog = [...logs]
+            .reverse()
+            .find((l) => l.category === LogCategory.RELAYER);
+
+        if (relayerLog && relayerLog.data) {
+            const blob = new Blob([JSON.stringify(relayerLog.data, null, 2)], {
+                type: "application/json",
+            });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement("a");
+            a.href = url;
+            a.download = `relayer-debug-dump-${Date.now()}.json`;
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+            URL.revokeObjectURL(url);
+        } else {
+            alert("No Relayer interaction found in logs.");
+        }
+    }
+
     function togglePanel() {
         isOpen = !isOpen;
     }
@@ -342,6 +366,13 @@
                             title="Copy the most recent login signature payload"
                         >
                             🔐 Copy Last Login Proof
+                        </button>
+                        <button
+                            onclick={saveRelayerDump}
+                            class="secondary-action"
+                            title="Save the complete request/response of the last relayer attempt"
+                        >
+                            🐞 Save Relayer Dump
                         </button>
                         <button onclick={downloadLogs}>📥 Download Logs</button>
                         <button onclick={copyState}>📄 Copy State Only</button>
