@@ -7,7 +7,7 @@ const SUPPORTED_PROTOCOLS = ['soroswap', 'aqua', 'phoenix'];
 export async function POST({ request, locals }: APIContext) {
     try {
         const body = await request.json();
-        const { tokenIn, tokenOut, amountIn, slippageBps = 500 } = body;
+        const { tokenIn, tokenOut, amountIn, slippageBps = 500, tradeType } = body;
 
         if (!tokenIn || !tokenOut || !amountIn) {
             return new Response(JSON.stringify({ error: 'Missing required parameters' }), { status: 400 });
