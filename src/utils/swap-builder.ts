@@ -165,15 +165,36 @@ export async function buildSwapTransactionForCAddress(
     // Build distribution ScVal array with proper structure
     const distributionArg = buildDistributionArg(rawTrade.distribution);
 
-    const invokeArgs = [
-        nativeToScVal(new Address(tokenIn)),
-        nativeToScVal(new Address(tokenOut)),
-        nativeToScVal(BigInt(arg1), { type: "i128" }),
-        nativeToScVal(BigInt(arg2), { type: "i128" }),
-        distributionArg,
-        nativeToScVal(new Address(fromAddress)),
-        nativeToScVal(deadline, { type: "u64" }),
-    ];
+    let invokeArgs: xdr.ScVal[];
+    if (tradeType === 'EXACT_OUT') {
+        const amountOut = rawTrade.amountOut || String(quote.amountOut);
+        const amountInMax = rawTrade.amountInMax || String(quote.amountIn);
+
+        // Exact Out Order: tokenIn, amountInMax, tokenOut, amountOut, distribution, to, deadline
+        invokeArgs = [
+            nativeToScVal(new Address(tokenIn)),
+            nativeToScVal(BigInt(amountInMax), { type: "i128" }),
+            nativeToScVal(new Address(tokenOut)),
+            nativeToScVal(BigInt(amountOut), { type: "i128" }),
+            distributionArg,
+            nativeToScVal(new Address(fromAddress)),
+            nativeToScVal(deadline, { type: "u64" }),
+        ];
+    } else {
+        const amountIn = String(quote.amountIn);
+        const amountOutMin = rawTrade.amountOutMin || String(quote.amountOut);
+
+        // Exact In Order: tokenIn, amountIn, tokenOut, amountOutMin, distribution, to, deadline
+        invokeArgs = [
+            nativeToScVal(new Address(tokenIn)),
+            nativeToScVal(BigInt(amountIn), { type: "i128" }),
+            nativeToScVal(new Address(tokenOut)),
+            nativeToScVal(BigInt(amountOutMin), { type: "i128" }),
+            distributionArg,
+            nativeToScVal(new Address(fromAddress)),
+            nativeToScVal(deadline, { type: "u64" }),
+        ];
+    }
 
     console.log(`[SwapBuilder] Calling ${methodName} with args:`, {
         tokenIn,
@@ -225,7 +246,7 @@ export async function buildSwapTransactionForCAddress(
  */
 function poolHashesToScVal(poolHashes?: string[]): xdr.ScVal {
     if (!poolHashes || poolHashes.length === 0) {
-        return xdr.ScVal.scvVoid();
+        return xdr.ScVal.scvVec([]); // Return empty Vec, not Void
     }
 
     const scVec: xdr.ScVal[] = poolHashes.map((base64Str) => {
@@ -274,15 +295,12 @@ function buildDexDistributionScVal(dist: ExtendedDistribution): xdr.ScVal {
         ? PROTOCOL_MAP[dist.protocol_id.toLowerCase()] ?? 0
         : dist.protocol_id;
 
-    // Fields in alphabetical order: bytes, is_exact_in, parts, path, protocol_id
+    // Fields in alphabetical order: bytes, parts, path, protocol_id
+    // matches buildDexDistribution in useTradeExecution.ts
     const entries: xdr.ScMapEntry[] = [
         new xdr.ScMapEntry({
             key: xdr.ScVal.scvSymbol("bytes"),
             val: poolHashesToScVal(dist.poolHashes)
-        }),
-        new xdr.ScMapEntry({
-            key: xdr.ScVal.scvSymbol("is_exact_in"),
-            val: nativeToScVal(dist.is_exact_in, { type: "bool" })
         }),
         new xdr.ScMapEntry({
             key: xdr.ScVal.scvSymbol("parts"),
