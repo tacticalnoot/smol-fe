@@ -80,6 +80,7 @@ export async function getQuote(request: QuoteRequest, network: 'mainnet' | 'test
         tokenIn: request.tokenIn,
         tokenOut: request.tokenOut,
         amountIn: request.amountIn, // API expects this name
+        tradeType: request.tradeType, // Critical: Missing this caused EXACT_OUT issues
         slippageBps: request.slippageBps ?? 500,
     };
 
