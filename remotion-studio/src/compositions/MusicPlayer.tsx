@@ -1,5 +1,6 @@
 import React from 'react';
 import { AbsoluteFill, useCurrentFrame, random } from 'remotion';
+import { BackgroundMusic } from '../components/BackgroundMusic';
 
 const Bar: React.FC<{ index: number; frame: number }> = ({ index, frame }) => {
     const height = 20 + 80 * random(`bar-${index}-${Math.floor(frame / 5)}`);
@@ -16,6 +17,7 @@ export const MusicPlayer: React.FC = () => {
 
     return (
         <AbsoluteFill style={{ backgroundColor: '#111', justifyContent: 'center', alignItems: 'center' }}>
+            <BackgroundMusic />
             <div style={{
                 width: 600, height: 200, backgroundColor: '#222', borderRadius: 20,
                 display: 'flex', alignItems: 'center', padding: 30, gap: 30,

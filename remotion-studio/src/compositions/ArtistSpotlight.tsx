@@ -1,5 +1,6 @@
 import React from 'react';
 import { AbsoluteFill, useCurrentFrame, interpolate } from 'remotion';
+import { BackgroundMusic } from '../components/BackgroundMusic';
 
 const PhotoCard: React.FC<{ rotation: number, color: string, text: string }> = ({ rotation, color, text }) => (
     <div style={{
@@ -22,6 +23,7 @@ export const ArtistSpotlight: React.FC = () => {
 
     return (
         <AbsoluteFill style={{ backgroundColor: '#f0f0f0', justifyContent: 'center', alignItems: 'center', flexDirection: 'row', gap: -50 }}>
+            <BackgroundMusic />
             <div style={{ transform: `translateY(${entrance1}px)` }}>
                 <PhotoCard rotation={-10} color="#ff5f56" text="Artist A" />
             </div>
