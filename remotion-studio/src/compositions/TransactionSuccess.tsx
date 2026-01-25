@@ -1,5 +1,6 @@
 import React from 'react';
 import { AbsoluteFill, useCurrentFrame, spring, useVideoConfig } from 'remotion';
+import { BackgroundMusic } from '../components/BackgroundMusic';
 
 export const TransactionSuccess: React.FC = () => {
     const frame = useCurrentFrame();
@@ -16,6 +17,7 @@ export const TransactionSuccess: React.FC = () => {
 
     return (
         <AbsoluteFill style={{ backgroundColor: 'rgba(0,0,0,0.8)', justifyContent: 'center', alignItems: 'center' }}>
+            <BackgroundMusic />
             <div style={{
                 width: 500, height: 400, backgroundColor: 'white', borderRadius: 30,
                 display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center',

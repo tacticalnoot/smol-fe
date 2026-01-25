@@ -1,5 +1,6 @@
 import React from 'react';
 import { AbsoluteFill, useCurrentFrame, spring, useVideoConfig } from 'remotion';
+import { BackgroundMusic } from '../components/BackgroundMusic';
 
 export const StoreDrop: React.FC = () => {
     const frame = useCurrentFrame();
@@ -9,6 +10,7 @@ export const StoreDrop: React.FC = () => {
 
     return (
         <AbsoluteFill style={{ backgroundColor: '#fff', justifyContent: 'center', alignItems: 'center' }}>
+            <BackgroundMusic />
             <h1 style={{
                 fontSize: 100,
                 fontFamily: 'Impact, sans-serif',

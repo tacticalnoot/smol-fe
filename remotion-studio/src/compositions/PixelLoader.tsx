@@ -1,5 +1,6 @@
 import React from 'react';
 import { AbsoluteFill, useCurrentFrame } from 'remotion';
+import { BackgroundMusic } from '../components/BackgroundMusic';
 
 export const PixelLoader: React.FC = () => {
     const frame = useCurrentFrame();
@@ -9,6 +10,7 @@ export const PixelLoader: React.FC = () => {
 
     return (
         <AbsoluteFill style={{ backgroundColor: '#2d2d2d', justifyContent: 'center', alignItems: 'center' }}>
+            <BackgroundMusic />
             <div style={{
                 width: 100, height: 100, position: 'relative',
                 transform: `rotate(${rotation}deg)`,

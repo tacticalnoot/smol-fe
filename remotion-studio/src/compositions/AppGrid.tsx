@@ -1,5 +1,6 @@
 import React from 'react';
 import { AbsoluteFill, useCurrentFrame, useVideoConfig, spring } from 'remotion';
+import { BackgroundMusic } from '../components/BackgroundMusic';
 
 const AppIcon: React.FC<{ index: number, color: string, label: string }> = ({ index, color, label }) => {
     const frame = useCurrentFrame();
@@ -27,6 +28,7 @@ const AppIcon: React.FC<{ index: number, color: string, label: string }> = ({ in
 export const AppGrid: React.FC = () => {
     return (
         <AbsoluteFill style={{ backgroundColor: '#fff', justifyContent: 'center', alignItems: 'center' }}>
+            <BackgroundMusic />
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 40 }}>
                 <AppIcon index={0} color="#ff5f56" label="Home" />
                 <AppIcon index={1} color="#ffbd2e" label="Store" />

@@ -1,5 +1,6 @@
 import React from 'react';
 import { AbsoluteFill, useCurrentFrame, useVideoConfig } from 'remotion';
+import { BackgroundMusic } from '../components/BackgroundMusic';
 
 const TerminalWindow: React.FC<{ children: React.ReactNode }> = ({ children }) => (
     <div style={{
@@ -28,6 +29,7 @@ export const DevTerminal: React.FC = () => {
 
     return (
         <AbsoluteFill style={{ backgroundColor: '#000', justifyContent: 'center', alignItems: 'center' }}>
+            <BackgroundMusic />
             <TerminalWindow>
                 <div>
                     {text.substring(0, progress)}

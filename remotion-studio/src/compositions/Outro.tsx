@@ -1,5 +1,6 @@
 import React from 'react';
 import { AbsoluteFill, useCurrentFrame, interpolate } from 'remotion';
+import { BackgroundMusic } from '../components/BackgroundMusic';
 
 export const Outro: React.FC = () => {
     const frame = useCurrentFrame();
@@ -9,6 +10,7 @@ export const Outro: React.FC = () => {
 
     return (
         <AbsoluteFill style={{ backgroundColor: 'black', justifyContent: 'center', alignItems: 'center' }}>
+            <BackgroundMusic />
             <div style={{ opacity, transform: `scale(${scale})`, textAlign: 'center' }}>
                 <h1 style={{ color: 'white', fontSize: 60, fontFamily: 'sans-serif', margin: 0 }}>Built with Love</h1>
                 <h2 style={{ color: '#4AF626', fontSize: 40, fontFamily: 'sans-serif', marginTop: 20 }}>smol-fe</h2>

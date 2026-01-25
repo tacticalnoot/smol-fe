@@ -1,5 +1,6 @@
 import React from 'react';
 import { AbsoluteFill, useCurrentFrame } from 'remotion';
+import { BackgroundMusic } from '../components/BackgroundMusic';
 
 export const Logo3D: React.FC = () => {
     const frame = useCurrentFrame();
@@ -11,6 +12,7 @@ export const Logo3D: React.FC = () => {
             backgroundColor: '#111', justifyContent: 'center', alignItems: 'center',
             perspective: 1000
         }}>
+            <BackgroundMusic />
             <div style={{
                 width: 300, height: 300, position: 'relative',
                 transformStyle: 'preserve-3d',
