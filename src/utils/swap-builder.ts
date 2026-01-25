@@ -148,8 +148,7 @@ export async function buildSwapTransactionForCAddress(
     // Build the contract invocation with all 7 required arguments
     // Build the contract invocation with 5 arguments (tokens inferred from path)
     const invokeArgs = [
-        // nativeToScVal(new Address(tokenIn)),              // REMOVED: Redundant
-        // nativeToScVal(new Address(tokenOut)),             // REMOVED: Redundant
+
         nativeToScVal(BigInt(amountIn), { type: "i128" }),  // amount_in
         nativeToScVal(BigInt(amountOutMin), { type: "i128" }), // amount_out_min
         distributionArg,                                    // distribution
