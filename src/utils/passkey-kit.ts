@@ -4,9 +4,11 @@ import type { Tx } from "@stellar/stellar-sdk/minimal/contract";
 import { getTurnstileToken } from "../stores/turnstile.svelte.ts";
 import logger, { LogCategory } from "./debug-logger";
 
+import { getRpcUrl } from "./rpc";
+
 export const account = {
     get: () => new PasskeyKit({
-        rpcUrl: import.meta.env.PUBLIC_RPC_URL,
+        rpcUrl: getRpcUrl(), // Dynamic failover
         networkPassphrase: import.meta.env.PUBLIC_NETWORK_PASSPHRASE,
         walletWasmHash: import.meta.env.PUBLIC_WALLET_WASM_HASH,
         timeoutInSeconds: 30,
@@ -15,7 +17,7 @@ export const account = {
 
 export const sac = {
     get: () => new SACClient({
-        rpcUrl: import.meta.env.PUBLIC_RPC_URL,
+        rpcUrl: getRpcUrl(), // Dynamic failover
         networkPassphrase: import.meta.env.PUBLIC_NETWORK_PASSPHRASE,
     })
 };
