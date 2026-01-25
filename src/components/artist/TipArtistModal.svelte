@@ -12,7 +12,6 @@
     } from "../../stores/balance.svelte";
     import { StrKey } from "@stellar/stellar-sdk";
     import Loader from "../ui/Loader.svelte";
-    import { executeTransfer } from "../../utils/transaction-executor";
     import {
         parseAndValidateAmount,
         validateAddress,
@@ -22,7 +21,6 @@
         turnstileManager,
         getValidTurnstileToken,
     } from "../../utils/turnstile-manager";
-    import { wrapError, type SmolError } from "../../utils/errors";
 
     let {
         artistAddress,
@@ -85,7 +83,9 @@
         // Initialize balance state (but don't update if transaction in progress)
         if (userState.contractId && !isTransactionInProgress()) {
             try {
-                const { updateContractBalance } = await import("../../stores/balance.svelte");
+                const { updateContractBalance } = await import(
+                    "../../stores/balance.svelte"
+                );
                 await updateContractBalance(userState.contractId);
             } catch (err) {
                 console.warn("Failed to load initial balance:", err);
@@ -108,103 +108,69 @@
         console.warn("[TipModal] Turnstile token expired");
     }
 
+    import {
+        signSendAndVerify,
+        isUserCancellation,
+    } from "../../utils/transaction-helpers";
+
+    // ... existing imports ...
+
     async function handleSend() {
         error = null;
         success = null;
 
-        // Check for authentication
         if (!userState.contractId || !userState.keyId) {
             error = "Please connect your wallet first.";
             return;
         }
 
-        // Check if another transaction is in progress
-        if (isTransactionInProgress()) {
-            error = "Another transaction is in progress. Please wait.";
+        const amountNum = parseFloat(amount.replace(/,/g, ""));
+        if (isNaN(amountNum) || amountNum <= 0) {
+            error = "Invalid amount";
             return;
         }
 
-        // Ensure wallet is connected before attempting to sign
-        try {
-            await ensureWalletConnected();
-        } catch (err) {
-            error = "Failed to connect wallet. Please try logging in again.";
-            return;
-        }
+        const amountInStroops = BigInt(
+            Math.floor(amountNum * Number(decimalsFactor)),
+        );
 
         submitting = true;
-
         try {
-            // Validate recipient address
-            validateAddress(lockedArtistAddress, "Recipient address");
-
-            // Parse and validate amount
-            const amountInUnits = parseAndValidateAmount(amount, kaleDecimals);
-
-            // Validate sufficient balance
-            validateSufficientBalance(amountInUnits, balanceState.balance, "Amount");
-
-            // Validate turnstile token
-            const validToken = getValidTurnstileToken();
-            if (!validToken) {
-                if (turnstileExpired) {
-                    error = "CAPTCHA expired. Please complete it again.";
-                } else {
-                    error = "Please complete the CAPTCHA.";
-                }
-                return;
-            }
-
-            // Execute transfer using optimized transaction executor
-            const result = await executeTransfer({
+            // Build transfer
+            const tx = await kale.get().transfer({
                 from: userState.contractId,
                 to: lockedArtistAddress,
-                amount: amountInUnits,
-                turnstileToken: validToken,
-                kaleClient: kale.get(),
-                onSuccess: () => {
-                    // Secret Store Unlock Logic
-                    const amountNum = parseFloat(amount.replace(/,/g, ""));
-                    const adminAddress =
-                        "CBNORBI4DCE7LIC42FWMCIWQRULWAUGF2MH2Z7X2RNTFAYNXIACJ33IM";
-
-                    if (lockedArtistAddress === adminAddress) {
-                        if (amountNum === 100000) {
-                            unlockUpgrade("premiumHeader");
-                            success = `Sent ${amount} KALE! Premium Profile Header Unlocked! 🥬✨`;
-                        } else if (amountNum === 69420.67) {
-                            unlockUpgrade("goldenKale");
-                            success = `Sent ${amount} KALE! The Golden Kale Unlocked! 🪙🥬`;
-                        } else {
-                            success = `Sent ${amount} KALE to ${artistName}!`;
-                        }
-                    } else {
-                        success = `Sent ${amount} KALE to ${artistName}!`;
-                    }
-                },
-                onError: (txError: SmolError) => {
-                    error = txError.getUserFriendlyMessage();
-                },
+                amount: amountInStroops,
             });
 
-            if (result.success) {
-                amount = "";
-                console.log("[TipModal] Transfer successful:", result.transactionHash);
-            } else if (result.error) {
-                // Error already set in onError callback
-                console.error("[TipModal] Transfer failed:", result.error);
+            // Sign and send
+            const result = await signSendAndVerify(tx, {
+                keyId: userState.keyId,
+                turnstileToken,
+                updateBalance: true,
+                contractId: userState.contractId,
+            });
+
+            if (!result.success) {
+                throw new Error(result.error || "Transfer failed");
             }
 
-        } catch (err: any) {
-            console.error("[TipModal] Transfer error:", err);
-
-            // Use typed error if available
-            if (err.name === 'SmolError') {
-                error = err.getUserFriendlyMessage();
-            } else {
-                const wrappedError = wrapError(err, "Failed to send tip");
-                error = wrappedError.getUserFriendlyMessage();
+            // Success logic
+            const adminAddress =
+                "CBNORBI4DCE7LIC42FWMCIWQRULWAUGF2MH2Z7X2RNTFAYNXIACJ33IM";
+            if (lockedArtistAddress === adminAddress) {
+                if (amountNum === 100000) unlockUpgrade("premiumHeader");
+                else if (amountNum === 69420.67) unlockUpgrade("goldenKale");
             }
+
+            success = `Sent ${amount} KALE to ${artistName}!`;
+            amount = "";
+            turnstileToken = "";
+        } catch (e: any) {
+            console.error("Tip error:", e);
+            error = isUserCancellation(e)
+                ? "Tip cancelled"
+                : e.message || "Failed to send tip";
         } finally {
             submitting = false;
         }
