@@ -3,18 +3,21 @@
     import { userState } from "../../stores/user.svelte.ts";
     import { upgradesState } from "../../stores/upgrades.svelte.ts";
     import { balanceState } from "../../stores/balance.svelte.ts";
+    import { getRpcHealthStatus } from "../../utils/rpc";
 
     let isOpen = $state(false);
     let currentLevel = $state(logger.getLevel());
     let stats = $state(logger.getStats());
     let recentLogs = $state<any[]>([]);
     let selectedCategory = $state<string>("ALL");
+    let rpcStatus = $state(getRpcHealthStatus());
 
     // Update stats periodically
     $effect(() => {
         const interval = setInterval(() => {
             stats = logger.getStats();
             recentLogs = logger.getLogs().slice(-10).reverse();
+            rpcStatus = getRpcHealthStatus();
         }, 1000);
 
         return () => clearInterval(interval);
@@ -27,6 +30,12 @@
 
     function downloadLogs() {
         logger.downloadLogs();
+    }
+
+    function clearAllLogs() {
+        if (confirm("Clear all logs and localStorage debug data?")) {
+            logger.clearLogs();
+        }
     }
 
     function clearLogs() {
@@ -228,9 +237,16 @@
             .find((l) => l.category === LogCategory.RELAYER);
 
         if (relayerLog && relayerLog.data) {
-            const blob = new Blob([JSON.stringify(relayerLog.data, null, 2)], {
-                type: "application/json",
-            });
+            const blob = new Blob(
+                [
+                    JSON.stringify(
+                        relayerLog.data,
+                        (k, v) => (typeof v === "bigint" ? v.toString() : v),
+                        2,
+                    ),
+                ],
+                { type: "application/json" },
+            );
             const url = URL.createObjectURL(blob);
             const a = document.createElement("a");
             a.href = url;
@@ -298,6 +314,26 @@
                         >
                             TRACE
                         </button>
+                    </div>
+                </div>
+
+                <div class="debug-section">
+                    <h4>RPC Nodes Status</h4>
+                    <div class="rpc-table">
+                        {#each rpcStatus as rpc}
+                            <div class="rpc-row" class:unhealthy={!rpc.healthy}>
+                                <div
+                                    class="rpc-dot"
+                                    class:healthy={rpc.healthy}
+                                ></div>
+                                <div class="rpc-url">
+                                    {rpc.url.replace("https://", "")}
+                                </div>
+                                <div class="rpc-latency">
+                                    {rpc.averageLatency.toFixed(0)}ms
+                                </div>
+                            </div>
+                        {/each}
                     </div>
                 </div>
 
@@ -381,10 +417,16 @@
                         </button>
                         <button onclick={downloadLogs}>📥 Download Logs</button>
                         <button onclick={copyState}>📄 Copy State Only</button>
-                        <button onclick={clearLogs}>🗑️ Clear Logs</button>
-                        <button onclick={() => logger.printSummary()}
-                            >📊 Print Summary</button
+                        <button onclick={clearAllLogs} style="color: #ff4444;"
+                            >🗑️ Clear All Logs</button
                         >
+                        <button
+                            onclick={copyAllLogs}
+                            class="primary-action"
+                            style="margin-top: 8px;"
+                        >
+                            📋 COPY FULL DEBUG REPORT
+                        </button>
                     </div>
                 </div>
 
@@ -544,6 +586,54 @@
 
     .stats-grid strong.warn {
         color: #ffaa00;
+    }
+
+    .rpc-table {
+        background: #0a0a0a;
+        padding: 8px;
+        border-radius: 4px;
+        margin-bottom: 4px;
+    }
+
+    .rpc-row {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        font-size: 10px;
+        padding: 4px 0;
+        border-bottom: 1px solid #1a1a1a;
+    }
+
+    .rpc-row:last-child {
+        border-bottom: none;
+    }
+
+    .rpc-row.unhealthy {
+        opacity: 0.5;
+        color: #ff4444;
+    }
+
+    .rpc-dot {
+        width: 6px;
+        height: 6px;
+        border-radius: 50%;
+        background: #ff4444;
+    }
+
+    .rpc-dot.healthy {
+        background: #00ff00;
+        box-shadow: 0 0 4px #00ff00;
+    }
+
+    .rpc-url {
+        flex: 1;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+    }
+
+    .rpc-latency {
+        color: #888;
     }
 
     .recent-logs {
