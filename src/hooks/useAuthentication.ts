@@ -9,6 +9,7 @@
 import Cookies from 'js-cookie';
 import { getDomain } from 'tldts';
 import { account, send } from '../utils/passkey-kit';
+import { getSafeRpId } from '../utils/domains';
 import { setUserAuth, clearUserAuth, userState } from '../stores/user.svelte.ts';
 
 export function useAuthentication() {
@@ -21,9 +22,9 @@ export function useAuthentication() {
     clearUserAuth();
 
     try {
-      const rpId = getDomain(window.location.hostname);
+      const rpId = getSafeRpId(window.location.hostname);
       const result = await account.get().connectWallet({
-        rpId: rpId !== null ? rpId : undefined,
+        rpId,
       });
 
       console.log('[Auth] connectWallet succeeded:', { contractId: result.contractId });
@@ -95,9 +96,9 @@ export function useAuthentication() {
     clearUserAuth();
 
     try {
-      const rpId = getDomain(window.location.hostname);
+      const rpId = getSafeRpId(window.location.hostname);
       const result = await account.get().createWallet('smol.xyz', `SMOL — ${username}`, {
-        rpId: rpId !== null ? rpId : undefined,
+        rpId,
       });
 
       console.log('[Auth] Wallet created, contract ID:', result.contractId);
