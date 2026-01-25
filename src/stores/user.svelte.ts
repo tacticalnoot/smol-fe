@@ -6,6 +6,8 @@
  * Prioritizes PasskeyKit's local reconnection over server-side session cookies.
  */
 
+import { safeLocalStorageGet, safeLocalStorageSet, safeLocalStorageRemove } from "../utils/storage";
+
 // Initialize from localStorage if available (client-side only)
 const storedContractId = safeLocalStorageGet("smol:contractId");
 const storedKeyId = safeLocalStorageGet("smol:keyId");

@@ -1,11 +1,5 @@
-  /**
-   * FACTORY FRESH: Account Management & KALE Transfers
-   * @see https://deepwiki.com/repo/kalepail/smol-fe#account
-   * 
-   * Provides the primary interface for KALE token transfers and balance viewing.
-   * Uses the unified signAndSend pattern for sponsored transaction submission.
-   */
-  import { onMount } from "svelte";
+<script lang="ts">
+    import { onMount } from "svelte";
     import { kale } from "../utils/passkey-kit";
     import { truncate } from "../utils/base";
     import { userState } from "../stores/user.svelte.ts";
@@ -96,7 +90,7 @@
             const destination = to.trim();
 
             // Validate using unified validation utilities
-            validateAddress(destination, 'Destination');
+            validateAddress(destination, "Destination");
 
             // Check if sending to self
             if (destination === userState.contractId) {
@@ -109,7 +103,11 @@
             const amountInUnits = parseAndValidateAmount(amount, kaleDecimals);
 
             // Validate sufficient balance
-            validateSufficientBalance(amountInUnits, balanceState.balance, 'Transfer amount');
+            validateSufficientBalance(
+                amountInUnits,
+                balanceState.balance,
+                "Transfer amount",
+            );
 
             // Validate Turnstile token
             if (!turnstileToken) {
@@ -144,10 +142,9 @@
             success = `Sent ${displayAmount} KALE to ${truncate(destination, 4)}`;
             to = "";
             amount = "";
-
         } catch (err) {
             console.error("Failed to send KALE", err);
-            const wrappedError = wrapError(err, 'Transfer failed');
+            const wrappedError = wrapError(err, "Transfer failed");
             error = wrappedError.getUserFriendlyMessage();
         } finally {
             submitting = false;
@@ -155,6 +152,10 @@
     }
 </script>
 
+/** * FACTORY FRESH: Account Management & KALE Transfers * @see
+https://deepwiki.com/repo/kalepail/smol-fe#account * * Provides the primary
+interface for KALE token transfers and balance viewing. * Uses the unified
+signAndSend pattern for sponsored transaction submission. */
 <div class="max-w-[480px] mx-auto px-4 py-10">
     <h2 class="text-2xl font-semibold text-lime-400 mb-4">Account</h2>
 
