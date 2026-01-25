@@ -211,17 +211,17 @@ export async function buildSwapTransactionForCAddress(
     }
 
     // Assemble the transaction with simulation results
-    const xdr = assembleTransaction(tx, simResult).build().toXDR();
+    const builtXdr = assembleTransaction(tx, simResult).build().toXDR();
 
     // Log for Debug Panel to pick up
     logger.info(LogCategory.TRANSACTION, "Swap Transaction Built", {
-        xdr,
+        xdr: builtXdr,
         tradeType,
         method: methodName,
         from: fromAddress
     });
 
-    return xdr;
+    return builtXdr;
 }
 
 /**
