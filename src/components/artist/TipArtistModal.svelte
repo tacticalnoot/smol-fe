@@ -3,7 +3,10 @@
     import { fade, scale } from "svelte/transition";
     import { kale } from "../../utils/passkey-kit";
     import { truncate } from "../../utils/base";
-    import { userState, ensureWalletConnected } from "../../stores/user.svelte.ts";
+    import {
+        userState,
+        ensureWalletConnected,
+    } from "../../stores/user.svelte.ts";
     import { unlockUpgrade } from "../../stores/upgrades.svelte.ts";
     import { Turnstile } from "svelte-turnstile";
     import {
@@ -84,7 +87,7 @@
         if (userState.contractId && !isTransactionInProgress()) {
             try {
                 const { updateContractBalance } = await import(
-                    "../../stores/balance.svelte"
+                    "../../stores/balance.svelte.ts"
                 );
                 await updateContractBalance(userState.contractId);
             } catch (err) {
