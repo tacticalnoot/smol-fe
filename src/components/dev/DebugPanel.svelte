@@ -162,6 +162,39 @@
         }
     }
 
+    function copyLastXdr() {
+        const logs = logger.getLogs();
+        const lastTxLog = [...logs]
+            .reverse()
+            .find((l) => l.category === LogCategory.TRANSACTION && l.data?.xdr);
+
+        if (lastTxLog && lastTxLog.data.xdr) {
+            navigator.clipboard.writeText(lastTxLog.data.xdr);
+            alert("Last XDR copied to clipboard!");
+        } else {
+            alert("No transaction XDR found in logs.");
+        }
+    }
+
+    function downloadLastXdr() {
+        const logs = logger.getLogs();
+        const lastTxLog = [...logs]
+            .reverse()
+            .find((l) => l.category === LogCategory.TRANSACTION && l.data?.xdr);
+
+        if (lastTxLog && lastTxLog.data.xdr) {
+            const blob = new Blob([lastTxLog.data.xdr], { type: "text/plain" });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement("a");
+            a.href = url;
+            a.download = `tx-${Date.now()}.xdr`;
+            a.click();
+            URL.revokeObjectURL(url);
+        } else {
+            alert("No transaction XDR found in logs.");
+        }
+    }
+
     function togglePanel() {
         isOpen = !isOpen;
     }
@@ -268,6 +301,20 @@
                             title="Copy complete debug report including logs, state, network, performance"
                         >
                             📋 Copy FULL Report
+                        </button>
+                        <button
+                            onclick={copyLastXdr}
+                            class="secondary-action"
+                            title="Find and copy the most recent transaction XDR"
+                        >
+                            🔑 Copy Last XDR
+                        </button>
+                        <button
+                            onclick={downloadLastXdr}
+                            class="secondary-action"
+                            title="Download the most recent XDR as a file"
+                        >
+                            💾 Save Last XDR
                         </button>
                         <button onclick={downloadLogs}>📥 Download Logs</button>
                         <button onclick={copyState}>📄 Copy State Only</button>
@@ -508,9 +555,20 @@
         box-shadow: 0 2px 8px rgba(0, 255, 0, 0.3);
     }
 
+    .action-buttons button.secondary-action {
+        background: #003300;
+        color: #00ff00;
+        border-color: #006600;
+    }
+
     .action-buttons button.primary-action:hover {
         background: #00cc00;
         box-shadow: 0 4px 12px rgba(0, 255, 0, 0.5);
+    }
+
+    .action-buttons button.secondary-action:hover {
+        background: #004400;
+        border-color: #00cc00;
     }
 
     .state-display {
