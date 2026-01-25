@@ -10,10 +10,7 @@
 
 const SOROSWAP_API_BASE = 'https://api.soroswap.finance';
 
-/**
- * Safe JSON stringification that handles BigInt values
- */
-function safeStringify(obj: unknown, space?: number): string {
+export function safeStringify(obj: unknown, space?: number): string {
     return JSON.stringify(obj, (key, value) =>
         typeof value === 'bigint' ? value.toString() : value
         , space);

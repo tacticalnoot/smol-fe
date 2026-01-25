@@ -23,14 +23,7 @@ import type { QuoteResponse, RawTradeDistribution } from "./soroswap";
 import logger, { LogCategory } from "./debug-logger";
 import { safeStringify } from "./soroswap";
 
-/**
- * Safe JSON stringification that handles BigInt values
- */
-function safeStringify(obj: unknown, space?: number): string {
-    return JSON.stringify(obj, (key, value) =>
-        typeof value === 'bigint' ? value.toString() : value
-        , space);
-}
+
 
 /**
  * Soroswap Aggregator Contract (Mainnet)
@@ -56,6 +49,21 @@ const RPC_URL = import.meta.env.PUBLIC_RPC_URL || "https://rpc.ankr.com/stellar_
  * The relayer will rewrap the transaction with its own source account
  */
 const NULL_ACCOUNT = "GAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAWHF";
+
+/**
+ * Validate that amounts are valid numeric strings before BigInt conversion
+ */
+function validateAmount(value: string, fieldName: string): void {
+    const trimmed = String(value).trim();
+    if (!trimmed || !/^\d+$/.test(trimmed)) {
+        throw new Error(`Invalid ${fieldName}: "${value}" - must be a positive integer string`);
+    }
+    try {
+        BigInt(trimmed);
+    } catch (error) {
+        throw new Error(`Cannot convert ${fieldName} to BigInt: "${value}" - ${error}`);
+    }
+}
 
 /** Extended distribution with optional poolHashes for aqua protocol */
 interface ExtendedDistribution extends RawTradeDistribution {
@@ -203,8 +211,7 @@ export async function buildSwapTransactionForCAddress(
     }
 
     // Assemble the transaction with simulation results
-    const assembledTx = assembleTransaction(tx, simResult);
-    const xdr = builtTx.toXDR();
+    const xdr = assembleTransaction(tx, simResult).build().toXDR();
 
     // Log for Debug Panel to pick up
     logger.info(LogCategory.TRANSACTION, "Swap Transaction Built", {
