@@ -29,7 +29,7 @@ export async function POST({ request, locals }: APIContext) {
             assetOut: tokenOut,
             amount: amountIn,
             tradeType: 'EXACT_IN',
-            // protocols: SUPPORTED_PROTOCOLS, // Allow all protocols for best price
+            protocols: SUPPORTED_PROTOCOLS,
             slippageBps,
         };
 
