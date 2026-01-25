@@ -52,3 +52,5 @@ Using vars defined in .env.local
 18:10:10 [content] Synced content
 18:10:10 [types] Generated 894ms
 18:10:10 [vite] Re-optimizing dependencies because vite config has changed
+19:15:46 [vite] changed tsconfig file detected: C:/Users/Jeff/Mixtape Auto/smol-fe/remotion-studio/tsconfig.json - Clearing cache and forcing full-reload to ensure TypeScript is compiled with updated config values.
+19:15:46 [vite] changed tsconfig file detected: C:/Users/Jeff/Mixtape Auto/smol-fe/remotion-studio/tsconfig.json - Clearing cache and forcing full-reload to ensure TypeScript is compiled with updated config values.
