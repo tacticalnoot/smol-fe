@@ -57,8 +57,11 @@ export async function send<T>(txn: AssembledTransaction<T> | Tx | string, turnst
     if (isDirectMode) {
         // Path 2: Direct to OpenZeppelin Channels
         relayerUrl = "https://channels.openzeppelin.com";
+        // NOTE: Commented out to avoid CORS 'header not allowed' error.
         // headers['X-API-Key'] = apiKey; 
-        // logger.info(LogCategory.TRANSACTION, "Relayer Request (DIRECT)", { url: relayerUrl, xdr });
+
+        // Log intent (pre-send)
+        // logger.info(LogCategory.TRANSACTION, "Relayer Request (DIRECT)", { url: relayerUrl });
     } else {
         // Path 1: Proxy through KaleFarm with Turnstile
         const token = turnstileToken || getTurnstileToken();
@@ -66,40 +69,69 @@ export async function send<T>(txn: AssembledTransaction<T> | Tx | string, turnst
             throw new Error('Turnstile token not available');
         }
         headers['X-Turnstile-Response'] = token;
-        logger.info(LogCategory.TRANSACTION, "Relayer Request (PROXY)", { url: relayerUrl, xdr, has_turnstile: !!token });
+        // logger.info(LogCategory.TRANSACTION, "Relayer Request (PROXY)", { url: relayerUrl, has_turnstile: !!token });
     }
 
     if (!relayerUrl) {
         throw new Error('Relayer URL not configured');
     }
 
-    const response = await fetch(relayerUrl, {
-        method: 'POST',
-        headers,
-        body: JSON.stringify({ xdr }),
-    });
-
-});
-
-if (!response.ok) {
-    const errorText = await response.text();
-    // Construct a detailed debug object
-    const debugInfo = {
-        status: response.status,
-        statusText: response.statusText,
-        headers: Object.fromEntries(response.headers.entries()),
-        body: errorText,
+    // Capture Request Debug Info for Dump
+    const requestDebug = {
         url: relayerUrl,
-        mode: isDirectMode ? 'DIRECT' : 'PROXY'
+        method: 'POST',
+        headers: headers,
+        body: { xdr }
     };
 
-    logger.error(LogCategory.TRANSACTION, `Relayer Failure (${debugInfo.status})`, debugInfo);
-    console.error("Relayer Failure Details:", debugInfo); // Console backup for immediate inspection
+    let responseDebug: any = {};
 
-    throw new Error(`Relayer proxy error: ${errorText || response.statusText}`);
-}
+    try {
+        const response = await fetch(relayerUrl, {
+            method: 'POST',
+            headers,
+            body: JSON.stringify({ xdr }),
+        });
 
-const result = await response.json();
-logger.info(LogCategory.TRANSACTION, "Relayer Success", { hash: result.hash || result.transactionHash });
-return result;
+        // Capture Response Headers
+        const responseHeaders = Object.fromEntries(response.headers.entries());
+        const responseText = await response.text();
+
+        responseDebug = {
+            status: response.status,
+            statusText: response.statusText,
+            headers: responseHeaders,
+            body: responseText
+        };
+
+        // Log the full interaction for the Dump button
+        logger.info(LogCategory.RELAYER, "Relayer Interaction", {
+            request: requestDebug,
+            response: responseDebug
+        });
+
+        if (!response.ok) {
+            // Re-throw with detailed debugging info
+            const debugInfo = {
+                ...responseDebug,
+                url: relayerUrl,
+                mode: isDirectMode ? 'DIRECT' : 'PROXY'
+            };
+            logger.error(LogCategory.TRANSACTION, `Relayer Failure (${response.status})`, debugInfo);
+            throw new Error(`Relayer proxy error: ${responseText || response.statusText}`);
+        }
+
+        const result = JSON.parse(responseText);
+        logger.info(LogCategory.TRANSACTION, "Relayer Success", { hash: result.hash || result.transactionHash });
+        return result;
+
+    } catch (e: any) {
+        if (!responseDebug.status) {
+            logger.error(LogCategory.RELAYER, "Relayer Network Failure", {
+                request: requestDebug,
+                error: e.message
+            });
+        }
+        throw e;
+    }
 }
