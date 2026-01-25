@@ -58,8 +58,11 @@ export async function POST({ request, locals }: APIContext) {
             headers: { 'Content-Type': 'application/json' },
         });
 
-    } catch (error) {
+    } catch (error: any) {
         console.error('API Error:', error);
-        return new Response(JSON.stringify({ error: 'Internal Server Error' }), { status: 500 });
+        return new Response(JSON.stringify({
+            error: error.message || 'Internal Server Error',
+            details: error.toString()
+        }), { status: 500 });
     }
 }
