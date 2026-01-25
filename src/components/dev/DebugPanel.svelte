@@ -134,6 +134,11 @@
                     );
                 }
 
+                // Handle BigInt
+                if (typeof value === "bigint") {
+                    return value.toString();
+                }
+
                 // Limit arrays
                 if (Array.isArray(value) && value.length > 50) {
                     return value.slice(0, 50).concat(["... (truncated array)"]);

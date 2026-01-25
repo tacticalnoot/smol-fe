@@ -255,6 +255,8 @@ export interface RawTradeDistribution {
 export interface RawTrade {
     amountIn: string;
     amountOutMin: string;
+    amountInMax?: string; // EXACT_OUT
+    amountOut?: string;    // EXACT_OUT
     distribution: RawTradeDistribution[];
 }
 
