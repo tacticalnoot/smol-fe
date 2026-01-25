@@ -151,8 +151,11 @@
     let interruptionTime: number | null = null;
     let isExternalAudio = false; // Bluetooth, CarPlay, or external speaker detected
 
-    // Cooldown period before auto-resume (prevents fighting with other media)
-    const RESUME_COOLDOWN_MS = 3000;
+    // Cooldown periods before auto-resume (prevents fighting with other media)
+    const AGGRESSIVE_COOLDOWN_MS = 3000; // Bluetooth/CarPlay - faster resume for drivers
+    const POLITE_COOLDOWN_MS = 5000;     // Device speakers - wait for other media to finish
+
+    const getResumeCooldown = () => isExternalAudio ? AGGRESSIVE_COOLDOWN_MS : POLITE_COOLDOWN_MS;
 
     /**
      * Detect if audio is routed through Bluetooth or external speakers
@@ -227,7 +230,7 @@
     const canAttemptResume = () => {
       if (!interruptionTime) return true;
       const elapsed = Date.now() - interruptionTime;
-      return elapsed >= RESUME_COOLDOWN_MS;
+      return elapsed >= getResumeCooldown();
     };
 
     if (!("mediaSession" in navigator)) return;
@@ -346,17 +349,16 @@
       }
     };
 
-    // Handle when audio becomes playable - good time to resume on CarPlay reconnect
+    // Handle when audio becomes playable - good time to resume after interruption
     const handleCanPlay = () => {
       if (
         audioState.wasInterrupted &&
         audioState.playingId &&
         audioState.currentSong &&
-        isExternalAudio && // Only in aggressive mode
         canAttemptResume()
       ) {
         console.log(
-          "[Audio] Audio can play and was interrupted - attempting resume (external audio mode)",
+          `[Audio] Audio can play and was interrupted - attempting resume (${isExternalAudio ? 'aggressive' : 'polite'} mode)`,
         );
         setTimeout(attemptResume, 100);
       }
@@ -380,16 +382,11 @@
         return;
       }
 
-      // In polite mode, don't auto-resume - wait for user interaction
-      // (Media Session buttons still work via the play handler above)
-      if (!isExternalAudio) {
-        console.log("[Audio] Polite mode - waiting for user interaction to resume");
-        return;
-      }
-
       // Check cooldown (prevents fighting with other media)
+      // Polite mode uses longer cooldown to wait for other media to finish
       if (!canAttemptResume()) {
-        const remaining = RESUME_COOLDOWN_MS - (Date.now() - (interruptionTime || 0));
+        const cooldown = getResumeCooldown();
+        const remaining = cooldown - (Date.now() - (interruptionTime || 0));
         console.log(`[Audio] Cooldown active - ${remaining}ms remaining before resume attempt`);
         return;
       }
@@ -439,12 +436,21 @@
       if (document.visibilityState === "visible" && audioState.wasInterrupted) {
         console.log(`[Audio] Page became visible - mode: ${isExternalAudio ? 'aggressive' : 'polite'}`);
 
-        // Only auto-resume in aggressive mode AND after cooldown
-        if (isExternalAudio && canAttemptResume()) {
+        // Auto-resume in both modes after cooldown
+        // Aggressive mode: faster resume (3s cooldown)
+        // Polite mode: wait for other media to finish (5s cooldown)
+        if (canAttemptResume()) {
           setTimeout(attemptResume, 50);
           setTimeout(attemptResume, 200);
           setTimeout(attemptResume, 500);
           setTimeout(attemptResume, 1000);
+        } else {
+          // Schedule resume after cooldown expires
+          const cooldown = getResumeCooldown();
+          const elapsed = Date.now() - (interruptionTime || 0);
+          const remaining = Math.max(0, cooldown - elapsed);
+          console.log(`[Audio] Scheduling resume after ${remaining}ms cooldown`);
+          setTimeout(attemptResume, remaining + 100);
         }
       }
     };
@@ -454,12 +460,19 @@
       if (audioState.wasInterrupted) {
         console.log(`[Audio] Window gained focus - mode: ${isExternalAudio ? 'aggressive' : 'polite'}`);
 
-        // Only auto-resume in aggressive mode AND after cooldown
-        if (isExternalAudio && canAttemptResume()) {
+        // Auto-resume in both modes after cooldown
+        if (canAttemptResume()) {
           setTimeout(attemptResume, 50);
           setTimeout(attemptResume, 200);
           setTimeout(attemptResume, 500);
           setTimeout(attemptResume, 1000);
+        } else {
+          // Schedule resume after cooldown expires
+          const cooldown = getResumeCooldown();
+          const elapsed = Date.now() - (interruptionTime || 0);
+          const remaining = Math.max(0, cooldown - elapsed);
+          console.log(`[Audio] Scheduling resume after ${remaining}ms cooldown`);
+          setTimeout(attemptResume, remaining + 100);
         }
       }
     };
@@ -509,15 +522,14 @@
         interruptionTime = Date.now();
       }
 
-      // If context resumes from suspended, attempt to resume playback (only in aggressive mode)
+      // If context resumes from suspended, attempt to resume playback (both modes, respecting cooldown)
       if (
         audioState.audioContext.state === "running" &&
         audioState.wasInterrupted &&
-        isExternalAudio &&
         canAttemptResume()
       ) {
         console.log(
-          "[Audio] Audio context resumed - attempting to resume playback (external audio mode)",
+          `[Audio] Audio context resumed - attempting to resume playback (${isExternalAudio ? 'aggressive' : 'polite'} mode)`,
         );
         setTimeout(attemptResume, 100);
       }
