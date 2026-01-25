@@ -3,7 +3,8 @@ export const prerender = false;
 import type { APIContext } from 'astro';
 
 const SOROSWAP_API_URL = 'https://api.soroswap.finance';
-const SUPPORTED_PROTOCOLS = ['soroswap', 'aqua', 'phoenix'];
+// DEBUG: Forcing aqua only to test routing
+const SUPPORTED_PROTOCOLS = ['aqua'];
 
 export async function POST({ request, locals }: APIContext) {
     try {
