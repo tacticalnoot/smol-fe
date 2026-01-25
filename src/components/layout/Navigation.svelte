@@ -209,18 +209,39 @@
       <span>Store</span>
     </a>
 
-    <!-- What is KALE? Link -->
-    <a
-      class="flex items-center gap-3 hover:text-[#9ae600] transition-colors {path ===
-      '/kale'
-        ? 'text-white'
-        : ''}"
-      href="/kale"
-      onclick={closeMenu}
-    >
-      <KaleEmoji size="w-4 h-4" />
-      <span>What is KALE?</span>
-    </a>
+    <!-- Mixtapes Browser + Tiny Mode Toggle -->
+    <div class="flex items-center gap-2">
+      <a
+        class="flex items-center gap-3 hover:text-[#9ae600] transition-colors flex-1 {path ===
+          '/mixtapes' || path.startsWith('/mixtapes/')
+          ? 'text-white'
+          : ''}"
+        href="/mixtapes"
+        onclick={closeMenu}
+      >
+        <span class="text-[#9ae600]">
+          <svg class="w-4 h-4" viewBox="0 0 24 24" fill="currentColor"
+            ><path
+              d="M12,3V12.26C11.5,12.09 11,12 10.5,12C8,12 6,14 6,16.5S8,21 10.5,21C13,21 15,19 15,16.5V6H19V3H12Z"
+            /></svg
+          >
+        </span>
+        <span>Mixtapes</span>
+      </a>
+      {#if isAuthenticated}
+        <button
+          class="px-2 py-1 text-[8px] font-pixel rounded {mixtapeModeState.active
+            ? 'bg-lime-400 text-slate-950'
+            : 'text-lime-400 ring-1 ring-lime-400/40 hover:bg-lime-400/10'}"
+          onclick={handleMixtapeClick}
+          title={mixtapeModeState.active
+            ? "Exit Mixtape Mode"
+            : "Enter Mixtape Mode"}
+        >
+          {mixtapeModeState.active ? "✓" : "+"}
+        </button>
+      {/if}
+    </div>
 
     <!-- Smol Labs -->
     <a
@@ -261,6 +282,19 @@
       <span>Discord</span>
     </a>
 
+    <!-- What is KALE? Link -->
+    <a
+      class="flex items-center gap-3 hover:text-[#9ae600] transition-colors {path ===
+      '/kale'
+        ? 'text-white'
+        : ''}"
+      href="/kale"
+      onclick={closeMenu}
+    >
+      <KaleEmoji size="w-4 h-4" />
+      <span>What is KALE?</span>
+    </a>
+
     <a
       class="flex items-center gap-3 hover:text-[#9ae600] transition-colors"
       href="/docs"
@@ -293,43 +327,9 @@
       <span>GitHub</span>
     </a>
 
-    <!-- 4. Mixtapes Browser + Tiny Mode Toggle -->
-    <div class="flex items-center gap-2">
-      <a
-        class="flex items-center gap-3 hover:text-[#9ae600] transition-colors flex-1 {path ===
-          '/mixtapes' || path.startsWith('/mixtapes/')
-          ? 'text-white'
-          : ''}"
-        href="/mixtapes"
-        onclick={closeMenu}
-      >
-        <span class="text-[#9ae600]">
-          <svg class="w-4 h-4" viewBox="0 0 24 24" fill="currentColor"
-            ><path
-              d="M12,3V12.26C11.5,12.09 11,12 10.5,12C8,12 6,14 6,16.5S8,21 10.5,21C13,21 15,19 15,16.5V6H19V3H12Z"
-            /></svg
-          >
-        </span>
-        <span>Mixtapes</span>
-      </a>
-      {#if isAuthenticated}
-        <button
-          class="px-2 py-1 text-[8px] font-pixel rounded {mixtapeModeState.active
-            ? 'bg-lime-400 text-slate-950'
-            : 'text-lime-400 ring-1 ring-lime-400/40 hover:bg-lime-400/10'}"
-          onclick={handleMixtapeClick}
-          title={mixtapeModeState.active
-            ? "Exit Mixtape Mode"
-            : "Enter Mixtape Mode"}
-        >
-          {mixtapeModeState.active ? "✓" : "+"}
-        </button>
-      {/if}
-    </div>
-
     <div class="h-px bg-slate-700/50 w-full"></div>
 
-    <!-- 5. Balance & Logout -->
+    <!-- Balance & Logout -->
     {#if isAuthenticated}
       <div class="w-full mt-auto">
         {#if userState.contractId}
