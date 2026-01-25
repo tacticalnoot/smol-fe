@@ -11,6 +11,7 @@ import { getDomain } from 'tldts';
 import { account, send } from '../utils/passkey-kit';
 import { getSafeRpId } from '../utils/domains';
 import { setUserAuth, clearUserAuth, userState } from '../stores/user.svelte.ts';
+import logger, { LogCategory } from '../utils/debug-logger';
 
 export function useAuthentication() {
   const API_URL = import.meta.env.PUBLIC_API_URL || "https://api.smol.xyz";
