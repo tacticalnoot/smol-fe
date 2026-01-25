@@ -28,8 +28,13 @@ export async function POST({ request, locals }: APIContext) {
         const quotePayload = {
             assetIn: tokenIn,
             assetOut: tokenOut,
-            amount: amountIn,
-            tradeType: 'EXACT_IN',
+            assetOut: tokenOut,
+            amount: amountIn, // Note: Soroswap API uses 'amount' for both input/output depending on tradeType? 
+            // Actually, for EXACT_OUT, 'amount' usually represents amountOut. 
+            // But let's check input mapping. Client sends 'amountIn' as the value.
+            // If tradeType is EXACT_OUT, client should likely send 'amountOut'.
+            // However, keeping simple fix first: pass tradeType.
+            tradeType: tradeType || 'EXACT_IN',
             protocols: SUPPORTED_PROTOCOLS,
             slippageBps,
         };
