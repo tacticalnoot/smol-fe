@@ -159,6 +159,16 @@
     <main
         class="relative z-30 flex flex-col items-center justify-center min-h-screen px-4 py-4 safe-area-inset-bottom"
     >
+        <!-- Migration Warning Banner -->
+        <div
+            class="absolute top-4 left-4 right-4 md:left-1/2 md:-translate-x-1/2 md:max-w-lg bg-amber-900/60 backdrop-blur border border-amber-500/50 rounded-lg px-4 py-2 flex items-center gap-2 text-amber-200 text-[10px] md:text-xs font-pixel z-40"
+        >
+            <svg class="w-4 h-4 flex-shrink-0" viewBox="0 0 24 24" fill="currentColor">
+                <path d="M13 14H11V9H13M13 18H11V16H13M1 21H23L12 2L1 21Z" />
+            </svg>
+            <span>We're upgrading passkeys to OpenZeppelin Relayers. Browse and listen for free, or use <a href="https://smol.xyz" class="underline hover:text-amber-100" target="_blank" rel="noopener">smol.xyz</a> to create and mint.</span>
+        </div>
+
         <!-- HEADER -->
         <div
             class="text-center mb-2 md:mb-6 shrink-0"
