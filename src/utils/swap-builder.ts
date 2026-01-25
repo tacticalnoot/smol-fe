@@ -30,7 +30,7 @@ import { safeStringify } from "./soroswap";
  * Uses environment variable for consistency across the codebase
  * @see https://github.com/kalepail/ohloss/blob/main/ohloss-frontend/src/lib/swapService.ts
  */
-export const AGGREGATOR_CONTRACT = import.meta.env.PUBLIC_AGGREGATOR_CONTRACT_ID || "CAYP3UWLJM7ZPTUKL6R6BFGTRWLZ46LRKOXTERI2K6BIJAWGYY62TXTO";
+export const AGGREGATOR_CONTRACT = import.meta.env.PUBLIC_AGGREGATOR_CONTRACT_ID || "CAG5LRYQ5JVEUI5TEID72EYOVX44TTUJT5BQR2J6J77FH65PCCFAJDDH";
 
 /** Protocol ID mapping (matches aggregator contract enum) */
 const PROTOCOL_MAP: Record<string, number> = {
@@ -96,7 +96,9 @@ export async function buildSwapTransactionForCAddress(
     // Note: rawTrade.amountIn exists but is NOT used - we use quote.amountIn (top-level) instead
     const rawTrade = quote.rawTrade as {
         amountIn: string;          // Present in API response but not used
-        amountOutMin: string;      // Used for minimum output amount
+        amountOutMin?: string;     // Used for EXACT_IN
+        amountInMax?: string;      // Used for EXACT_OUT
+        amountOut?: string;        // Used for EXACT_OUT
         distribution: ExtendedDistribution[];  // Used for routing
     };
 
@@ -109,15 +111,6 @@ export async function buildSwapTransactionForCAddress(
 
     const tradeType = quote.tradeType || 'EXACT_IN';
     console.log(`[SwapBuilder] Trade Type: ${tradeType}`);
-
-    // EXPLANATION:
-    // EXACT_IN (Default): We specify exactly how much to spend (amountIn), 
-    // and a minimum we are willing to receive (amountOutMin).
-    // Method: swap_exact_tokens_for_tokens(amount_in, amount_out_min, ...)
-    //
-    // EXACT_OUT (Strict Receive): We specify exactly how much to receive (amountOut),
-    // and a maximum we are willing to spend (amountInMax).
-    // Method: swap_tokens_for_exact_tokens(amount_out, amount_in_max, ...)
 
     let arg1: string;
     let arg2: string;
@@ -153,62 +146,27 @@ export async function buildSwapTransactionForCAddress(
     // Use NULL_ACCOUNT as source - the relayer will rewrap with its funded account
     const sourceAccount = new Account(NULL_ACCOUNT, "0");
 
-    // Get token addresses from the quote's distribution path
-    const firstPath = rawTrade.distribution[0]?.path || [];
-    const tokenIn = firstPath[0];
-    const tokenOut = firstPath[firstPath.length - 1];
-
-    if (!tokenIn || !tokenOut) {
-        throw new Error("Could not determine token addresses from quote distribution");
-    }
-
     // Build distribution ScVal array with proper structure
     const distributionArg = buildDistributionArg(rawTrade.distribution);
 
-    let invokeArgs: xdr.ScVal[];
-    if (tradeType === 'EXACT_OUT') {
-        const amountOut = rawTrade.amountOut || String(quote.amountOut);
-        const amountInMax = rawTrade.amountInMax || String(quote.amountIn);
+    // BUILD INVOKE ARGS (5 ARGUMENTS)
+    // Signature: method(amount_in/out, amount_out_min/in_max, distribution, to, deadline)
+    // Note: tokens are inferred from the distribution paths
+    const invokeArgs = [
+        nativeToScVal(BigInt(arg1), { type: "i128" }),
+        nativeToScVal(BigInt(arg2), { type: "i128" }),
+        distributionArg,
+        nativeToScVal(new Address(fromAddress)),
+        nativeToScVal(deadline, { type: "u64" }),
+    ];
 
-        // Exact Out Order: tokenIn, amountInMax, tokenOut, amountOut, distribution, to, deadline
-        invokeArgs = [
-            nativeToScVal(new Address(tokenIn)),
-            nativeToScVal(BigInt(amountInMax), { type: "i128" }),
-            nativeToScVal(new Address(tokenOut)),
-            nativeToScVal(BigInt(amountOut), { type: "i128" }),
-            distributionArg,
-            nativeToScVal(new Address(fromAddress)),
-            nativeToScVal(deadline, { type: "u64" }),
-        ];
-    } else {
-        const amountIn = String(quote.amountIn);
-        const amountOutMin = rawTrade.amountOutMin || String(quote.amountOut);
-
-        // Exact In Order: tokenIn, amountIn, tokenOut, amountOutMin, distribution, to, deadline
-        invokeArgs = [
-            nativeToScVal(new Address(tokenIn)),
-            nativeToScVal(BigInt(amountIn), { type: "i128" }),
-            nativeToScVal(new Address(tokenOut)),
-            nativeToScVal(BigInt(amountOutMin), { type: "i128" }),
-            distributionArg,
-            nativeToScVal(new Address(fromAddress)),
-            nativeToScVal(deadline, { type: "u64" }),
-        ];
-    }
-
-    console.log(`[SwapBuilder] Calling ${methodName} with args:`, {
-        tokenIn,
-        tokenOut,
+    console.log(`[SwapBuilder] Built ${methodName} args (5-arg mode):`, {
         arg1,
         arg2,
         to: fromAddress,
         deadline: deadline.toString()
     });
 
-    // Build the contract invocation directly on the Aggregator.
-    // NOTE: For C-addresses (Smart Wallets), we do NOT need a "call" proxy.
-    // The simulation will detect the need for authorization and PasskeyKit
-    // will sign the resulting auth entry.
     const invokeOp = contract.call(methodName, ...invokeArgs);
 
     // Build transaction with NULL_ACCOUNT as source
@@ -220,6 +178,18 @@ export async function buildSwapTransactionForCAddress(
         .setTimeout(300)
         .build();
 
+    const currentXdr = tx.toXDR();
+
+    // PREEMPTIVE LOGGING: Log the XDR BEFORE simulation
+    // This ensures that even if simulation fails with MismatchingParameterLen,
+    // the user can still copy the XDR to debug it.
+    logger.info(LogCategory.TRANSACTION, "Swap Transaction Built (Pre-Sim)", {
+        xdr: currentXdr,
+        tradeType,
+        method: methodName,
+        from: fromAddress
+    });
+
     // Simulate to get auth entries and resource costs
     const simResult = await server.simulateTransaction(tx);
 
@@ -228,17 +198,18 @@ export async function buildSwapTransactionForCAddress(
     }
 
     // Assemble the transaction with simulation results
-    const builtXdr = assembleTransaction(tx, simResult).build().toXDR();
+    const finalTx = assembleTransaction(tx, simResult).build();
+    const finalXdr = finalTx.toXDR();
 
-    // Log for Debug Panel to pick up
-    logger.info(LogCategory.TRANSACTION, "Swap Transaction Built", {
-        xdr: builtXdr,
+    // Log the successful final XDR (with auth entries)
+    logger.info(LogCategory.TRANSACTION, "Swap Transaction Simulated & Assembled", {
+        xdr: finalXdr,
         tradeType,
         method: methodName,
         from: fromAddress
     });
 
-    return builtXdr;
+    return finalXdr;
 }
 
 /**

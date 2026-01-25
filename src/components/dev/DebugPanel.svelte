@@ -2,23 +2,34 @@
     import logger, { LogLevel, LogCategory } from "../../utils/debug-logger";
     import { userState } from "../../stores/user.svelte.ts";
     import { upgradesState } from "../../stores/upgrades.svelte.ts";
-    import { balanceState } from "../../stores/balance.svelte.ts";
+    import {
+        balanceState,
+        updateAllBalances,
+    } from "../../stores/balance.svelte.ts";
     import { getRpcHealthStatus } from "../../utils/rpc";
 
     let isOpen = $state(false);
     let currentLevel = $state(logger.getLevel());
-    let stats = $state(logger.getStats());
+    let stats = $state({ total: 0, errors: 0, warnings: 0 });
     let recentLogs = $state<any[]>([]);
     let selectedCategory = $state<string>("ALL");
-    let rpcStatus = $state(getRpcHealthStatus());
+    let rpcHealth = $state<any[]>([]);
+
+    function updateStats() {
+        const currentStats = logger.getStats();
+        stats = {
+            total: currentStats.total,
+            errors: currentStats.byLevel.ERROR || 0,
+            warnings: currentStats.byLevel.WARN || 0,
+        };
+        recentLogs = logger.getLogs().slice(-10).reverse();
+        rpcHealth = getRpcHealthStatus();
+    }
 
     // Update stats periodically
     $effect(() => {
-        const interval = setInterval(() => {
-            stats = logger.getStats();
-            recentLogs = logger.getLogs().slice(-10).reverse();
-            rpcStatus = getRpcHealthStatus();
-        }, 1000);
+        updateStats(); // Initial call
+        const interval = setInterval(updateStats, 1000);
 
         return () => clearInterval(interval);
     });
@@ -33,17 +44,38 @@
     }
 
     function clearAllLogs() {
-        if (confirm("Clear all logs and localStorage debug data?")) {
+        if (
+            confirm(
+                "Are you sure you want to clear all logs from localStorage?",
+            )
+        ) {
             logger.clearLogs();
+            updateStats();
+            alert("Logs cleared.");
         }
     }
 
-    function clearLogs() {
-        if (confirm("Clear all logs?")) {
-            logger.clearLogs();
-            stats = logger.getStats();
-            recentLogs = [];
-        }
+    // Helper to safely stringify objects, handling BigInt and circular references
+    function safeStringify(obj: any, indent = 0) {
+        const cache = new Set();
+        return JSON.stringify(
+            obj,
+            (key, value) => {
+                if (typeof value === "object" && value !== null) {
+                    if (cache.has(value)) {
+                        // Circular reference found, discard key
+                        return;
+                    }
+                    // Store value in our collection
+                    cache.add(value);
+                }
+                if (typeof value === "bigint") {
+                    return value.toString() + "n"; // Append 'n' to indicate BigInt
+                }
+                return value;
+            },
+            indent,
+        );
     }
 
     function copyState() {
@@ -63,7 +95,7 @@
                 keyId: localStorage.getItem("smol:keyId"),
             },
         };
-        navigator.clipboard.writeText(JSON.stringify(state, null, 2));
+        navigator.clipboard.writeText(safeStringify(state, 2));
         alert("State copied to clipboard!");
     }
 
@@ -109,8 +141,11 @@
                 {} as Record<string, string | null>,
             ),
 
-            // Debug Logs
-            logs: allLogs,
+            // Logs (BigInt safe)
+            logs: allLogs.map((l) => ({
+                ...l,
+                data: JSON.parse(safeStringify(l.data)),
+            })),
             logStats: logger.getStats(),
 
             // Performance
@@ -129,64 +164,39 @@
             },
         };
 
-        try {
-            // Use JSON.stringify replacer for safe, on-the-fly sanitization
-            const replacer = (key: string, value: any) => {
-                // Redact massive/sensitive keys
-                if (key === "lyrics" || key === "audioData")
-                    return "[Redacted Large Data]";
-
-                // Truncate long strings
-                if (typeof value === "string" && value.length > 500) {
-                    return (
-                        value.substring(0, 500) + `... (${value.length} chars)`
-                    );
-                }
-
-                // Handle BigInt
-                if (typeof value === "bigint") {
-                    return value.toString();
-                }
-
-                // Limit arrays
-                if (Array.isArray(value) && value.length > 50) {
-                    return value.slice(0, 50).concat(["... (truncated array)"]);
-                }
-
-                return value;
-            };
-
-            const reportStr = JSON.stringify(rawState, replacer, 2);
-
-            navigator.clipboard
-                .writeText(reportStr)
-                .then(() =>
-                    alert(
-                        `✅ Debug report copied! Size: ${(reportStr.length / 1024).toFixed(1)}KB`,
-                    ),
-                )
-                .catch(() =>
-                    alert("❌ Failed to copy logs: Clipboard API error"),
-                );
-        } catch (e) {
-            console.error("Failed to stringify debug report", e);
-            alert(
-                `❌ Failed to create report: ${e instanceof Error ? e.message : "Unknown error"}`,
-            );
-        }
+        const json = safeStringify(rawState, 2);
+        navigator.clipboard.writeText(json);
+        alert(
+            "Full debug report (including state and logs) copied to clipboard!",
+        );
     }
 
     function copyLastXdr() {
         const logs = logger.getLogs();
-        const lastTxLog = [...logs]
-            .reverse()
-            .find((l) => l.category === LogCategory.TRANSACTION && l.data?.xdr);
+        // Priority: Successful assembly > Pre-sim build
+        const xdrLog =
+            [...logs]
+                .reverse()
+                .find(
+                    (l) =>
+                        l.category === "TRANSACTION" &&
+                        l.data?.xdr &&
+                        l.message.includes("Assembled"),
+                ) ||
+            [...logs]
+                .reverse()
+                .find(
+                    (l) =>
+                        l.category === "TRANSACTION" &&
+                        l.data?.xdr &&
+                        l.message.includes("Pre-Sim"),
+                );
 
-        if (lastTxLog && lastTxLog.data.xdr) {
-            navigator.clipboard.writeText(lastTxLog.data.xdr);
-            alert("Last XDR copied to clipboard!");
+        if (xdrLog?.data?.xdr) {
+            navigator.clipboard.writeText(xdrLog.data.xdr);
+            alert(`Copied XDR from: ${xdrLog.message}`);
         } else {
-            alert("No transaction XDR found in logs.");
+            alert("No transaction XDR found in recent logs.");
         }
     }
 
@@ -231,32 +241,21 @@
 
     function saveRelayerDump() {
         const logs = logger.getLogs();
-        // Find the most recent RELAYER category log
         const relayerLog = [...logs]
             .reverse()
-            .find((l) => l.category === LogCategory.RELAYER);
+            .find((l) => l.category === "RELAYER");
 
-        if (relayerLog && relayerLog.data) {
-            const blob = new Blob(
-                [
-                    JSON.stringify(
-                        relayerLog.data,
-                        (k, v) => (typeof v === "bigint" ? v.toString() : v),
-                        2,
-                    ),
-                ],
-                { type: "application/json" },
-            );
+        if (relayerLog?.data) {
+            const json = safeStringify(relayerLog.data, 2);
+            const blob = new Blob([json], { type: "application/json" });
             const url = URL.createObjectURL(blob);
             const a = document.createElement("a");
             a.href = url;
             a.download = `relayer-debug-dump-${Date.now()}.json`;
-            document.body.appendChild(a);
             a.click();
-            document.body.removeChild(a);
             URL.revokeObjectURL(url);
         } else {
-            alert("No Relayer interaction found in logs.");
+            alert("No relayer interaction logs found.");
         }
     }
 
@@ -318,39 +317,73 @@
                 </div>
 
                 <div class="debug-section">
-                    <h4>RPC Nodes Status</h4>
-                    <div class="rpc-table">
-                        {#each rpcStatus as rpc}
-                            <div class="rpc-row" class:unhealthy={!rpc.healthy}>
-                                <div
-                                    class="rpc-dot"
-                                    class:healthy={rpc.healthy}
-                                ></div>
-                                <div class="rpc-url">
-                                    {rpc.url.replace("https://", "")}
-                                </div>
-                                <div class="rpc-latency">
-                                    {rpc.averageLatency.toFixed(0)}ms
-                                </div>
-                            </div>
-                        {/each}
-                    </div>
-                </div>
-
-                <div class="debug-section">
                     <h4>Stats</h4>
                     <div class="stats-grid">
-                        <div>Total Logs: <strong>{stats.total}</strong></div>
-                        <div>
-                            Errors: <strong class="error"
-                                >{stats.byLevel.ERROR || 0}</strong
+                        <div class="stat">
+                            <span class="label">Total Logs:</span>
+                            <span class="value">{stats.total}</span>
+                        </div>
+                        <div class="stat">
+                            <span class="label">Errors:</span>
+                            <span class="value text-red-500"
+                                >{stats.errors}</span
                             >
                         </div>
-                        <div>
-                            Warnings: <strong class="warn"
-                                >{stats.byLevel.WARN || 0}</strong
+                        <div class="stat">
+                            <span class="label">Warnings:</span>
+                            <span class="value text-yellow-500"
+                                >{stats.warnings}</span
                             >
                         </div>
+                    </div>
+
+                    <!-- RPC Health Table -->
+                    <div class="section-title mt-4">RPC HEALTH</div>
+                    <div
+                        class="overflow-x-auto bg-black/40 rounded-lg border border-white/10 mb-4"
+                    >
+                        <table class="w-full text-[9px] text-left">
+                            <thead>
+                                <tr
+                                    class="border-b border-white/10 uppercase text-white/40"
+                                >
+                                    <th class="p-2">Node</th>
+                                    <th class="p-2">Status</th>
+                                    <th class="p-2">Latency</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {#each rpcHealth as rpc}
+                                    <tr
+                                        class="border-b border-white/5 last:border-0"
+                                    >
+                                        <td
+                                            class="p-2 font-mono truncate max-w-[120px]"
+                                            >{rpc.url.replace(
+                                                "https://",
+                                                "",
+                                            )}</td
+                                        >
+                                        <td class="p-2">
+                                            <span
+                                                class={rpc.healthy
+                                                    ? "text-lime-400"
+                                                    : "text-red-500"}
+                                            >
+                                                {rpc.healthy
+                                                    ? "● ONLINE"
+                                                    : "○ OFFLINE"}
+                                            </span>
+                                        </td>
+                                        <td class="p-2 font-mono"
+                                            >{rpc.averageLatency.toFixed(
+                                                0,
+                                            )}ms</td
+                                        >
+                                    </tr>
+                                {/each}
+                            </tbody>
+                        </table>
                     </div>
                 </div>
 
