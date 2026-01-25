@@ -268,9 +268,9 @@
                 let result;
                 if (provider === "soroswap") {
                     result = await getQuote({
-                        assetIn,
-                        assetOut,
-                        amount: Number(stroops),
+                        tokenIn: assetIn,
+                        tokenOut: assetOut,
+                        amountIn: Number(stroops),
                         tradeType,
                         slippageBps: 500, // 5% (matches Tyler's ohloss implementation)
                     });
