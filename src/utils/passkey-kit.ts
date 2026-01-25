@@ -80,7 +80,7 @@ export async function send<T>(txn: AssembledTransaction<T> | Tx | string, turnst
         url: relayerUrl,
         method: 'POST',
         headers: headers,
-        body: { xdr }
+        body: isDirectMode ? { params: { xdr } } : { xdr }
     };
 
     let responseDebug: any = {};
@@ -89,7 +89,7 @@ export async function send<T>(txn: AssembledTransaction<T> | Tx | string, turnst
         const response = await fetch(relayerUrl, {
             method: 'POST',
             headers,
-            body: JSON.stringify({ xdr }),
+            body: JSON.stringify(isDirectMode ? { params: { xdr } } : { xdr }),
         });
 
         // Capture Response Headers
