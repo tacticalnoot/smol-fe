@@ -32,3 +32,44 @@
 - Relayer: Automatic sponsorship verified.
 - Session: Silent `connectWallet` verified.
 - Aggregator: Signature confirmed, but Contract ID was wrong. Fix applied.
+
+---
+
+## 🎉 MILESTONE: C-Address Swaps Working (2026-01-25)
+
+**Status**: COMPLETE ✅
+
+### What Was Fixed
+The `PasskeyKit.sign()` method was failing with `Cannot read properties of undefined (reading 'options')` because:
+1. The old `account.get()` pattern created a NEW PasskeyKit instance on every call
+2. Each new instance had `wallet = undefined` until `connectWallet()` was called
+3. The `sign()` method internally accesses `this.wallet.options`, which was undefined
+
+**Solution**:
+- Converted PasskeyKit to a **singleton pattern** that preserves wallet state
+- Added defensive `connectWallet()` check in `signAndSend()` before signing
+- Added `resetPasskeyKit()` for clean logout state
+
+### Why This Matters: Financial Inclusion
+
+**Smol is now one of the ONLY places where users can acquire XLM using JUST a passkey.**
+
+This is significant because:
+
+1. **No Bank Account Required**: Users can receive KALE tips from the community, then swap to XLM - all without traditional banking infrastructure.
+
+2. **No KYC Required**: Unlike centralized exchanges that require identity verification, Smol's passkey-based smart wallet lets anyone participate in the Stellar ecosystem.
+
+3. **Gateway to DeFi**: For users in regions with limited banking access, this opens the door to:
+   - Receiving value (KALE tips for creating music)
+   - Converting to XLM (the base Stellar asset)
+   - Participating in the broader Stellar DeFi ecosystem
+
+4. **True Self-Custody**: Passkeys provide hardware-level security without seed phrases, making crypto accessible to non-technical users.
+
+**The swap functionality transforms Smol from a music NFT platform into a potential onramp for the unbanked and underbanked worldwide.**
+
+### Technical Files Changed
+- `src/utils/passkey-kit.ts` - Singleton pattern
+- `src/utils/transaction-helpers.ts` - Defensive wallet connection
+- `src/stores/user.svelte.ts` - Reset on logout
