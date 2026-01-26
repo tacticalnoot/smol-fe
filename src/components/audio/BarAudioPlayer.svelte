@@ -168,6 +168,7 @@
     let currentPoliteCooldown = 1000; // Start snappy (1s)
     const MIN_POLITE_COOLDOWN = 1000;
     const MAX_POLITE_COOLDOWN = 8000;
+    const AGGRESSIVE_COOLDOWN_MS = 300; // Fast resume for Bluetooth/CarPlay
 
     let lastResumeTime = 0;
     const SUCCESSFUL_PLAY_THRESHOLD = 5000; // 5s of playback = "clear"

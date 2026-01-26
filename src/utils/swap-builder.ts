@@ -29,8 +29,9 @@ import { safeStringify } from "./soroswap";
 /**
  * Soroswap Router Contract (Mainnet)
  * Verified: This is a ROUTER, not an Aggregator.
+ * Signature: swap_exact_tokens_for_tokens(amount_in, amount_out_min, path, to, deadline)
  */
-export const AGGREGATOR_CONTRACT = import.meta.env.PUBLIC_AGGREGATOR_CONTRACT_ID || "CAG5LRYQ5JVEUI5TEID72EYOVX44TTUJT5BQR2J6J77FH65PCCFAJDDH";
+export const ROUTER_CONTRACT = import.meta.env.PUBLIC_AGGREGATOR_CONTRACT_ID || "CAG5LRYQ5JVEUI5TEID72EYOVX44TTUJT5BQR2J6J77FH65PCCFAJDDH";
 
 /** RPC endpoint */
 const RPC_URL = import.meta.env.PUBLIC_RPC_URL || "https://rpc.ankr.com/stellar_soroban";
@@ -123,36 +124,33 @@ export async function buildSwapTransactionForCAddress(
     const deadline = BigInt(Math.floor(Date.now() / 1000) + 3600);
 
     const server = new Server(RPC_URL);
-    const contract = new Contract(AGGREGATOR_CONTRACT);
+    const contract = new Contract(ROUTER_CONTRACT);
     const sourceAccount = new Account(NULL_ACCOUNT, "0");
 
     /**
-     * BUILD AGGREGATOR ARGS (5 ARGUMENTS)
-     * Signature (from prod logs): swap_exact_tokens_for_tokens(token_in, token_out, amount_in, amount_out_min, path)
-     * 
-     * where 'path' is Vec<Trade>
-     * Trade struct: { protocol_id: string, parts: u32, path: Vec<Address> }
+     * BUILD ROUTER ARGS (5 ARGUMENTS)
+     * Verified Router signature:
+     * swap_exact_tokens_for_tokens(amount_in, amount_out_min, path, to, deadline)
+     * swap_tokens_for_exact_tokens(amount_out, amount_in_max, path, to, deadline)
+     *
+     * where 'path' is Vec<Address> (simple token address array)
      */
-    const distribution = rawTrade.distribution.map(dist => ({
-        protocol_id: dist.protocol_id || "soroswap", // fallback if missing
-        parts: dist.parts,
-        path: dist.path.map(addr => new Address(addr))
-    }));
+    const pathAddresses = path.map(addr => new Address(addr));
 
     const invokeArgs = [
-        nativeToScVal(new Address(path[0])), // token_in
-        nativeToScVal(new Address(path[path.length - 1])), // token_out
-        nativeToScVal(BigInt(amount1), { type: "i128" }), // amount_in
-        nativeToScVal(BigInt(amount2), { type: "i128" }), // amount_out_min
-        nativeToScVal(distribution), // distribution path
+        nativeToScVal(BigInt(amount1), { type: "i128" }), // amount_in (or amount_out for EXACT_OUT)
+        nativeToScVal(BigInt(amount2), { type: "i128" }), // amount_out_min (or amount_in_max for EXACT_OUT)
+        nativeToScVal(pathAddresses), // path: Vec<Address>
+        nativeToScVal(new Address(fromAddress)), // to: Address (recipient)
+        nativeToScVal(deadline, { type: "u64" }), // deadline: u64
     ];
 
-    console.log(`[SwapBuilder] Built ${methodName} args (Aggregator 5-arg):`, {
-        tokenIn: path[0],
-        tokenOut: path[path.length - 1],
+    console.log(`[SwapBuilder] Built ${methodName} args (Router 5-arg):`, {
         amount1,
         amount2,
-        distributionCount: distribution.length
+        path,
+        to: fromAddress,
+        deadline: deadline.toString()
     });
 
     const invokeOp = contract.call(methodName, ...invokeArgs);
