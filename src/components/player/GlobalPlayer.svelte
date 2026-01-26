@@ -1,5 +1,5 @@
 <script lang="ts">
-    import { onMount, untrack, tick } from "svelte";
+    import { onMount, onDestroy, untrack, tick } from "svelte";
     import {
         audioState,
         selectSong,
@@ -140,7 +140,8 @@
             }
 
             // Tiny timeout to ensure DOM is ready if it was just unhidden or expanded
-            setTimeout(() => {
+            const scrollTimeout = setTimeout(() => {
+                pendingTimeouts.delete(scrollTimeout);
                 const el = document.getElementById(
                     `song-card-${audioState.playingId}`,
                 );
@@ -152,6 +153,7 @@
                     });
                 }
             }, 100);
+            pendingTimeouts.add(scrollTimeout);
         }
     });
 
@@ -417,6 +419,15 @@
     });
 
     let gridLimit = $state(50);
+    const GRID_LIMIT_MAX = 500; // Cap to prevent unbounded DOM growth
+
+    // Track pending timeouts for cleanup
+    let pendingTimeouts = new Set<ReturnType<typeof setTimeout>>();
+
+    onDestroy(() => {
+        pendingTimeouts.forEach(t => clearTimeout(t));
+        pendingTimeouts.clear();
+    });
     const displayPlaylist = $derived.by(() => {
         if (shuffleEnabled && shuffledOrder.length > 0) {
             return shuffledOrder;
@@ -430,8 +441,8 @@
         const el = e.currentTarget as HTMLElement;
         const { scrollTop, scrollHeight, clientHeight } = el;
         if (scrollHeight - scrollTop - clientHeight < 800) {
-            if (gridLimit < displayPlaylist.length) {
-                gridLimit += 50;
+            if (gridLimit < displayPlaylist.length && gridLimit < GRID_LIMIT_MAX) {
+                gridLimit = Math.min(gridLimit + 50, GRID_LIMIT_MAX);
             }
         }
     }
@@ -842,13 +853,13 @@
 
     <!-- Main Player Card -->
     <div
-        class="max-w-6xl w-full mx-auto reactive-glass border border-white/5 backdrop-blur-xl md:rounded-2xl rounded-none shadow-2xl relative flex flex-col flex-1 min-h-0 transition-all duration-700 bg-cover bg-center"
+        class="max-w-6xl w-full mx-auto reactive-glass border border-white/5 backdrop-blur-sm md:rounded-2xl rounded-none shadow-2xl relative flex flex-col flex-1 min-h-0 transition-all duration-700 bg-cover bg-center"
         style={THEMES[preferences.glowTheme as keyof typeof THEMES].style ||
             "background-color: rgba(29, 29, 29, 0.7);"}
     >
         <!-- Control Bar -->
         <div
-            class="relative z-[100] flex items-center border-b border-white/5 bg-black/10 backdrop-blur-xl shrink-0 min-w-0 py-2 px-3 gap-3 landscape:sticky landscape:top-0"
+            class="relative z-[100] flex items-center border-b border-white/5 bg-black/50 backdrop-blur-sm shrink-0 min-w-0 py-2 px-3 gap-3 landscape:sticky landscape:top-0"
         >
             <!-- Primary Grid Toggle with Rainbow Glow -->
             <button
