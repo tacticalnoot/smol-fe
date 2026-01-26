@@ -152,10 +152,6 @@
     }
 </script>
 
-/** * FACTORY FRESH: Account Management & KALE Transfers * @see
-https://deepwiki.com/repo/kalepail/smol-fe#account * * Provides the primary
-interface for KALE token transfers and balance viewing. * Uses the unified
-signAndSend pattern for sponsored transaction submission. */
 <div class="max-w-[480px] mx-auto px-4 py-10">
     <h2 class="text-2xl font-semibold text-lime-400 mb-4">Account</h2>
 

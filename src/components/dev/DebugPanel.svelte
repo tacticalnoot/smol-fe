@@ -179,7 +179,7 @@
                 .reverse()
                 .find(
                     (l) =>
-                        l.category === "TRANSACTION" &&
+                        l.category === LogCategory.TRANSACTION &&
                         l.data?.xdr &&
                         l.message.includes("Assembled"),
                 ) ||
@@ -187,7 +187,7 @@
                 .reverse()
                 .find(
                     (l) =>
-                        l.category === "TRANSACTION" &&
+                        l.category === LogCategory.TRANSACTION &&
                         l.data?.xdr &&
                         l.message.includes("Pre-Sim"),
                 );

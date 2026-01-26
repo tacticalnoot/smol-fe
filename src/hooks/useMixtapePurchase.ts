@@ -16,6 +16,7 @@ import {
 import { account } from '../utils/passkey-kit';
 
 type SignableTransaction = Parameters<ReturnType<typeof account.get>['sign']>[0];
+type GetFreshTokenCallback = () => Promise<string>;
 
 interface PurchaseBatchParams {
   tokensOut: string[];
