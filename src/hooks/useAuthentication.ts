@@ -81,6 +81,17 @@ export function useAuthentication() {
     const { getSafeCookieDomain } = await import('../utils/domains');
     const domain = getSafeCookieDomain(window.location.hostname);
 
+    // NUCLEAR OPTION: Clear any potentially colliding cookies on parent domains
+    // This fixes the "Invalid Cookie" error where .pages.dev or .smol.xyz cookies shadow the current host.
+    const registrableDomain = getDomain(window.location.hostname);
+    if (registrableDomain && registrableDomain !== domain?.replace(/^\./, '')) {
+      Cookies.remove('smol_token', { domain: `.${registrableDomain}`, path: '/' });
+      Cookies.remove('smol_token', { domain: registrableDomain, path: '/' });
+    }
+
+    // Also clear host-only just in case
+    Cookies.remove('smol_token', { path: '/' });
+
     const cookieOptions: Cookies.CookieAttributes = {
       path: '/',
       secure: window.location.protocol === 'https:',
@@ -135,17 +146,27 @@ export function useAuthentication() {
 
     const { getSafeCookieDomain } = await import('../utils/domains');
     const domain = getSafeCookieDomain(window.location.hostname);
+    const registrableDomain = getDomain(window.location.hostname);
 
     const cookieOptions: Cookies.CookieAttributes = {
       path: '/',
       secure: window.location.protocol === 'https:',
       sameSite: window.location.protocol === 'https:' ? 'None' : 'Lax',
     };
+
+    // Clear the specific configured domain
     if (domain) {
-      cookieOptions.domain = domain;
+      Cookies.remove('smol_token', { ...cookieOptions, domain });
     }
 
-    Cookies.remove('smol_token', cookieOptions);
+    // Clear host-only
+    Cookies.remove('smol_token', { ...cookieOptions });
+
+    // Clear registrable domain explicitly (nuclear)
+    if (registrableDomain) {
+      Cookies.remove('smol_token', { ...cookieOptions, domain: registrableDomain });
+      Cookies.remove('smol_token', { ...cookieOptions, domain: `.${registrableDomain}` });
+    }
 
     // Clear all smol: related data
     Object.keys(localStorage).forEach((key) => {
