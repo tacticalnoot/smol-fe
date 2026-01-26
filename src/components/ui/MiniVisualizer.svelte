@@ -5,6 +5,8 @@
 
     // Oscillator State
     let lastDataArray: Float32Array | null = null;
+    // Reusable typed array to avoid per-frame allocations (memory optimization)
+    let dataArray: Uint8Array | null = null;
     const SMOOTHING = 0.12; // Smoother movement
 
     let canvas = $state<HTMLCanvasElement>();
@@ -20,7 +22,11 @@
         }
 
         const bufferLength = audioState.analyser.frequencyBinCount;
-        const dataArray = new Uint8Array(bufferLength);
+
+        // Reuse typed arrays instead of allocating new ones every frame
+        if (!dataArray || dataArray.length !== bufferLength) {
+            dataArray = new Uint8Array(bufferLength);
+        }
         audioState.analyser.getByteTimeDomainData(dataArray);
 
         // Initialize smoothing buffer
