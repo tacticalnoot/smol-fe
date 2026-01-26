@@ -24,6 +24,9 @@ export interface SignAndSendResult {
 
 /**
  * Simplified sign and send
+ *
+ * IMPORTANT: PasskeyKit.sign() requires the wallet to be connected first.
+ * This function ensures connectWallet() is called before signing.
  */
 export async function signAndSend(
     transaction: any,
@@ -34,8 +37,20 @@ export async function signAndSend(
     try {
         const sequence = await getLatestSequence();
         const rpId = getSafeRpId(window.location.hostname);
+        const kit = account.get();
 
-        const signedTx = await account.get().sign(transaction, {
+        // Ensure wallet is connected before signing
+        // PasskeyKit.sign() accesses this.wallet.options internally,
+        // which is only populated after connectWallet() is called
+        if (!kit.wallet && contractId) {
+            await kit.connectWallet({
+                rpId,
+                keyId,
+                getContractId: async () => contractId,
+            });
+        }
+
+        const signedTx = await kit.sign(transaction, {
             rpId,
             keyId,
             expiration: sequence + 60,

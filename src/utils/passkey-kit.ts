@@ -6,13 +6,37 @@ import logger, { LogCategory } from "./debug-logger";
 
 import { getRpcUrl } from "./rpc";
 
+/**
+ * Singleton PasskeyKit instance.
+ *
+ * CRITICAL: PasskeyKit.sign() requires the wallet to be connected first.
+ * The sign() method accesses `this.wallet.options` internally, which is only
+ * set after connectWallet() is called. Creating a new instance for each
+ * operation loses this state.
+ */
+let _passkeyKitInstance: PasskeyKit | null = null;
+
+function getPasskeyKit(): PasskeyKit {
+    if (!_passkeyKitInstance) {
+        _passkeyKitInstance = new PasskeyKit({
+            rpcUrl: getRpcUrl(),
+            networkPassphrase: import.meta.env.PUBLIC_NETWORK_PASSPHRASE,
+            walletWasmHash: import.meta.env.PUBLIC_WALLET_WASM_HASH,
+            timeoutInSeconds: 30,
+        });
+    }
+    return _passkeyKitInstance;
+}
+
+/**
+ * Reset the PasskeyKit singleton (for logout/disconnect scenarios)
+ */
+export function resetPasskeyKit(): void {
+    _passkeyKitInstance = null;
+}
+
 export const account = {
-    get: () => new PasskeyKit({
-        rpcUrl: getRpcUrl(), // Dynamic failover
-        networkPassphrase: import.meta.env.PUBLIC_NETWORK_PASSPHRASE,
-        walletWasmHash: import.meta.env.PUBLIC_WALLET_WASM_HASH,
-        timeoutInSeconds: 30,
-    })
+    get: getPasskeyKit
 };
 
 export const sac = {
