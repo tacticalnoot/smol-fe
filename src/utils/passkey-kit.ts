@@ -59,6 +59,12 @@ export const xlm = {
  * Supports two modes:
  * 1. DIRECT (OZ): Uses PUBLIC_RELAYER_API_KEY + channels.openzeppelin.com (Bypasses Turnstile)
  * 2. PROXY (KALE): Uses Turnstile token + api.kalefarm.xyz
+ *
+ * AI DEBUG GUIDE:
+ * - If "DIRECT mode" logs appear but fails with 503: OZ relayer is overloaded
+ * - If "PROXY mode" fails with "Missing X-Turnstile-Response": No captcha token available
+ * - If failover attempted but fails: pages.dev users can't use PROXY (no Turnstile)
+ * - Check isDirectMode to see which path is taken
  */
 export async function send<T>(txn: AssembledTransaction<T> | Tx | string, turnstileToken?: string) {
     // Extract XDR from transaction
@@ -73,6 +79,18 @@ export async function send<T>(txn: AssembledTransaction<T> | Tx | string, turnst
 
     const apiKey = import.meta.env.PUBLIC_RELAYER_API_KEY;
     const isDirectMode = !!apiKey;
+    const hostname = typeof window !== 'undefined' ? window.location.hostname : 'server';
+    const storedToken = getTurnstileToken();
+
+    // AI DEBUG: Log relayer decision context
+    console.log('[Relayer] Configuration:', {
+        mode: isDirectMode ? 'DIRECT (OZ)' : 'PROXY (KaleFarm)',
+        hasApiKey: !!apiKey,
+        hostname,
+        hasTurnstileToken: !!(turnstileToken || storedToken),
+        turnstileSource: turnstileToken ? 'passed' : storedToken ? 'stored' : 'none',
+        xdrLength: xdr.length,
+    });
 
     let relayerUrl = "";
     let headers: Record<string, string> = {
@@ -139,29 +157,54 @@ export async function send<T>(txn: AssembledTransaction<T> | Tx | string, turnst
 
     try {
         if (isDirectMode) {
+            console.log('[Relayer] Attempting DIRECT mode (OZ)...');
             try {
-                return await attemptSend(true);
+                const result = await attemptSend(true);
+                console.log('[Relayer] DIRECT mode SUCCESS:', { hash: result.hash || result.transactionHash });
+                return result;
             } catch (err: any) {
+                // AI DEBUG: Log the exact failure reason
+                console.error('[Relayer] DIRECT mode FAILED:', {
+                    status: err.status,
+                    text: err.text?.substring(0, 200),
+                    isDirect: err.isDirect,
+                });
+
                 // FAILOVER: If OZ is 503/502, try KaleFarm ONLY if we have a Turnstile token
                 // pages.dev users won't have Turnstile, so don't failover for them
                 if ((err.status === 503 || err.status === 502)) {
                     const token = turnstileToken || getTurnstileToken();
+                    console.log('[Relayer] Checking failover eligibility:', {
+                        ozStatus: err.status,
+                        hasTurnstileForFailover: !!token,
+                        willFailover: !!token,
+                    });
                     if (token) {
                         console.warn('[Relayer] DIRECT mode failed, attempting failover to PROXY...');
                         return await attemptSend(false);
                     } else {
                         console.warn('[Relayer] DIRECT mode failed (503), no Turnstile token for failover');
+                        // AI DEBUG: This is the key error for pages.dev users when OZ is down
                         throw new Error('Relayer temporarily unavailable. Please try again in a moment.');
                     }
                 }
                 throw err;
             }
         } else {
-            return await attemptSend(false);
+            console.log('[Relayer] Attempting PROXY mode (KaleFarm)...');
+            const result = await attemptSend(false);
+            console.log('[Relayer] PROXY mode SUCCESS:', { hash: result.hash || result.transactionHash });
+            return result;
         }
     } catch (e: any) {
         const msg = e.text || e.message || "Relayer failure";
-        logger.error(LogCategory.TRANSACTION, `Final Relayer Failure`, { error: msg });
+        // AI DEBUG: Final failure with full context
+        logger.error(LogCategory.TRANSACTION, `Final Relayer Failure`, {
+            error: msg,
+            mode: isDirectMode ? 'DIRECT' : 'PROXY',
+            hostname,
+            hadTurnstile: !!(turnstileToken || storedToken),
+        });
         throw new Error(`Relayer proxy error: ${msg}`);
     }
 }
