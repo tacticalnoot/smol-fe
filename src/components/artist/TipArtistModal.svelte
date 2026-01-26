@@ -191,7 +191,9 @@
             console.error("Tip error:", e);
             error = isUserCancellation(e)
                 ? "Tip cancelled"
-                : e.message || "Failed to send tip";
+                : e.message?.includes("503") || e.message?.includes("fetch")
+                  ? "Our relayers are all busy right now! 🌿 Please refresh and try again in a few moments."
+                  : e.message || "Failed to send tip";
         } finally {
             submitting = false;
         }
