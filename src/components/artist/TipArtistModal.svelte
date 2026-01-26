@@ -116,7 +116,20 @@
         isUserCancellation,
     } from "../../utils/transaction-helpers";
 
-    // ... existing imports ...
+    // Relayer Logic: Determine if we should bypass Turnstile
+    const hasApiKey = !!import.meta.env.PUBLIC_RELAYER_API_KEY;
+    const isPagesDev =
+        typeof window !== "undefined" &&
+        window.location.hostname.includes("pages.dev");
+    const isLocalhost =
+        typeof window !== "undefined" &&
+        window.location.hostname.includes("localhost");
+    const isDirectRelayer = hasApiKey && (isPagesDev || isLocalhost);
+
+    console.log(
+        "[TipModal] Relayer Mode:",
+        isDirectRelayer ? "DIRECT (OZ)" : "PROXY (TURNSTILE)",
+    );
 
     async function handleSend() {
         error = null;
@@ -137,6 +150,11 @@
             Math.floor(amountNum * Number(decimalsFactor)),
         );
 
+        if (!isDirectRelayer && !turnstileToken) {
+            error = "Please complete the CAPTCHA first.";
+            return;
+        }
+
         submitting = true;
         try {
             // Build transfer
@@ -146,10 +164,10 @@
                 amount: amountInStroops,
             });
 
-            // Sign and send
+            // Sign and send - pass turnstileToken (it will be empty string in direct mode, which is handled in passkey-kit)
             const result = await signSendAndVerify(tx, {
                 keyId: userState.keyId,
-                turnstileToken,
+                turnstileToken: isDirectRelayer ? "" : turnstileToken,
                 updateBalance: true,
                 contractId: userState.contractId,
             });
@@ -293,7 +311,7 @@
                     disabled={submitting ||
                         !amount ||
                         !isValidArtistAddress ||
-                        !turnstileToken}
+                        (!isDirectRelayer && !turnstileToken)}
                     class="w-full py-3 bg-green-500 text-black font-bold rounded-xl hover:bg-green-400 disabled:opacity-50 disabled:cursor-not-allowed transition-all tracking-widest text-xs shadow-[0_0_20px_rgba(34,197,94,0.3)] flex items-center justify-center gap-2"
                 >
                     {#if submitting}
@@ -306,18 +324,20 @@
                         />
                     {/if}
                 </button>
-                <div class="flex justify-center mt-4">
-                    <Turnstile
-                        siteKey={import.meta.env.PUBLIC_TURNSTILE_SITE_KEY}
-                        on:callback={(e) => {
-                            handleTurnstileCallback(e.detail.token);
-                        }}
-                        on:expired={() => {
-                            handleTurnstileExpired();
-                        }}
-                        theme="dark"
-                    />
-                </div>
+                {#if !isDirectRelayer}
+                    <div class="flex justify-center mt-4">
+                        <Turnstile
+                            siteKey={import.meta.env.PUBLIC_TURNSTILE_SITE_KEY}
+                            on:callback={(e) => {
+                                handleTurnstileCallback(e.detail.token);
+                            }}
+                            on:expired={() => {
+                                handleTurnstileExpired();
+                            }}
+                            theme="dark"
+                        />
+                    </div>
+                {/if}
             </form>
         {/if}
     </div>
