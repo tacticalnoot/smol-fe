@@ -142,10 +142,17 @@ export async function send<T>(txn: AssembledTransaction<T> | Tx | string, turnst
             try {
                 return await attemptSend(true);
             } catch (err: any) {
-                // FAILOVER: If OZ is 503, try KaleFarm
-                if (err.status === 503 || err.status === 502) {
-                    console.warn('[Relayer] DIRECT mode failed, attempting failover to PROXY...');
-                    return await attemptSend(false);
+                // FAILOVER: If OZ is 503/502, try KaleFarm ONLY if we have a Turnstile token
+                // pages.dev users won't have Turnstile, so don't failover for them
+                if ((err.status === 503 || err.status === 502)) {
+                    const token = turnstileToken || getTurnstileToken();
+                    if (token) {
+                        console.warn('[Relayer] DIRECT mode failed, attempting failover to PROXY...');
+                        return await attemptSend(false);
+                    } else {
+                        console.warn('[Relayer] DIRECT mode failed (503), no Turnstile token for failover');
+                        throw new Error('Relayer temporarily unavailable. Please try again in a moment.');
+                    }
                 }
                 throw err;
             }
