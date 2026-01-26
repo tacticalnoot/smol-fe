@@ -165,8 +165,8 @@
     let isExternalAudio = false; // Bluetooth, CarPlay, or external speaker detected
 
     // Cooldown periods before auto-resume (prevents fighting with other media)
-    const AGGRESSIVE_COOLDOWN_MS = 3000; // Bluetooth/CarPlay - faster resume for drivers
-    const POLITE_COOLDOWN_MS = 5000; // Device speakers - wait for other media to finish
+    const AGGRESSIVE_COOLDOWN_MS = 1500; // Bluetooth/CarPlay - faster resume for drivers
+    const POLITE_COOLDOWN_MS = 1000; // Device speakers - wait for other media to finish
 
     const getResumeCooldown = () =>
       isExternalAudio ? AGGRESSIVE_COOLDOWN_MS : POLITE_COOLDOWN_MS;
@@ -325,18 +325,12 @@
       }
     });
 
-    // Start polling for resume when interrupted (only in aggressive/external audio mode)
+    // Start polling for resume when interrupted
     const startResumePolling = () => {
       if (resumeCheckInterval) return; // Already polling
-      if (!isExternalAudio) {
-        console.log(
-          "[Audio] Skipping resume polling - not in external audio mode",
-        );
-        return;
-      }
 
       console.log(
-        "[Audio] Starting resume polling for interruption recovery (external audio mode)",
+        `[Audio] Starting resume polling for interruption recovery (${isExternalAudio ? "aggressive" : "polite"} mode)`,
       );
       resumeCheckInterval = window.setInterval(() => {
         if (audioState.wasInterrupted && canAttemptResume()) {
@@ -365,10 +359,8 @@
         audioState.wasInterrupted = true;
         interruptionTime = Date.now(); // Start cooldown timer
 
-        // Only start polling in aggressive mode (external audio)
-        if (isExternalAudio) {
-          startResumePolling();
-        }
+        // Always start polling to monitor for "clear" audio state
+        startResumePolling();
       }
     };
 
