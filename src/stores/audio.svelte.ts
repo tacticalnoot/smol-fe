@@ -316,6 +316,11 @@ export function initAudioContext(force = false) {
     // If we re-mounted, the element changed, so the old source is invalid for the new element.
     if (cached.source.mediaElement !== audioElement) {
       try {
+        // Disconnect old source to prevent memory leak
+        try {
+          cached.source.disconnect();
+        } catch (e) { /* already disconnected */ }
+
         const newSource = cached.context.createMediaElementSource(audioElement);
         newSource.connect(cached.analyser);
 
@@ -347,6 +352,11 @@ export function initAudioContext(force = false) {
     if (audioState.sourceNode.mediaElement !== audioElement) {
       // This case handles store persistence without window cache (rare but possible)
       try {
+        // Disconnect old source to prevent memory leak
+        try {
+          audioState.sourceNode.disconnect();
+        } catch (e) { /* already disconnected */ }
+
         const ctx = audioState.audioContext;
         const newSource = ctx.createMediaElementSource(audioElement);
         newSource.connect(audioState.analyser);

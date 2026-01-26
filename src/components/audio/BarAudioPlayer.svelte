@@ -163,6 +163,18 @@
     let resumeCheckInterval: number | null = null;
     let interruptionTime: number | null = null;
     let isExternalAudio = false; // Bluetooth, CarPlay, or external speaker detected
+    // Track pending timeouts for cleanup on unmount (memory optimization)
+    const pendingTimeouts = new Set<number>();
+
+    // Wrapper to track setTimeout calls
+    const trackedTimeout = (fn: () => void, delay: number): number => {
+      const id = window.setTimeout(() => {
+        pendingTimeouts.delete(id);
+        fn();
+      }, delay);
+      pendingTimeouts.add(id);
+      return id;
+    };
 
     // Dynamic Cooldown / Adaptive Polite Mode
     let currentPoliteCooldown = 1000; // Start snappy (1s)
@@ -261,7 +273,7 @@
             "[Audio] Bluetooth connected while interrupted - attempting resume",
           );
           currentPoliteCooldown = MIN_POLITE_COOLDOWN; // Reset on device change
-          setTimeout(attemptResume, 500);
+          trackedTimeout(attemptResume, 500);
         }
       }
     };
@@ -451,7 +463,7 @@
         console.log(
           `[Audio] Audio can play and was interrupted - attempting resume (${isExternalAudio ? "aggressive" : "polite"} mode)`,
         );
-        setTimeout(attemptResume, 100);
+        trackedTimeout(attemptResume, 100);
       }
     };
 
@@ -514,7 +526,7 @@
         if (resumeAttempts < maxResumeAttempts) {
           const delay = Math.min(1000 * Math.pow(2, resumeAttempts - 1), 4000);
           console.log(`[Audio] Retrying in ${delay}ms...`);
-          setTimeout(attemptResume, delay);
+          trackedTimeout(attemptResume, delay);
         } else {
           console.warn(
             "[Audio] Max resume attempts reached. User interaction may be required.",
@@ -535,8 +547,8 @@
         currentPoliteCooldown = MIN_POLITE_COOLDOWN;
         interruptionTime = null;
 
-        setTimeout(attemptResume, 50);
-        setTimeout(attemptResume, 500);
+        trackedTimeout(attemptResume, 50);
+        trackedTimeout(attemptResume, 500);
       }
     };
 
@@ -551,8 +563,8 @@
         currentPoliteCooldown = MIN_POLITE_COOLDOWN;
         interruptionTime = null;
 
-        setTimeout(attemptResume, 50);
-        setTimeout(attemptResume, 500);
+        trackedTimeout(attemptResume, 50);
+        trackedTimeout(attemptResume, 500);
       }
     };
 
@@ -575,9 +587,9 @@
       );
       // CarPlay reconnect - attempt resume after brief delay (skip cooldown for CarPlay)
       interruptionTime = null; // Clear cooldown for CarPlay reconnect
-      setTimeout(attemptResume, 100);
-      setTimeout(attemptResume, 500);
-      setTimeout(attemptResume, 1000);
+      trackedTimeout(attemptResume, 100);
+      trackedTimeout(attemptResume, 500);
+      trackedTimeout(attemptResume, 1000);
     };
 
     // Handle audio context state changes (Bluetooth connection, system audio changes)
@@ -610,7 +622,7 @@
         console.log(
           `[Audio] Audio context resumed - attempting to resume playback (${isExternalAudio ? "aggressive" : "polite"} mode)`,
         );
-        setTimeout(attemptResume, 100);
+        trackedTimeout(attemptResume, 100);
       }
     };
 
@@ -641,6 +653,12 @@
     // Clean up on unmount
     return () => {
       stopResumePolling(); // Stop polling interval
+
+      // Clear all pending timeouts (memory optimization)
+      for (const id of pendingTimeouts) {
+        clearTimeout(id);
+      }
+      pendingTimeouts.clear();
 
       if (navigator.mediaDevices) {
         navigator.mediaDevices.removeEventListener(
