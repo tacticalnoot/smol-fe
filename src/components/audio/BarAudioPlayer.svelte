@@ -3,6 +3,7 @@
   import { onMount } from "svelte";
   import MiniAudioPlayer from "./MiniAudioPlayer.svelte";
   import LikeButton from "../ui/LikeButton.svelte";
+  import SocialHyperlinks from "./SocialHyperlinks.svelte";
   import CastButton from "../ui/CastButton.svelte";
   import { trackView } from "../../lib/analytics";
   import {
@@ -825,6 +826,8 @@
           liked={audioState.currentSong?.Liked || false}
           on:likeChanged={(e) => handleLikeChanged(e.detail.liked)}
         />
+
+        <SocialHyperlinks />
 
         <CastButton
           size={16}

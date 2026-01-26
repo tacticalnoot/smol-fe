@@ -127,23 +127,32 @@ export async function buildSwapTransactionForCAddress(
     const sourceAccount = new Account(NULL_ACCOUNT, "0");
 
     /**
-     * BUILD ROUTER ARGS (5 ARGUMENTS)
-     * Signature: swap_exact_tokens_for_tokens(amount_in, amount_out_min, path, to, deadline)
+     * BUILD AGGREGATOR ARGS (5 ARGUMENTS)
+     * Signature (from prod logs): swap_exact_tokens_for_tokens(token_in, token_out, amount_in, amount_out_min, path)
+     * 
+     * where 'path' is Vec<Trade>
+     * Trade struct: { protocol_id: string, parts: u32, path: Vec<Address> }
      */
+    const distribution = rawTrade.distribution.map(dist => ({
+        protocol_id: dist.protocol_id || "soroswap", // fallback if missing
+        parts: dist.parts,
+        path: dist.path.map(addr => new Address(addr))
+    }));
+
     const invokeArgs = [
-        nativeToScVal(BigInt(amount1), { type: "i128" }),
-        nativeToScVal(BigInt(amount2), { type: "i128" }),
-        nativeToScVal(path.map(addr => new Address(addr))),
-        nativeToScVal(new Address(fromAddress)),
-        nativeToScVal(deadline, { type: "u64" }),
+        nativeToScVal(new Address(path[0])), // token_in
+        nativeToScVal(new Address(path[path.length - 1])), // token_out
+        nativeToScVal(BigInt(amount1), { type: "i128" }), // amount_in
+        nativeToScVal(BigInt(amount2), { type: "i128" }), // amount_out_min
+        nativeToScVal(distribution), // distribution path
     ];
 
-    console.log(`[SwapBuilder] Built ${methodName} args (Router 5-arg):`, {
+    console.log(`[SwapBuilder] Built ${methodName} args (Aggregator 5-arg):`, {
+        tokenIn: path[0],
+        tokenOut: path[path.length - 1],
         amount1,
         amount2,
-        path,
-        to: fromAddress,
-        deadline: deadline.toString()
+        distributionCount: distribution.length
     });
 
     const invokeOp = contract.call(methodName, ...invokeArgs);
