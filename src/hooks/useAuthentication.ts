@@ -189,9 +189,18 @@ export function useAuthentication() {
     location.reload();
   }
 
+  function getAuthHeaders(): Record<string, string> {
+    const token = Cookies.get('smol_token');
+    if (!token) return {};
+    return {
+      'Authorization': `Bearer ${token}`,
+    };
+  }
+
   return {
     login,
     signUp,
     logout,
+    getAuthHeaders,
   };
 }
