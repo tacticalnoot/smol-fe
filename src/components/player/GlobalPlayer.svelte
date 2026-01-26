@@ -853,13 +853,13 @@
 
     <!-- Main Player Card -->
     <div
-        class="max-w-6xl w-full mx-auto reactive-glass border border-white/5 backdrop-blur-xl md:rounded-2xl rounded-none shadow-2xl relative flex flex-col flex-1 min-h-0 transition-all duration-700 bg-cover bg-center"
+        class="max-w-6xl w-full mx-auto reactive-glass border border-white/5 backdrop-blur-sm md:rounded-2xl rounded-none shadow-2xl relative flex flex-col flex-1 min-h-0 transition-all duration-700 bg-cover bg-center"
         style={THEMES[preferences.glowTheme as keyof typeof THEMES].style ||
             "background-color: rgba(29, 29, 29, 0.7);"}
     >
         <!-- Control Bar -->
         <div
-            class="relative z-[100] flex items-center border-b border-white/5 bg-black/10 backdrop-blur-xl shrink-0 min-w-0 py-2 px-3 gap-3 landscape:sticky landscape:top-0"
+            class="relative z-[100] flex items-center border-b border-white/5 bg-black/50 backdrop-blur-sm shrink-0 min-w-0 py-2 px-3 gap-3 landscape:sticky landscape:top-0"
         >
             <!-- Primary Grid Toggle with Rainbow Glow -->
             <button
