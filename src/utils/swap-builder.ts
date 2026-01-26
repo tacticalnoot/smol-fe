@@ -93,13 +93,12 @@ export async function buildSwapTransactionForCAddress(
     });
 
     // Extract rawTrade from quote response
-    // Note: rawTrade.amountIn exists but is NOT used - we use quote.amountIn (top-level) instead
     const rawTrade = quote.rawTrade as {
-        amountIn: string;          // Present in API response but not used
-        amountOutMin?: string;     // Used for EXACT_IN
-        amountInMax?: string;      // Used for EXACT_OUT
-        amountOut?: string;        // Used for EXACT_OUT
-        distribution: ExtendedDistribution[];  // Used for routing
+        amountIn: string;
+        amountOutMin?: string;
+        amountInMax?: string;
+        amountOut?: string;
+        distribution: ExtendedDistribution[];
     };
 
     if (!rawTrade || !rawTrade.distribution) {
@@ -112,30 +111,39 @@ export async function buildSwapTransactionForCAddress(
     const tradeType = quote.tradeType || 'EXACT_IN';
     console.log(`[SwapBuilder] Trade Type: ${tradeType}`);
 
-    let arg1: string;
-    let arg2: string;
+    let amount1: string;
+    let amount2: string;
     let methodName: string;
 
     if (tradeType === 'EXACT_OUT') {
-        arg1 = rawTrade.amountOut || String(quote.amountOut);
-        arg2 = rawTrade.amountInMax || String(quote.amountIn);
+        amount1 = rawTrade.amountInMax || String(quote.amountIn);
+        amount2 = rawTrade.amountOut || String(quote.amountOut);
         methodName = "swap_tokens_for_exact_tokens";
 
-        if (!arg1 || !arg2) {
-            throw new Error("Missing amountOut (rawTrade) or amountInMax (rawTrade) for EXACT_OUT swap");
+        if (!amount1 || !amount2) {
+            throw new Error("Missing amountInMax or amountOut for EXACT_OUT swap");
         }
     } else {
-        arg1 = String(quote.amountIn);
-        arg2 = rawTrade.amountOutMin || String(quote.amountOut);
+        amount1 = String(quote.amountIn);
+        amount2 = rawTrade.amountOutMin || String(quote.amountOut);
         methodName = "swap_exact_tokens_for_tokens";
 
-        if (!arg1 || !arg2) {
-            throw new Error("Missing amountIn (quote) or amountOutMin (rawTrade) for EXACT_IN swap");
+        if (!amount1 || !amount2) {
+            throw new Error("Missing amountIn or amountOutMin for EXACT_IN swap");
         }
     }
 
-    validateAmount(arg1, 'arg1');
-    validateAmount(arg2, 'arg2');
+    validateAmount(amount1, 'amount1');
+    validateAmount(amount2, 'amount2');
+
+    // Get token addresses from the quote's distribution path
+    const firstPath = rawTrade.distribution[0]?.path || [];
+    const tokenIn = firstPath[0];
+    const tokenOut = firstPath[firstPath.length - 1];
+
+    if (!tokenIn || !tokenOut) {
+        throw new Error("Could not determine token addresses from quote distribution");
+    }
 
     // Deadline: 1 hour from now
     const deadline = BigInt(Math.floor(Date.now() / 1000) + 3600);
@@ -149,20 +157,24 @@ export async function buildSwapTransactionForCAddress(
     // Build distribution ScVal array with proper structure
     const distributionArg = buildDistributionArg(rawTrade.distribution);
 
-    // BUILD INVOKE ARGS (5 ARGUMENTS)
-    // Signature: method(amount_in/out, amount_out_min/in_max, distribution, to, deadline)
-    // Note: tokens are inferred from the distribution paths
+    // BUILD INVOKE ARGS (7 ARGUMENTS)
+    // IMPORTANT: Matches useTradeExecution.ts which is the source of truth
+    // Signature: method(token_in, amount, token_out, amount_limit, distribution, to, deadline)
     const invokeArgs = [
-        nativeToScVal(BigInt(arg1), { type: "i128" }),
-        nativeToScVal(BigInt(arg2), { type: "i128" }),
+        nativeToScVal(new Address(tokenIn)),
+        nativeToScVal(BigInt(amount1), { type: "i128" }),
+        nativeToScVal(new Address(tokenOut)),
+        nativeToScVal(BigInt(amount2), { type: "i128" }),
         distributionArg,
         nativeToScVal(new Address(fromAddress)),
         nativeToScVal(deadline, { type: "u64" }),
     ];
 
-    console.log(`[SwapBuilder] Built ${methodName} args (5-arg mode):`, {
-        arg1,
-        arg2,
+    console.log(`[SwapBuilder] Built ${methodName} args (7-arg mode):`, {
+        tokenIn,
+        amount1,
+        tokenOut,
+        amount2,
         to: fromAddress,
         deadline: deadline.toString()
     });
@@ -181,8 +193,6 @@ export async function buildSwapTransactionForCAddress(
     const currentXdr = tx.toXDR();
 
     // PREEMPTIVE LOGGING: Log the XDR BEFORE simulation
-    // This ensures that even if simulation fails with MismatchingParameterLen,
-    // the user can still copy the XDR to debug it.
     logger.info(LogCategory.TRANSACTION, "Swap Transaction Built (Pre-Sim)", {
         xdr: currentXdr,
         tradeType,
@@ -229,7 +239,6 @@ function poolHashesToScVal(poolHashes?: string[]): xdr.ScVal {
         if (bytes.length !== 32) {
             throw new Error(`Expected 32 bytes, got ${bytes.length}`);
         }
-        // Convert to Buffer for xdr.ScVal.scvBytes
         return xdr.ScVal.scvBytes(Buffer.from(bytes));
     });
 
@@ -250,12 +259,10 @@ function buildDistributionArg(distribution: ExtendedDistribution[]): xdr.ScVal {
  * IMPORTANT: Fields must be in alphabetical order for Soroban!
  */
 function buildDexDistributionScVal(dist: ExtendedDistribution): xdr.ScVal {
-    // Validate distribution structure
     if (!dist.path || !Array.isArray(dist.path) || dist.path.length === 0) {
         throw new Error("Distribution path must be a non-empty array");
     }
 
-    // Validate all addresses in path are valid Stellar addresses
     for (const addr of dist.path) {
         if (typeof addr !== 'string' || !addr.match(/^[GC][A-Z2-7]{55}$/)) {
             throw new Error(`Invalid Stellar address in path: "${addr}"`);
@@ -267,7 +274,6 @@ function buildDexDistributionScVal(dist: ExtendedDistribution): xdr.ScVal {
         : dist.protocol_id;
 
     // Fields in alphabetical order: bytes, parts, path, protocol_id
-    // matches buildDexDistribution in useTradeExecution.ts
     const entries: xdr.ScMapEntry[] = [
         new xdr.ScMapEntry({
             key: xdr.ScVal.scvSymbol("bytes"),
