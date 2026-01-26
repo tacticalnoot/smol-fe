@@ -106,7 +106,6 @@ export function validateEnvironment(): EnvValidationResult {
 
             case 'PUBLIC_KALE_SAC_ID':
             case 'PUBLIC_SMOL_CONTRACT_ID':
-            case 'PUBLIC_WEBAUTHN_VERIFIER_ADDRESS':
                 if (!isValidContractAddress(value)) {
                     result.invalid.push(`${varName} (invalid contract address: ${value})`);
                     result.valid = false;
