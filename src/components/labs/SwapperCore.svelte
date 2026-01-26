@@ -1,6 +1,7 @@
 <script lang="ts">
     import { account, sac, kale, xlm } from "../../utils/passkey-kit";
     import { onMount, tick } from "svelte";
+    import confetti from "canvas-confetti";
     import { getSafeRpId } from "../../utils/domains";
     import { Buffer } from "buffer";
     import {
@@ -175,6 +176,25 @@
         if (val <= 5) return "#4ade80"; // Green
         if (val <= 10) return "#facc15"; // Yellow
         return "#ef4444"; // Red
+    }
+
+    function triggerSuccessConfetti() {
+        const btn = document.querySelector(".action-btn");
+        const rect = btn?.getBoundingClientRect();
+
+        if (rect) {
+            // Normalized coordinates (0-1)
+            const x = (rect.left + rect.width / 2) / window.innerWidth;
+            const y = (rect.top + rect.height / 2) / window.innerHeight;
+
+            confetti({
+                particleCount: 150,
+                spread: 70,
+                origin: { x, y },
+                colors: ["#94db03", "#ffffff", "#fdda24"],
+                zIndex: 10000,
+            });
+        }
     }
 
     // --- LIFECYCLE ---
@@ -401,6 +421,7 @@
             txHash = sendResult.transactionHash || "submitted";
             swapState = "confirmed";
             statusMessage = "Swap complete!";
+            triggerSuccessConfetti();
 
             // Reset
             swapAmount = "";
@@ -469,6 +490,7 @@
             txHash = sendResult.transactionHash || "submitted";
             swapState = "confirmed";
             statusMessage = `Sent ${amountNum} ${sendToken}!`;
+            triggerSuccessConfetti();
 
             // Reset
             sendTo = "";
