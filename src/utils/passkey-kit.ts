@@ -74,89 +74,86 @@ export async function send<T>(txn: AssembledTransaction<T> | Tx | string, turnst
     const apiKey = import.meta.env.PUBLIC_RELAYER_API_KEY;
     const isDirectMode = !!apiKey;
 
-    // Default to KaleFarm if no API key is present
-    let relayerUrl = import.meta.env.PUBLIC_RELAYER_URL || "https://api.kalefarm.xyz";
+    let relayerUrl = "";
     let headers: Record<string, string> = {
         'Content-Type': 'application/json',
     };
 
-    if (isDirectMode) {
-        // Path 2: Direct to OpenZeppelin Channels
-        relayerUrl = "https://channels.openzeppelin.com";
-        headers['Authorization'] = `Bearer ${apiKey}`;
-
-        // Log intent (pre-send)
-        // logger.info(LogCategory.TRANSACTION, "Relayer Request (DIRECT)", { url: relayerUrl });
-    } else {
-        // Path 1: Proxy through KaleFarm with Turnstile
-        const token = turnstileToken || getTurnstileToken();
-        if (!token) {
-            throw new Error('Turnstile token not available');
+    const getRelayerConfig = (useDirect: boolean) => {
+        if (useDirect) {
+            return {
+                url: "https://channels.openzeppelin.com",
+                headers: { ...headers, 'Authorization': `Bearer ${apiKey}` },
+                body: { params: { xdr } }
+            };
+        } else {
+            const token = turnstileToken || getTurnstileToken();
+            if (!token && !url.includes('localhost')) {
+                // If we are on pages.dev and have no token, this might fail unless we promote.
+                // But for now, we try.
+            }
+            return {
+                url: import.meta.env.PUBLIC_RELAYER_URL || "https://api.kalefarm.xyz",
+                headers: { ...headers, 'X-Turnstile-Response': token || '' },
+                body: { xdr }
+            };
         }
-        headers['X-Turnstile-Response'] = token;
-        // logger.info(LogCategory.TRANSACTION, "Relayer Request (PROXY)", { url: relayerUrl, has_turnstile: !!token });
-    }
-
-    if (!relayerUrl) {
-        throw new Error('Relayer URL not configured');
-    }
-
-    // Capture Request Debug Info for Dump
-    const requestDebug = {
-        url: relayerUrl,
-        method: 'POST',
-        headers: headers,
-        body: isDirectMode ? { params: { xdr } } : { xdr }
     };
 
-    let responseDebug: any = {};
+    async function attemptSend(useDirect: boolean) {
+        const config = getRelayerConfig(useDirect);
 
-    try {
-        const response = await fetch(relayerUrl, {
+        const requestDebug = {
+            url: config.url,
             method: 'POST',
-            headers,
-            body: JSON.stringify(isDirectMode ? { params: { xdr } } : { xdr }),
+            headers: config.headers,
+            body: config.body
+        };
+
+        const response = await fetch(config.url, {
+            method: 'POST',
+            headers: config.headers,
+            body: JSON.stringify(config.body),
         });
 
-        // Capture Response Headers
-        const responseHeaders = Object.fromEntries(response.headers.entries());
         const responseText = await response.text();
-
-        responseDebug = {
+        const responseDebug = {
             status: response.status,
             statusText: response.statusText,
-            headers: responseHeaders,
+            headers: Object.fromEntries(response.headers.entries()),
             body: responseText
         };
 
-        // Log the full interaction for the Dump button
-        logger.info(LogCategory.RELAYER, "Relayer Interaction", {
+        logger.info(LogCategory.RELAYER, `Relayer Interaction (${useDirect ? 'DIRECT' : 'PROXY'})`, {
             request: requestDebug,
             response: responseDebug
         });
 
         if (!response.ok) {
-            // Re-throw with detailed debugging info
-            const debugInfo = {
-                ...responseDebug,
-                url: relayerUrl,
-                mode: isDirectMode ? 'DIRECT' : 'PROXY'
-            };
-            logger.error(LogCategory.TRANSACTION, `Relayer Failure (${response.status})`, debugInfo);
-            throw new Error(`Relayer proxy error: ${responseText || response.statusText}`);
+            throw { status: response.status, text: responseText, isDirect: useDirect };
         }
 
-        const result = JSON.parse(responseText);
-        logger.info(LogCategory.TRANSACTION, "Relayer Success", { hash: result.hash || result.transactionHash });
-        return result;
+        return JSON.parse(responseText);
+    }
 
+    try {
+        if (isDirectMode) {
+            try {
+                return await attemptSend(true);
+            } catch (err: any) {
+                // FAILOVER: If OZ is 503, try KaleFarm
+                if (err.status === 503 || err.status === 502) {
+                    console.warn('[Relayer] DIRECT mode failed, attempting failover to PROXY...');
+                    return await attemptSend(false);
+                }
+                throw err;
+            }
+        } else {
+            return await attemptSend(false);
+        }
     } catch (e: any) {
-        if (!responseDebug.status) {
-            logger.error(LogCategory.RELAYER, "Relayer Network Failure", {
-                request: requestDebug,
-                error: e.message
-            });
-        }
-        throw e;
+        const msg = e.text || e.message || "Relayer failure";
+        logger.error(LogCategory.TRANSACTION, `Final Relayer Failure`, { error: msg });
+        throw new Error(`Relayer proxy error: ${msg}`);
     }
 }
