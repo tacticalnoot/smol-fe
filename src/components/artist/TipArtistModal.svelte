@@ -1,6 +1,7 @@
 <script lang="ts">
-    import { onMount } from "svelte";
+    import { onMount, tick } from "svelte";
     import { fade, scale } from "svelte/transition";
+    import confetti from "canvas-confetti";
     import { kale } from "../../utils/passkey-kit";
     import { truncate } from "../../utils/base";
     import {
@@ -131,6 +132,25 @@
         isDirectRelayer ? "DIRECT (OZ)" : "PROXY (TURNSTILE)",
     );
 
+    function triggerSuccessConfetti() {
+        const btn = document.querySelector(".tip-action-btn");
+        const rect = btn?.getBoundingClientRect();
+
+        if (rect) {
+            // Normalized coordinates (0-1)
+            const x = (rect.left + rect.width / 2) / window.innerWidth;
+            const y = (rect.top + rect.height / 2) / window.innerHeight;
+
+            confetti({
+                particleCount: 150,
+                spread: 70,
+                origin: { x, y },
+                colors: ["#94db03", "#ffffff", "#fdda24"],
+                zIndex: 10000,
+            });
+        }
+    }
+
     async function handleSend() {
         error = null;
         success = null;
@@ -187,6 +207,7 @@
             success = `Sent ${amount} KALE to ${artistName}!`;
             amount = "";
             turnstileToken = "";
+            tick().then(() => triggerSuccessConfetti());
         } catch (e: any) {
             console.error("Tip error:", e);
             error = isUserCancellation(e)
@@ -314,7 +335,7 @@
                         !amount ||
                         !isValidArtistAddress ||
                         (!isDirectRelayer && !turnstileToken)}
-                    class="w-full py-3 bg-green-500 text-black font-bold rounded-xl hover:bg-green-400 disabled:opacity-50 disabled:cursor-not-allowed transition-all tracking-widest text-xs shadow-[0_0_20px_rgba(34,197,94,0.3)] flex items-center justify-center gap-2"
+                    class="tip-action-btn w-full py-3 bg-green-500 text-black font-bold rounded-xl hover:bg-green-400 disabled:opacity-50 disabled:cursor-not-allowed transition-all tracking-widest text-xs shadow-[0_0_20px_rgba(34,197,94,0.3)] flex items-center justify-center gap-2"
                 >
                     {#if submitting}
                         <Loader classNames="w-4 h-4" textColor="text-black" /> Sending...
