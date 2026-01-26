@@ -44,8 +44,12 @@
             const newLikedState = await toggleLike(smolId, localLiked);
             localLiked = newLikedState;
             dispatch("likeChanged", { smolId, liked: newLikedState });
+
             if (newLikedState) {
                 window.dispatchEvent(new CustomEvent("smol:action-like"));
+                // Trigger heartbeat animation
+                heartBeat = true;
+                setTimeout(() => (heartBeat = false), 400);
             }
         } catch (error) {
             console.error("Failed to toggle like:", error);
@@ -58,10 +62,14 @@
             liking = false;
         }
     }
+
+    let heartBeat = $state(false);
 </script>
 
 <button
-    class="{classNames} touch-manipulation active:scale-90 transition-transform duration-75"
+    class="{classNames} touch-manipulation active:scale-90 transition-transform duration-75 {heartBeat
+        ? 'animate-heartbeat text-pink-500'
+        : ''}"
     aria-label={localLiked ? "Unlike" : "Like"}
     disabled={liking}
     onclick={handleLike}
@@ -96,3 +104,27 @@
         </svg>
     {/if}
 </button>
+
+<style>
+    @keyframes heartbeat {
+        0% {
+            transform: scale(1);
+        }
+        25% {
+            transform: scale(1.15);
+        }
+        50% {
+            transform: scale(1);
+        }
+        75% {
+            transform: scale(1.15);
+        }
+        100% {
+            transform: scale(1);
+        }
+    }
+
+    .animate-heartbeat {
+        animation: heartbeat 0.4s ease-in-out;
+    }
+</style>
