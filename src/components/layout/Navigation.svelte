@@ -1,6 +1,6 @@
 <script lang="ts">
-  import { userState } from "../../stores/user.svelte.ts";
-  import { balanceState } from "../../stores/balance.svelte.ts";
+  import { userState } from "../../stores/user.state.ts";
+  import { balanceState } from "../../stores/balance.state.ts";
   import { useCurrentPath } from "../../hooks/useCurrentPath.svelte";
   import { useAuthentication } from "../../hooks/useAuthentication";
   import { uiState, closeMenu } from "../../stores/ui.svelte.ts";

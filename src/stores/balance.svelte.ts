@@ -1,26 +1,16 @@
-import { kale, xlm } from '../utils/passkey-kit';
-
 /**
- * Balance state using Svelte 5 runes
+ * Balance state actions using Svelte 5 runes
+ * Includes SDK-heavy balance fetching.
+ * Uses DYNAMIC IMPORTS to keep initial chunks light.
  */
 
-export const balanceState = $state<{
-  balance: bigint | null;
-  xlmBalance: bigint | null;
-  loading: boolean;
-  lastUpdated: Date | null;
-  transactionLock: boolean; // Prevents concurrent balance updates during transactions
-}>({
-  balance: null,
-  xlmBalance: null,
-  loading: false,
-  lastUpdated: null,
-  transactionLock: false,
-});
+import { balanceState } from './balance.state';
+
+// Re-export state and getters
+export * from './balance.state';
 
 /**
  * Acquire transaction lock to prevent concurrent balance updates
- * Returns true if lock was acquired, false if already locked
  */
 export function acquireTransactionLock(): boolean {
   if (balanceState.transactionLock) {
@@ -54,7 +44,6 @@ export async function updateContractBalance(address: string | null): Promise<voi
     return;
   }
 
-  // Skip update if transaction is in progress (will be updated after transaction completes)
   if (balanceState.transactionLock) {
     console.log('[Balance] Skipping balance update - transaction in progress');
     return;
@@ -62,6 +51,8 @@ export async function updateContractBalance(address: string | null): Promise<voi
 
   balanceState.loading = true;
   try {
+    // DYNAMIC IMPORT: Keep Stellar SDK out of main bundle
+    const { kale } = await import('../utils/passkey-kit');
     const { result } = await kale.get().balance({ id: address });
     balanceState.balance = result;
     balanceState.lastUpdated = new Date();
@@ -82,13 +73,14 @@ export async function updateXlmBalance(address: string | null): Promise<void> {
     return;
   }
 
-  // Skip update if transaction is in progress (will be updated after transaction completes)
   if (balanceState.transactionLock) {
     console.log('[Balance] Skipping XLM balance update - transaction in progress');
     return;
   }
 
   try {
+    // DYNAMIC IMPORT
+    const { xlm } = await import('../utils/passkey-kit');
     const { result } = await xlm.get().balance({ id: address });
     balanceState.xlmBalance = result;
     balanceState.lastUpdated = new Date();
@@ -102,7 +94,6 @@ export async function updateXlmBalance(address: string | null): Promise<void> {
  * Update all balances (KALE + XLM) for a given address
  */
 export async function updateAllBalances(address: string | null): Promise<void> {
-  // Skip update if transaction is in progress
   if (balanceState.transactionLock) {
     console.log('[Balance] Skipping all balances update - transaction in progress');
     return;
@@ -119,27 +110,6 @@ export async function updateAllBalances(address: string | null): Promise<void> {
   } finally {
     balanceState.loading = false;
   }
-}
-
-/**
- * Get current KALE balance (read-only accessor)
- */
-export function getBalance(): bigint | null {
-  return balanceState.balance;
-}
-
-/**
- * Get current XLM balance (read-only accessor)
- */
-export function getXlmBalance(): bigint | null {
-  return balanceState.xlmBalance;
-}
-
-/**
- * Check if balance is loading
- */
-export function isBalanceLoading(): boolean {
-  return balanceState.loading;
 }
 
 /**

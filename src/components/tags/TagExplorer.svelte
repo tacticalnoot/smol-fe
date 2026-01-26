@@ -18,7 +18,7 @@
     import MiniVisualizer from "../ui/MiniVisualizer.svelte";
     import LikeButton from "../ui/LikeButton.svelte";
     import { navigate } from "astro:transitions/client";
-    import { userState } from "../../stores/user.svelte.ts";
+    import { userState } from "../../stores/user.state";
     import { useGridMediaSession } from "../../hooks/useGridMediaSession";
     import { upgradesState, isUnlocked } from "../../stores/upgrades.svelte.ts";
 
