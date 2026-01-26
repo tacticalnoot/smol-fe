@@ -790,6 +790,10 @@
 
     // Pagination for Grid View to prevent OOM/Layout thrashing on mobile
     let gridLimit = $state(50);
+    const GRID_LIMIT_MAX = 500; // Cap to prevent unbounded DOM growth
+
+    // Track preloaded image IDs to prevent re-creating Image objects
+    let preloadedImageIds = new Set<string>();
 
     // Derived display playlist (no random calls here = stable)
     const displayPlaylist = $derived.by(() => {
@@ -804,6 +808,7 @@
     // OPTIMIZED: Rolling Buffer Preloading
     // 1. Fixes Cache Miss: Now uses ?scale=8 to match Grid View (rendered as HD pixel art)
     // 2. Rolling Window: Preloads the current grid + 50 items ahead to maintain "Hardware Feel" without downloading 500+ items at once.
+    // 3. MEMORY FIX: Track preloaded IDs to avoid creating duplicate Image objects
     $effect(() => {
         if (!isBrowser || !displayPlaylist || displayPlaylist.length === 0)
             return;
@@ -817,14 +822,16 @@
                 gridLimit + PRELOAD_BUFFER,
             );
 
-            // We only need to trigger loads for the "new" potential items
-            // But since browser handles deduping cached requests, iterating the slice is fine.
+            // Only preload images we haven't already preloaded
             const batch = displayPlaylist.slice(0, targetIndex);
 
             batch.forEach((song) => {
-                const img = new Image();
-                // CRITICAL: Must match Grid View src exactly for cache hit
-                img.src = `${API_URL}/image/${song.Id}.png?scale=8`;
+                if (!preloadedImageIds.has(song.Id)) {
+                    preloadedImageIds.add(song.Id);
+                    const img = new Image();
+                    // CRITICAL: Must match Grid View src exactly for cache hit
+                    img.src = `${API_URL}/image/${song.Id}.png?scale=8`;
+                }
             });
         }, 500);
 
@@ -855,9 +862,9 @@
         const { scrollTop, scrollHeight, clientHeight } = el;
         // Load more when within 800px of bottom
         if (scrollHeight - scrollTop - clientHeight < 800) {
-            if (gridLimit < displayPlaylist.length) {
+            if (gridLimit < displayPlaylist.length && gridLimit < GRID_LIMIT_MAX) {
                 // Throttle? Svelte updates are fast enough usually, but let's be safe
-                gridLimit += 50;
+                gridLimit = Math.min(gridLimit + 50, GRID_LIMIT_MAX);
             }
         }
     }
