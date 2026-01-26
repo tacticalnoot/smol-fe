@@ -417,6 +417,7 @@
     });
 
     let gridLimit = $state(50);
+    const GRID_LIMIT_MAX = 500; // Cap to prevent unbounded DOM growth
     const displayPlaylist = $derived.by(() => {
         if (shuffleEnabled && shuffledOrder.length > 0) {
             return shuffledOrder;
@@ -430,8 +431,8 @@
         const el = e.currentTarget as HTMLElement;
         const { scrollTop, scrollHeight, clientHeight } = el;
         if (scrollHeight - scrollTop - clientHeight < 800) {
-            if (gridLimit < displayPlaylist.length) {
-                gridLimit += 50;
+            if (gridLimit < displayPlaylist.length && gridLimit < GRID_LIMIT_MAX) {
+                gridLimit = Math.min(gridLimit + 50, GRID_LIMIT_MAX);
             }
         }
     }
