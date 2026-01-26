@@ -381,9 +381,12 @@
   }
 
   function handleLikeChanged(smol: Smol, liked: boolean) {
-    results = results.map((s) =>
-      s.Id === smol.Id ? { ...s, Liked: liked } : s,
-    );
+    // PERFORMANCE FIX: Direct mutation instead of array.map() spread
+    // With Svelte 5 $state, direct mutation triggers reactivity without copying entire array
+    const item = results.find((s) => s.Id === smol.Id);
+    if (item) {
+      item.Liked = liked;
+    }
   }
 
   async function loadMore() {
