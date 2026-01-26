@@ -18,7 +18,7 @@
     import MiniVisualizer from "../ui/MiniVisualizer.svelte";
     import LikeButton from "../ui/LikeButton.svelte";
     import { navigate } from "astro:transitions/client";
-    import { userState } from "../../stores/user.state";
+    import { userState } from "../../stores/user.state.svelte";
     import { useGridMediaSession } from "../../hooks/useGridMediaSession";
     import { upgradesState, isUnlocked } from "../../stores/upgrades.svelte.ts";
 
@@ -320,6 +320,7 @@
     });
 </script>
 
+```html
 <div
     class="h-full flex flex-col lg:flex-row gap-6 p-4 max-w-[1800px] mx-auto overflow-hidden relative"
 >

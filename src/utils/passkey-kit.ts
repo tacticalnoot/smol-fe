@@ -88,7 +88,8 @@ export async function send<T>(txn: AssembledTransaction<T> | Tx | string, turnst
             };
         } else {
             const token = turnstileToken || getTurnstileToken();
-            if (!token && !url.includes('localhost')) {
+            const isLocalhost = typeof window !== 'undefined' && window.location.hostname.includes('localhost');
+            if (!token && !isLocalhost) {
                 // If we are on pages.dev and have no token, this might fail unless we promote.
                 // But for now, we try.
             }

@@ -1,0 +1,23 @@
+
+> smol-fe@1.5.4 build
+> node --max-old-space-size=4096 ./node_modules/astro/astro.js build
+
+01:16:04 [@astrojs/cloudflare] Enabling sessions with Cloudflare KV with the "SESSION" KV binding.
+01:16:04 [@astrojs/cloudflare] If you see the error "Invalid binding `SESSION`" in your build output, you need to add the binding to your wrangler config file.
+01:16:04 [WARN] [adapter] Cloudflare does not support sharp at runtime. However, you can configure `imageService: "compile"` to optimize images with sharp on prerendered pages during build time.
+01:16:04 [content] Syncing content
+01:16:04 [content] Synced content
+01:16:04 [types] Generated 146ms
+01:16:04 [build] output: "server"
+01:16:04 [build] mode: "server"
+01:16:04 [build] directory: C:\Users\Jeff\Mixtape Auto\smol-fe\dist\
+01:16:04 [build] adapter: @astrojs/cloudflare
+01:16:04 [build] Collecting build info...
+01:16:04 [build] Γ£ô Completed in 244ms.
+01:16:04 [build] Building server entrypoints...
+01:16:11 [ERROR] [vite] Γ£ù Build failed in 6.33s
+Could not resolve "../stores/user.state.svelte" from "src/components/layout/Navigation.svelte"
+file: C:/Users/Jeff/Mixtape Auto/smol-fe/src/components/layout/Navigation.svelte
+  Stack trace:
+    at getRollupError (file:///C:/Users/Jeff/Mixtape%20Auto/smol-fe/node_modules/.pnpm/rollup@4.40.1/node_modules/rollup/dist/es/shared/parseAst.js:397:41)
+    at ModuleLoader.handleInvalidResolvedId (file:///C:/Users/Jeff/Mixtape%20Auto/smol-fe/node_modules/.pnpm/rollup@4.40.1/node_modules/rollup/dist/es/shared/node-entry.js:21333:24)

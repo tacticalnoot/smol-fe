@@ -7,11 +7,11 @@
  */
 
 import { safeLocalStorageRemove } from "../utils/storage";
-import { userState } from "./user.state";
+import { userState } from "./user.state.svelte";
 import { getSafeRpId } from "../utils/domains";
 
 // Re-export state and getters for convenience
-export * from "./user.state";
+export * from "./user.state.svelte";
 
 /**
  * Clear authentication

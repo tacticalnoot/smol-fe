@@ -6,9 +6,9 @@
    * Handles the primary UI entry point for account management.
    * Reconciles SSR session state with client-side PasskeyKit wallets.
    */
-  import { userState } from "../../stores/user.state";
+  import { userState } from "../../stores/user.state.svelte";
   import { ensureWalletConnected } from "../../stores/user.svelte";
-  import { balanceState } from "../../stores/balance.state";
+  import { balanceState } from "../../stores/balance.state.svelte";
   import { updateContractBalance } from "../../stores/balance.svelte";
   import {
     mixtapeModeState,
