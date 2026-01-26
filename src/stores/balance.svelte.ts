@@ -4,10 +4,10 @@
  * Uses DYNAMIC IMPORTS to keep initial chunks light.
  */
 
-import { balanceState } from './balance.state';
+import { balanceState } from './balance.state.svelte';
 
 // Re-export state and getters
-export * from './balance.state';
+export * from './balance.state.svelte';
 
 /**
  * Acquire transaction lock to prevent concurrent balance updates

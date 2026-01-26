@@ -1,6 +1,7 @@
 import { safeLocalStorageGet, safeLocalStorageSet, safeLocalStorageRemove } from "../utils/storage";
 
 // Initialize from localStorage if available (client-side only)
+// These calls are SSR-safe as safeLocalStorageGet checks for window
 const storedContractId = safeLocalStorageGet("smol:contractId");
 const storedKeyId = safeLocalStorageGet("smol:keyId");
 

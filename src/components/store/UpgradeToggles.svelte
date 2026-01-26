@@ -1,6 +1,5 @@
 <script lang="ts">
-    import { userState } from "../../stores/user.state";
-    import { isAuthenticated } from "../../stores/user.state";
+    import { userState } from "../../stores/user.state.svelte";
     import {
         upgradesState,
         enabledState,

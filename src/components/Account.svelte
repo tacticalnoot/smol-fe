@@ -2,8 +2,8 @@
     import { onMount } from "svelte";
     import { kale } from "../utils/passkey-kit";
     import { truncate } from "../utils/base";
-    import { userState } from "../stores/user.state";
-    import { balanceState } from "../stores/balance.state";
+    import { userState } from "../stores/user.state.svelte";
+    import { balanceState } from "../stores/balance.state.svelte";
     import { updateContractBalance } from "../stores/balance.svelte";
     import { signAndSend } from "../utils/transaction-helpers";
     import {

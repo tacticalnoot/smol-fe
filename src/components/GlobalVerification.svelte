@@ -1,5 +1,5 @@
 <script lang="ts">
-    import { userState } from "../stores/user.state";
+    import { userState } from "../stores/user.state.svelte";
     import { verifyPastPurchases } from "../services/api/verifyUpgrades";
     import {
         validateAndRevertTheme,
