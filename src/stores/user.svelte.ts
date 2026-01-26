@@ -69,9 +69,12 @@ export function clearUserAuth() {
   safeLocalStorageRemove("smol:contractId");
   safeLocalStorageRemove("smol:keyId");
   safeLocalStorageRemove("smol:skip_intro"); // Optional: reset intro
+
+  // Reset PasskeyKit singleton so next login starts fresh
+  resetPasskeyKit();
 }
 
-import { account } from "../utils/passkey-kit";
+import { account, resetPasskeyKit } from "../utils/passkey-kit";
 import { getSafeRpId } from "../utils/domains";
 
 // ... existing code ...
