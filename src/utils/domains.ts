@@ -28,30 +28,32 @@ export function getSafeRpId(hostname: string): string | undefined {
         return undefined;
     }
 
+    return domain;
+}
 
-    /**
-     * Calculates a safe domain for cookies.
-     * 
-     * 1. For smol.xyz subdomains, returns '.smol.xyz' to allow session sharing.
-     * 2. For public suffixes (pages.dev, vercel.app), returns undefined (host-only cookie).
-     * 3. Prevents collisions between dev and production environments.
-     */
-    export function getSafeCookieDomain(hostname: string): string | undefined {
-        if (hostname.includes('localhost') || hostname.includes('127.0.0.1')) return undefined;
+/**
+ * Calculates a safe domain for cookies.
+ * 
+ * 1. For smol.xyz subdomains, returns '.smol.xyz' to allow session sharing.
+ * 2. For public suffixes (pages.dev, vercel.app), returns undefined (host-only cookie).
+ * 3. Prevents collisions between dev and production environments.
+ */
+export function getSafeCookieDomain(hostname: string): string | undefined {
+    if (hostname.includes('localhost') || hostname.includes('127.0.0.1')) return undefined;
 
-        const domain = getDomain(hostname);
-        const suffix = getPublicSuffix(hostname);
+    const domain = getDomain(hostname);
+    const suffix = getPublicSuffix(hostname);
 
-        // Only allow shared cookies across smol.xyz subdomains
-        if (domain === 'smol.xyz') {
-            return '.smol.xyz';
-        }
-
-        // For everything else, or if domain logic fails, use host-only
-        if (!domain || !suffix || domain === suffix) {
-            return undefined;
-        }
-
-        // Default to registrable domain if not blocked (e.g. self-hosted domains)
-        return `.${domain}`;
+    // Only allow shared cookies across smol.xyz subdomains
+    if (domain === 'smol.xyz') {
+        return '.smol.xyz';
     }
+
+    // For everything else, or if domain logic fails, use host-only
+    if (!domain || !suffix || domain === suffix) {
+        return undefined;
+    }
+
+    // Default to registrable domain if not blocked (e.g. self-hosted domains)
+    return `.${domain}`;
+}
