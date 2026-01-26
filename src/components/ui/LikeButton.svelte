@@ -1,7 +1,7 @@
 <script lang="ts">
     import { createEventDispatcher } from "svelte";
     import Loader from "./Loader.svelte";
-    import { userState } from "../../stores/user.svelte.ts";
+    import { userState } from "../../stores/user.state";
     import { toggleLike } from "../../utils/like";
 
     interface Props {

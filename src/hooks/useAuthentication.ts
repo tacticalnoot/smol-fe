@@ -2,15 +2,13 @@
  * FACTORY FRESH: Unified Authentication Hook
  * @see https://deepwiki.com/repo/kalepail/smol-fe#authentication
  * 
- * Handles PasskeyKit wallet creation and login, synchronized with
- * the smol-workflow backend. Uses the centralized "send" helper
- * for all wallet deployment transactions.
+ * Refactored to use DYNAMIC IMPORTS for heavy SDKs.
  */
 import Cookies from 'js-cookie';
 import { getDomain } from 'tldts';
-import { account, send } from '../utils/passkey-kit';
+// import { account, send } from '../utils/passkey-kit'; // REMOVED STATIC IMPORT
 import { getSafeRpId } from '../utils/domains';
-import { setUserAuth, clearUserAuth, userState } from '../stores/user.svelte.ts';
+import { setUserAuth, clearUserAuth, userState } from '../stores/user.svelte';
 import logger, { LogCategory } from '../utils/debug-logger';
 
 export function useAuthentication() {
@@ -23,6 +21,7 @@ export function useAuthentication() {
     clearUserAuth();
 
     try {
+      const { account } = await import('../utils/passkey-kit');
       const rpId = getSafeRpId(window.location.hostname);
       const result = await account.get().connectWallet({
         rpId,
@@ -81,22 +80,17 @@ export function useAuthentication() {
     const { getSafeCookieDomain } = await import('../utils/domains');
     const domain = getSafeCookieDomain(window.location.hostname);
 
-    // NUCLEAR OPTION: Clear any potentially colliding cookies on parent domains
-    // This fixes the "Invalid Cookie" error where .pages.dev or .smol.xyz cookies shadow the current host.
     const registrableDomain = getDomain(window.location.hostname);
     if (registrableDomain && registrableDomain !== domain?.replace(/^\./, '')) {
       Cookies.remove('smol_token', { domain: `.${registrableDomain}`, path: '/' });
       Cookies.remove('smol_token', { domain: registrableDomain, path: '/' });
     }
 
-    // Also clear host-only just in case
     Cookies.remove('smol_token', { path: '/' });
 
     const cookieOptions: Cookies.CookieAttributes = {
       path: '/',
       secure: window.location.protocol === 'https:',
-      // Use 'None' for cross-domain dev support, 'Lax' otherwise if desired.
-      // But 'None' is strictly required for cross-origin fetches (e.g. preview.pages.dev -> api.smol.xyz)
       sameSite: window.location.protocol === 'https:' ? 'None' : 'Lax',
       expires: 30,
     };
@@ -110,10 +104,10 @@ export function useAuthentication() {
   async function signUp(username: string, turnstileToken: string) {
     console.log('[Auth] Creating wallet for username:', username);
 
-    // Clear any stale credentials
     clearUserAuth();
 
     try {
+      const { account, send } = await import('../utils/passkey-kit');
       const rpId = getSafeRpId(window.location.hostname);
       const result = await account.get().createWallet(username, `SMOL — ${username}`, {
         rpId,
@@ -128,10 +122,8 @@ export function useAuthentication() {
         signedTx,
       } = result;
 
-      // 1. Perform API login to get session token
       await performLogin(cid, keyIdBase64, rawResponse, 'create', username);
 
-      // 2. Submit deployment transaction via proxy relayer
       console.log('[Auth] Submitting wallet deployment transaction...');
       await send(signedTx, turnstileToken);
 
@@ -154,21 +146,17 @@ export function useAuthentication() {
       sameSite: window.location.protocol === 'https:' ? 'None' : 'Lax',
     };
 
-    // Clear the specific configured domain
     if (domain) {
       Cookies.remove('smol_token', { ...cookieOptions, domain });
     }
 
-    // Clear host-only
     Cookies.remove('smol_token', { ...cookieOptions });
 
-    // Clear registrable domain explicitly (nuclear)
     if (registrableDomain) {
       Cookies.remove('smol_token', { ...cookieOptions, domain: registrableDomain });
       Cookies.remove('smol_token', { ...cookieOptions, domain: `.${registrableDomain}` });
     }
 
-    // Clear all smol: related data
     Object.keys(localStorage).forEach((key) => {
       if (key.includes('smol:')) {
         localStorage.removeItem(key);
