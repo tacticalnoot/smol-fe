@@ -164,18 +164,22 @@
     let interruptionTime: number | null = null;
     let isExternalAudio = false; // Bluetooth, CarPlay, or external speaker detected
 
-    // Cooldown periods before auto-resume (prevents fighting with other media)
-    const AGGRESSIVE_COOLDOWN_MS = 1500; // Bluetooth/CarPlay - faster resume for drivers
-    const POLITE_COOLDOWN_MS = 5000; // Device speakers - wait longer for other media (e.g. X videos) to finish
+    // Dynamic Cooldown / Adaptive Polite Mode
+    let currentPoliteCooldown = 1000; // Start snappy (1s)
+    const MIN_POLITE_COOLDOWN = 1000;
+    const MAX_POLITE_COOLDOWN = 8000;
+
+    let lastResumeTime = 0;
+    const SUCCESSFUL_PLAY_THRESHOLD = 5000; // 5s of playback = "clear"
 
     // Fighting Protection: Circuit breaker for rapid-fire interruptions
     let interruptionCount = 0;
     let lastInterruptionTime = 0;
-    const INTERRUPTION_WINDOW_MS = 30000; // 30 seconds
-    const MAX_INTERRUPTIONS = 3;
+    const INTERRUPTION_WINDOW_MS = 60000; // Increase to 60s for better protection
+    const MAX_INTERRUPTIONS = 5; // More attempts if we are snappy
 
     const getResumeCooldown = () =>
-      isExternalAudio ? AGGRESSIVE_COOLDOWN_MS : POLITE_COOLDOWN_MS;
+      isExternalAudio ? AGGRESSIVE_COOLDOWN_MS : currentPoliteCooldown;
 
     /**
      * Update the system MediaSession status
@@ -255,6 +259,7 @@
           console.log(
             "[Audio] Bluetooth connected while interrupted - attempting resume",
           );
+          currentPoliteCooldown = MIN_POLITE_COOLDOWN; // Reset on device change
           setTimeout(attemptResume, 500);
         }
       }
@@ -287,9 +292,10 @@
         (!audioState.playingId || audioState.wasInterrupted)
       ) {
         console.log("[Audio] Media Session play action - resuming playback");
-        // Reset cooldown and circuit breaker since user explicitly requested play
+        // Reset everything since user explicitly requested play
         interruptionTime = null;
         interruptionCount = 0;
+        currentPoliteCooldown = MIN_POLITE_COOLDOWN;
         if (audioState.wasInterrupted) {
           attemptResume();
         } else {
@@ -374,7 +380,24 @@
       if (audioState.playingId && audioState.currentSong) {
         const now = Date.now();
 
-        // Track fighting frequency
+        // Adaptive Backoff: If we were interrupted soon after resuming, increase delay
+        if (
+          lastResumeTime > 0 &&
+          now - lastResumeTime < SUCCESSFUL_PLAY_THRESHOLD
+        ) {
+          currentPoliteCooldown = Math.min(
+            currentPoliteCooldown * 2,
+            MAX_POLITE_COOLDOWN,
+          );
+          console.log(
+            `[Audio] Rapid interruption detected. Increasing backoff to ${currentPoliteCooldown}ms`,
+          );
+        } else {
+          // If we played for a long time, reset to snappy
+          currentPoliteCooldown = MIN_POLITE_COOLDOWN;
+        }
+
+        // Track fighting frequency for circuit breaker
         if (now - lastInterruptionTime < INTERRUPTION_WINDOW_MS) {
           interruptionCount++;
         } else {
@@ -384,7 +407,7 @@
 
         if (interruptionCount > MAX_INTERRUPTIONS) {
           console.warn(
-            `[Audio] Stop fighting! ${interruptionCount} interruptions detected in 30s. Disabling auto-resume.`,
+            `[Audio] Stop fighting! ${interruptionCount} interruptions detected in 60s. Disabling auto-resume.`,
           );
           audioState.wasInterrupted = false;
           audioState.playingId = null; // Yield completely
@@ -413,6 +436,7 @@
         interruptionTime = null;
         stopResumePolling();
       }
+      lastResumeTime = Date.now();
     };
 
     // Handle when audio becomes playable - good time to resume after interruption
@@ -449,7 +473,6 @@
       }
 
       // Check cooldown (prevents fighting with other media)
-      // Polite mode uses longer cooldown to wait for other media to finish
       if (!canAttemptResume()) {
         const cooldown = getResumeCooldown();
         const remaining = cooldown - (Date.now() - (interruptionTime || 0));
@@ -479,6 +502,7 @@
         audioState.wasInterrupted = false;
         interruptionTime = null;
         resumeAttempts = 0;
+        // lastResumeTime is updated via "play" listener
       } catch (error) {
         console.warn(
           `[Audio] Auto-resume failed (attempt ${resumeAttempts}):`,
@@ -503,27 +527,15 @@
     const handleVisibilityChange = () => {
       if (document.visibilityState === "visible" && audioState.wasInterrupted) {
         console.log(
-          `[Audio] Page became visible - mode: ${isExternalAudio ? "aggressive" : "polite"}`,
+          `[Audio] Page became visible - resetting backoff for snappier resume`,
         );
 
-        // Auto-resume in both modes after cooldown
-        // Aggressive mode: faster resume (3s cooldown)
-        // Polite mode: wait for other media to finish (5s cooldown)
-        if (canAttemptResume()) {
-          setTimeout(attemptResume, 50);
-          setTimeout(attemptResume, 200);
-          setTimeout(attemptResume, 500);
-          setTimeout(attemptResume, 1000);
-        } else {
-          // Schedule resume after cooldown expires
-          const cooldown = getResumeCooldown();
-          const elapsed = Date.now() - (interruptionTime || 0);
-          const remaining = Math.max(0, cooldown - elapsed);
-          console.log(
-            `[Audio] Scheduling resume after ${remaining}ms cooldown`,
-          );
-          setTimeout(attemptResume, remaining + 100);
-        }
+        // Focus = User intent. Reset backoff and attempt immediate resume.
+        currentPoliteCooldown = MIN_POLITE_COOLDOWN;
+        interruptionTime = null;
+
+        setTimeout(attemptResume, 50);
+        setTimeout(attemptResume, 500);
       }
     };
 
@@ -531,25 +543,15 @@
     const handleFocus = () => {
       if (audioState.wasInterrupted) {
         console.log(
-          `[Audio] Window gained focus - mode: ${isExternalAudio ? "aggressive" : "polite"}`,
+          `[Audio] Window gained focus - resetting backoff for snappier resume`,
         );
 
-        // Auto-resume in both modes after cooldown
-        if (canAttemptResume()) {
-          setTimeout(attemptResume, 50);
-          setTimeout(attemptResume, 200);
-          setTimeout(attemptResume, 500);
-          setTimeout(attemptResume, 1000);
-        } else {
-          // Schedule resume after cooldown expires
-          const cooldown = getResumeCooldown();
-          const elapsed = Date.now() - (interruptionTime || 0);
-          const remaining = Math.max(0, cooldown - elapsed);
-          console.log(
-            `[Audio] Scheduling resume after ${remaining}ms cooldown`,
-          );
-          setTimeout(attemptResume, remaining + 100);
-        }
+        // Focus = User intent. Reset backoff and attempt immediate resume.
+        currentPoliteCooldown = MIN_POLITE_COOLDOWN;
+        interruptionTime = null;
+
+        setTimeout(attemptResume, 50);
+        setTimeout(attemptResume, 500);
       }
     };
 
