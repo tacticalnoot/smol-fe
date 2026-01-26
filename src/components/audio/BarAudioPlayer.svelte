@@ -166,10 +166,27 @@
 
     // Cooldown periods before auto-resume (prevents fighting with other media)
     const AGGRESSIVE_COOLDOWN_MS = 1500; // Bluetooth/CarPlay - faster resume for drivers
-    const POLITE_COOLDOWN_MS = 1000; // Device speakers - wait for other media to finish
+    const POLITE_COOLDOWN_MS = 5000; // Device speakers - wait longer for other media (e.g. X videos) to finish
+
+    // Fighting Protection: Circuit breaker for rapid-fire interruptions
+    let interruptionCount = 0;
+    let lastInterruptionTime = 0;
+    const INTERRUPTION_WINDOW_MS = 30000; // 30 seconds
+    const MAX_INTERRUPTIONS = 3;
 
     const getResumeCooldown = () =>
       isExternalAudio ? AGGRESSIVE_COOLDOWN_MS : POLITE_COOLDOWN_MS;
+
+    /**
+     * Update the system MediaSession status
+     */
+    const updateMediaSessionPlaybackState = (
+      state: "playing" | "paused" | "none",
+    ) => {
+      if ("mediaSession" in navigator) {
+        navigator.mediaSession.playbackState = state;
+      }
+    };
 
     /**
      * Detect if audio is routed through Bluetooth or external speakers
@@ -270,8 +287,9 @@
         (!audioState.playingId || audioState.wasInterrupted)
       ) {
         console.log("[Audio] Media Session play action - resuming playback");
-        // Reset cooldown since user explicitly requested play
+        // Reset cooldown and circuit breaker since user explicitly requested play
         interruptionTime = null;
+        interruptionCount = 0;
         if (audioState.wasInterrupted) {
           attemptResume();
         } else {
@@ -351,13 +369,34 @@
 
     // Track audio interruptions via pause event
     const handleAudioPause = () => {
+      updateMediaSessionPlaybackState("paused");
       // If audio paused but playingId is still set, it's an interruption
       if (audioState.playingId && audioState.currentSong) {
+        const now = Date.now();
+
+        // Track fighting frequency
+        if (now - lastInterruptionTime < INTERRUPTION_WINDOW_MS) {
+          interruptionCount++;
+        } else {
+          interruptionCount = 1;
+        }
+        lastInterruptionTime = now;
+
+        if (interruptionCount > MAX_INTERRUPTIONS) {
+          console.warn(
+            `[Audio] Stop fighting! ${interruptionCount} interruptions detected in 30s. Disabling auto-resume.`,
+          );
+          audioState.wasInterrupted = false;
+          audioState.playingId = null; // Yield completely
+          stopResumePolling();
+          return;
+        }
+
         console.log(
-          `[Audio] Interruption detected - audio paused unexpectedly (mode: ${isExternalAudio ? "aggressive" : "polite"})`,
+          `[Audio] Interruption detected #${interruptionCount} - audio paused unexpectedly (mode: ${isExternalAudio ? "aggressive" : "polite"})`,
         );
         audioState.wasInterrupted = true;
-        interruptionTime = Date.now(); // Start cooldown timer
+        interruptionTime = now; // Start cooldown timer
 
         // Always start polling to monitor for "clear" audio state
         startResumePolling();
@@ -366,6 +405,7 @@
 
     // Clear interruption flag when audio successfully plays
     const handleAudioPlay = () => {
+      updateMediaSessionPlaybackState("playing");
       if (audioState.wasInterrupted) {
         console.log("[Audio] Playback resumed successfully after interruption");
         audioState.wasInterrupted = false;
