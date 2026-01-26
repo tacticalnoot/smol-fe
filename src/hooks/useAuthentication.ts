@@ -100,7 +100,7 @@ export function useAuthentication() {
 
     try {
       const rpId = getSafeRpId(window.location.hostname);
-      const result = await account.get().createWallet('smol.xyz', `SMOL — ${username}`, {
+      const result = await account.get().createWallet(username, `SMOL — ${username}`, {
         rpId,
       });
 
