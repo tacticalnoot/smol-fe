@@ -53,11 +53,14 @@
             }
         } catch (error) {
             console.error("Failed to toggle like:", error);
-            alert(
-                error instanceof Error
-                    ? error.message
-                    : "Failed to like/unlike",
-            );
+            const msg = error instanceof Error ? error.message : String(error);
+            if (msg.includes("Cookie") || msg.includes("token")) {
+                alert(
+                    "Session expired or invalid. Please refresh and try again.",
+                );
+            } else {
+                alert(msg || "Failed to like/unlike");
+            }
         } finally {
             liking = false;
         }
