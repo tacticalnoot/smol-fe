@@ -50,6 +50,7 @@
   let loadingMore = $state(false);
   let scrollTrigger = $state<HTMLDivElement | null>(null);
   let displayLimit = $state(50); // Start with 50 items for speed
+  let preloadedImageIds = new Set<string>(); // Track preloaded images to prevent duplicates
 
   // Profile mode tab state
   let activeTab = $state<"discography" | "minted" | "collection">(
@@ -312,6 +313,7 @@
   // Speculative Image Preloading: Load images for the NEXT page of results
   // This ensures that when the user scrolls down, images are already cached
   // DISABLED IN FAST MODE to save memory
+  // MEMORY FIX: Track preloaded IDs to prevent creating duplicate Image objects
   $effect(() => {
     if (preferences.renderMode !== "thinking") return;
 
@@ -322,8 +324,11 @@
       // Use requestIdleCallback if available to avoid blocking main thread
       const preload = () => {
         nextBatch.forEach((smol) => {
-          const img = new Image();
-          img.src = `${API_URL}/image/${smol.Id}.png`;
+          if (!preloadedImageIds.has(smol.Id)) {
+            preloadedImageIds.add(smol.Id);
+            const img = new Image();
+            img.src = `${API_URL}/image/${smol.Id}.png`;
+          }
         });
       };
 
@@ -376,9 +381,12 @@
   }
 
   function handleLikeChanged(smol: Smol, liked: boolean) {
-    results = results.map((s) =>
-      s.Id === smol.Id ? { ...s, Liked: liked } : s,
-    );
+    // PERFORMANCE FIX: Direct mutation instead of array.map() spread
+    // With Svelte 5 $state, direct mutation triggers reactivity without copying entire array
+    const item = results.find((s) => s.Id === smol.Id);
+    if (item) {
+      item.Liked = liked;
+    }
   }
 
   async function loadMore() {

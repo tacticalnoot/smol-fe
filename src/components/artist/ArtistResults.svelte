@@ -1,5 +1,5 @@
 <script lang="ts">
-    import { onMount, untrack, tick } from "svelte";
+    import { onMount, onDestroy, untrack, tick } from "svelte";
     import type { Smol } from "../../types/domain";
     import {
         audioState,
@@ -193,7 +193,8 @@
 
                 // 2. Select & Play (Async to allow UI update)
                 // We use a slight timeout to let Svelte flush the view state change
-                setTimeout(async () => {
+                const playTimeout = setTimeout(async () => {
+                    pendingTimeouts.delete(playTimeout);
                     // Select song (updates store)
                     selectSong(songToPlay);
 
@@ -211,6 +212,7 @@
 
                     // 3. Selection handles the rest via reactive effects
                 }, 50);
+                pendingTimeouts.add(playTimeout);
             }
         }
     });
@@ -329,7 +331,8 @@
                 showGridView = true;
 
                 // Ensure we scroll to it after grid renders
-                setTimeout(() => {
+                const scrollTimeout = setTimeout(() => {
+                    pendingTimeouts.delete(scrollTimeout);
                     const el = document.getElementById(`song-${playId}`);
                     if (el)
                         el.scrollIntoView({
@@ -337,6 +340,7 @@
                             behavior: "smooth",
                         });
                 }, 100);
+                pendingTimeouts.add(scrollTimeout);
             }
         } else if (discography.length > 0) {
             // If NO play param:
@@ -646,7 +650,8 @@
 
             // Perform the actual scroll
             tick().then(() => {
-                setTimeout(() => {
+                const scrollToSongTimeout = setTimeout(() => {
+                    pendingTimeouts.delete(scrollToSongTimeout);
                     const el = document.getElementById(`song-${songId}`);
                     if (el) {
                         el.scrollIntoView({
@@ -655,6 +660,7 @@
                         });
                     }
                 }, 100);
+                pendingTimeouts.add(scrollToSongTimeout);
             });
         });
     });
@@ -790,6 +796,20 @@
 
     // Pagination for Grid View to prevent OOM/Layout thrashing on mobile
     let gridLimit = $state(50);
+    const GRID_LIMIT_MAX = 500; // Cap to prevent unbounded DOM growth
+
+    // Track preloaded image IDs to prevent re-creating Image objects
+    let preloadedImageIds = new Set<string>();
+
+    // Track pending timeouts for cleanup
+    let pendingTimeouts = new Set<ReturnType<typeof setTimeout>>();
+
+    onDestroy(() => {
+        // Clear all pending timeouts
+        pendingTimeouts.forEach(t => clearTimeout(t));
+        pendingTimeouts.clear();
+        preloadedImageIds.clear();
+    });
 
     // Derived display playlist (no random calls here = stable)
     const displayPlaylist = $derived.by(() => {
@@ -804,6 +824,7 @@
     // OPTIMIZED: Rolling Buffer Preloading
     // 1. Fixes Cache Miss: Now uses ?scale=8 to match Grid View (rendered as HD pixel art)
     // 2. Rolling Window: Preloads the current grid + 50 items ahead to maintain "Hardware Feel" without downloading 500+ items at once.
+    // 3. MEMORY FIX: Track preloaded IDs to avoid creating duplicate Image objects
     $effect(() => {
         if (!isBrowser || !displayPlaylist || displayPlaylist.length === 0)
             return;
@@ -817,14 +838,16 @@
                 gridLimit + PRELOAD_BUFFER,
             );
 
-            // We only need to trigger loads for the "new" potential items
-            // But since browser handles deduping cached requests, iterating the slice is fine.
+            // Only preload images we haven't already preloaded
             const batch = displayPlaylist.slice(0, targetIndex);
 
             batch.forEach((song) => {
-                const img = new Image();
-                // CRITICAL: Must match Grid View src exactly for cache hit
-                img.src = `${API_URL}/image/${song.Id}.png?scale=8`;
+                if (!preloadedImageIds.has(song.Id)) {
+                    preloadedImageIds.add(song.Id);
+                    const img = new Image();
+                    // CRITICAL: Must match Grid View src exactly for cache hit
+                    img.src = `${API_URL}/image/${song.Id}.png?scale=8`;
+                }
             });
         }, 500);
 
@@ -855,9 +878,9 @@
         const { scrollTop, scrollHeight, clientHeight } = el;
         // Load more when within 800px of bottom
         if (scrollHeight - scrollTop - clientHeight < 800) {
-            if (gridLimit < displayPlaylist.length) {
+            if (gridLimit < displayPlaylist.length && gridLimit < GRID_LIMIT_MAX) {
                 // Throttle? Svelte updates are fast enough usually, but let's be safe
-                gridLimit += 50;
+                gridLimit = Math.min(gridLimit + 50, GRID_LIMIT_MAX);
             }
         }
     }
@@ -888,7 +911,8 @@
                 lastScrolledSongId = currentSong.Id;
 
                 // Wait for the fly transition (delay: 100 + duration: 600 slightly overlapping)
-                setTimeout(() => {
+                const viewScrollTimeout = setTimeout(() => {
+                    pendingTimeouts.delete(viewScrollTimeout);
                     // Fix: Dynamic ID based on view mode
                     const elementId = showGridView
                         ? `song-${currentSong.Id}`
@@ -902,6 +926,7 @@
                         });
                     }
                 }, 250);
+                pendingTimeouts.add(viewScrollTimeout);
             }
         }
     });
