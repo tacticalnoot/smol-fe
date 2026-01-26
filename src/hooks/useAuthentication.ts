@@ -78,15 +78,19 @@ export function useAuthentication() {
     setUserAuth(cid, keyIdBase64);
     userState.walletConnected = true;
 
-    const domain = getDomain(window.location.hostname);
+    const { getSafeCookieDomain } = await import('../utils/domains');
+    const domain = getSafeCookieDomain(window.location.hostname);
+
     const cookieOptions: Cookies.CookieAttributes = {
       path: '/',
       secure: window.location.protocol === 'https:',
-      sameSite: 'Lax',
+      // Use 'None' for cross-domain dev support, 'Lax' otherwise if desired.
+      // But 'None' is strictly required for cross-origin fetches (e.g. preview.pages.dev -> api.smol.xyz)
+      sameSite: window.location.protocol === 'https:' ? 'None' : 'Lax',
       expires: 30,
     };
     if (domain) {
-      cookieOptions.domain = `.${domain}`;
+      cookieOptions.domain = domain;
     }
 
     Cookies.set('smol_token', jwt, cookieOptions);
@@ -129,14 +133,16 @@ export function useAuthentication() {
   async function logout() {
     clearUserAuth();
 
-    const domain = getDomain(window.location.hostname);
+    const { getSafeCookieDomain } = await import('../utils/domains');
+    const domain = getSafeCookieDomain(window.location.hostname);
+
     const cookieOptions: Cookies.CookieAttributes = {
       path: '/',
-      secure: true,
-      sameSite: 'Lax',
+      secure: window.location.protocol === 'https:',
+      sameSite: window.location.protocol === 'https:' ? 'None' : 'Lax',
     };
     if (domain) {
-      cookieOptions.domain = `.${domain}`;
+      cookieOptions.domain = domain;
     }
 
     Cookies.remove('smol_token', cookieOptions);
