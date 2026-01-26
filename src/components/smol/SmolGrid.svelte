@@ -313,7 +313,7 @@
   // This ensures that when the user scrolls down, images are already cached
   // DISABLED IN FAST MODE to save memory
   $effect(() => {
-    if (preferences.renderMode !== 'thinking') return;
+    if (preferences.renderMode !== "thinking") return;
 
     const nextLimit = displayLimit + 50;
     const nextBatch = filteredResults.slice(displayLimit, nextLimit);
@@ -376,10 +376,9 @@
   }
 
   function handleLikeChanged(smol: Smol, liked: boolean) {
-    const foundSmol = results.find((s) => s.Id === smol.Id);
-    if (foundSmol) {
-      foundSmol.Liked = liked;
-    }
+    results = results.map((s) =>
+      s.Id === smol.Id ? { ...s, Liked: liked } : s,
+    );
   }
 
   async function loadMore() {
