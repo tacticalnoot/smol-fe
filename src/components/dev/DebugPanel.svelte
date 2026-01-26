@@ -144,7 +144,7 @@
             // Logs (BigInt safe)
             logs: allLogs.map((l) => ({
                 ...l,
-                data: JSON.parse(safeStringify(l.data)),
+                data: l.data ? JSON.parse(safeStringify(l.data)) : undefined,
             })),
             logStats: logger.getStats(),
 

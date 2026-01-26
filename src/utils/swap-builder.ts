@@ -16,9 +16,10 @@ import {
     xdr,
     TransactionBuilder,
     Networks,
-    Account
+    Account,
+    rpc
 } from "@stellar/stellar-sdk";
-import { Server, Api, assembleTransaction } from "@stellar/stellar-sdk/rpc";
+const { Server, Api, assembleTransaction } = rpc;
 import type { QuoteResponse, RawTradeDistribution } from "./soroswap";
 import logger, { LogCategory } from "./debug-logger";
 import { safeStringify } from "./soroswap";
