@@ -1,5 +1,5 @@
 <script lang="ts">
-    import { onMount, untrack, tick } from "svelte";
+    import { onMount, onDestroy, untrack, tick } from "svelte";
     import type { Smol } from "../../types/domain";
     import {
         audioState,
@@ -193,7 +193,8 @@
 
                 // 2. Select & Play (Async to allow UI update)
                 // We use a slight timeout to let Svelte flush the view state change
-                setTimeout(async () => {
+                const playTimeout = setTimeout(async () => {
+                    pendingTimeouts.delete(playTimeout);
                     // Select song (updates store)
                     selectSong(songToPlay);
 
@@ -211,6 +212,7 @@
 
                     // 3. Selection handles the rest via reactive effects
                 }, 50);
+                pendingTimeouts.add(playTimeout);
             }
         }
     });
@@ -329,7 +331,8 @@
                 showGridView = true;
 
                 // Ensure we scroll to it after grid renders
-                setTimeout(() => {
+                const scrollTimeout = setTimeout(() => {
+                    pendingTimeouts.delete(scrollTimeout);
                     const el = document.getElementById(`song-${playId}`);
                     if (el)
                         el.scrollIntoView({
@@ -337,6 +340,7 @@
                             behavior: "smooth",
                         });
                 }, 100);
+                pendingTimeouts.add(scrollTimeout);
             }
         } else if (discography.length > 0) {
             // If NO play param:
@@ -646,7 +650,8 @@
 
             // Perform the actual scroll
             tick().then(() => {
-                setTimeout(() => {
+                const scrollToSongTimeout = setTimeout(() => {
+                    pendingTimeouts.delete(scrollToSongTimeout);
                     const el = document.getElementById(`song-${songId}`);
                     if (el) {
                         el.scrollIntoView({
@@ -655,6 +660,7 @@
                         });
                     }
                 }, 100);
+                pendingTimeouts.add(scrollToSongTimeout);
             });
         });
     });
@@ -795,6 +801,16 @@
     // Track preloaded image IDs to prevent re-creating Image objects
     let preloadedImageIds = new Set<string>();
 
+    // Track pending timeouts for cleanup
+    let pendingTimeouts = new Set<ReturnType<typeof setTimeout>>();
+
+    onDestroy(() => {
+        // Clear all pending timeouts
+        pendingTimeouts.forEach(t => clearTimeout(t));
+        pendingTimeouts.clear();
+        preloadedImageIds.clear();
+    });
+
     // Derived display playlist (no random calls here = stable)
     const displayPlaylist = $derived.by(() => {
         if (shuffleEnabled && shuffledOrder.length > 0) {
@@ -895,7 +911,8 @@
                 lastScrolledSongId = currentSong.Id;
 
                 // Wait for the fly transition (delay: 100 + duration: 600 slightly overlapping)
-                setTimeout(() => {
+                const viewScrollTimeout = setTimeout(() => {
+                    pendingTimeouts.delete(viewScrollTimeout);
                     // Fix: Dynamic ID based on view mode
                     const elementId = showGridView
                         ? `song-${currentSong.Id}`
@@ -909,6 +926,7 @@
                         });
                     }
                 }, 250);
+                pendingTimeouts.add(viewScrollTimeout);
             }
         }
     });

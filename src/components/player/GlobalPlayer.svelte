@@ -1,5 +1,5 @@
 <script lang="ts">
-    import { onMount, untrack, tick } from "svelte";
+    import { onMount, onDestroy, untrack, tick } from "svelte";
     import {
         audioState,
         selectSong,
@@ -140,7 +140,8 @@
             }
 
             // Tiny timeout to ensure DOM is ready if it was just unhidden or expanded
-            setTimeout(() => {
+            const scrollTimeout = setTimeout(() => {
+                pendingTimeouts.delete(scrollTimeout);
                 const el = document.getElementById(
                     `song-card-${audioState.playingId}`,
                 );
@@ -152,6 +153,7 @@
                     });
                 }
             }, 100);
+            pendingTimeouts.add(scrollTimeout);
         }
     });
 
@@ -418,6 +420,14 @@
 
     let gridLimit = $state(50);
     const GRID_LIMIT_MAX = 500; // Cap to prevent unbounded DOM growth
+
+    // Track pending timeouts for cleanup
+    let pendingTimeouts = new Set<ReturnType<typeof setTimeout>>();
+
+    onDestroy(() => {
+        pendingTimeouts.forEach(t => clearTimeout(t));
+        pendingTimeouts.clear();
+    });
     const displayPlaylist = $derived.by(() => {
         if (shuffleEnabled && shuffledOrder.length > 0) {
             return shuffledOrder;
