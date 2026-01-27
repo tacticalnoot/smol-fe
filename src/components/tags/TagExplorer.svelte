@@ -12,6 +12,7 @@
         audioState,
         selectSong,
         registerSongNextCallback,
+        setPlaylistContext,
         isPlaying,
         togglePlayPause,
     } from "../../stores/audio.svelte.ts";
@@ -303,6 +304,16 @@
     $effect(() => {
         const song = audioState.currentSong;
         mediaHook.updateMediaMetadata(song, API_URL);
+    });
+
+    // Store playlist context for fallback playback when navigating to pages without playlists
+    $effect(() => {
+        if (filteredSmols.length > 0) {
+            const currentIndex = audioState.currentSong
+                ? filteredSmols.findIndex((s) => s.Id === audioState.currentSong?.Id)
+                : 0;
+            setPlaylistContext(filteredSmols, Math.max(0, currentIndex));
+        }
     });
 
     function handleLikeChanged(smol: Smol, liked: boolean) {
