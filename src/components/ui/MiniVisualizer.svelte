@@ -27,7 +27,7 @@
         if (!dataArray || dataArray.length !== bufferLength) {
             dataArray = new Uint8Array(bufferLength);
         }
-        audioState.analyser.getByteTimeDomainData(dataArray);
+        audioState.analyser.getByteTimeDomainData(dataArray as any);
 
         // Initialize smoothing buffer
         if (!lastDataArray || lastDataArray.length !== bufferLength) {
@@ -76,7 +76,11 @@
 
     $effect(() => {
         // Only run visualizer in thinking mode (performance optimization)
-        if (canvas && audioState.analyser && preferences.renderMode === 'thinking') {
+        if (
+            canvas &&
+            audioState.analyser &&
+            preferences.renderMode === "thinking"
+        ) {
             draw();
         }
 
@@ -86,7 +90,7 @@
     });
 </script>
 
-{#if preferences.renderMode === 'thinking'}
+{#if preferences.renderMode === "thinking"}
     <canvas
         bind:this={canvas}
         width="300"

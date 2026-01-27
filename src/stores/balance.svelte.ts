@@ -91,6 +91,32 @@ export async function updateXlmBalance(address: string | null): Promise<void> {
 }
 
 /**
+ * Update USDC balance for a given address
+ */
+export async function updateUsdcBalance(address: string | null): Promise<void> {
+  if (!address) {
+    balanceState.usdcBalance = null;
+    return;
+  }
+
+  if (balanceState.transactionLock) {
+    console.log('[Balance] Skipping USDC balance update - transaction in progress');
+    return;
+  }
+
+  try {
+    // DYNAMIC IMPORT
+    const { usdc } = await import('../utils/passkey-kit');
+    const { result } = await usdc.get().balance({ id: address });
+    balanceState.usdcBalance = result;
+    balanceState.lastUpdated = new Date();
+  } catch (error) {
+    console.error('Failed to update USDC balance:', error);
+    balanceState.usdcBalance = null;
+  }
+}
+
+/**
  * Update all balances (KALE + XLM) for a given address
  */
 export async function updateAllBalances(address: string | null): Promise<void> {
@@ -104,6 +130,7 @@ export async function updateAllBalances(address: string | null): Promise<void> {
     await Promise.all([
       updateContractBalance(address),
       updateXlmBalance(address),
+      updateUsdcBalance(address),
     ]);
   } catch (error) {
     console.error('[Balance] Failed to update all balances:', error);
@@ -118,6 +145,7 @@ export async function updateAllBalances(address: string | null): Promise<void> {
 export function resetBalance(): void {
   balanceState.balance = null;
   balanceState.xlmBalance = null;
+  balanceState.usdcBalance = null;
   balanceState.loading = false;
   balanceState.lastUpdated = null;
   balanceState.transactionLock = false;

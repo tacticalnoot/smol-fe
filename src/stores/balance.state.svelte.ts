@@ -6,12 +6,14 @@
 export const balanceState = $state<{
     balance: bigint | null;
     xlmBalance: bigint | null;
+    usdcBalance: bigint | null;
     loading: boolean;
     lastUpdated: Date | null;
     transactionLock: boolean; // Prevents concurrent balance updates during transactions
 }>({
     balance: null,
     xlmBalance: null,
+    usdcBalance: null,
     loading: false,
     lastUpdated: null,
     transactionLock: false,
@@ -29,6 +31,13 @@ export function getBalance(): bigint | null {
  */
 export function getXlmBalance(): bigint | null {
     return balanceState.xlmBalance;
+}
+
+/**
+ * Get current USDC balance (read-only accessor)
+ */
+export function getUsdcBalance(): bigint | null {
+    return balanceState.usdcBalance;
 }
 
 /**

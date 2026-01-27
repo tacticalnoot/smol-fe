@@ -1,5 +1,5 @@
 <script lang="ts">
-    import { account, sac, kale, xlm } from "../../utils/passkey-kit";
+    import { account, sac, kale, xlm, usdc } from "../../utils/passkey-kit";
     import { onMount, tick } from "svelte";
     import confetti from "canvas-confetti";
     import { getSafeRpId } from "../../utils/domains";
@@ -26,6 +26,7 @@
     import {
         balanceState,
         updateAllBalances,
+        getUsdcBalance,
     } from "../../stores/balance.svelte.ts";
     import {
         signSendAndVerify,
@@ -82,7 +83,9 @@
 
     // Swap Logic
     let swapState = $state<SwapState>("idle");
-    let direction = $state<SwapDirection>("XLM_TO_KALE");
+    // Refactored from fixed direction to flexible tokens
+    let swapInToken = $state<"XLM" | "KALE" | "USDC">("XLM");
+    let swapOutToken = $state<"XLM" | "KALE" | "USDC">("KALE");
 
     // Bi-Directional Input State
     let swapAmount = $state(""); // Top Input (Sell)
@@ -102,29 +105,28 @@
     // Send Logic
     let sendTo = $state("");
     let sendAmount = $state("");
-    let sendToken = $state<"XLM" | "KALE">("XLM");
+    let sendToken = $state<"XLM" | "KALE" | "USDC">("XLM");
 
     // Balances
     let xlmBalance = $derived(balanceState.xlmBalance);
     let kaleBalance = $derived(balanceState.balance);
+    let usdcBalance = $derived(balanceState.usdcBalance);
 
     // Derived Display
-    let tokenInSymbol = $derived(
-        mode === "swap"
-            ? direction === "XLM_TO_KALE"
-                ? "XLM"
-                : "KALE"
-            : sendToken,
-    );
-    let tokenOutSymbol = $derived(direction === "XLM_TO_KALE" ? "KALE" : "XLM");
+    let tokenInSymbol = $derived(mode === "swap" ? swapInToken : sendToken);
+    let tokenOutSymbol = $derived(swapOutToken);
     let balanceIn = $derived(
         mode === "swap"
-            ? direction === "XLM_TO_KALE"
+            ? swapInToken === "XLM"
                 ? xlmBalance
-                : kaleBalance
+                : swapInToken === "KALE"
+                  ? kaleBalance
+                  : usdcBalance
             : sendToken === "XLM"
               ? xlmBalance
-              : kaleBalance,
+              : sendToken === "KALE"
+                ? kaleBalance
+                : usdcBalance,
     );
 
     // --- UTILS ---
@@ -160,13 +162,39 @@
     }
 
     function toggleDirection() {
-        direction = direction === "XLM_TO_KALE" ? "KALE_TO_XLM" : "XLM_TO_KALE";
+        const temp = swapInToken;
+        swapInToken = swapOutToken;
+        swapOutToken = temp;
         swapAmount = "";
         swapOutputAmount = "";
         lastEdited = "in";
         quote = null;
         quoteError = "";
         swapState = "idle";
+    }
+
+    const TOKENS_LIST: ("XLM" | "KALE" | "USDC")[] = ["XLM", "KALE", "USDC"];
+
+    function cycleTokenIn() {
+        const idx = TOKENS_LIST.indexOf(swapInToken);
+        let next = TOKENS_LIST[(idx + 1) % TOKENS_LIST.length];
+        if (next === swapOutToken) {
+            next = TOKENS_LIST[(idx + 2) % TOKENS_LIST.length];
+        }
+        swapInToken = next;
+        quote = null;
+        if (swapAmount || swapOutputAmount) fetchQuote();
+    }
+
+    function cycleTokenOut() {
+        const idx = TOKENS_LIST.indexOf(swapOutToken);
+        let next = TOKENS_LIST[(idx + 1) % TOKENS_LIST.length];
+        if (next === swapInToken) {
+            next = TOKENS_LIST[(idx + 2) % TOKENS_LIST.length];
+        }
+        swapOutToken = next;
+        quote = null;
+        if (swapAmount || swapOutputAmount) fetchQuote();
     }
 
     function getImpactColor(pct: string | undefined): string {
@@ -281,10 +309,8 @@
 
             try {
                 const stroops = toStroops(amountStr);
-                const assetIn =
-                    direction === "XLM_TO_KALE" ? TOKENS.XLM : TOKENS.KALE;
-                const assetOut =
-                    direction === "XLM_TO_KALE" ? TOKENS.KALE : TOKENS.XLM;
+                const assetIn = TOKENS[swapInToken];
+                const assetOut = TOKENS[swapOutToken];
                 const tradeType =
                     lastEdited === "in" ? "EXACT_IN" : "EXACT_OUT";
 
@@ -379,6 +405,7 @@
                         userState.contractId,
                     );
                 } else {
+                    // Update buildTransaction to use flexible tokens
                     const result = await buildTransaction(
                         quote,
                         userState.contractId,
@@ -465,13 +492,16 @@
         statusMessage = `Sending ${sendToken}...`;
 
         try {
-            const tx = await (sendToken === "KALE" ? kale : xlm)
-                .get()
-                .transfer({
-                    from: userState.contractId,
-                    to: recipient,
-                    amount: amountInStroops,
-                });
+            let client;
+            if (sendToken === "KALE") client = kale;
+            else if (sendToken === "USDC") client = usdc;
+            else client = xlm;
+
+            const tx = await client.get().transfer({
+                from: userState.contractId,
+                to: recipient,
+                amount: amountInStroops,
+            });
 
             swapState = "submitting";
             statusMessage = "Submitting transfer...";
@@ -541,6 +571,21 @@
                         >
                         <span class="text-[#e2e8f0] drop-shadow-sm"
                             >{formatBigInt(kaleBalance, 2)}</span
+                        >
+                    </div>
+                    <div
+                        class="bg-[#0f172a]/60 px-3 py-2 rounded-lg border border-[#1e293b] flex items-center gap-2 shadow-sm backdrop-blur-sm"
+                    >
+                        <img
+                            src="https://cryptologos.cc/logos/usd-coin-usdc-logo.png"
+                            alt="USDC"
+                            class="w-3 h-3 object-contain opacity-90"
+                        />
+                        <span class="text-[#2775ca] uppercase tracking-wider"
+                            >USDC</span
+                        >
+                        <span class="text-[#e2e8f0] drop-shadow-sm"
+                            >{formatBigInt(usdcBalance, 2)}</span
                         >
                     </div>
                 </div>
@@ -639,10 +684,15 @@
                                     placeholder="0.0"
                                     class="w-full bg-transparent text-[#f1f5f9] text-2xl focus:outline-none font-[inherit] placeholder-[#334155]"
                                 />
-                                <span
-                                    class="text-xs text-[#94a3b8] ml-2 tracking-wider"
-                                    >{tokenInSymbol}</span
+
+                                <button
+                                    class="text-xs text-[#94a3b8] ml-2 tracking-wider hover:text-white hover:bg-white/10 px-2 py-1 rounded transition-colors flex items-center gap-1"
+                                    onclick={cycleTokenIn}
                                 >
+                                    {tokenInSymbol}
+                                    <span class="text-[10px] opacity-50">▼</span
+                                    >
+                                </button>
                             </div>
 
                             <!-- FLIPPER BRIDGE (Compact) -->
@@ -672,10 +722,15 @@
                                         class="w-full bg-transparent text-[#f1f5f9] text-2xl focus:outline-none font-[inherit] placeholder-[#334155]"
                                     />
                                 {/if}
-                                <span
-                                    class="text-xs text-[#94a3b8] ml-2 tracking-wider"
-                                    >{tokenOutSymbol}</span
+
+                                <button
+                                    class="text-xs text-[#94a3b8] ml-2 tracking-wider hover:text-white hover:bg-white/10 px-2 py-1 rounded transition-colors flex items-center gap-1"
+                                    onclick={cycleTokenOut}
                                 >
+                                    {tokenOutSymbol}
+                                    <span class="text-[10px] opacity-50">▼</span
+                                    >
+                                </button>
                             </div>
                         </div>
                     {:else}
@@ -700,6 +755,14 @@
                                         : 'text-[#64748b]'}"
                                     onclick={() => (sendToken = "KALE")}
                                     >KALE</button
+                                >
+                                <button
+                                    class="flex-1 py-3 text-[10px] rounded-lg transition-all {sendToken ===
+                                    'USDC'
+                                        ? 'bg-[#2775ca] text-white shadow-sm'
+                                        : 'text-[#64748b]'}"
+                                    onclick={() => (sendToken = "USDC")}
+                                    >USDC</button
                                 >
                             </div>
 
