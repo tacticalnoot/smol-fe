@@ -8,24 +8,22 @@
 
 ## Architecture & Logic
 - [State Diagram](STATEDIAGRAM.md) - Auth and Payment flow states
-- [Backend Handoff](BACKEND_HANDOFF.md) - Backend API and Integration specs
-- [Integration Reference](INTEGRATION_REFERENCE.md) - Third-party integration details
+- [Integration Reference](INTEGRATION_REFERENCE.md) - **Primary Architecture Doc**: Backend API, Environment, and Third-party integration specs.
 
 ## Optimization & Performance
-- [Optimizations](OPTIMIZATIONS.md) - General optimization notes
-- [Fast Mode](FAST_MODE_OPTIMIZATIONS.md) - Specifics of the "Fast Mode" implementation
-- [Auth Improvements](TX_AUTH_IMPROVEMENTS.md) - Transaction and Auth flow optimizations
+- [Performance Guide](PERFORMANCE.md) - **Consolidated**: Fast Mode, Auth/Tx Optimizations, and general performance strategies.
 
 ## Debugging
 - [Debugging Guide](DEBUGGING_GUIDE.md) - General debugging instructions
 - [Cast Debugging](CAST_DEBUG.md) - Google Cast specific debugging
 
-## Audits & Notes
-- [Audit Notes](AUDIT_NOTES.md) - General audit findings
-- [Passkey Audit](PASSKEY_WALLET_TRANSACTION_AUDIT.md) - Passkey specific audit
-- [General Notes](NOTES.md) - Miscellaneous dev notes
-- [Ecosystem Cache](SMOL_ECOSYSTEM_CACHE.md) - Immutable ecosystem references
-
 ## Testing
-- [Testing Summary](TESTING_SUMMARY.md) - Summary of test coverage
+- [Testing Guide](TESTING.md) - Comprehensive testing guide
 - [Local Testing Checklist](LOCAL_TESTING_CHECKLIST.md) - Manual testing step-by-step
+
+## Archive (Legacy/Audits)
+- [Audit Notes](archive/AUDIT_NOTES.md)
+- [Passkey Audit](PASSKEY_WALLET_TRANSACTION_AUDIT.md)
+- [General Notes](archive/NOTES.md)
+- [Ecosystem Cache](archive/SMOL_ECOSYSTEM_CACHE.md)
+
