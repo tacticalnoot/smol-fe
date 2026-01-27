@@ -5,6 +5,8 @@
         selectSong,
         registerSongNextCallback,
         registerSongPrevCallback,
+        setPlaylistContext,
+        updatePlaylistIndex,
         isPlaying,
         togglePlayPause,
         playNextSong,
@@ -540,6 +542,13 @@
             registerSongNextCallback(null);
             registerSongPrevCallback(null);
         };
+    });
+
+    // Store playlist context for fallback playback when navigating to pages without playlists
+    $effect(() => {
+        if (displayPlaylist.length > 0) {
+            setPlaylistContext(displayPlaylist, currentIndex);
+        }
     });
 
     function toggleArtistTag(tag: string) {

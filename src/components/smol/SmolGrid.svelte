@@ -6,6 +6,7 @@
     audioState,
     selectSong,
     registerSongNextCallback,
+    setPlaylistContext,
   } from "../../stores/audio.svelte.ts";
   import {
     mixtapeDraftState,
@@ -286,6 +287,16 @@
   onDestroy(() => {
     // Unregister the callback when this component is destroyed
     registerSongNextCallback(null);
+  });
+
+  // Store playlist context for fallback playback when navigating to pages without playlists
+  $effect(() => {
+    if (results.length > 0) {
+      const currentIndex = audioState.currentSong
+        ? results.findIndex((s) => s.Id === audioState.currentSong?.Id)
+        : 0;
+      setPlaylistContext(results, Math.max(0, currentIndex));
+    }
   });
 
   // Infinite scroll observer - set up when scrollTrigger is available
