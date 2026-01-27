@@ -367,4 +367,4 @@ The enhanced debug panel makes it trivial to diagnose issues with a single click
 
 **Last Updated:** 2026-01-24
 **Version:** 1.5.5
-**Primary Maintainer:** Jeff
+**Primary Maintainer:** Maintainer

@@ -98,6 +98,9 @@ smol-fe/
 └── astro.config.mjs       # Astro configuration
 ```
 
+## Documentation
+For detailed guides on setup, architecture, testing, and debugging, please see the [Documentation Index](docs/INDEX.md).
+
 ## Getting Started
 
 ### Prerequisites
