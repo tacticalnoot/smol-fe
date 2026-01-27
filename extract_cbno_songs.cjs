@@ -2,12 +2,13 @@
 const fs = require('fs');
 
 const TARGET_ADDRESS = "CBNORBI4DCE7LIC42FWMCIWQRULWAUGF2MH2Z7X2RNTFAYNXIACJ33IM";
-const INPUT_FILE = "universal-smols.json";
+const INPUT_FILE = "public/data/GalacticSnapshot.json";
 const OUTPUT_FILE = "cbno_discography.json";
 
 try {
     const rawData = fs.readFileSync(INPUT_FILE, 'utf8');
-    const smols = JSON.parse(rawData);
+    const data = JSON.parse(rawData);
+    const smols = data.songs || data; // Handle both new object structure and potential array fallback
 
     const artistSongs = smols.filter(s =>
         s.Address === TARGET_ADDRESS ||
