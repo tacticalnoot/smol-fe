@@ -188,7 +188,7 @@ const { accountExists } = await import('src/utils/horizon.ts');
 
 ## Next Steps
 
-1. ✅ Start dev server: `npm run dev`
+1. ✅ Start dev server: `pnpm dev`
 2. ✅ Open localhost:4321
 3. ✅ Enable DEBUG logging
 4. ✅ Test each flow

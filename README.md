@@ -18,6 +18,7 @@ A decentralized web application for generating AI music powered by Stellar block
 - **Token balance tracking** - View your holdings for each minted song
 - **PasskeyKit wallet integration** - Passwordless authentication using WebAuthn
 - **Stellar blockchain** - All transactions on Stellar network using Soroban smart contracts
+- **USDC Support** - Native support for USDC alongside XLM and KALE
 
 ### 📀 Mixtapes
 - **Create mixtapes** - Organize your favorite songs into custom playlists
@@ -60,6 +61,8 @@ A decentralized web application for generating AI music powered by Stellar block
 - **[Stellar SDK](https://stellar.github.io/js-stellar-sdk/)** - Interact with Stellar blockchain
 - **[PasskeyKit](https://www.npmjs.com/package/passkey-kit)** - WebAuthn-based smart contract wallet
 - **[Soroban](https://soroban.stellar.org/)** - Stellar smart contract platform
+- **[Soroswap](https://soroswap.finance/)** - Decentralized exchange protocol for token swaps
+- **[OpenZeppelin Channels](https://channels.openzeppelin.com/)** - Transaction relayer for gasless experiences
 - **Local contract SDKs** - TypeScript bindings for Smol and Comet smart contracts
 
 ### Additional Libraries
@@ -100,6 +103,11 @@ smol-fe/
 
 ## Documentation
 For detailed guides on setup, architecture, testing, and debugging, please see the [Documentation Index](docs/INDEX.md).
+
+### Governance & Ethics
+- [Contributing Guidelines](CONTRIBUTING.md)
+- [Security Policy](SECURITY.md)
+- [Vibe Code of Ethics](CODE_OF_CONDUCT.md)
 
 ## Getting Started
 
@@ -156,6 +164,12 @@ Run Svelte type checking:
 ```bash
 pnpm check          # One-time check
 pnpm check:watch    # Watch mode
+```
+
+### Repo Health
+```bash
+pnpm doctor         # Check environment sanity (Node, .env, etc.)
+pnpm docs:check     # Validate documentation links and coverage
 ```
 
 ### Build
