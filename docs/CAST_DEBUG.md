@@ -77,7 +77,7 @@ Google's official Cast debugging tool streams receiver logs to your terminal:
 
 **Install:**
 ```bash
-npm install -g cast-debug-logger
+pnpm install -g cast-debug-logger
 ```
 
 **Run:**

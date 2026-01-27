@@ -12,7 +12,9 @@
     "test:e2e": "playwright test",
     "check": "svelte-check --tsconfig ./tsconfig.json",
     "check:watch": "svelte-check --tsconfig ./tsconfig.json --watch",
-    "audit:swaps": "node scripts/swap-audit/audit.js"
+    "audit:swaps": "node scripts/swap-audit/audit.js",
+    "docs:check": "node scripts/check-docs.js",
+    "doctor": "node scripts/repo-doctor.js"
   },
   "dependencies": {
     "@astrojs/check": "^0.9.6",

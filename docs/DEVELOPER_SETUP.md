@@ -7,7 +7,7 @@ This guide covers special setup steps for working with this forked repository (`
 ## Prerequisites
 
 - Node.js 18+
-- pnpm (`npm install -g pnpm`)
+- pnpm (`pnpm install -g pnpm`)
 - Access to a Smol account (passkey created on `smol.xyz`)
 
 ---
@@ -60,7 +60,7 @@ Since the JWT token is validated by the API (`api.smol.xyz`), not the frontend d
 If you have both `smol.xyz` and `localhost:4321` open:
 
 ```javascript
-// Run this in localhost:4322 console after copying token from smol.xyz
+// Run this in localhost:4321 console after copying token from smol.xyz
 document.cookie = `smol_token=${prompt('Paste your smol_token from smol.xyz:')}; path=/`;
 location.reload();
 ```
@@ -95,7 +95,7 @@ pwd
 # C:\Users\YourName\path\to\tacticalnoot-smol-fe
 ```
 
-The dev server output will show which port it's running on (default: 4322).
+The dev server output will show which port it's running on (default: 4321).
 
 ---
 

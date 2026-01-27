@@ -3,8 +3,12 @@
 ## Core Documentation
 - [Developer Setup](DEVELOPER_SETUP.md) - Setup guide for new developers
 - [Start Here](START_HERE.md) - Quick start entry point
-- [Testing Guide](TESTING.md) - Comprehensive testing guide
 - [Agents Guide](AGENTS.md) - Guide for AI agents working in this repo
+
+## 🤖 AI Native
+- [Repo Map](REPO_MAP.json) - Machine-readable repository map
+- [AI Quickstart](ai/QUICKSTART.md) - Concise agent handbook
+
 
 ## Architecture & Logic
 - [State Diagram](STATEDIAGRAM.md) - Auth and Payment flow states

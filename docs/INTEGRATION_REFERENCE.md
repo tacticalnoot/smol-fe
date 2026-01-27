@@ -5,7 +5,8 @@ Quick reference for working across both repositories together.
 ## Repositories
 | Repo | Purpose | Tech Stack |
 |------|---------|------------|
-| `kalepail/smol-fe` | Frontend | Svelte 5, Astro, TailwindCSS |
+| `tacticalnoot/smol-fe` | **Canonical Frontend** | Svelte 5, Astro, TailwindCSS |
+| `kalepail/smol-fe` | Upstream Original | Svelte 5, Astro, TailwindCSS |
 | `kalepail/smol-workflow` | Backend API | Hono, Cloudflare Workers, D1, R2, KV |
 
 ---
