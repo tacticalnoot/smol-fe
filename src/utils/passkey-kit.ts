@@ -54,6 +54,10 @@ export const xlm = {
     get: () => sac.get().getSACClient(import.meta.env.PUBLIC_XLM_SAC_ID || "CAS3J7GYLGXMF6TDJBBYYSE3HQ6BBSMLNUQ34T6TZMYMW2EVH34XOWMA")
 };
 
+export const usdc = {
+    get: () => sac.get().getSACClient("CCW67TSZV3SSS2HXMBQ5JFGCKJNXKZM7UQUWUZPUTHXSTZLEO7SJMI75")
+};
+
 /**
  * Send a transaction through the relayer proxy.
  * Supports two modes:
