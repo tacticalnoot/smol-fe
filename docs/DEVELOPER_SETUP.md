@@ -26,7 +26,7 @@ pnpm install
 pnpm run dev
 ```
 
-The dev server runs on `http://localhost:4322`
+The dev server runs on `http://localhost:4321`
 
 ---
 
@@ -48,7 +48,7 @@ Since the JWT token is validated by the API (`api.smol.xyz`), not the frontend d
 
 1. **Login on production**: Go to `https://smol.xyz` and login with your passkey
 2. **Copy the cookie**: Open DevTools → Application → Cookies → `smol.xyz` → Copy the `smol_token` value
-3. **Set on localhost**: Navigate to `http://localhost:4322`, open DevTools → Console, run:
+3. **Set on localhost**: Navigate to `http://localhost:4321`, open DevTools → Console, run:
    ```javascript
    document.cookie = 'smol_token=YOUR_COPIED_TOKEN_HERE; path=/';
    location.reload();
@@ -57,7 +57,7 @@ Since the JWT token is validated by the API (`api.smol.xyz`), not the frontend d
 
 #### Method 2: Quick JavaScript (One-liner)
 
-If you have both `smol.xyz` and `localhost:4322` open:
+If you have both `smol.xyz` and `localhost:4321` open:
 
 ```javascript
 // Run this in localhost:4322 console after copying token from smol.xyz

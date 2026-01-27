@@ -7,7 +7,7 @@
 ## Step 1: Start the Dev Server (2 minutes)
 
 ```bash
-npm run dev
+pnpm run dev
 ```
 
 The server should start at `http://localhost:4321`
@@ -153,12 +153,12 @@ await horizon.scanAccountOperations('CYOUR_ADDRESS', { limit: 200 });
 
 For a complete step-by-step checklist, see:
 ```bash
-cat LOCAL_TESTING_CHECKLIST.md
-```
+cat docs/LOCAL_TESTING_CHECKLIST.md
+\`\`\`
 
 For debugging help, see:
-```bash
-cat DEBUGGING_GUIDE.md
+\`\`\`bash
+cat docs/DEBUGGING_GUIDE.md
 ```
 
 ---

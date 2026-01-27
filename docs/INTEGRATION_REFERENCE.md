@@ -108,7 +108,7 @@ cors({
 ## Live Data & Snapshots
 
 The frontend uses a **Hybrid Strategy** for data:
-1. **Initial Load**: Uses `src/data/smols-snapshot.json` for instant rendering and SEO/static generation.
+1. **Initial Load**: Uses `universal-smols.json` (root) for instant rendering and SEO/static generation.
 2. **Hydration**: Components (`ArtistResults`, `RadioBuilder`) fetch live data from `PUBLIC_API_URL` to update stats and add new songs.
 
 ### Updating the Snapshot
