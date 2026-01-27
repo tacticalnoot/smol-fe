@@ -36,11 +36,6 @@
     import { Turnstile } from "svelte-turnstile";
     import { Transaction, Networks } from "@stellar/stellar-sdk";
 
-    import {
-        getXBullQuote,
-        buildXBullTransaction,
-    } from "../../utils/xbull-api";
-
     // --- DEBUG LOGIC ---
     const isPagesDev =
         typeof window !== "undefined" &&
@@ -61,7 +56,7 @@
     // --- TYPES ---
     type AppState = "intro" | "transition" | "main";
     type Mode = "swap" | "send";
-    type Provider = "soroswap" | "xbull";
+
     type SwapState =
         | "idle"
         | "quoting"
@@ -100,7 +95,6 @@
     let turnstileFailed = $state(false); // Fallback mode when Turnstile returns 401
 
     // Provider Logic
-    let provider = $state<Provider>("soroswap");
 
     // Send Logic
     let sendTo = $state("");
@@ -315,40 +309,17 @@
                     lastEdited === "in" ? "EXACT_IN" : "EXACT_OUT";
 
                 let result;
-                if (provider === "soroswap") {
-                    result = await getQuote({
-                        tokenIn: assetIn,
-                        tokenOut: assetOut,
-                        amountIn: Number(stroops),
-                        tradeType,
-                        slippageBps: 500, // 5% (matches Tyler's ohloss implementation)
-                    });
-                } else {
-                    // xBull API
-                    const sender = userState.contractId || undefined;
-                    const xbullResult = await getXBullQuote({
-                        fromAsset: assetIn,
-                        toAsset: assetOut,
-                        fromAmount: String(stroops),
-                        sender: sender,
-                    });
-
-                    // Map xBull response to local QuoteResponse format
-                    result = {
-                        amountIn: xbullResult.fromAmount,
-                        amountOut: xbullResult.toAmount,
-                        minAmountOut: xbullResult.toAmount, // xBull pre-calculates slippage in toAmount maybe? or user sets minToGet in accept
-                        price: (
-                            Number(xbullResult.toAmount) /
-                            Number(xbullResult.fromAmount)
-                        ).toFixed(7),
-                        path: [], // xBull handles routing internally via UUID
-                        tradeType,
-                        // Custom props for xBull
-                        xbullRoute: xbullResult.route,
-                        otherAmountThreshold: xbullResult.toAmount, // Placeholder
-                    } as any;
+                if (isCAddress(userState.contractId)) {
+                    // Logic for C-Address if needed, or identical
                 }
+
+                result = await getQuote({
+                    tokenIn: assetIn,
+                    tokenOut: assetOut,
+                    amountIn: Number(stroops),
+                    tradeType,
+                    slippageBps: 500, // 5% (matches Tyler's ohloss implementation)
+                });
 
                 quote = result;
 
@@ -398,33 +369,19 @@
 
         try {
             let tx;
-            if (provider === "soroswap") {
-                if (isCAddress(userState.contractId)) {
-                    tx = await buildSwapTransactionForCAddress(
-                        quote,
-                        userState.contractId,
-                    );
-                } else {
-                    // Update buildTransaction to use flexible tokens
-                    const result = await buildTransaction(
-                        quote,
-                        userState.contractId,
-                        userState.contractId,
-                    );
-                    tx = new Transaction(
-                        result.xdr,
-                        import.meta.env.PUBLIC_NETWORK_PASSPHRASE,
-                    );
-                }
+
+            if (isCAddress(userState.contractId)) {
+                tx = await buildSwapTransactionForCAddress(
+                    quote,
+                    userState.contractId,
+                );
             } else {
-                const result = await buildXBullTransaction({
-                    fromAmount: (quote as any).amountIn,
-                    minToGet: (quote as any).amountOut,
-                    route: (quote as any).xbullRoute,
-                    sender: userState.contractId,
-                    recipient: userState.contractId,
-                    gasless: false,
-                });
+                // Update buildTransaction to use flexible tokens
+                const result = await buildTransaction(
+                    quote,
+                    userState.contractId,
+                    userState.contractId,
+                );
                 tx = new Transaction(
                     result.xdr,
                     import.meta.env.PUBLIC_NETWORK_PASSPHRASE,
