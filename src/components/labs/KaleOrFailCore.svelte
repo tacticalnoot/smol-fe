@@ -49,14 +49,21 @@
     );
     let turnstileToken = $state("");
 
+    // Track timeouts for cleanup
+    let loadingTimeout: ReturnType<typeof setTimeout> | null = null;
+    let swipeTimeout: ReturnType<typeof setTimeout> | null = null;
+    let settleDelayTimeout: ReturnType<typeof setTimeout> | null = null;
+    let redirectTimeout: ReturnType<typeof setTimeout> | null = null;
+
     onMount(async () => {
         try {
             // Timeout fallback
-            setTimeout(() => {
+            loadingTimeout = setTimeout(() => {
                 if (loading) {
                     console.warn("Fetch timed out, forcing load state.");
                     loading = false;
                 }
+                loadingTimeout = null;
             }, 8000);
 
             audio = new Audio();
@@ -76,8 +83,14 @@
     onDestroy(() => {
         if (audio) {
             audio.pause();
+            audio.src = '';
             audio = null;
         }
+        // Clean up all pending timeouts
+        if (loadingTimeout) { clearTimeout(loadingTimeout); loadingTimeout = null; }
+        if (swipeTimeout) { clearTimeout(swipeTimeout); swipeTimeout = null; }
+        if (settleDelayTimeout) { clearTimeout(settleDelayTimeout); settleDelayTimeout = null; }
+        if (redirectTimeout) { clearTimeout(redirectTimeout); redirectTimeout = null; }
     });
 
     function playCurrent() {
@@ -125,7 +138,10 @@
         cardX.set(dir === "right" ? 500 : -500);
         cardRotate.set(dir === "right" ? 20 : -20);
 
-        setTimeout(() => {
+        // Clear any previous swipe timeout
+        if (swipeTimeout) clearTimeout(swipeTimeout);
+        swipeTimeout = setTimeout(() => {
+            swipeTimeout = null;
             if (dir === "right" && song.Address) {
                 const amount = isCustom
                     ? parseFloat(customTipAmount) || 1
@@ -204,11 +220,17 @@
                 settleStep = completed;
 
                 // Sequential safe mode
-                await new Promise((r) => setTimeout(r, 1000));
+                await new Promise((r) => {
+                    settleDelayTimeout = setTimeout(() => {
+                        settleDelayTimeout = null;
+                        r(undefined);
+                    }, 1000);
+                });
             }
 
             settleStatus = "All tips sent!";
-            setTimeout(() => {
+            redirectTimeout = setTimeout(() => {
+                redirectTimeout = null;
                 window.location.href = "/labs";
             }, 2000);
         } catch (e: any) {
