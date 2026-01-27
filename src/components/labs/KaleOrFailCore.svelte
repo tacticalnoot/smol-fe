@@ -11,6 +11,11 @@
     import Loader from "../ui/Loader.svelte";
     import { Turnstile } from "svelte-turnstile";
 
+    // PROD FIX: If we have an OZ API key, use direct relayer regardless of hostname.
+    // This allows noot.smol.xyz to use OZ Channels directly without Turnstile.
+    const hasApiKey = !!import.meta.env.PUBLIC_RELAYER_API_KEY;
+    const isDirectRelayer = hasApiKey;
+
     const AMOUNT_PER_TIP_BASE = 10000000n; // 1 KALE = 10^7 units
     const DECIMALS_FACTOR = 10000000n;
 
@@ -175,7 +180,7 @@
             alert("Please connect your wallet first!");
             return;
         }
-        if (!turnstileToken) {
+        if (!isDirectRelayer && !turnstileToken) {
             alert("Please verify you are human.");
             return;
         }
@@ -265,16 +270,18 @@
                     <p class="text-red-500 text-xs">Connect Wallet to Tip</p>
                 </div>
             {:else if !isSettling}
-                <div class="flex justify-center my-4">
-                    <Turnstile
-                        siteKey={import.meta.env.PUBLIC_TURNSTILE_SITE_KEY}
-                        on:callback={(e) => (turnstileToken = e.detail.token)}
-                        theme="dark"
-                    />
-                </div>
+                {#if !isDirectRelayer}
+                    <div class="flex justify-center my-4">
+                        <Turnstile
+                            siteKey={import.meta.env.PUBLIC_TURNSTILE_SITE_KEY}
+                            on:callback={(e) => (turnstileToken = e.detail.token)}
+                            theme="dark"
+                        />
+                    </div>
+                {/if}
                 <button
                     onclick={settleTips}
-                    disabled={!turnstileToken}
+                    disabled={!isDirectRelayer && !turnstileToken}
                     class="w-full border border-[#9ae600] bg-[#9ae600]/10 px-6 py-3 rounded-lg hover:bg-[#9ae600] hover:text-black transition-all disabled:opacity-50 disabled:cursor-not-allowed"
                 >
                     SEND TIPS

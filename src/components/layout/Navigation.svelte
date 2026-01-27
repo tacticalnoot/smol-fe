@@ -7,9 +7,12 @@
   import {
     mixtapeModeState,
     mixtapeDraftHasContent,
+    mixtapeDraftState,
     enterMixtapeMode,
     exitMixtapeMode,
+    addTrack,
   } from "../../stores/mixtape.svelte.ts";
+  import type { MixtapeTrack } from "../../types/domain";
 
   import UserBalance from "./UserBalance.svelte";
   import MixtapeModeToggle from "./MixtapeModeToggle.svelte";
@@ -22,6 +25,68 @@
 
   let creating = $state(false);
   let showKaleInfo = $state(false);
+
+  // Drag-drop state for mixtape button
+  let isOverMixtapeButton = $state(false);
+
+  function handleMixtapeButtonDragOver(event: DragEvent) {
+    if (!event.dataTransfer?.types.includes("application/json")) return;
+    event.preventDefault();
+    event.dataTransfer.dropEffect = "copy";
+    isOverMixtapeButton = true;
+  }
+
+  function handleMixtapeButtonDragLeave(event: DragEvent) {
+    const target = event.currentTarget as HTMLElement;
+    const related = event.relatedTarget as Node | null;
+    if (related && target.contains(related)) return;
+    isOverMixtapeButton = false;
+  }
+
+  function handleMixtapeButtonDrop(event: DragEvent) {
+    if (!event.dataTransfer) return;
+    event.preventDefault();
+    isOverMixtapeButton = false;
+
+    const raw = event.dataTransfer.getData("application/json");
+    if (!raw) return;
+
+    try {
+      const parsed = JSON.parse(raw) as {
+        type?: string;
+        track?: MixtapeTrack;
+      };
+      if (parsed?.type !== "smol" || !parsed.track) return;
+
+      // Check if already added
+      const alreadyAdded = mixtapeDraftState.tracks.some(
+        (track) => track.id === parsed.track?.id
+      );
+      if (alreadyAdded) {
+        console.log("[Navigation] Track already in mixtape");
+        return;
+      }
+
+      // Normalize and add
+      const normalized: MixtapeTrack = {
+        id: parsed.track.id,
+        title: parsed.track.title ?? "Untitled Smol",
+        coverUrl: parsed.track.coverUrl ?? null,
+        creator: parsed.track.creator ?? null,
+      };
+
+      // Enter mixtape mode if not active
+      if (!mixtapeModeState.active) {
+        enterMixtapeMode();
+      }
+
+      // Add track
+      addTrack(normalized);
+      console.log("[Navigation] Added track via drop:", normalized.title);
+    } catch (error) {
+      console.warn("[Navigation] Failed to parse dragged data", error);
+    }
+  }
 
   async function handleLogin() {
     await authHook.login();
@@ -230,15 +295,20 @@
       </a>
       {#if isAuthenticated}
         <button
-          class="px-2 py-1 text-[8px] font-pixel rounded {mixtapeModeState.active
+          class="px-2 py-1 text-[8px] font-pixel rounded transition-all duration-200 {mixtapeModeState.active
             ? 'bg-lime-400 text-slate-950'
-            : 'text-lime-400 ring-1 ring-lime-400/40 hover:bg-lime-400/10'}"
+            : isOverMixtapeButton
+              ? 'bg-lime-400/30 text-lime-300 ring-2 ring-lime-400 scale-110'
+              : 'text-lime-400 ring-1 ring-lime-400/40 hover:bg-lime-400/10'}"
           onclick={handleMixtapeClick}
+          ondragover={handleMixtapeButtonDragOver}
+          ondragleave={handleMixtapeButtonDragLeave}
+          ondrop={handleMixtapeButtonDrop}
           title={mixtapeModeState.active
             ? "Exit Mixtape Mode"
-            : "Enter Mixtape Mode"}
+            : "Enter Mixtape Mode (or drop a song here!)"}
         >
-          {mixtapeModeState.active ? "✓" : "+"}
+          {mixtapeModeState.active ? "✓" : isOverMixtapeButton ? "Drop!" : "+"}
         </button>
       {/if}
     </div>

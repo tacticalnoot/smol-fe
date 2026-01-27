@@ -37,20 +37,15 @@
     import { Transaction, Networks } from "@stellar/stellar-sdk";
 
     // --- DEBUG LOGIC ---
-    const isPagesDev =
-        typeof window !== "undefined" &&
-        window.location.hostname.includes("pages.dev");
-    const isLocalhost =
-        typeof window !== "undefined" &&
-        window.location.hostname.includes("localhost");
+    // PROD FIX: If we have an OZ API key, use direct relayer regardless of hostname.
+    // This allows noot.smol.xyz to use OZ Channels directly without Turnstile.
     const hasApiKey = !!import.meta.env.PUBLIC_RELAYER_API_KEY;
-    const isDirectRelayer = (isPagesDev || isLocalhost) && hasApiKey;
+    const isDirectRelayer = hasApiKey;
 
     console.log("[Swapper Debug]", {
         isDirectRelayer,
-        isPagesDev,
-        isLocalhost,
         hasApiKey,
+        hostname: typeof window !== "undefined" ? window.location.hostname : "server",
     });
 
     // --- TYPES ---
@@ -569,7 +564,6 @@
                         : "SERVER"}
                 </div>
                 <div>KEY: {hasApiKey ? "PRESENT" : "MISSING"}</div>
-                <div>IS_DEV: {isPagesDev || isLocalhost ? "YES" : "NO"}</div>
                 <div>
                     CFG_URL: {import.meta.env.PUBLIC_RELAYER_URL || "N/A"}
                 </div>
