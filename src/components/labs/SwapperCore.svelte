@@ -641,38 +641,6 @@
 
                 <div class="p-6 md:p-8 flex flex-col gap-6">
                     {#if mode === "swap"}
-                        <!-- PROVIDER TOGGLE -->
-                        <div class="flex justify-center gap-2 mb-2">
-                            <button
-                                class="px-3 py-1 text-[10px] font-mono tracking-wider rounded-full border transition-all {provider ===
-                                'soroswap'
-                                    ? 'bg-white text-black border-white'
-                                    : 'bg-transparent text-white/50 border-white/20 hover:text-white hover:border-white/50'}"
-                                onclick={() => {
-                                    provider = "soroswap";
-                                    quote = null;
-                                    if (swapAmount || swapOutputAmount)
-                                        fetchQuote();
-                                }}
-                            >
-                                SOROSWAP
-                            </button>
-                            <button
-                                class="px-3 py-1 text-[10px] font-mono tracking-wider rounded-full border transition-all {provider ===
-                                'xbull'
-                                    ? 'bg-white text-black border-white'
-                                    : 'bg-transparent text-white/50 border-white/20 hover:text-white hover:border-white/50'}"
-                                onclick={() => {
-                                    provider = "xbull";
-                                    quote = null;
-                                    if (swapAmount || swapOutputAmount)
-                                        fetchQuote();
-                                }}
-                            >
-                                XBULL
-                            </button>
-                        </div>
-
                         <!-- SWAP MODE -->
                         <div class="flex flex-col gap-2">
                             <!-- INPUT (TOP) -->
