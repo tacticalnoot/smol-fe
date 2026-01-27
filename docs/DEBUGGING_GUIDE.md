@@ -1,4 +1,28 @@
+<!--
+CONTRACT:
+- SSOT: [STATE_OF_WORLD.md](STATE_OF_WORLD.md)
+- AUDIENCE: Dev
+- NATURE: Current
+- LAST_HARDENED: 2026-01-27
+- VERIFICATION_METHOD: [Link check | Claim check | State trace]
+-->
 # 🔍 SMOL Debugging Guide
+
+This guide provides a "Symptom → Fix" cookbook and a manual for the `smolLogger` system.
+
+## 🥣 Symptoms Cookbook
+
+| Symptom | Primary Suspect | Fix / Investigation |
+| :--- | :--- | :--- |
+| **Login button does nothing** | Passkey Domain Mismatch | Transfer session cookie via Console (See [Setup](DEVELOPER_SETUP.md)). |
+| **"Account not found (404)"** | New Smart Account | Expected for first-time users. Fund wallet via Swapper or Faucet. |
+| **Mixtape list is empty** | API URL Mismatch | Check `PUBLIC_API_URL` in `.env`. Must be `api.smol.xyz`. |
+| **Transaction timeouts** | Relayer Latency | Check `RPC` and `AUTH` logs for 429/504 errors. |
+| **Audio stutters on iOS** | AudioContext Lock | Ensure playback is triggered by a direct user `click` event. |
+
+---
+
+## 🛠️ smolLogger Manual
 **Never Deploy Blind Again**
 
 This guide shows you how to use the comprehensive debug logging system to diagnose issues locally before deploying.
@@ -194,7 +218,7 @@ smolLogger.getLogsByCategory(smolLogCategory.HORIZON);
 
 | Category | What It Logs |
 |----------|--------------|
-| `AUTH` | User authentication, login, signup, JWT operations |
+| `AUTH` | User authentication, login, signup, Auth Token operations |
 | `WALLET` | Wallet connection, ensureWalletConnected, AUTO-BURN |
 | `TRANSACTION` | Transaction building, signing, submission |
 | `HORIZON` | Horizon API calls, operations queries, XDR parsing |

@@ -71,9 +71,9 @@ cors({
 ## Authentication Flow
 
 1. Frontend uses passkeys via `POST /login`
-2. Backend returns JWT token
-3. Frontend sends `Authorization: Bearer <jwt>` on authenticated requests
-4. JWT payload contains `sub` (Stellar address)
+2. Backend returns Auth Token
+3. Frontend sends `Authorization: Bearer <authToken>` on authenticated requests
+4. Auth Token payload contains `sub` (Stellar address)
 
 ---
 
@@ -109,16 +109,16 @@ cors({
 ## Live Data & Snapshots
 
 The frontend uses a **Hybrid Strategy** for data:
-1. **Initial Load**: Uses `universal-smols.json` (root) for instant rendering and SEO/static generation.
+1. **Initial Load**: Uses `GalacticSnapshot.json` (in `public/data/`) for instant rendering and SEO/static generation.
 2. **Hydration**: Components (`ArtistResults`, `RadioBuilder`) fetch live data from `PUBLIC_API_URL` to update stats and add new songs.
 
 ### Updating the Snapshot
 To refresh the static fallback data (recommended before deployments):
 
-1. Ensure the API is accessible (Production `https://api.smol.xyz` or Local `localhost:8787`).
+1. Ensure the API is accessible (Production `https://api.smol.xyz`).
 2. Run the update tool:
    ```bash
-   node scripts/update-snapshot.js
+   node scripts/universal-snapshot.js
    ```
    *Note: The script defaults to `https://api.smol.xyz`. Edit `API_URL` in the script to target localhost.*
 

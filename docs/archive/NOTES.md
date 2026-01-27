@@ -13,31 +13,31 @@
 
 ---
 
-## Upstream Delta Table (Launchtube → OZ Relayer)
+## Upstream Delta Table (Legacy Relayer → OZ Relayer)
 
-| Category | Removed (Launchtube) | Added (OZ Relayer) |
+| Category | Removed (Legacy Relayer) | Added (OZ Relayer) |
 |----------|---------------------|-------------------|
 | **Package** | N/A (never direct dep) | `@openzeppelin/relayer-plugin-channels` |
-| **Auth** | JWT-based | Bearer API Key |
-| **Env Vars** | `LAUNCHTUBE_URL`, `LAUNCHTUBE_JWT` | `PUBLIC_CHANNELS_BASE_URL`, `PUBLIC_CHANNELS_API_KEY` |
-| **Submission** | `LaunchTube.send(tx)` | `send(txn)` via XDR POST |
+| **Auth** | Auth Token-based | Bearer API Key |
+| **Env Vars** | `LEGACY_URL`, `LEGACY_TOKEN` | `PUBLIC_CHANNELS_BASE_URL`, `PUBLIC_CHANNELS_API_KEY` |
+| **Submission** | `send(tx)` | `send(txn)` via XDR POST |
 | **Endpoint** | `/submit` (hypothetical) | `POST /` with `{xdr}` body |
-| **Headers** | `Authorization: Bearer <jwt>` | `Authorization: Bearer <apiKey>` |
+| **Headers** | `Authorization: Bearer <authToken>` | `Authorization: Bearer <apiKey>` |
 | **Error Format** | Unknown | `{code, details, message}` |
 | **Fee Sponsorship** | Unknown | Supports fee-bump via Relayer config |
 
 ---
 
-## B1: Launchtube Search Results (rg)
+## B1: Legacy Relayer Search Results (rg)
 
 **Active Code References: NONE** ✅
 
 Only found in documentation/cache files:
 - `AGENTS.md:32` - Documentation reference (legacy error message)
 - `SMOL_ECOSYSTEM_CACHE.md` - Old ecosystem cache (env var docs)
-- `universal-smols.jsonSnapshot.json` - Historical error in song prompts
+- `public/data/GalacticSnapshot.json` - Historical error in song prompts
 
-**Conclusion**: Codebase is clean. No active Launchtube logic remains.
+**Conclusion**: Codebase is clean. No active legacy relayer logic remains.
 
 ---
 

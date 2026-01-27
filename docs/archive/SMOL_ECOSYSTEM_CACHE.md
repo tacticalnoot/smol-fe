@@ -164,14 +164,14 @@ Step Configuration:
 
 #### Transaction Workflow (TX_WORKFLOW) - Blockchain Minting
 Steps:
-1. submit_transaction - Sign auth entries, submit via LaunchTube
+1. submit_transaction - Sign auth entries, submit via Legacy Relayer
 2. persist_result - Store Mint_Token/Mint_Amm to D1
 
 Params:
 - type: 'mint' | 'batch_mint'
 - xdr: User-signed transaction envelope
 - entropy: Smol ID (deterministic salt)
-- sub: User's JWT subject claim
+- sub: User's Auth Token subject claim
 - ids: Array of smol IDs (batch only)
 
 ### Environment Variables (wrangler.jsonc)
@@ -183,9 +183,9 @@ SMOL_CONTRACT_ID - Deployed smol contract address
 
 ### Secrets (wrangler secret)
 ```
-SECRET - JWT signing secret
+SECRET - Auth Token signing secret
 SK - Server's Stellar secret key
-LAUNCHTUBE_TOKEN - LaunchTube bearer token
+LEGACY_RELAYER_TOKEN - Legacy Relayer bearer token
 ```
 
 ### Bindings
@@ -198,7 +198,7 @@ LAUNCHTUBE_TOKEN - LaunchTube bearer token
 - SMOL_BUCKET: R2 bucket
 - AI: Cloudflare AI
 - AISONGGENERATOR: Song generator service binding
-- LAUNCHTUBE: Transaction relay service
+- LEGACY_RELAYER: Transaction relay service
 
 ================================================================================
 ## AISONGGENERATOR-WORKER (Song Generation Service)
@@ -281,8 +281,8 @@ Temperature: 0.7
 PUBLIC_RPC_URL - Stellar RPC endpoint (soroban-rpc)
 PUBLIC_NETWORK_PASSPHRASE - Stellar network identifier
 PUBLIC_WALLET_WASM_HASH - PasskeyKit wallet WASM hash
-PUBLIC_LAUNCHTUBE_URL - LaunchTube service URL
-PUBLIC_LAUNCHTUBE_JWT - LaunchTube auth token
+PUBLIC_LEGACY_URL - Legacy Relayer service URL
+PUBLIC_LEGACY_TOKEN - Legacy Relayer auth token
 PUBLIC_API_URL - Backend API URL (smol-workflow)
 PUBLIC_KALE_SAC_ID - KALE token SAC address
 PUBLIC_SMOL_CONTRACT_ID - Smol contract address
