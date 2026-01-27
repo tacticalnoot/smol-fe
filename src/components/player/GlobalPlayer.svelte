@@ -204,13 +204,23 @@
         }
     });
 
+    // PERF FIX: Fisher-Yates shuffle - O(n) instead of O(n²) from .sort(() => Math.random() - 0.5)
+    function shuffleArray<T>(array: T[]): T[] {
+        const result = [...array];
+        for (let i = result.length - 1; i > 0; i--) {
+            const j = Math.floor(Math.random() * (i + 1));
+            [result[i], result[j]] = [result[j], result[i]];
+        }
+        return result;
+    }
+
     $effect(() => {
         if (liveDiscography.length > 0 && collageImages.length === 0) {
-            const base = liveDiscography
-                .filter((s) => s.Id)
-                .map((s) => `${API_URL}/image/${s.Id}.png?scale=16`)
-                .sort(() => Math.random() - 0.5)
-                .slice(0, 40);
+            const base = shuffleArray(
+                liveDiscography
+                    .filter((s) => s.Id)
+                    .map((s) => `${API_URL}/image/${s.Id}.png?scale=16`)
+            ).slice(0, 40);
             collageImages = [...base, ...base];
         }
     });

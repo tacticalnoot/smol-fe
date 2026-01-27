@@ -177,19 +177,21 @@
     };
 
     // Dynamic Cooldown / Adaptive Polite Mode
-    let currentPoliteCooldown = 1000; // Start snappy (1s)
-    const MIN_POLITE_COOLDOWN = 1000;
-    const MAX_POLITE_COOLDOWN = 8000;
-    const AGGRESSIVE_COOLDOWN_MS = 300; // Fast resume for Bluetooth/CarPlay
+    // iOS FIX: Increased cooldowns to be less aggressive with calls/notifications
+    let currentPoliteCooldown = 3000; // Start with 3s delay (was 1s)
+    const MIN_POLITE_COOLDOWN = 3000; // Minimum 3s between resume attempts (was 1s)
+    const MAX_POLITE_COOLDOWN = 15000; // Max 15s backoff (was 8s)
+    const AGGRESSIVE_COOLDOWN_MS = 500; // Slightly slower for Bluetooth/CarPlay (was 300ms)
 
     let lastResumeTime = 0;
     const SUCCESSFUL_PLAY_THRESHOLD = 5000; // 5s of playback = "clear"
 
     // Fighting Protection: Circuit breaker for rapid-fire interruptions
+    // iOS FIX: Reduced max interruptions to give up faster when calls/notifications come in
     let interruptionCount = 0;
     let lastInterruptionTime = 0;
-    const INTERRUPTION_WINDOW_MS = 60000; // Increase to 60s for better protection
-    const MAX_INTERRUPTIONS = 5; // More attempts if we are snappy
+    const INTERRUPTION_WINDOW_MS = 60000; // 60s window
+    const MAX_INTERRUPTIONS = 3; // Give up after 3 attempts (was 5)
 
     const getResumeCooldown = () =>
       isExternalAudio ? AGGRESSIVE_COOLDOWN_MS : currentPoliteCooldown;
@@ -537,34 +539,45 @@
     };
 
     // Handle visibility changes and audio focus returns
+    // iOS FIX: Only auto-resume aggressively for external audio (Bluetooth/CarPlay)
+    // For device speakers, let the user manually resume to avoid fighting with calls/notifications
     const handleVisibilityChange = () => {
       if (document.visibilityState === "visible" && audioState.wasInterrupted) {
-        console.log(
-          `[Audio] Page became visible - resetting backoff for snappier resume`,
-        );
-
-        // Focus = User intent. Reset backoff and attempt immediate resume.
-        currentPoliteCooldown = MIN_POLITE_COOLDOWN;
-        interruptionTime = null;
-
-        trackedTimeout(attemptResume, 50);
-        trackedTimeout(attemptResume, 500);
+        if (isExternalAudio) {
+          // Aggressive mode: Auto-resume for Bluetooth/CarPlay
+          console.log(
+            `[Audio] Page visible + external audio - auto-resuming`,
+          );
+          currentPoliteCooldown = MIN_POLITE_COOLDOWN;
+          interruptionTime = null;
+          trackedTimeout(attemptResume, 100);
+        } else {
+          // Polite mode: Just log, don't auto-resume (user can tap play)
+          console.log(
+            `[Audio] Page visible but polite mode - waiting for user interaction`,
+          );
+        }
       }
     };
 
     // Handle window focus (returning from notifications, other tabs/apps releasing audio focus)
+    // iOS FIX: Only auto-resume for external audio mode
     const handleFocus = () => {
       if (audioState.wasInterrupted) {
-        console.log(
-          `[Audio] Window gained focus - resetting backoff for snappier resume`,
-        );
-
-        // Focus = User intent. Reset backoff and attempt immediate resume.
-        currentPoliteCooldown = MIN_POLITE_COOLDOWN;
-        interruptionTime = null;
-
-        trackedTimeout(attemptResume, 50);
-        trackedTimeout(attemptResume, 500);
+        if (isExternalAudio) {
+          // Aggressive mode: Auto-resume for Bluetooth/CarPlay
+          console.log(
+            `[Audio] Window focus + external audio - auto-resuming`,
+          );
+          currentPoliteCooldown = MIN_POLITE_COOLDOWN;
+          interruptionTime = null;
+          trackedTimeout(attemptResume, 100);
+        } else {
+          // Polite mode: Don't fight with iOS audio session
+          console.log(
+            `[Audio] Window focus but polite mode - waiting for user interaction`,
+          );
+        }
       }
     };
 
