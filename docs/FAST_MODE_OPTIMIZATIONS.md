@@ -227,4 +227,4 @@ The setting is easily toggleable, and the default "thinking mode" experience rem
 
 **Last Updated:** 2026-01-23
 **Version:** 1.5.5
-**Primary Maintainer:** Jeff
+**Primary Maintainer:** Maintainer
