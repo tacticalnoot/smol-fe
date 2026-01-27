@@ -62,7 +62,7 @@ import DebugPanel from '../components/dev/DebugPanel.svelte';
 
 ### Step 2: Start Dev Server
 ```bash
-npm run dev
+pnpm dev
 ```
 
 ### Step 3: Open Your Site

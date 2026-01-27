@@ -7,10 +7,13 @@
 ## Step 1: Start the Dev Server (2 minutes)
 
 ```bash
-pnpm run dev
+pnpm dev
 ```
 
 The server should start at `http://localhost:4321`
+
+> [!IMPORTANT]
+> **Authentication Note:** Passkeys require a secure context (HTTPS). On `localhost`, you can test UI and general logic, but for full Passkey/Stellar flows, we recommend deploying your fork to **Cloudflare Pages** (Free Tier). This gives you a `*.pages.dev` domain with built-in HTTPS, which is the easiest way to test authentication accurately. See **[Authentication Strategy](DEVELOPER_SETUP.md#authentication-strategy)**.
 
 ---
 
@@ -101,7 +104,10 @@ Expected:
 smolLogger.downloadLogs('test-results.json');
 ```
 
-This downloads a JSON file with all logs. Share this if you find issues!
+This downloads a JSON file with all logs. 
+
+> [!TIP]
+> **Rapid Debugging:** You can copy the contents of these logs (or the summary from the console) and paste them directly into your AI Coding Agent. Tell the agent: *"Here are my logs, help me sort through the errors and find the root cause."* This is often the fastest way to debug complex Stellar or state-management issues.
 
 ---
 
@@ -146,6 +152,20 @@ await horizon.scanAccountOperations('CYOUR_ADDRESS', { limit: 200 });
 - PasskeySplash flashes
 - Console errors you can't explain
 - Operations taking > 3 seconds
+
+---
+
+## 🤖 Working with AI Agents
+
+This repository is optimized for AI-assisted development. If you are stuck or want to build features faster, we recommend using an **AI Coding Agent**:
+
+- **[Antigravity](https://antigravity.google)** (Highly Recommended): Designed specifically for deep repository context and complex refactors.
+- **[Claude Code](https://docs.anthropic.com/en/docs/agents-and-tools/claude-code)**: Great for terminal-based iteration and surgical fixes.
+
+**How to use them:**
+1. Provide the agent with the relevant parts of the `docs/` folder (especially `STATE_OF_WORLD.md` and `REPO_MAP.md`).
+2. Ask for specific implementations (e.g., *"Add a new Svelte component for music filtering"*).
+3. Use the agents to analyze console logs (see Step 5 above).
 
 ---
 

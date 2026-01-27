@@ -33,7 +33,7 @@ This project and everyone participating in it is governed by the [Code of Conduc
 1.  **Branching**:
     -   Use `feature/my-feature` for new features.
     -   Use `fix/my-bug-fix` for bug fixes.
-    -   Use `docs/my-doc-update` for documentation only.
+    -   Use `docs/example-doc-update` (example) for documentation only.
 2.  **Standards**:
     -   **Tech Stack**: Svelte 5 (Runes), Astro 5, Tailwind CSS 4.
     -   **Linting**: Run `pnpm check` before committing.

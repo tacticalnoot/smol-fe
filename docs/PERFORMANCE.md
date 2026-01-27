@@ -1,14 +1,18 @@
+<!--
+CONTRACT:
+- SSOT: [STATE_OF_WORLD.md](STATE_OF_WORLD.md)
+- AUDIENCE: Dev
+- NATURE: Current
+- LAST_HARDENED: 2026-01-27
+- VERIFICATION_METHOD: [Lighthouse | State Trace]
+-->
 # Performance & Optimizations
 
-## Overview
-High-performance strategies used in Smol FE:
-1.  **Fast Mode**: Low-memory rendering for low-end devices.
-2.  **Transaction Optimizations**: Circuit breakers, locking, and validation.
-3.  **Auth Efficiency**: Caching and duplicate call elimination.
+Low-memory and high-speed strategies governed by **[preferences.svelte.ts](../src/stores/preferences.svelte.ts)**.
 
 ---
 
-## 🚀 Fast Mode (`src/preferences.ts`)
+## 🚀 Fast Mode (`src/stores/preferences.svelte.ts`)
 Toggled via Settings (User Preference). Persists to `localStorage`.
 
 ### Features Disabled

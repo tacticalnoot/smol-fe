@@ -1,18 +1,26 @@
+<!--
+CONTRACT:
+- SSOT: [STATE_OF_WORLD.md](STATE_OF_WORLD.md)
+- AUDIENCE: Dev, Auditor
+- NATURE: State Trace / Audit
+- LAST_HARDENED: 2026-01-27
+- VERIFICATION_METHOD: [Code trace | Simulation]
+-->
 # COMPREHENSIVE PASSKEY, WALLET & TRANSACTION AUDIT
-**Last Updated:** 2026-01-23
-**Purpose:** Persistent reference for all authentication, wallet, and transaction operations
+
+This document serves as the technical trace for all on-chain operations. All specific logic is governed by **[transaction-helpers.ts](../src/utils/transaction-helpers.ts)**.
 
 ---
 
 ## TABLE OF CONTENTS
 1. [Passkey Operations](#1-passkey-operations)
-2. [Wallet Actions & Connection Management](#2-wallet-actions--connection-management)
-3. [Transaction Building, Signing & Submission](#3-transaction-building-signing--submission)
+2. [Wallet Actions & Connection Management](#2-wallet-actions-connection-management)
+3. [Transaction Building, Signing & Submission](#3-transaction-building-signing-submission)
 4. [Horizon API Calls](#4-horizon-api-calls)
 5. [RPC Calls](#5-rpc-calls)
-6. [User Authentication & Session Management](#6-user-authentication--session-management)
+6. [User Authentication & Session Management](#6-user-authentication-session-management)
 7. [Address Validation](#7-address-validation)
-8. [Error Handling Gaps & Opportunities](#8-error-handling-gaps--opportunities)
+8. [Error Handling Gaps & Opportunities](#8-error-handling-gaps-opportunities)
 9. [Critical Reference Checklists](#9-critical-reference-checklists)
 10. [Priority Improvements](#10-priority-improvements-needed)
 
@@ -44,7 +52,7 @@
 **File:** `src/hooks/useAuthentication.ts`
 
 #### Lines 19-40: `login()` - Connect existing wallet
-- **What it does:** Calls `account.get().connectWallet()` with safe RP ID, performs JWT login via API
+- **What it does:** Calls `account.get().connectWallet()` with safe RP ID, performs Auth Token login via API
 - **What could go wrong:** Passkey not found, user cancellation, API failure, cookie domain issues
 - **Current validation:** RP ID calculation via `getSafeRpId()`, keyId base64 encoding
 - **Improvements needed:** Retry logic for API calls, better error messages
@@ -141,8 +149,8 @@
 
 ## 3. TRANSACTION BUILDING, SIGNING & SUBMISSION
 
-### 3.1 Transaction Executor (Comprehensive Wrapper)
-**File:** `src/utils/transaction-executor.ts`
+#### Lines 74-221: `executeTransaction()` - Main transaction wrapper
+**File:** `src/utils/transaction-helpers.ts`
 
 #### Lines 74-221: `executeTransaction()` - Main transaction wrapper
 **What it does:**
@@ -278,7 +286,7 @@
 - **What could go wrong:** Balance not updated on failure
 - **Current validation:** ❌ None (relies on caller)
 - **Error handling:** ❌ None
-- **⚠️ Improvements needed:** Use executeTransaction wrapper from transaction-executor.ts
+- **⚠️ Improvements needed:** Use executeTransaction wrapper from transaction-helpers.ts
 
 ### 3.8 Components with Transaction Flows
 
@@ -467,13 +475,13 @@ This is a comprehensive utility module that consolidates all Horizon API operati
 #### Lines 19-40: `login()` - Passkey login
 - **What it does:** Connects wallet, calls /login API with passkey response
 - **API:** `${API_URL}/login` POST with type: 'connect', keyId, contractId, response
-- **What could go wrong:** API failure, JWT generation error, cookie domain issues
+- **What could go wrong:** API failure, Auth Token generation error, cookie domain issues
 - **Current validation:** None on API response
 - **Error handling:** Throws on API error
-- **Improvements needed:** Validate JWT before storing, handle expired responses
+- **Improvements needed:** Validate Auth Token before storing, handle expired responses
 
-#### Lines 43-79: `performLogin()` - JWT creation and cookie storage
-- **What it does:** Calls /login API, stores JWT in cookie with domain/secure settings
+#### Lines 43-79: `performLogin()` - Auth Token creation and cookie storage
+- **What it does:** Calls /login API, stores Auth Token in cookie with domain/secure settings
 - **What could go wrong:** Cookie not set (domain mismatch), insecure cookie on https
 - **Current validation:** Uses tldts getDomain for cookie domain
 - **Error handling:** Throws on API error
@@ -523,16 +531,16 @@ This is a comprehensive utility module that consolidates all Horizon API operati
 ### 6.4 Session Persistence
 
 #### Storage Locations
-- **JWT:** Cookie `smol_token` with domain, secure, sameSite: Lax, 30-day expiration
+- **Auth Token:** Cookie `smol_token` with domain, secure, sameSite: Lax, 30-day expiration
 - **localStorage:** `smol:contractId`, `smol:keyId` (persists across logout for soft logout)
 - **sessionStorage:** Not used for auth
 
 #### What could go wrong
 - Cookie/localStorage out of sync
-- JWT expired but localStorage valid
+- Auth Token expired but localStorage valid
 
 #### Improvements needed
-- JWT refresh mechanism
+- Auth Token refresh mechanism
 - Sync state on mismatch
 
 ---
@@ -637,7 +645,7 @@ This is a comprehensive utility module that consolidates all Horizon API operati
 
 ### 8.2 Files with Good Error Handling
 
-#### ✅ `src/utils/transaction-executor.ts`
+#### ✅ `src/utils/transaction-helpers.ts`
 - Uses SmolError throughout
 - Wraps all errors with context
 - Always releases lock in finally block
@@ -707,7 +715,7 @@ This is a comprehensive utility module that consolidates all Horizon API operati
 - [ ] Require resident key for new wallets
 - [ ] Convert keyId to base64 URL-safe format
 - [ ] Store in localStorage: contractId, keyId
-- [ ] Store in cookie: JWT with proper domain/secure/sameSite
+- [ ] Store in cookie: Auth Token with proper domain/secure/sameSite
 
 ### 9.2 WALLET CONNECTION CHECKLIST
 - [ ] Check `userState.contractId && userState.keyId` before operations
@@ -806,7 +814,7 @@ This is a comprehensive utility module that consolidates all Horizon API operati
 ### 10.3 MEDIUM (Robustness)
 10. ~~**Horizon Pagination:** Scan all operations for upgrade verification~~ ✅ **DONE** - Horizon utility supports pagination via maxPages parameter
 11. **RPC Failover:** Implement automatic failover on RPC failure
-12. **JWT Refresh:** Add token refresh before expiration
+12. **Auth Token Refresh:** Add token refresh before expiration
 13. **Telemetry:** Add error reporting to monitoring system
 14. **Hard Logout:** Add option for full logout (clear all stored data)
 
@@ -869,7 +877,7 @@ This is a comprehensive utility module that consolidates all Horizon API operati
 ## MAINTENANCE INSTRUCTIONS
 
 ### When Adding New Transaction Flows
-1. Use `executeTransaction()` wrapper from `src/utils/transaction-executor.ts`
+1. Use `executeTransaction()` wrapper from `src/utils/transaction-helpers.ts`
 2. Follow checklist in section 9.3
 3. Add to this document under section 3 (Transaction Building)
 

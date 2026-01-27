@@ -2,13 +2,13 @@
 
 ## 🗺️ Navigation
 - **Map**: See [docs/INDEX.md](INDEX.md) for the full documentation tree.
-- **Map of Danger**: See `docs/AUDIT_NOTES.md` before touching core logic.
+- **Map of Danger**: See `docs/archive/AUDIT_NOTES.md` before touching core logic.
 
 ## 🚀 Quick Reference
 - **Repo**: Svelte 5 (Runes), Astro 5, Tailwind 4.
-- **State**: `src/stores/*.svelte.ts` (Global Runes).
+- **State**: `src/stores/` (Global Runes).
 - **Auth**: `passkey-kit` + Stellar (Soroban).
-- **Data**: Hybrid Strategy (Snapshot (`universal-smols.json`) + Live Hydration).
+- **Data**: Hybrid Strategy (Snapshot (`public/data/GalacticSnapshot.json`) + Live Hydration).
 
 ## ⚠️ Prime Directives
 1.  **Small Diffs**: One task, one focus. Verify often.

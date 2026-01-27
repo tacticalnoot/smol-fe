@@ -58,7 +58,6 @@ export interface BuildResponse {
 
 export interface SendRequest {
     xdr: string;
-    launchtube?: boolean;
 }
 
 export interface SendResponse {
@@ -145,14 +144,12 @@ export async function buildTransaction(
  */
 export async function sendTransaction(
     signedXdr: string,
-    useLaunchtube: boolean = false,
     network: 'mainnet' | 'testnet' = 'mainnet'
 ): Promise<SendResponse> {
     const url = `${SOROSWAP_API_BASE}/send?network=${network}`;
 
     const body: SendRequest = {
-        xdr: signedXdr,
-        launchtube: useLaunchtube
+        xdr: signedXdr
     };
 
     const key = import.meta.env.PUBLIC_SOROSWAP_API_KEY;

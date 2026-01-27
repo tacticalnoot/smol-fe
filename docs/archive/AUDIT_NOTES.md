@@ -10,10 +10,10 @@
 - Lockfile: `pnpm-lock.yaml`
 
 ### Baseline commands
-- `pnpm install` (already up to date; build scripts ignored warning logged)
-- `pnpm run check` (fails with existing type errors; see output in terminal log)
+- `ppnpm install` (already up to date; build scripts ignored warning logged)
+- `ppnpm check` (fails with existing type errors; see output in terminal log)
 - `pnpm test` (pass)
-- `pnpm run build` (pass with chunk-size warnings)
+- `ppnpm build` (pass with chunk-size warnings)
 
 ---
 
@@ -44,7 +44,7 @@
   - ✅ Improve: link to `DEVELOPER_SETUP.md` and `START_HERE.md` near “Getting Started.”
 - `DEVELOPER_SETUP.md`
   - ✅ Good: clear localhost passkey workaround, port specifics.
-  - ⚠️ Missing: mention `pnpm run check` + `pnpm test` baseline steps.
+  - ⚠️ Missing: mention `ppnpm check` + `pnpm test` baseline steps.
   - ✅ Improve: add “dev server uses 4322 here vs 4321 in START_HERE” note to avoid confusion.
 - `START_HERE.md`
   - ✅ Good: step-by-step local testing checklist.
@@ -69,7 +69,7 @@
 - `NOTES.md`
   - ✅ Good: passkey relayer deltas and usage map.
   - ⚠️ Missing: update the “Phase Checklist” to include current build/test state.
-  - ✅ Improve: clarify whether LAUNCHTUBE is fully removed from runtime.
+  - ✅ Improve: clarify whether Legacy Relayer is fully removed from runtime.
 - `CAST_DEBUG.md`
   - ✅ Good: step-by-step Cast diagnostics.
   - ⚠️ Missing: direct link to `src/pages/api/audio/[id].ts` for headers.
@@ -142,7 +142,7 @@
   - ✅ Good: valuable playback findings + PR plan.
   - ⚠️ Missing: indicate which PRs are already implemented.
   - ✅ Improve: add “status” tags per proposed PR.
-- `docs/STATE_MACHINE.md`
+- `docs/STATEDIAGRAM.md`
   - ✅ Good: clear overview of core flows.
   - ⚠️ Missing: detail about the client-router persistence for audio.
   - ✅ Improve: add reference to `Layout.astro` usage.
@@ -289,7 +289,7 @@
 - No obvious unsafe HTML usage found in audited files.
 
 ### 8) DX & CI
-- `pnpm run check` fails with existing type errors; that blocks CI and hides new issues.
+- `ppnpm check` fails with existing type errors; that blocks CI and hides new issues.
 - Many log files tracked in root; could be relocated to artifacts for clarity.
 
 ---
@@ -302,8 +302,8 @@
 | `/[id]` SSR 404 on fresh load | P1 | Medium | New song links show error on refresh | Read-replica lag; SSR single-shot fetch | Add retry/backoff or “finalizing” SSR fallback | Manual: create + refresh immediately, confirm recovery |
 | Audio play race on rapid switching | P2 | Medium | iOS glitch/rejected play calls | Multiple play triggers across effects | Gate `play()` to a single intent, or debounce | Manual: spam play/next; check console |
 | No abort on fetch during nav | P3 | Medium | stale data races / wasted requests | fetch without AbortController | Add AbortController in SmolResults + cleanup | Manual: navigate rapidly and observe network |
-| Typecheck failures (pre-existing) | P1 | High | CI noise, developer confusion | Divergent SDK typings + missing fields | Fix incremental type errors, align SDK versions | `pnpm run check` |
-| Large build chunks | P3 | Medium | slow initial load | heavy bundles | code-split large components, dynamic import | `pnpm run build` chunk report |
+| Typecheck failures (pre-existing) | P1 | High | CI noise, developer confusion | Divergent SDK typings + missing fields | Fix incremental type errors, align SDK versions | `ppnpm check` |
+| Large build chunks | P3 | Medium | slow initial load | heavy bundles | code-split large components, dynamic import | `ppnpm build` chunk report |
 
 ---
 
@@ -342,7 +342,7 @@
 ---
 
 ## Proposed PR Plan (Small, Safe, Ordered)
-1. **P0**: Bring `pnpm run check` to green by addressing top type errors (one file at a time).
+1. **P0**: Bring `ppnpm check` to green by addressing top type errors (one file at a time).
 2. **P1**: Centralize MediaSession handlers (single owner) to avoid conflicting controls.
 3. **P1**: Add AbortController to SmolResults fetch + cleanup on navigation.
 4. **P2**: Enhance `/[id]` SSR fallback for fresh 404s (short retry/backoff).
@@ -356,4 +356,4 @@
 3. Confirm `datePublished` is present and non-empty.
 
 ## Verification Steps
-- Playwright: `pnpm run test:e2e`
+- Playwright: `ppnpm test:e2e`

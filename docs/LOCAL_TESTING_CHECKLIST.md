@@ -38,7 +38,7 @@ location.reload();
 2. Click "CREATE NEW ACCOUNT"
 3. Enter username
 4. Approve passkey creation in browser
-   - **Note:** Turnstile is bypassed in dev mode (localhost), only required in production
+   - **Note:** Turnstile is bypassed in dev mode (`isDev` logic in `PasskeySplash.svelte`), only required in production.
 
 **Expected Logs:**
 ```
@@ -397,7 +397,7 @@ When you find an issue, capture:
 
 1. **Log level used:** DEBUG or TRACE
 2. **Browser:** Chrome/Firefox/Safari version
-3. **Environment:** localhost:4321, dev.smol.xyz, or smol.xyz
+3. **Environment:** localhost:4321, *.pages.dev, or smol.xyz
 4. **Steps to reproduce:** Exact steps
 5. **Expected behavior:** What should happen
 6. **Actual behavior:** What actually happened

@@ -1,3 +1,11 @@
+<!--
+CONTRACT:
+- SSOT: [STATE_OF_WORLD.md | Subordinate]
+- AUDIENCE: [Dev | Agent]
+- NATURE: [Current]
+- LAST_HARDENED: 2026-01-27
+- VERIFICATION_METHOD: [State trace]
+-->
 # Smol Ecosystem State Machine
 
 ## 1. App Routing & UI Flow
@@ -64,8 +72,7 @@ stateDiagram-v2
     Hydration --> Ready: UI Updated
     
     state "Snapshot" as S {
-        GalacticSnapshot.json: Pre-built
-        universal-smols.json: Full Dump
+        "public/data/GalacticSnapshot.json": "Pre-built Snapshot"
     }
 ```
 

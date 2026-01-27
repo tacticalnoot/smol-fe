@@ -1,73 +1,63 @@
+<!--
+CONTRACT:
+- SSOT: [STATE_OF_WORLD.md](STATE_OF_WORLD.md)
+- AUDIENCE: Dev
+- NATURE: Current
+- LAST_HARDENED: 2026-01-27
+- VERIFICATION_METHOD: [Link check | Claim check]
+-->
 # Smol Frontend - Developer Setup Guide
 
-This guide covers special setup steps for working with this forked repository (`tacticalnoot/smol-fe`).
+This guide covers setup steps for working with the **Smol-FE** codebase. All technical constraints (ports, versions) are defined in the [STATE OF WORLD](STATE_OF_WORLD.md).
 
 ---
 
 ## Prerequisites
 
-- Node.js 18+
-- pnpm (`pnpm install -g pnpm`)
-- Access to a Smol account (passkey created on `smol.xyz`)
+- **Node.js**: `22.21.1` (See [SSOT](STATE_OF_WORLD.md))
+- **pnpm**: `10.18.1` (`npm install -g pnpm`)
+- **mkcert**: Optional, for local HTTPS support.
 
 ---
 
 ## Quick Start
 
 ```bash
-# Clone the fork
-git clone https://github.com/tacticalnoot/smol-fe.git
+# Clone the repository
+git clone https://github.com/kalepail/smol-fe.git
 cd smol-fe
 
 # Install dependencies
 pnpm install
 
 # Start dev server
-pnpm run dev
+pnpm dev
 ```
 
-The dev server runs on `http://localhost:4321`
+The dev server runs on `http://localhost:4321` by default.
+
+### Authentication Strategy
+Passkeys are domain-bound and require a secure context.
+1. **General Dev**: Use `http://localhost:4321`. Authentication features will be limited.
+2. **Full Auth Test**: Deploy your fork to **Cloudflare Pages**. This is the easiest way to test Passkeys accurately.
+3. **Local Auth (Advanced)**: Use the "Cookie Transfer" method below if you need to test authentication logic on your machine.
 
 ---
 
-## 🔐 Localhost Authentication Workaround
+## 🔐 Localhost Authentication (The "Cookie Transfer")
 
-### The Problem
+Passkeys are **domain-bound**. To authenticate locally, you must transfer your auth cookie from production:
 
-Passkeys are **domain-bound** by WebAuthn security. If your passkey was created on `smol.xyz`, it cannot be used on `localhost` because:
-
-- `getDomain('localhost')` returns `null`
-- The browser's WebAuthn API requires the `rpId` (relying party ID) to match where the credential was created
-- Clicking "Login" on localhost will trigger `navigator.credentials.get()` but fail silently
-
-### The Solution: Cookie Transfer
-
-Since the JWT token is validated by the API (`api.smol.xyz`), not the frontend domain, you can transfer your auth cookie from production to localhost:
-
-#### Method 1: Browser DevTools (Manual)
-
-1. **Login on production**: Go to `https://smol.xyz` and login with your passkey
-2. **Copy the cookie**: Open DevTools → Application → Cookies → `smol.xyz` → Copy the `smol_token` value
-3. **Set on localhost**: Navigate to `http://localhost:4321`, open DevTools → Console, run:
+1. **Login on production**: [smol.xyz](https://smol.xyz).
+2. **Copy the cookie**: Open DevTools → Application → Cookies → `smol.xyz` → Copy `smol_token`.
+3. **Set on dev host**: Open [https://noot.smol.xyz](https://noot.smol.xyz), run in Console:
    ```javascript
-   document.cookie = 'smol_token=YOUR_COPIED_TOKEN_HERE; path=/';
+   document.cookie = `smol_token=${prompt('Paste smol_token:')}; domain=.smol.xyz; path=/`;
    location.reload();
    ```
-4. You should now be authenticated on localhost
+   > [!TIP]
+   > Setting the domain to `.smol.xyz` ensures the cookie is shared correctly across subdomains.
 
-#### Method 2: Quick JavaScript (One-liner)
-
-If you have both `smol.xyz` and `localhost:4321` open:
-
-```javascript
-// Run this in localhost:4321 console after copying token from smol.xyz
-document.cookie = `smol_token=${prompt('Paste your smol_token from smol.xyz:')}; path=/`;
-location.reload();
-```
-
-### Token Expiration
-
-The JWT token has an expiration time. If your localhost session expires, repeat the cookie transfer process.
 
 ---
 
@@ -81,7 +71,7 @@ This fork uses the **production API** by default. The `.env` file should contain
 PUBLIC_API_URL=https://api.smol.xyz
 ```
 
-> **Note**: The original `kalepail/smol-fe` may point to a different backend (`smol-be.kalepail.workers.dev`). Ensure you're using the correct API URL for your testing needs.
+> **Note**: The official production backend is `https://api.smol.xyz`. Ensure you're using the correct API URL for your testing needs.
 
 ### Running the Correct Dev Server
 
@@ -120,7 +110,7 @@ The "Save Changes" button for existing mixtapes uses a `PUT /mixtapes/:id` API c
 
 ## 🐛 Common Issues
 
-### "Mixtapes not loading" / Network errors to `smol-be.kalepail.workers.dev`
+### "Mixtapes not loading" / Network errors
 
 **Cause**: Wrong API URL configured  
 **Fix**: Ensure `PUBLIC_API_URL=https://api.smol.xyz` in your `.env` file and restart the dev server

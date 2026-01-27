@@ -72,7 +72,7 @@ export function useAuthentication() {
       throw new Error(`Login failed: ${errorMsg}`);
     }
 
-    const jwt = await res.text();
+    const authToken = await res.text();
 
     setUserAuth(cid, keyIdBase64);
     userState.walletConnected = true;
@@ -98,7 +98,7 @@ export function useAuthentication() {
       cookieOptions.domain = domain;
     }
 
-    Cookies.set('smol_token', jwt, cookieOptions);
+    Cookies.set('smol_token', authToken, cookieOptions);
   }
 
   async function signUp(username: string, turnstileToken: string) {
