@@ -2,6 +2,7 @@
 import { ClientRouter } from 'astro:transitions';
 import Header from '../components/Header.svelte'
 import MixtapeBuilderOverlay from '../components/mixtape/MixtapeBuilderOverlay.svelte'
+import MixtapeDropZone from '../components/mixtape/MixtapeDropZone.svelte'
 import BarAudioPlayer from '../components/audio/BarAudioPlayer.svelte'
 import GlobalVerification from '../components/GlobalVerification.svelte'
 import OnboardingGuard from '../components/onboarding/OnboardingGuard.svelte'
@@ -253,6 +254,7 @@ const fullSchema = [...siteSchema, ...schema];
 		<BarAudioPlayer client:only="svelte" transition:persist="audio-player" hideBottomBar={hideBottomBar || Astro.url.pathname.startsWith('/labs')} />
 
 		<MixtapeBuilderOverlay client:load transition:persist="mixtape-builder" />
+		<MixtapeDropZone client:load transition:persist="mixtape-drop-zone" />
 		<slot />
 
 		<!-- Debug Panel (only shows in dev mode or with ?debug=true) -->

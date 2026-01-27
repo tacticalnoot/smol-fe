@@ -118,14 +118,10 @@
     } from "../../utils/transaction-helpers";
 
     // Relayer Logic: Determine if we should bypass Turnstile
+    // PROD FIX: If we have an OZ API key, use direct relayer regardless of hostname.
+    // This allows noot.smol.xyz to use OZ Channels directly without Turnstile.
     const hasApiKey = !!import.meta.env.PUBLIC_RELAYER_API_KEY;
-    const isPagesDev =
-        typeof window !== "undefined" &&
-        window.location.hostname.includes("pages.dev");
-    const isLocalhost =
-        typeof window !== "undefined" &&
-        window.location.hostname.includes("localhost");
-    const isDirectRelayer = hasApiKey && (isPagesDev || isLocalhost);
+    const isDirectRelayer = hasApiKey;
 
     console.log(
         "[TipModal] Relayer Mode:",
