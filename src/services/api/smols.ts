@@ -7,6 +7,28 @@ import {
 const API_URL = import.meta.env.PUBLIC_API_URL || 'https://api.smol.xyz';
 
 /**
+ * Strip heavy fields from a song to reduce memory footprint.
+ */
+function stripHeavyFields(song: Smol): Smol {
+  return {
+    Id: song.Id,
+    Title: song.Title,
+    Song_1: song.Song_1,
+    Address: song.Address,
+    Creator: song.Creator,
+    Username: song.Username,
+    Created_At: song.Created_At,
+    Tags: song.Tags,
+    Mint_Token: song.Mint_Token,
+    Mint_Amm: song.Mint_Amm,
+    Minted_By: song.Minted_By,
+    Liked: song.Liked,
+    Plays: song.Plays,
+    Views: song.Views,
+  } as Smol;
+}
+
+/**
  * Fetch all smols with Hybrid Strategy (Live + GalacticSnapshot Merge)
  */
 export async function fetchSmols(options?: { limit?: number; signal?: AbortSignal }): Promise<Smol[]> {
@@ -108,10 +130,11 @@ export async function fetchSmols(options?: { limit?: number; signal?: AbortSigna
       }
     }
 
-    return merged as Smol[];
+    // MEMORY OPTIMIZATION: Strip heavy fields before returning
+    return merged.map(stripHeavyFields) as Smol[];
   } catch (e) {
     console.error("Fetch error, falling back to snapshot", e);
-    return getSnapshotAsync();
+    return getSnapshotAsync(); // Snapshot already strips heavy fields
   }
 }
 

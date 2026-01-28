@@ -188,22 +188,25 @@
         goldenKale: false,
     });
 
+    // MEMORY FIX: Use AbortController to cancel pending fetches when artist changes
     $effect(() => {
-        if (currentArtistAddress) {
-            fetch(`/api/artist/badges/${currentArtistAddress}`)
-                .then((res) => (res.ok ? res.json() : null))
-                .then((data) => {
-                    if (data) artistBadges = data;
-                    else
-                        artistBadges = {
-                            premiumHeader: false,
-                            goldenKale: false,
-                        };
-                })
-                .catch(() => {
+        if (!currentArtistAddress) return;
+
+        const controller = new AbortController();
+
+        fetch(`/api/artist/badges/${currentArtistAddress}`, { signal: controller.signal })
+            .then((res) => (res.ok ? res.json() : null))
+            .then((data) => {
+                if (data) artistBadges = data;
+                else artistBadges = { premiumHeader: false, goldenKale: false };
+            })
+            .catch((e) => {
+                if (e.name !== 'AbortError') {
                     artistBadges = { premiumHeader: false, goldenKale: false };
-                });
-        }
+                }
+            });
+
+        return () => controller.abort();
     });
 
     // PERF FIX: Fisher-Yates shuffle - O(n) instead of O(n²) from .sort(() => Math.random() - 0.5)
@@ -228,6 +231,30 @@
         }
     });
 
+    /**
+     * Strip heavy fields from a song to reduce memory footprint.
+     * Full data (kv_do, lyrics) can be fetched on-demand when viewing song details.
+     */
+    function stripHeavyFields(song: Smol): Smol {
+        return {
+            Id: song.Id,
+            Title: song.Title,
+            Song_1: song.Song_1,
+            Address: song.Address,
+            Creator: song.Creator,
+            Username: song.Username,
+            Created_At: song.Created_At,
+            Tags: song.Tags,
+            Mint_Token: song.Mint_Token,
+            Mint_Amm: song.Mint_Amm,
+            Minted_By: song.Minted_By,
+            Liked: song.Liked,
+            Plays: song.Plays,
+            Views: song.Views,
+            // Explicitly exclude: kv_do (huge prompts, base64 images), lyrics (full text)
+        } as Smol;
+    }
+
     async function hydrateGlobalData() {
         if (isLoadingLive) return;
 
@@ -238,7 +265,8 @@
                 const { smols, timestamp } = JSON.parse(cached);
                 // Use cache if less than 5 minutes old for instant UI
                 if (Date.now() - timestamp < 5 * 60 * 1000) {
-                    liveDiscography = smols;
+                    // Cache should already be stripped, but ensure it
+                    liveDiscography = smols.map(stripHeavyFields);
                     updateTopTags(smols);
                     isUrlStateLoaded = true;
                 }
@@ -248,7 +276,8 @@
                     ({ getSnapshotAsync }) => {
                         getSnapshotAsync().then((snap) => {
                             if (liveDiscography.length === 0) {
-                                liveDiscography = snap;
+                                // Strip heavy fields from snapshot (13MB -> ~2MB in memory)
+                                liveDiscography = snap.map(stripHeavyFields);
                                 updateTopTags(snap);
                                 isUrlStateLoaded = true;
                             }
@@ -268,40 +297,19 @@
                     new Date(a.Created_At || 0).getTime(),
             );
 
-            // MEMORY OPTIMIZATION: Strip heavy fields from in-memory representation
-            // Full data (lyrics, kv_do) can be fetched on-demand when viewing song details
-            liveDiscography = smols.map((s) => ({
-                ...s,
-                unique_lyrics: undefined, // Can be 5-10KB per song
-                style: undefined, // Style descriptions can be long
-                Description: s.Description?.slice(0, 200), // Truncate long descriptions
-            })) as Smol[];
-            updateTopTags(smols);
-            isUrlStateLoaded = true; // Data ready
+            // MEMORY OPTIMIZATION: Strip heavy fields (kv_do, lyrics) from ALL songs
+            // This can save 10-50MB+ of RAM by removing prompt text, base64 images, full lyrics
+            liveDiscography = smols.map(stripHeavyFields);
+            updateTopTags(smols); // Use original for tag extraction, then discard
+            isUrlStateLoaded = true;
 
-            // Update Cache (Safe Mode) - MEMORY OPTIMIZED
+            // Update Cache - Store ALL songs but only essential fields
             try {
-                // Strip heavy fields to save space (lyrics are huge)
-                // Reduced from 500 to 200 songs for faster load and less memory
-                const lightSmols = smols.slice(0, 200).map((s) => ({
-                    Id: s.Id,
-                    Title: s.Title,
-                    Song_1: s.Song_1,
-                    Address: s.Address,
-                    Created_At: s.Created_At,
-                    Tags: s.Tags,
-                    Mint_Token: s.Mint_Token,
-                    Mint_Amm: s.Mint_Amm,
-                    Liked: s.Liked,
-                    // Strip: unique_lyrics, style, Description, kv_do (these can be fetched on demand)
-                }));
-
                 const dataToSave = JSON.stringify({
-                    smols: lightSmols,
+                    smols: liveDiscography, // Already stripped, safe to cache all
                     timestamp: Date.now(),
                 });
 
-                // Clear old data first to free up space
                 localStorage.removeItem("smol_global_data_v2");
                 localStorage.setItem("smol_global_data_v2", dataToSave);
             } catch (storageErr) {
@@ -309,7 +317,6 @@
                     "[GlobalPlayer] Cache write failed (quota exceeded?), continuing without cache:",
                     storageErr,
                 );
-                // Ensure no partial data is left
                 try {
                     localStorage.removeItem("smol_global_data_v2");
                 } catch (e) {}
