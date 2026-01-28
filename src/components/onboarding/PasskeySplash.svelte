@@ -211,8 +211,14 @@
             const isNoCredentials =
                 message.includes("failed to connect wallet") ||
                 message.includes("no credentials available") ||
+                message.includes("no passkey found") ||
                 (message.includes("credential") &&
                     message.includes("not found"));
+
+            // Check for passkey migration issue (old passkey on different RP ID)
+            const isMigrationRequired =
+                e.name === 'PasskeyMigrationRequired' ||
+                message.includes("login at smol.xyz first");
 
             // Filter out standard cancellations (user closed popup or timed out)
             if (
@@ -221,10 +227,17 @@
                 !message.includes("interaction was not allowed") &&
                 !message.includes("timed out or was not allowed")
             ) {
-                // Provide more helpful error message for no credentials case
-                if (isNoCredentials) {
+                // Provide more helpful error message based on error type
+                if (isMigrationRequired) {
                     error =
-                        "No passkey found. Please create a new account instead.";
+                        "Your passkey was created on smol.xyz. Please login there first, then return here.";
+                    logger.info(
+                        LogCategory.PASSKEY,
+                        "Passkey migration required - user needs to login at smol.xyz",
+                    );
+                } else if (isNoCredentials) {
+                    error =
+                        "No passkey found. Create a new account or try logging in at smol.xyz.";
                     logger.debug(
                         LogCategory.PASSKEY,
                         "No passkey credentials found for login",
@@ -240,10 +253,10 @@
                     error = `Login failed: ${e.message || "Unknown error"}`;
                 }
 
-                // Auto-clear error after 5s to reset UI state
+                // Auto-clear error after 8s to give user time to read migration message
                 setTimeout(() => {
                     error = null;
-                }, 5000);
+                }, 8000);
             } else {
                 logger.debug(
                     LogCategory.PASSKEY,
@@ -458,15 +471,17 @@
                             Enter as Guest
                         </button>
 
-                        <!-- Migration Warning -->
-                        <div
-                            class="mt-6 max-w-sm bg-amber-900/40 border border-amber-500/30 rounded-lg px-3 py-2 flex items-center gap-2 text-amber-200 text-[10px] font-pixel"
-                        >
-                            <svg class="w-3 h-3 flex-shrink-0" viewBox="0 0 24 24" fill="currentColor">
-                                <path d="M13 14H11V9H13M13 18H11V16H13M1 21H23L12 2L1 21Z" />
-                            </svg>
-                            <span>We're upgrading passkeys.<br/>Browse free, or use <a href="https://smol.xyz" class="underline hover:text-amber-100" target="_blank" rel="noopener">smol.xyz</a> to create.</span>
-                        </div>
+                        <!-- Migration Warning - Only show on subdomains -->
+                        {#if typeof window !== "undefined" && window.location.hostname !== 'smol.xyz' && window.location.hostname.endsWith('.smol.xyz')}
+                            <div
+                                class="mt-6 max-w-sm bg-amber-900/40 border border-amber-500/30 rounded-lg px-3 py-2 flex items-center gap-2 text-amber-200 text-[10px] font-pixel"
+                            >
+                                <svg class="w-3 h-3 flex-shrink-0" viewBox="0 0 24 24" fill="currentColor">
+                                    <path d="M13 14H11V9H13M13 18H11V16H13M1 21H23L12 2L1 21Z" />
+                                </svg>
+                                <span>Have a passkey? <a href="https://smol.xyz/splash" class="underline hover:text-amber-100 font-bold">Login at smol.xyz</a> first, then return here.</span>
+                            </div>
+                        {/if}
                     </div>
                 {:else if step === "username"}
                     <div

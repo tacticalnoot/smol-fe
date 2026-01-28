@@ -16,15 +16,19 @@ export function useAuthentication() {
 
   async function login() {
     console.log('[Auth] Login attempt...');
+    const hostname = window.location.hostname;
+    const primaryRpId = getSafeRpId(hostname);
 
     // Clear any stale credentials before logging in
     clearUserAuth();
 
     try {
       const { account } = await import('../utils/passkey-kit');
-      const rpId = getSafeRpId(window.location.hostname);
+
+      console.log('[Auth] Attempting login with RP ID:', primaryRpId, 'for hostname:', hostname);
+
       const result = await account.get().connectWallet({
-        rpId,
+        rpId: primaryRpId,
       });
 
       console.log('[Auth] connectWallet succeeded:', { contractId: result.contractId });
@@ -37,7 +41,31 @@ export function useAuthentication() {
 
       await performLogin(cid, keyIdBase64, rawResponse, 'connect');
     } catch (err: any) {
-      console.error("[Auth] Login failed:", err);
+      console.error("[Auth] Login failed with RP ID:", primaryRpId, "Error:", err);
+
+      // Check if this is a "no credentials" type error that might benefit from trying full hostname
+      const message = err.message?.toLowerCase() || '';
+      const isNoCredentials =
+        message.includes('no credentials') ||
+        message.includes('not found') ||
+        message.includes('no matching credentials') ||
+        message.includes('credential') && message.includes('not');
+
+      // If on a subdomain of smol.xyz and no credentials found, user might have old passkey
+      // registered with full hostname. Add helpful context to error.
+      if (isNoCredentials && hostname.endsWith('.smol.xyz') && hostname !== 'smol.xyz') {
+        console.warn('[Auth] No passkey found for RP ID:', primaryRpId);
+        console.warn('[Auth] If you created your passkey before Jan 27 2026, it may be registered');
+        console.warn('[Auth] with the full hostname. Please login at smol.xyz first, or create a new account.');
+
+        // Enhance the error message for user
+        const enhancedError = new Error(
+          `No passkey found. If you created your account before Jan 27, please login at smol.xyz first, then return here.`
+        );
+        enhancedError.name = 'PasskeyMigrationRequired';
+        throw enhancedError;
+      }
+
       throw err;
     }
   }
