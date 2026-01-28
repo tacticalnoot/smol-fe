@@ -22,50 +22,56 @@ export function useAuthentication() {
     // Clear any stale credentials before logging in
     clearUserAuth();
 
+    const { account } = await import('../utils/passkey-kit');
+
+    // Try primary RP ID first (smol.xyz for subdomains)
+    console.log('[Auth] Attempting login with RP ID:', primaryRpId, 'for hostname:', hostname);
+
     try {
-      const { account } = await import('../utils/passkey-kit');
-
-      console.log('[Auth] Attempting login with RP ID:', primaryRpId, 'for hostname:', hostname);
-
       const result = await account.get().connectWallet({
         rpId: primaryRpId,
       });
 
       console.log('[Auth] connectWallet succeeded:', { contractId: result.contractId });
 
-      const {
-        rawResponse,
-        keyIdBase64,
-        contractId: cid,
-      } = result;
-
+      const { rawResponse, keyIdBase64, contractId: cid } = result;
       await performLogin(cid, keyIdBase64, rawResponse, 'connect');
+      return;
     } catch (err: any) {
-      console.error("[Auth] Login failed with RP ID:", primaryRpId, "Error:", err);
+      console.warn("[Auth] Login failed with RP ID:", primaryRpId, "Error:", err.message);
 
-      // Check if this is a "no credentials" type error that might benefit from trying full hostname
+      // Check if this might be a "no credentials" error worth retrying with fallback
       const message = err.message?.toLowerCase() || '';
       const isNoCredentials =
         message.includes('no credentials') ||
         message.includes('not found') ||
         message.includes('no matching credentials') ||
-        message.includes('credential') && message.includes('not');
+        (message.includes('credential') && message.includes('not'));
 
-      // If on a subdomain of smol.xyz and no credentials found, user might have old passkey
-      // registered with full hostname. Add helpful context to error.
-      if (isNoCredentials && hostname.endsWith('.smol.xyz') && hostname !== 'smol.xyz') {
-        console.warn('[Auth] No passkey found for RP ID:', primaryRpId);
-        console.warn('[Auth] If you created your passkey before Jan 27 2026, it may be registered');
-        console.warn('[Auth] with the full hostname. Please login at smol.xyz first, or create a new account.');
+      // If on a subdomain and no credentials found, try full hostname as fallback
+      // (for passkeys created before the RP ID unification)
+      const isSubdomain = hostname.endsWith('.smol.xyz') && hostname !== 'smol.xyz';
 
-        // Enhance the error message for user
-        const enhancedError = new Error(
-          `No passkey found. If you created your account before Jan 27, please login at smol.xyz first, then return here.`
-        );
-        enhancedError.name = 'PasskeyMigrationRequired';
-        throw enhancedError;
+      if (isNoCredentials && isSubdomain && primaryRpId !== hostname) {
+        console.log('[Auth] Trying fallback RP ID (full hostname):', hostname);
+
+        try {
+          const result = await account.get().connectWallet({
+            rpId: hostname,
+          });
+
+          console.log('[Auth] Fallback succeeded with hostname RP ID:', { contractId: result.contractId });
+
+          const { rawResponse, keyIdBase64, contractId: cid } = result;
+          await performLogin(cid, keyIdBase64, rawResponse, 'connect');
+          return;
+        } catch (fallbackErr: any) {
+          console.warn("[Auth] Fallback also failed:", fallbackErr.message);
+          // Fall through to throw original error
+        }
       }
 
+      // If we get here, both attempts failed (or wasn't worth retrying)
       throw err;
     }
   }
