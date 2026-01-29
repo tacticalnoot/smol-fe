@@ -121,16 +121,16 @@ const fullSchema = [...siteSchema, ...schema];
 			</>
 		)}
 
-		<meta name="twitter:card" content={song_url ? "player" : "summary_large_image"} />
+		<meta name="twitter:card" content={twitter_player ? "player" : "summary_large_image"} />
 		<meta name="twitter:site" content="@smolxyz" />
 		<meta name="twitter:title" content={title} />
 		<meta name="twitter:description" content={description} />
 		<meta name="twitter:image" content={image_url ? `${image_url}?scale=32` : `${siteOrigin}/meta.png`} />
 		<meta name="twitter:url" content={canonical} />
 		
-		{song_url && (
+		{twitter_player && (
 			<>
-				<meta name="twitter:player" content={twitter_player || song_url} />
+				<meta name="twitter:player" content={twitter_player} />
 				<meta name="twitter:player:width" content="480" />
 				<meta name="twitter:player:height" content="480" />
 			</>
