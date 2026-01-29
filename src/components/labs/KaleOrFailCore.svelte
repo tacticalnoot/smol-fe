@@ -89,13 +89,9 @@
             }, 8000);
 
             audio = new Audio();
-            // Note: crossOrigin removed - breaks playback if audio server doesn't support CORS
+            // Note: No AudioContext/visualizer - CORS blocks it and breaks playback
 
-            // Setup audio context for visualizer
-            audio.addEventListener("play", () => {
-                isPlaying = true;
-                setupAudioContext();
-            });
+            audio.addEventListener("play", () => (isPlaying = true));
             audio.addEventListener("pause", () => (isPlaying = false));
             audio.addEventListener("ended", () => (isPlaying = false));
 
