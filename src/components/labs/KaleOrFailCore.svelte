@@ -192,13 +192,25 @@
     }
 
     function playCurrent() {
-        if (!audio || currentIndex >= smols.length) return;
+        if (!audio || currentIndex >= smols.length) {
+            console.log("[KaleOrFail] playCurrent skipped:", {
+                audio: !!audio,
+                currentIndex,
+                smolsLength: smols.length,
+            });
+            return;
+        }
         const song = smols[currentIndex];
         const url = song.Song_1;
+        console.log("[KaleOrFail] Playing:", { title: song.Title, url });
         if (url) {
             audio.src = url;
             audio.volume = 0.5;
-            audio.play().catch(() => {});
+            audio.play().catch((e) => {
+                console.error("[KaleOrFail] Audio play failed:", e);
+            });
+        } else {
+            console.warn("[KaleOrFail] No Song_1 URL for:", song.Title);
         }
     }
 
