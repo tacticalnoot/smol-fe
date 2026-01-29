@@ -88,7 +88,7 @@
             }, 8000);
 
             audio = new Audio();
-            audio.crossOrigin = "anonymous";
+            // Note: crossOrigin removed - breaks playback if audio server doesn't support CORS
 
             // Setup audio context for visualizer
             audio.addEventListener("play", () => {
