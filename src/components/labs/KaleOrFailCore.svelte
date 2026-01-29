@@ -254,7 +254,14 @@
         if (swipeTimeout) clearTimeout(swipeTimeout);
         swipeTimeout = setTimeout(() => {
             swipeTimeout = null;
-            if (dir === "right" && song.Address) {
+            // Skip self-tips - can't tip your own songs
+            const isSelfTip =
+                song.Address &&
+                userState.contractId &&
+                song.Address.toLowerCase() ===
+                    userState.contractId.toLowerCase();
+
+            if (dir === "right" && song.Address && !isSelfTip) {
                 const amount = isCustom
                     ? parseFloat(customTipAmount) || 1
                     : selectedTipAmount;
