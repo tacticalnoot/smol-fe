@@ -201,16 +201,18 @@
             return;
         }
         const song = smols[currentIndex];
-        const url = song.Song_1;
+        const songId = song.Song_1 || song.Id;
+        // Song_1 is a GUID, construct full URL
+        const url = `${import.meta.env.PUBLIC_API_URL || "https://api.smol.xyz"}/song/${songId}.mp3`;
         console.log("[KaleOrFail] Playing:", { title: song.Title, url });
-        if (url) {
+        if (songId) {
             audio.src = url;
             audio.volume = 0.5;
             audio.play().catch((e) => {
                 console.error("[KaleOrFail] Audio play failed:", e);
             });
         } else {
-            console.warn("[KaleOrFail] No Song_1 URL for:", song.Title);
+            console.warn("[KaleOrFail] No Song ID for:", song.Title);
         }
     }
 
