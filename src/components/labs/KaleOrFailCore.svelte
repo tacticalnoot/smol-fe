@@ -593,7 +593,11 @@
                         <p
                             class="text-xs text-[#9ae600] uppercase tracking-wider truncate"
                         >
-                            {song.artist || song.Creator || "Unknown Artist"}
+                            {song.artist ||
+                                song.Creator ||
+                                (song.Address
+                                    ? `${song.Address.slice(0, 4)}...${song.Address.slice(-4)}`
+                                    : "Unknown")}
                         </p>
                     </div>
 
