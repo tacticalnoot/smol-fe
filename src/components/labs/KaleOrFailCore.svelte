@@ -42,6 +42,7 @@
     let visualizerCanvas = $state<HTMLCanvasElement>();
     let visualizerAnimationId: number;
     let isPlaying = $state(false);
+    let gameStarted = $state(false); // Requires user click to start (autoplay policy)
 
     // Interaction
     let cardX = spring(0, { stiffness: 0.15, damping: 0.5 });
@@ -98,13 +99,21 @@
             audio.addEventListener("pause", () => (isPlaying = false));
             audio.addEventListener("ended", () => (isPlaying = false));
 
-            const data = await safeFetchSmols({ limit: 50 });
+            const data = await safeFetchSmols({ limit: 100 });
+            // Filter to unique artists (one song per artist)
+            const seenArtists = new Set<string>();
             smols = data
                 .filter((s) => s.Song_1 && s.Address)
                 .sort(() => Math.random() - 0.5)
+                .filter((s) => {
+                    if (seenArtists.has(s.Address!)) return false;
+                    seenArtists.add(s.Address!);
+                    return true;
+                })
                 .slice(0, 10);
+            console.log("[KaleOrFail] Loaded", smols.length, "unique artists");
             loading = false;
-            playCurrent();
+            // Don't autoplay - wait for user gesture (gameStarted)
 
             // Fetch balance if logged in
             if (userState.contractId) {
@@ -425,6 +434,30 @@
     {#if loading}
         <div class="flex items-center justify-center h-[550px]">
             <Loader />
+        </div>
+    {:else if !gameStarted}
+        <!-- Start Screen - requires user click to enable audio -->
+        <div
+            class="flex flex-col items-center justify-center h-[550px] text-center p-4 space-y-8"
+            in:fade={{ duration: 300 }}
+        >
+            <div class="text-8xl animate-bounce">🥬</div>
+            <h2 class="text-3xl text-white">KALE OR FAIL</h2>
+            <p class="text-xs text-slate-400 max-w-xs">
+                Swipe through songs and tip your favorites!<br />
+                <span class="text-[#9ae600]"
+                    >{smols.length} unique artists loaded</span
+                >
+            </p>
+            <button
+                onclick={() => {
+                    gameStarted = true;
+                    playCurrent();
+                }}
+                class="border-2 border-[#9ae600] bg-[#9ae600]/10 px-8 py-4 rounded-xl text-[#9ae600] text-xl font-bold hover:bg-[#9ae600] hover:text-black transition-all active:scale-95"
+            >
+                ▶ START
+            </button>
         </div>
     {:else if currentIndex >= smols.length}
         <div
