@@ -4,6 +4,10 @@
     import { getLatestSequence } from "../../utils/base";
     import { account, kale, send } from "../../utils/passkey-kit";
     import { userState } from "../../stores/user.svelte.ts";
+    import {
+        balanceState,
+        updateContractBalance,
+    } from "../../stores/balance.svelte";
     import { getSafeRpId } from "../../utils/domains";
     import { fade, fly, scale } from "svelte/transition";
     import { spring } from "svelte/motion";
@@ -12,17 +16,14 @@
     import { Turnstile } from "svelte-turnstile";
 
     // PROD FIX: If we have an OZ API key, use direct relayer regardless of hostname.
-    // This allows noot.smol.xyz to use OZ Channels directly without Turnstile.
     const hasApiKey = !!import.meta.env.PUBLIC_RELAYER_API_KEY;
     const isDirectRelayer = hasApiKey;
 
-    const AMOUNT_PER_TIP_BASE = 10000000n; // 1 KALE = 10^7 units
     const DECIMALS_FACTOR = 10000000n;
 
     let smols = $state<Smol[]>([]);
     let loading = $state(true);
     let currentIndex = $state(0);
-    // Queue stores user-selected amounts (whole KALE)
     let tipQueue = $state<{ artist: string; songId: string; amount: number }[]>(
         [],
     );
@@ -33,13 +34,20 @@
     let customTipAmount = $state("");
     let isCustom = $state(false);
 
-    // Audio
+    // Audio & Visualizer
     let audio: HTMLAudioElement | null = null;
+    let audioContext: AudioContext | null = null;
+    let analyser: AnalyserNode | null = null;
+    let dataArray: Uint8Array | null = null;
+    let visualizerCanvas = $state<HTMLCanvasElement>();
+    let visualizerAnimationId: number;
+    let isPlaying = $state(false);
 
     // Interaction
-    let cardX = spring(0, { stiffness: 0.1, damping: 0.4 });
-    let cardY = spring(0, { stiffness: 0.1, damping: 0.4 });
-    let cardRotate = spring(0, { stiffness: 0.1, damping: 0.4 });
+    let cardX = spring(0, { stiffness: 0.15, damping: 0.5 });
+    let cardY = spring(0, { stiffness: 0.15, damping: 0.5 });
+    let cardRotate = spring(0, { stiffness: 0.15, damping: 0.5 });
+    let cardScale = spring(1, { stiffness: 0.2, damping: 0.5 });
     let dragging = false;
     let startX = 0;
     let startY = 0;
@@ -48,11 +56,20 @@
     let isSettling = $state(false);
     let settleStatus = $state("");
     let settleStep = $state(0);
-    // Calc total
     let totalTipsAmount = $derived(
         tipQueue.reduce((acc, t) => acc + t.amount, 0),
     );
     let turnstileToken = $state("");
+
+    // Balance derived
+    let formattedBalance = $derived(
+        typeof balanceState.balance === "bigint"
+            ? Number(balanceState.balance / DECIMALS_FACTOR)
+            : null,
+    );
+    let hasEnoughBalance = $derived(
+        formattedBalance !== null && formattedBalance >= totalTipsAmount,
+    );
 
     // Track timeouts for cleanup
     let loadingTimeout: ReturnType<typeof setTimeout> | null = null;
@@ -62,7 +79,6 @@
 
     onMount(async () => {
         try {
-            // Timeout fallback
             loadingTimeout = setTimeout(() => {
                 if (loading) {
                     console.warn("Fetch timed out, forcing load state.");
@@ -72,6 +88,16 @@
             }, 8000);
 
             audio = new Audio();
+            audio.crossOrigin = "anonymous";
+
+            // Setup audio context for visualizer
+            audio.addEventListener("play", () => {
+                isPlaying = true;
+                setupAudioContext();
+            });
+            audio.addEventListener("pause", () => (isPlaying = false));
+            audio.addEventListener("ended", () => (isPlaying = false));
+
             const data = await safeFetchSmols({ limit: 50 });
             smols = data
                 .filter((s) => s.Song_1 && s.Address)
@@ -79,6 +105,11 @@
                 .slice(0, 10);
             loading = false;
             playCurrent();
+
+            // Fetch balance if logged in
+            if (userState.contractId) {
+                updateContractBalance(userState.contractId);
+            }
         } catch (e) {
             console.error(e);
             loading = false;
@@ -88,15 +119,77 @@
     onDestroy(() => {
         if (audio) {
             audio.pause();
-            audio.src = '';
+            audio.src = "";
             audio = null;
         }
-        // Clean up all pending timeouts
-        if (loadingTimeout) { clearTimeout(loadingTimeout); loadingTimeout = null; }
-        if (swipeTimeout) { clearTimeout(swipeTimeout); swipeTimeout = null; }
-        if (settleDelayTimeout) { clearTimeout(settleDelayTimeout); settleDelayTimeout = null; }
-        if (redirectTimeout) { clearTimeout(redirectTimeout); redirectTimeout = null; }
+        if (audioContext) {
+            audioContext.close();
+            audioContext = null;
+        }
+        if (visualizerAnimationId) {
+            cancelAnimationFrame(visualizerAnimationId);
+        }
+        if (loadingTimeout) clearTimeout(loadingTimeout);
+        if (swipeTimeout) clearTimeout(swipeTimeout);
+        if (settleDelayTimeout) clearTimeout(settleDelayTimeout);
+        if (redirectTimeout) clearTimeout(redirectTimeout);
     });
+
+    function setupAudioContext() {
+        if (audioContext || !audio) return;
+        try {
+            audioContext = new AudioContext();
+            const source = audioContext.createMediaElementSource(audio);
+            analyser = audioContext.createAnalyser();
+            analyser.fftSize = 256;
+            source.connect(analyser);
+            analyser.connect(audioContext.destination);
+            dataArray = new Uint8Array(analyser.frequencyBinCount);
+            drawVisualizer();
+        } catch (e) {
+            console.warn("Could not setup audio visualizer:", e);
+        }
+    }
+
+    function drawVisualizer() {
+        if (!visualizerCanvas || !analyser || !dataArray) return;
+        const ctx = visualizerCanvas.getContext("2d");
+        if (!ctx) return;
+
+        analyser.getByteFrequencyData(dataArray as Uint8Array<ArrayBuffer>);
+
+        const width = visualizerCanvas.width;
+        const height = visualizerCanvas.height;
+        ctx.clearRect(0, 0, width, height);
+
+        const barCount = 32;
+        const barWidth = width / barCount;
+        const step = Math.floor(dataArray.length / barCount);
+
+        for (let i = 0; i < barCount; i++) {
+            const value = dataArray[i * step];
+            const barHeight = (value / 255) * height * 0.8;
+
+            const gradient = ctx.createLinearGradient(
+                0,
+                height,
+                0,
+                height - barHeight,
+            );
+            gradient.addColorStop(0, "#9ae600");
+            gradient.addColorStop(1, "#6aa600");
+
+            ctx.fillStyle = gradient;
+            ctx.fillRect(
+                i * barWidth + 1,
+                height - barHeight,
+                barWidth - 2,
+                barHeight,
+            );
+        }
+
+        visualizerAnimationId = requestAnimationFrame(drawVisualizer);
+    }
 
     function playCurrent() {
         if (!audio || currentIndex >= smols.length) return;
@@ -111,6 +204,7 @@
 
     function handlePanStart(e: MouseEvent | TouchEvent) {
         dragging = true;
+        cardScale.set(0.98);
         const clientX = "touches" in e ? e.touches[0].clientX : e.clientX;
         const clientY = "touches" in e ? e.touches[0].clientY : e.clientY;
         startX = clientX;
@@ -124,13 +218,26 @@
         const deltaX = clientX - startX;
         const deltaY = clientY - startY;
         cardX.set(deltaX);
-        cardY.set(deltaY);
-        cardRotate.set(deltaX * 0.1);
+        cardY.set(deltaY * 0.3);
+        cardRotate.set(deltaX * 0.08);
     }
 
     function handlePanEnd() {
+        if (!dragging) return;
         dragging = false;
-        // Basic threshold logic could go here, but for now reset unless swiped via buttons
+        cardScale.set(1);
+
+        // Check if swiped far enough
+        const threshold = 120;
+        if ($cardX > threshold) {
+            swipe("right");
+            return;
+        } else if ($cardX < -threshold) {
+            swipe("left");
+            return;
+        }
+
+        // Reset if not swiped
         cardX.set(0);
         cardY.set(0);
         cardRotate.set(0);
@@ -140,10 +247,10 @@
         const song = smols[currentIndex];
 
         // Visual feedback
-        cardX.set(dir === "right" ? 500 : -500);
-        cardRotate.set(dir === "right" ? 20 : -20);
+        cardX.set(dir === "right" ? 600 : -600);
+        cardRotate.set(dir === "right" ? 25 : -25);
+        cardScale.set(0.9);
 
-        // Clear any previous swipe timeout
         if (swipeTimeout) clearTimeout(swipeTimeout);
         swipeTimeout = setTimeout(() => {
             swipeTimeout = null;
@@ -161,13 +268,14 @@
             cardX.set(0, { hard: true });
             cardY.set(0, { hard: true });
             cardRotate.set(0, { hard: true });
+            cardScale.set(1, { hard: true });
 
             if (currentIndex < smols.length) {
                 playCurrent();
             } else {
                 if (audio) audio.pause();
             }
-        }, 200);
+        }, 250);
     }
 
     function setTipOption(val: number) {
@@ -184,6 +292,12 @@
             alert("Please verify you are human.");
             return;
         }
+        if (!hasEnoughBalance) {
+            alert(
+                `Not enough KALE! You need ${totalTipsAmount} but have ${formattedBalance || 0}.`,
+            );
+            return;
+        }
 
         isSettling = true;
         settleStep = 0;
@@ -194,11 +308,12 @@
             amountByArtist.set(tip.artist, current + tip.amount);
         }
 
+        const artistCount = amountByArtist.size;
         let completed = 0;
 
         try {
             for (const [artist, totalAmount] of amountByArtist) {
-                settleStatus = `Sending ${totalAmount} KALE to ${artist.slice(0, 4)}...`;
+                settleStatus = `Tipping ${artist.slice(0, 4)}...${artist.slice(-4)} (${totalAmount} 🥬)`;
                 const amountBigInt = BigInt(
                     Math.floor(totalAmount * Number(DECIMALS_FACTOR)),
                 );
@@ -224,142 +339,240 @@
                 completed++;
                 settleStep = completed;
 
-                // Sequential safe mode
-                await new Promise((r) => {
-                    settleDelayTimeout = setTimeout(() => {
-                        settleDelayTimeout = null;
-                        r(undefined);
-                    }, 1000);
-                });
+                // Small delay between transactions
+                if (completed < artistCount) {
+                    await new Promise((r) => {
+                        settleDelayTimeout = setTimeout(() => {
+                            settleDelayTimeout = null;
+                            r(undefined);
+                        }, 800);
+                    });
+                }
             }
 
-            settleStatus = "All tips sent!";
+            settleStatus = "🎉 All tips sent!";
+
+            // Refresh balance
+            if (userState.contractId) {
+                updateContractBalance(userState.contractId);
+            }
+
             redirectTimeout = setTimeout(() => {
                 redirectTimeout = null;
                 window.location.href = "/labs";
-            }, 2000);
+            }, 2500);
         } catch (e: any) {
             console.error(e);
-            settleStatus = `Error: ${e.message}`;
-            alert("Failed to settle all tips. Check console.");
+            settleStatus = `❌ ${e.message}`;
         } finally {
             isSettling = false;
         }
     }
+
+    // Progress indicator
+    let progress = $derived(
+        smols.length > 0 ? (currentIndex / smols.length) * 100 : 0,
+    );
 </script>
 
-<div class="relative w-full max-w-sm mx-auto h-[550px] font-pixel">
+<div class="relative w-full max-w-sm mx-auto font-pixel">
+    <!-- Progress bar at top -->
+    {#if !loading && currentIndex < smols.length}
+        <div
+            class="absolute -top-6 left-0 right-0 h-1 bg-[#222] rounded-full overflow-hidden"
+        >
+            <div
+                class="h-full bg-gradient-to-r from-[#9ae600] to-[#6aa600] transition-all duration-300"
+                style="width: {progress}%"
+            ></div>
+        </div>
+        <div class="absolute -top-10 right-0 text-[10px] text-[#555]">
+            {currentIndex + 1}/{smols.length}
+        </div>
+    {/if}
+
+    <!-- Balance display -->
+    {#if userState.contractId && formattedBalance !== null}
+        <div
+            class="absolute -top-10 left-0 text-[10px] text-[#9ae600] flex items-center gap-1"
+        >
+            <span class="text-base">🥬</span>
+            <span>{formattedBalance.toLocaleString()}</span>
+        </div>
+    {/if}
+
     {#if loading}
-        <div class="flex items-center justify-center h-full">
+        <div class="flex items-center justify-center h-[550px]">
             <Loader />
         </div>
     {:else if currentIndex >= smols.length}
         <div
-            class="flex flex-col items-center justify-center h-full text-center p-4 space-y-6"
+            class="flex flex-col items-center justify-center h-[550px] text-center p-4 space-y-6"
+            in:fade={{ duration: 300 }}
         >
-            <h2 class="text-2xl text-white">Game Over</h2>
-            <div class="space-y-2">
-                <p class="text-[#9ae600]">You queued {tipQueue.length} tips!</p>
-                <p class="text-xs text-slate-500">
-                    Total: {totalTipsAmount} KALE
-                </p>
+            <div class="text-6xl mb-4">🥬</div>
+            <h2 class="text-2xl text-white">Game Over!</h2>
+
+            <div class="space-y-3 w-full max-w-xs">
+                <div class="bg-[#1a1a1a] border border-[#333] rounded-xl p-4">
+                    <p class="text-[#9ae600] text-lg font-bold">
+                        {tipQueue.length} Tips Queued
+                    </p>
+                    <p class="text-2xl text-white mt-1">
+                        {totalTipsAmount.toLocaleString()} KALE
+                    </p>
+                    {#if formattedBalance !== null}
+                        <p class="text-xs text-slate-500 mt-2">
+                            Your balance: {formattedBalance.toLocaleString()} KALE
+                            {#if !hasEnoughBalance}
+                                <span class="text-red-500 block mt-1"
+                                    >⚠️ Insufficient balance!</span
+                                >
+                            {/if}
+                        </p>
+                    {/if}
+                </div>
             </div>
 
             {#if !userState.contractId}
                 <div class="flex flex-col gap-2 items-center">
-                    <p class="text-red-500 text-xs">Connect Wallet to Tip</p>
+                    <p class="text-red-500 text-xs">
+                        Connect Wallet to Send Tips
+                    </p>
+                    <a
+                        href="/onboarding/passkey"
+                        class="text-[#9ae600] underline text-xs"
+                    >
+                        Connect Wallet →
+                    </a>
                 </div>
+            {:else if tipQueue.length === 0}
+                <p class="text-slate-500 text-sm">
+                    You didn't tip anyone this round.
+                </p>
+                <a href="/labs" class="text-[#9ae600] underline text-xs">
+                    Back to Labs
+                </a>
             {:else if !isSettling}
                 {#if !isDirectRelayer}
                     <div class="flex justify-center my-4">
                         <Turnstile
                             siteKey={import.meta.env.PUBLIC_TURNSTILE_SITE_KEY}
-                            on:callback={(e) => (turnstileToken = e.detail.token)}
+                            on:callback={(e) =>
+                                (turnstileToken = e.detail.token)}
                             theme="dark"
                         />
                     </div>
                 {/if}
                 <button
                     onclick={settleTips}
-                    disabled={!isDirectRelayer && !turnstileToken}
-                    class="w-full border border-[#9ae600] bg-[#9ae600]/10 px-6 py-3 rounded-lg hover:bg-[#9ae600] hover:text-black transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+                    disabled={(!isDirectRelayer && !turnstileToken) ||
+                        !hasEnoughBalance}
+                    class="w-full max-w-xs border-2 border-[#9ae600] bg-[#9ae600]/10 px-6 py-4 rounded-xl hover:bg-[#9ae600] hover:text-black transition-all disabled:opacity-50 disabled:cursor-not-allowed text-lg font-bold active:scale-95"
                 >
-                    SEND TIPS
+                    🚀 SEND {totalTipsAmount} KALE
                 </button>
             {:else}
-                <div class="w-full bg-[#333] h-2 rounded-full overflow-hidden">
-                    <div
-                        class="bg-[#9ae600] h-full transition-all duration-300"
-                        style="width: {(settleStep /
-                            (new Set(tipQueue.map((t) => t.artist)).size ||
-                                1)) *
-                            100}%"
-                    ></div>
+                <div class="w-full max-w-xs space-y-4">
+                    <div class="bg-[#222] h-3 rounded-full overflow-hidden">
+                        <div
+                            class="bg-gradient-to-r from-[#9ae600] to-[#6aa600] h-full transition-all duration-500"
+                            style="width: {(settleStep /
+                                (new Set(tipQueue.map((t) => t.artist)).size ||
+                                    1)) *
+                                100}%"
+                        ></div>
+                    </div>
+                    <p class="text-sm text-[#9ae600] animate-pulse text-center">
+                        {settleStatus}
+                    </p>
                 </div>
-                <p class="text-xs text-[#9ae600] animate-pulse">
-                    {settleStatus}
-                </p>
             {/if}
         </div>
     {:else}
-        {#each [smols[currentIndex]] as song (song.Id)}
-            <div
-                class="absolute inset-0 bg-black border border-[#333] rounded-2xl overflow-hidden glass-panel select-none touch-none"
-                style="transform: translate({$cardX}px, {$cardY}px) rotate({$cardRotate}deg);"
-                onmousedown={handlePanStart}
-                onmousemove={handlePanMove}
-                onmouseup={handlePanEnd}
-                onmouseleave={handlePanEnd}
-                ontouchstart={handlePanStart}
-                ontouchmove={handlePanMove}
-                ontouchend={handlePanEnd}
-            >
-                <img
-                    src="{import.meta.env.PUBLIC_API_URL}/image/{song.Id}.png"
-                    class="w-full h-3/4 object-cover pointer-events-none"
-                    draggable="false"
-                    oncontextmenu={(e) => e.preventDefault()}
-                />
+        <!-- Card Stack -->
+        <div class="relative h-[480px]">
+            {#each [smols[currentIndex]] as song (song.Id)}
                 <div
-                    class="p-6 bg-gradient-to-t from-black via-black/80 to-transparent absolute bottom-0 w-full"
+                    class="absolute inset-0 bg-black border border-[#333] rounded-2xl overflow-hidden glass-panel select-none touch-none cursor-grab active:cursor-grabbing"
+                    style="transform: translate({$cardX}px, {$cardY}px) rotate({$cardRotate}deg) scale({$cardScale});"
+                    onmousedown={handlePanStart}
+                    onmousemove={handlePanMove}
+                    onmouseup={handlePanEnd}
+                    onmouseleave={handlePanEnd}
+                    ontouchstart={handlePanStart}
+                    ontouchmove={handlePanMove}
+                    ontouchend={handlePanEnd}
+                    in:scale={{ duration: 200, start: 0.95 }}
                 >
-                    <h3
-                        class="text-lg text-white font-bold shadow-black drop-shadow-md mb-1"
-                    >
-                        {song.Title}
-                    </h3>
-                    <p class="text-xs text-[#9ae600] uppercase tracking-wider">
-                        {song.artist || song.Creator || "Unknown"}
-                    </p>
-                </div>
+                    <img
+                        src="{import.meta.env
+                            .PUBLIC_API_URL}/image/{song.Id}.png"
+                        alt={song.Title}
+                        class="w-full h-3/4 object-cover pointer-events-none"
+                        draggable="false"
+                        oncontextmenu={(e) => e.preventDefault()}
+                    />
 
-                <!-- Overlay Stamps -->
-                <div
-                    class="absolute top-8 left-8 border-4 border-[#9ae600] text-[#9ae600] px-4 py-2 rounded-lg text-2xl font-bold uppercase -rotate-12 opacity-0 transition-opacity"
-                    style="opacity: {$cardX > 50 ? ($cardX - 50) / 100 : 0}"
-                >
-                    TIP!
+                    <!-- Audio Visualizer Overlay -->
+                    {#if isPlaying}
+                        <div
+                            class="absolute top-0 left-0 right-0 h-16 pointer-events-none"
+                        >
+                            <canvas
+                                bind:this={visualizerCanvas}
+                                width="300"
+                                height="64"
+                                class="w-full h-full opacity-70"
+                            ></canvas>
+                        </div>
+                    {/if}
+
+                    <div
+                        class="p-6 bg-gradient-to-t from-black via-black/90 to-transparent absolute bottom-0 w-full"
+                    >
+                        <h3
+                            class="text-lg text-white font-bold shadow-black drop-shadow-md mb-1 truncate"
+                        >
+                            {song.Title}
+                        </h3>
+                        <p
+                            class="text-xs text-[#9ae600] uppercase tracking-wider truncate"
+                        >
+                            {song.artist || song.Creator || "Unknown Artist"}
+                        </p>
+                    </div>
+
+                    <!-- Overlay Stamps -->
+                    <div
+                        class="absolute top-1/3 left-1/2 -translate-x-1/2 -translate-y-1/2 border-4 border-[#9ae600] text-[#9ae600] px-6 py-3 rounded-xl text-3xl font-bold uppercase -rotate-12 transition-opacity pointer-events-none"
+                        style="opacity: {$cardX > 50
+                            ? Math.min(($cardX - 50) / 80, 1)
+                            : 0}; text-shadow: 0 0 20px rgba(154,230,0,0.5);"
+                    >
+                        TIP! 🥬
+                    </div>
+                    <div
+                        class="absolute top-1/3 left-1/2 -translate-x-1/2 -translate-y-1/2 border-4 border-red-500 text-red-500 px-6 py-3 rounded-xl text-3xl font-bold uppercase rotate-12 transition-opacity pointer-events-none"
+                        style="opacity: {$cardX < -50
+                            ? Math.min((-$cardX - 50) / 80, 1)
+                            : 0}; text-shadow: 0 0 20px rgba(239,68,68,0.5);"
+                    >
+                        PASS ✕
+                    </div>
                 </div>
-                <div
-                    class="absolute top-8 right-8 border-4 border-red-500 text-red-500 px-4 py-2 rounded-lg text-2xl font-bold uppercase rotate-12 opacity-0 transition-opacity"
-                    style="opacity: {$cardX < -50 ? (-$cardX - 50) / 100 : 0}"
-                >
-                    PASS
-                </div>
-            </div>
-        {/each}
+            {/each}
+        </div>
 
         <!-- Tip Selector -->
-        <div
-            class="absolute -bottom-16 w-full flex justify-center gap-2 px-4 z-20"
-        >
+        <div class="mt-4 flex justify-center gap-2 px-4">
             {#each TIP_OPTIONS as opt}
                 <button
                     onclick={() => setTipOption(opt)}
-                    class="px-2 py-1 text-[8px] rounded border transition-all {selectedTipAmount ===
+                    class="px-3 py-2 text-xs rounded-lg border-2 transition-all font-bold {selectedTipAmount ===
                         opt && !isCustom
-                        ? 'bg-[#9ae600] text-black border-[#9ae600]'
-                        : 'bg-black text-[#555] border-[#333] hover:border-[#9ae600]'}"
+                        ? 'bg-[#9ae600] text-black border-[#9ae600] scale-105'
+                        : 'bg-black text-[#666] border-[#333] hover:border-[#9ae600] hover:text-[#9ae600]'}"
                 >
                     {opt}
                 </button>
@@ -367,24 +580,26 @@
             <div class="relative">
                 <button
                     onclick={() => (isCustom = true)}
-                    class="px-2 py-1 text-[8px] rounded border transition-all {isCustom
-                        ? 'bg-[#9ae600] text-black border-[#9ae600]'
-                        : 'bg-black text-[#555] border-[#333] hover:border-[#9ae600]'}"
+                    class="px-3 py-2 text-xs rounded-lg border-2 transition-all font-bold {isCustom
+                        ? 'bg-[#9ae600] text-black border-[#9ae600] scale-105'
+                        : 'bg-black text-[#666] border-[#333] hover:border-[#9ae600] hover:text-[#9ae600]'}"
                 >
-                    CUSTOM
+                    ✏️
                 </button>
                 {#if isCustom}
                     <input
                         type="number"
                         bind:value={customTipAmount}
-                        class="absolute bottom-8 left-0 w-16 bg-black border border-[#9ae600] text-[#9ae600] text-xs p-1 text-center rounded outline-none"
-                        placeholder="?"
+                        class="absolute bottom-10 left-1/2 -translate-x-1/2 w-20 bg-black border-2 border-[#9ae600] text-[#9ae600] text-sm p-2 text-center rounded-lg outline-none shadow-lg"
+                        placeholder="Amount"
+                        min="1"
                     />
                 {/if}
             </div>
         </div>
 
-        <div class="absolute -bottom-40 w-full flex justify-center gap-8 px-8">
+        <!-- Swipe Buttons -->
+        <div class="mt-6 flex justify-center gap-6">
             <button
                 onclick={() => swipe("left")}
                 class="w-16 h-16 rounded-full border-2 border-slate-700 bg-black text-slate-500 flex items-center justify-center hover:border-red-500 hover:text-red-500 hover:scale-110 transition-all active:scale-95 shadow-lg"
@@ -393,7 +608,7 @@
                     xmlns="http://www.w3.org/2000/svg"
                     fill="none"
                     viewBox="0 0 24 24"
-                    stroke-width="2.5"
+                    stroke-width="3"
                     stroke="currentColor"
                     class="w-8 h-8"
                 >
@@ -406,28 +621,36 @@
             </button>
             <button
                 onclick={() => swipe("right")}
-                class="w-16 h-16 rounded-full border-2 border-slate-700 bg-black text-slate-500 flex items-center justify-center hover:border-[#9ae600] hover:text-[#9ae600] hover:scale-110 transition-all active:scale-95 shadow-lg"
+                class="w-20 h-20 rounded-full border-2 border-[#9ae600]/50 bg-black text-[#9ae600] flex items-center justify-center hover:border-[#9ae600] hover:bg-[#9ae600]/10 hover:scale-110 transition-all active:scale-95 shadow-lg shadow-[#9ae600]/20"
             >
                 <div class="flex flex-col items-center">
-                    <span class="text-[10px] font-bold">TIP</span>
-                    <span class="text-[8px] tracking-tighter"
-                        >{isCustom
-                            ? customTipAmount
-                                ? `${customTipAmount}`
-                                : "?"
-                            : selectedTipAmount}</span
-                    >
+                    <span class="text-2xl">🥬</span>
+                    <span class="text-[10px] font-bold mt-0.5">
+                        {isCustom ? customTipAmount || "?" : selectedTipAmount}
+                    </span>
                 </div>
             </button>
         </div>
+
+        <!-- Tip Queue Preview -->
+        {#if tipQueue.length > 0}
+            <div class="mt-4 text-center">
+                <p class="text-xs text-slate-500">
+                    Queued: <span class="text-[#9ae600]">{tipQueue.length}</span
+                    >
+                    tips •
+                    <span class="text-[#9ae600]">{totalTipsAmount}</span> KALE
+                </p>
+            </div>
+        {/if}
     {/if}
 </div>
 
 <style>
     .glass-panel {
         backdrop-filter: blur(10px);
-        background: rgba(20, 20, 20, 0.6);
-        box-shadow: 0 10px 30px -10px rgba(0, 0, 0, 0.5);
+        background: rgba(20, 20, 20, 0.7);
+        box-shadow: 0 15px 40px -10px rgba(0, 0, 0, 0.6);
     }
     input::-webkit-outer-spin-button,
     input::-webkit-inner-spin-button {
