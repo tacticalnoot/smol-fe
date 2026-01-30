@@ -445,8 +445,8 @@
                 throw new Error("No valid recipients found");
             }
 
-            // Chunk transfers into batches of 3 to avoid Relayer timeouts
-            const MAX_BATCH_SIZE = 3;
+            // Chunk transfers into batches of 5 to avoid Relayer timeouts
+            const MAX_BATCH_SIZE = 5;
             const chunks = [];
             for (let i = 0; i < allTransfers.length; i += MAX_BATCH_SIZE) {
                 chunks.push(allTransfers.slice(i, i + MAX_BATCH_SIZE));
