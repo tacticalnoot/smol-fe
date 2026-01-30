@@ -339,23 +339,19 @@
         const artistCount = artistList.length;
 
         try {
-            settleStatus = `Building batch transfer for ${artistCount} artists...`;
+            settleStatus = `Building batch for ${artistCount} artists...`;
             console.log("[KaleOrFail] Building batch transfer:", {
                 artistCount,
                 totalAmount: totalTipsAmount,
             });
 
-            // Build transfers array
-            const transfers: { to: string; amount: bigint }[] = artistList.map(
-                ([artist, amount]) => ({
-                    to: artist,
-                    amount: BigInt(
-                        Math.floor(amount * Number(DECIMALS_FACTOR)),
-                    ),
-                }),
-            );
+            // Build transfers array for batch contract
+            const transfers = artistList.map(([artist, amount]) => ({
+                to: artist,
+                amount: BigInt(Math.floor(amount * Number(DECIMALS_FACTOR))),
+            }));
 
-            // Import and use batch transfer
+            // Import batch transfer utility
             const { buildBatchKaleTransfer } = await import(
                 "../../utils/batch-transfer"
             );
@@ -367,7 +363,7 @@
             settleStatus = `Signing ${artistCount} tips (one signature)...`;
             settleStep = 1;
 
-            // Sign the batch transaction
+            // Sign the batch transaction once
             const sequence = await getLatestSequence();
             const signedXdr = await account.get().sign(batchXdr, {
                 rpId: getSafeRpId(window.location.hostname),
@@ -375,7 +371,7 @@
                 expiration: sequence + 60,
             });
 
-            settleStatus = `Sending batch to ${artistCount} artists...`;
+            settleStatus = `Sending to ${artistCount} artists...`;
             settleStep = 2;
 
             // Send the batch
@@ -386,7 +382,7 @@
                 totalAmount: totalTipsAmount,
             });
 
-            // Clear the queue - all tips sent
+            // All tips sent successfully
             tipQueue = [];
             settleStep = artistCount;
             settleStatus = "🎉 All tips sent!";

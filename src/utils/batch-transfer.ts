@@ -1,8 +1,10 @@
 /**
- * Batch Transfer Builder
+ * Batch Transfer via Soroban Contract
  * 
- * Builds a single transaction with multiple KALE transfer operations.
- * This allows tipping multiple artists with one signature instead of many.
+ * Calls the deployed batch transfer contract to send KALE to multiple
+ * recipients in a single transaction with one signature.
+ * 
+ * Contract: CAZ4E2ZSMWMJDZQWB2OLXHYISBN6VSWUV2GOUM7AQ4ZDM4KBWHGKLDKX
  */
 
 import {
@@ -12,11 +14,15 @@ import {
     TransactionBuilder,
     Networks,
     Account,
-    rpc
+    rpc,
+    xdr
 } from "@stellar/stellar-sdk";
+import { getRpcUrl } from "./base";
+
 const { Server, Api, assembleTransaction } = rpc;
 
-const RPC_URL = import.meta.env.PUBLIC_RPC_URL || "https://rpc.ankr.com/stellar_soroban";
+// Deployed batch transfer contract on mainnet
+const BATCH_CONTRACT_ID = "CAZ4E2ZSMWMJDZQWB2OLXHYISBN6VSWUV2GOUM7AQ4ZDM4KBWHGKLDKX";
 const KALE_CONTRACT = import.meta.env.PUBLIC_KALE_SAC_ID;
 const NULL_ACCOUNT = "GAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAWHF";
 
@@ -26,11 +32,11 @@ export interface BatchTransfer {
 }
 
 /**
- * Build a batch transfer transaction for KALE
+ * Build a batch transfer transaction for KALE using the batch contract
  * 
  * @param from - The sender's contract address (C address)
  * @param transfers - Array of recipients and amounts
- * @returns XDR string of the assembled transaction
+ * @returns XDR string of the assembled transaction ready for signing
  */
 export async function buildBatchKaleTransfer(
     from: string,
@@ -40,37 +46,45 @@ export async function buildBatchKaleTransfer(
         throw new Error("No transfers provided");
     }
 
-    console.log("[BatchTransfer] Building batch transfer:", {
+    const totalAmount = transfers.reduce((sum, t) => sum + t.amount, 0n);
+    console.log("[BatchTransfer] Building batch via contract:", {
         from,
         transferCount: transfers.length,
-        totalAmount: transfers.reduce((sum, t) => sum + t.amount, 0n).toString()
+        totalAmount: totalAmount.toString(),
+        contract: BATCH_CONTRACT_ID
     });
 
-    const server = new Server(RPC_URL);
-    const contract = new Contract(KALE_CONTRACT);
+    const rpcUrl = getRpcUrl();
+    const server = new Server(rpcUrl);
+    const batchContract = new Contract(BATCH_CONTRACT_ID);
     const sourceAccount = new Account(NULL_ACCOUNT, "0");
 
-    // Build transaction with all transfer operations
-    let builder = new TransactionBuilder(sourceAccount, {
-        fee: (10000000 * transfers.length).toString(), // Scale fee with operations
+    // Build recipients and amounts as Soroban Vec
+    const recipientsScVal = xdr.ScVal.scvVec(
+        transfers.map(t => nativeToScVal(new Address(t.to)))
+    );
+    const amountsScVal = xdr.ScVal.scvVec(
+        transfers.map(t => nativeToScVal(t.amount, { type: "i128" }))
+    );
+
+    // Call batch_transfer(token, from, recipients, amounts)
+    const batchCall = batchContract.call(
+        "batch_transfer",
+        nativeToScVal(new Address(KALE_CONTRACT)),  // token
+        nativeToScVal(new Address(from)),            // from
+        recipientsScVal,                              // recipients
+        amountsScVal                                  // amounts
+    );
+
+    const tx = new TransactionBuilder(sourceAccount, {
+        fee: "10000000",  // 1 XLM max fee (will be refunded)
         networkPassphrase: Networks.PUBLIC
-    });
+    })
+        .addOperation(batchCall)
+        .setTimeout(300)
+        .build();
 
-    // Add each transfer as a separate operation
-    for (const transfer of transfers) {
-        const transferOp = contract.call(
-            "transfer",
-            nativeToScVal(new Address(from)),           // from
-            nativeToScVal(new Address(transfer.to)),    // to
-            nativeToScVal(transfer.amount, { type: "i128" }) // amount
-        );
-        builder = builder.addOperation(transferOp);
-    }
-
-    const tx = builder.setTimeout(300).build();
-    const preSimXdr = tx.toXDR();
-
-    console.log("[BatchTransfer] Pre-simulation XDR built, simulating...");
+    console.log("[BatchTransfer] Simulating batch contract call...");
 
     // Simulate to get auth requirements
     const simResult = await server.simulateTransaction(tx);
@@ -85,7 +99,7 @@ export async function buildBatchKaleTransfer(
     const finalXdr = finalTx.toXDR();
 
     console.log("[BatchTransfer] Batch transaction ready:", {
-        operations: transfers.length,
+        recipients: transfers.length,
         xdrLength: finalXdr.length
     });
 
