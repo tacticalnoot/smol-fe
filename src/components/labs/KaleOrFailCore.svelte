@@ -482,7 +482,7 @@
                 );
 
                 const batchXdr = await withRetry(
-                    () => buildBatchKaleTransfer(userState.contractId, chunk),
+                    () => buildBatchKaleTransfer(userState.contractId!, chunk),
                     {},
                     "BuildBatch",
                 );
@@ -696,7 +696,9 @@
                         {#each ACHIEVEMENTS as ach}
                             <div
                                 class="relative group cursor-help transition-all duration-300
-                                {stats.unlockedAchievements.includes(ach.id)
+                                {stats.unlockedAchievements.includes(
+                                    ach.id || '',
+                                )
                                     ? 'opacity-100 scale-100 grayscale-0'
                                     : 'opacity-30 scale-90 grayscale'}"
                             >
@@ -1017,7 +1019,8 @@
                     Queued: <span class="text-[#9ae600]">{tipQueue.length}</span
                     >
                     tips •
-                    <span class="text-[#9ae600]">{totalTipsAmount}</span> KALE
+                    <span class="text-[#9ae600]">{totalTipsAmount ?? "0"}</span>
+                    KALE
                 </p>
             </div>
         {/if}
