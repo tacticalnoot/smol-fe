@@ -27,23 +27,25 @@ const RPC_URL = import.meta.env.PUBLIC_RPC_URL || "https://rpc.ankr.com/stellar_
 const BATCH_CONTRACT_ID = "CAZ4E2ZSMWMJDZQWB2OLXHYISBN6VSWUV2GOUM7AQ4ZDM4KBWHGKLDKX";
 const KALE_SAC_ID = import.meta.env.PUBLIC_KALE_SAC_ID;
 
+// Official Stellar SDK Null Account for building unsigned transactions
+const NULL_ACCOUNT = "GAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAWHF";
+
 export interface BatchTransfer {
     to: string;      // Recipient address
     amount: bigint;  // Amount in raw units (with decimals)
 }
 
 /**
- * Build a batch transfer transaction for KALE using the batch contract
+ * Build a batch transfer transaction for KALE using the batch contract.
+ * Uses the NULL_ACCOUNT pattern consistent with swap-builder.ts.
  * 
- * @param from - The sender's contract address (C address)
+ * @param from - The sender's contract address (C address) - used for auth
  * @param transfers - Array of recipients and amounts
- * @param sequence - Optional sequence number (will fetch if not provided)
  * @returns XDR string of the assembled transaction ready for signing
  */
 export async function buildBatchKaleTransfer(
     from: string,
-    transfers: BatchTransfer[],
-    sequence?: string | number
+    transfers: BatchTransfer[]
 ): Promise<string> {
     if (transfers.length === 0) {
         throw new Error("No transfers provided");
@@ -55,19 +57,11 @@ export async function buildBatchKaleTransfer(
 
     const server = new Server(RPC_URL);
 
-    // Get sequence if needed
-    let seq: string | number;
-    if (sequence !== undefined) {
-        seq = sequence;
-    } else {
-        console.log("[BatchTransfer] Fetching sequence for", from);
-        const accountResp = await server.getAccount(from);
-        seq = accountResp.sequence;
-    }
+    // Use NULL_ACCOUNT for building the transaction source
+    // This avoids "accountId is invalid" error since Account requires a G-Address
+    const sourceAccount = new Account(NULL_ACCOUNT, "0");
 
-    const seqString = seq.toString();
-    const sourceAccount = new Account(from, seqString);
-    console.log(`[BatchTransfer] Building batch contract call: From ${from}, Transfers: ${transfers.length}, Contract: ${BATCH_CONTRACT_ID}`);
+    console.log(`[BatchTransfer] Building batch contract call: From C-Addr ${from}, Transfers: ${transfers.length}, Contract: ${BATCH_CONTRACT_ID}`);
 
     const batchContract = new Contract(BATCH_CONTRACT_ID);
 
