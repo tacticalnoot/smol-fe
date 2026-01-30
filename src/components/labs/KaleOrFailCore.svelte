@@ -376,6 +376,18 @@
                 throw new Error("No valid recipients found");
             }
 
+            // Cap batch size to avoid Relayer timeouts (ECONNRESET)
+            // OZ Relayer / standard RPCs often choke on large complex batches (>5-6 ops)
+            const MAX_BATCH_SIZE = 5;
+            const batchTransfers = transfers.slice(0, MAX_BATCH_SIZE);
+            const isPartial = batchTransfers.length < transfers.length;
+
+            if (isPartial) {
+                console.log(
+                    `[KaleOrFail] Large batch detected (${transfers.length}). Chunking to first ${MAX_BATCH_SIZE}.`,
+                );
+            }
+
             // Import batch transfer utility
             const { buildBatchKaleTransfer } = await import(
                 "../../utils/batch-transfer"
@@ -386,10 +398,10 @@
 
             const batchXdr = await buildBatchKaleTransfer(
                 userState.contractId,
-                transfers,
+                batchTransfers,
             );
 
-            settleStatus = `Signing ${artistCount} tips (one signature)...`;
+            settleStatus = `Signing ${batchTransfers.length} tips (one signature)...`;
             settleStep = 1;
 
             // Sign the batch transaction once
@@ -399,15 +411,15 @@
                 expiration: sequence + 60,
             });
 
-            settleStatus = `Sending to ${artistCount} artists...`;
+            settleStatus = `Sending to ${batchTransfers.length} artists...`;
             settleStep = 2;
 
             // Send the batch
             await send(signedXdr, turnstileToken);
 
             console.log("[KaleOrFail] Batch transfer successful:", {
-                artistCount,
-                totalAmount: totalTipsAmount,
+                count: batchTransfers.length,
+                totalAmount: totalTipsAmount, // Note: this is total of queue, not batch, but okay for log
             });
 
             // Epic confetti!
@@ -418,13 +430,24 @@
                 colors: ["#50FA7B", "#ffffff"], // KALE green and white
             });
 
-            // All tips sent successfully
-            tipQueue = [];
-            settleStatus = "Sent! 🥬";
-            setTimeout(() => {
-                isSettling = false;
-                settleStatus = "";
-            }, 2000);
+            // Remove PAID tips from queue
+            const paidAddresses = new Set(batchTransfers.map((t) => t.to));
+            tipQueue = tipQueue.filter((tip) => !paidAddresses.has(tip.artist));
+
+            if (tipQueue.length > 0) {
+                settleStatus = `Batch sent! ${tipQueue.length} tips remaining...`;
+                // Keep settling mode active but reset status after delay so user can click again
+                setTimeout(() => {
+                    isSettling = false;
+                    settleStatus = "";
+                }, 2000);
+            } else {
+                settleStatus = "Sent! 🥬";
+                setTimeout(() => {
+                    isSettling = false;
+                    settleStatus = "";
+                }, 2000);
+            }
         } catch (e: any) {
             console.error("Batch settle error:", e);
             const msg = e?.message || String(e);
