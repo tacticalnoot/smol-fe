@@ -653,7 +653,13 @@
             in:fade={{ duration: 300 }}
         >
             <div class="text-6xl mb-4">🥬</div>
-            <h2 class="text-2xl text-white">Game Over!</h2>
+            <h2 class="text-2xl text-white">Thank You!</h2>
+            <button
+                class="text-xs text-[#9ae600] underline hover:text-white transition-colors"
+                onclick={() => window.location.reload()}
+            >
+                Play Again?
+            </button>
 
             <div class="space-y-3 w-full max-w-xs">
                 <!-- Stats Summary -->
