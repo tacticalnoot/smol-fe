@@ -1,9 +1,8 @@
-<script lang="ts">
     import { onMount, onDestroy } from "svelte";
     import { safeFetchSmols } from "../../services/api/smols";
     import { getLatestSequence } from "../../utils/base";
     import { account, send } from "../../utils/passkey-kit";
-    import confetti from "canvas-confetti";
+    // NOTE: Dynamic import for confetti to avoid SSR crash
     import { userState } from "../../stores/user.svelte.ts";
     import {
         balanceState,
@@ -28,6 +27,8 @@
     const isDirectRelayer = hasApiKey;
 
     const DECIMALS_FACTOR = 10000000n;
+    
+    let confetti: any; // Dynamically imported
 
     let smols = $state<Smol[]>([]);
     let loading = $state(true);
@@ -105,6 +106,13 @@
     }
 
     onMount(async () => {
+        // Dynamic import to prevent SSR 500 errors
+        const module = await import("canvas-confetti");
+        confetti = module.default;
+
+        // Initialize Audio Context (requires user interaction really, but setup here)
+        audio = new Audio();
+        audio.crossOrigin = "anonymous";
         try {
             loadingTimeout = setTimeout(() => {
                 if (loading) {
