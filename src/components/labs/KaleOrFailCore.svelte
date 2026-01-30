@@ -3,6 +3,7 @@
     import { safeFetchSmols } from "../../services/api/smols";
     import { getLatestSequence } from "../../utils/base";
     import { account, send } from "../../utils/passkey-kit";
+    import confetti from "canvas-confetti";
     import { userState } from "../../stores/user.svelte.ts";
     import {
         balanceState,
@@ -379,16 +380,20 @@
             const { buildBatchKaleTransfer } = await import(
                 "../../utils/batch-transfer"
             );
+
+            // Fetch sequence once for both building and signing
+            const sequence = await getLatestSequence();
+
             const batchXdr = await buildBatchKaleTransfer(
                 userState.contractId,
                 transfers,
+                sequence,
             );
 
             settleStatus = `Signing ${artistCount} tips (one signature)...`;
             settleStep = 1;
 
             // Sign the batch transaction once
-            const sequence = await getLatestSequence();
             const signedXdr = await account.get().sign(batchXdr, {
                 rpId: getSafeRpId(window.location.hostname),
                 keyId: userState.keyId,
@@ -406,18 +411,37 @@
                 totalAmount: totalTipsAmount,
             });
 
+            // Epic confetti!
+            confetti({
+                particleCount: 150,
+                spread: 70,
+                origin: { y: 0.6 },
+                colors: ["#50FA7B", "#ffffff"], // KALE green and white
+            });
+
             // All tips sent successfully
             tipQueue = [];
-            settleStep = artistCount;
-            settleStatus = "🎉 All tips sent!";
-
-            redirectTimeout = setTimeout(() => {
-                redirectTimeout = null;
-                window.location.href = "/labs";
-            }, 2500);
+            settleStatus = "Sent! 🥬";
+            setTimeout(() => {
+                isSettling = false;
+                settleStatus = "";
+            }, 2000);
         } catch (e: any) {
-            console.error("[KaleOrFail] Batch transfer failed:", e);
-            settleStatus = `❌ ${e.message || "Batch transfer failed"}`;
+            console.error("Batch settle error:", e);
+            const msg = e?.message || String(e);
+
+            if (
+                msg.includes("Relayer") ||
+                msg.includes("ECONNRESET") ||
+                msg.includes("500")
+            ) {
+                alert(
+                    `Relayer connection failed (${msg}). The batch might be too large for the current network conditions. Please try waiting momentarily or refresh.`,
+                );
+            } else {
+                alert(`Failed to send tips: ${msg}`);
+            }
+            isSettling = false;
         }
 
         // Refresh balance
