@@ -129,7 +129,10 @@
 
             audio.addEventListener("play", () => (isPlaying = true));
             audio.addEventListener("pause", () => (isPlaying = false));
-            audio.addEventListener("ended", () => (isPlaying = false));
+            audio.addEventListener("ended", () => {
+                isPlaying = false;
+                swipe("right");
+            });
 
             const data = await safeFetchSmols({ limit: 100 });
             // Filter to unique artists (one song per artist)
