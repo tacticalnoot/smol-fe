@@ -97,10 +97,10 @@
         // Center the explosion more, less lateral movement
         const xOffset = dir === "right" ? 50 : -50;
         particles.push({ id, emoji, x: xOffset });
-        
+
         // Cleanup after animation
         setTimeout(() => {
-            particles = particles.filter(p => p.id !== id);
+            particles = particles.filter((p) => p.id !== id);
         }, 600); // Match animation duration
     }
 
@@ -454,9 +454,12 @@
             for (let i = 0; i < chunks.length; i++) {
                 const chunk = chunks[i];
                 const chunkIndex = i + 1;
-                
+
                 settleStatus = `Processing Batch ${chunkIndex}/${chunks.length} (${chunk.length} artists)...`;
-                console.log(`[KaleOrFail] Starting batch ${chunkIndex}/${chunks.length}`, chunk);
+                console.log(
+                    `[KaleOrFail] Starting batch ${chunkIndex}/${chunks.length}`,
+                    chunk,
+                );
 
                 // Fetch sequence fresh for each batch to avoid expiration overlap
                 const sequence = await getLatestSequence();
@@ -477,18 +480,20 @@
                 });
 
                 settleStatus = `Sending Batch ${chunkIndex}/${chunks.length}...`;
-                
+
                 // Send
                 await send(signedXdr, turnstileToken);
-                
+
                 // Remove PAID tips from queue specific to this chunk
                 const paidAddresses = new Set(chunk.map((t) => t.to));
-                tipQueue = tipQueue.filter((tip) => !paidAddresses.has(tip.artist));
+                tipQueue = tipQueue.filter(
+                    (tip) => !paidAddresses.has(tip.artist),
+                );
 
                 // Small delay between batches to be nice to relayer
                 if (i < chunks.length - 1) {
                     settleStatus = `Cooling down for next batch...`;
-                    await new Promise(r => setTimeout(r, 1000));
+                    await new Promise((r) => setTimeout(r, 1000));
                 }
             }
 
@@ -507,7 +512,6 @@
                 isSettling = false;
                 settleStatus = "";
             }, 2000);
-
         } catch (e: any) {
             console.error("Batch settle error:", e);
             const msg = e?.message || String(e);
@@ -965,8 +969,6 @@
     {/if}
 </div>
 
-</style>
-
 <style>
     .glass-panel {
         backdrop-filter: blur(10px);
@@ -981,12 +983,20 @@
 
     /* Visual Enhancements */
     @keyframes explode-pop {
-        0% { transform: translate(-50%, -50%) scale(0.5); opacity: 0; }
-        20% { opacity: 1; }
-        100% { transform: translate(-50%, -50%) scale(4); opacity: 0; }
+        0% {
+            transform: translate(-50%, -50%) scale(0.5);
+            opacity: 0;
+        }
+        20% {
+            opacity: 1;
+        }
+        100% {
+            transform: translate(-50%, -50%) scale(4);
+            opacity: 0;
+        }
     }
     .animate-explode {
-        animation: explode-pop 0.6s cubic-bezier(0.1, 0.7, 1.0, 0.1) forwards;
+        animation: explode-pop 0.6s cubic-bezier(0.1, 0.7, 1, 0.1) forwards;
     }
     .animate-pulse-slow {
         animation: pulse 4s cubic-bezier(0.4, 0, 0.6, 1) infinite;
