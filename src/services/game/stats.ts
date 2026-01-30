@@ -51,7 +51,7 @@ export const ACHIEVEMENTS: Achievement[] = [
     {
         id: 'high_roller',
         title: 'High Roller',
-        description: 'Sent a tip of 100 KALE or more',
+        description: 'Sent a tip of 1,000 KALE or more',
         icon: '💰',
         // Logic handled in record action check usually, or we track max tip
         condition: () => false // Handled manually for single-event checks
@@ -59,30 +59,30 @@ export const ACHIEVEMENTS: Achievement[] = [
     {
         id: 'on_fire',
         title: 'On Fire',
-        description: '5 tips in a row!',
+        description: '20 tips in a row!',
         icon: '🔥',
-        condition: (s) => s.currentStreak >= 5
+        condition: (s) => s.currentStreak >= 20
     },
     {
         id: 'hater',
         title: 'Hater',
-        description: 'Skipped 5 songs in a row. Ruthless.',
+        description: 'Skipped 20 songs in a row. Ruthless.',
         icon: '🙅',
-        condition: (s) => s.currentStreak <= -5
+        condition: (s) => s.currentStreak <= -20
     },
     {
         id: 'diamond_hands',
         title: 'Diamond Hands',
-        description: 'Sent over 1,000 KALE total',
+        description: 'Sent over 100,000 KALE total',
         icon: '💎',
-        condition: (s) => s.totalKaleSent >= 1000
+        condition: (s) => s.totalKaleSent >= 100000
     },
     {
         id: 'taste_maker',
         title: 'Taste Maker',
-        description: 'Played 50 songs',
+        description: 'Played 500 songs',
         icon: '🎧',
-        condition: (s) => s.songsPlayed >= 50
+        condition: (s) => s.songsPlayed >= 500
     }
 ];
 
@@ -161,7 +161,7 @@ export function recordInteraction(
     });
 
     // Check special event-based achievements
-    if (action === 'kale' && amount >= 100 && !stats.unlockedAchievements.includes('high_roller')) {
+    if (action === 'kale' && amount >= 1000 && !stats.unlockedAchievements.includes('high_roller')) {
         stats.unlockedAchievements.push('high_roller');
         const ach = ACHIEVEMENTS.find(a => a.id === 'high_roller');
         if (ach) newAchievements.push(ach);
