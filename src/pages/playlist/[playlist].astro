@@ -1,0 +1,12 @@
+---
+import Home from "../../components/Home.svelte";
+import Leaderboard from "../../components/Leaderboard.svelte";
+import Layout from "../../layouts/Layout.astro";
+
+const { playlist } = Astro.params;
+---
+
+<Layout title={`Smol – ${playlist}`}>
+	<Leaderboard {playlist} client:only="svelte" />
+	<Home {playlist} endpoint={`playlist/${playlist}`} client:only="svelte" />
+</Layout>

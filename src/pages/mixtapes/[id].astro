@@ -1,0 +1,85 @@
+---
+import Layout from "../../layouts/Layout.astro";
+import MixtapeDetailView from "../../components/mixtape/MixtapeDetailView.svelte";
+
+const { id } = Astro.params;
+
+// Fetch minimal data for SEO/meta tags only
+let title = "Smol – Mixtape";
+let description = "Smol art onchain";
+let image_url: string | null = null;
+let schema = null;
+
+if (id) {
+    try {
+        const API_URL = import.meta.env.PUBLIC_API_URL || "https://api.smol.xyz";
+        const data = await fetch(`${API_URL}/mixtapes/${id}`, {
+            headers: {
+                Cookie: Astro.request.headers.get('cookie') ?? '',
+            }
+        }).then(async (res) => {
+            if (res.ok) return res.json();
+            return null;
+        });
+
+        if (data) {
+            title = `${data.Title} – AI Mixtape`;
+            description = (data.Desc || "Curated AI music collection") + " | Listen to this AI generated mixtape on Smol";
+
+            // Use first track's image as mixtape cover
+            if (data.Smols?.[0]?.Id) {
+                image_url = `${API_URL}/image/${data.Smols[0].Id}.png`;
+            }
+
+            // Build Schema with Tracks
+    const tracks = data.Smols?.map((song: any) => ({
+        "@type": "MusicRecording",
+        "name": song.Title || `Track ${song.Id}`,
+        "url": `${import.meta.env.PUBLIC_URL || 'https://noot.smol.xyz'}/${song.Id}`,
+        "duration": "PT3M" // Estimate
+    })) || [];
+
+    schema = [{
+        "@context": "https://schema.org",
+        "@type": "CollectionPage",
+        "@id": `https://noot.smol.xyz/mixtapes/${id}#collection`,
+        "name": title,
+        "description": description,
+        "url": `https://noot.smol.xyz/mixtapes/${id}`,
+        "mainEntity": {
+            "@type": "ItemList",
+            "itemListElement": tracks.map((track: any, index: number) => ({
+                "@type": "ListItem",
+                "position": index + 1,
+                "item": track
+            }))
+        },
+        "hasPart": tracks
+    }, {
+        "@context": "https://schema.org",
+        "@type": "BreadcrumbList",
+        "itemListElement": [
+            { "@type": "ListItem", "position": 1, "name": "Smol", "item": "https://noot.smol.xyz" },
+            { "@type": "ListItem", "position": 2, "name": "Mixtapes", "item": "https://noot.smol.xyz/mixtapes" },
+            { "@type": "ListItem", "position": 3, "name": title, "item": `https://noot.smol.xyz/mixtapes/${id}` }
+        ]
+    }];
+        }
+    } catch (error) {
+        console.error('Failed to fetch mixtape meta data:', error);
+    }
+}
+---
+
+<Layout {title} {description} {image_url} schema={schema || []}>
+    <MixtapeDetailView {id} client:only="svelte" />
+    
+    <!-- SSR Content for SEO -->
+    <article class="prose dark:prose-invert mx-auto mt-12 max-w-2xl text-center opacity-70 hover:opacity-100 transition-opacity pb-20 px-4">
+        <h1 class="text-2xl font-bold mb-2 sr-only">{title}</h1>
+        <p class="text-sm mb-8 sr-only">{description}</p>
+        <div class="text-xs text-slate-500">
+             <p>This AI mixtape was curated on Smol. Generate your own AI music and create playlists onchain.</p>
+        </div>
+    </article>
+</Layout>

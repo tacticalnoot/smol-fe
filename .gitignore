@@ -1,0 +1,42 @@
+# build output
+dist/
+
+# generated types
+.astro/
+
+# dependencies
+node_modules/
+
+# logs
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# environment variables
+.env
+.env.production
+*.env*
+
+# macOS-specific files
+.DS_Store
+
+# jetbrains setting folder
+.idea/
+
+.wrangler/
+
+# Large data files (exceed Cloudflare 25 MiB limit)
+data/all-smols.json!.agent/
+
+test-results/
+playwright-report/
+
+# Junk / Logs / Dumps
+tldts-results*.txt
+usernames.txt
+verification-check.txt
+check-output.txt
+
+.agent/_reports/
+
