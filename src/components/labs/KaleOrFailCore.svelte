@@ -1,3 +1,4 @@
+<script lang="ts">
     import { onMount, onDestroy } from "svelte";
     import { safeFetchSmols } from "../../services/api/smols";
     import { getLatestSequence } from "../../utils/base";
@@ -27,7 +28,7 @@
     const isDirectRelayer = hasApiKey;
 
     const DECIMALS_FACTOR = 10000000n;
-    
+
     let confetti: any; // Dynamically imported
 
     let smols = $state<Smol[]>([]);
