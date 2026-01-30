@@ -21,6 +21,7 @@
         type GameStats,
         ACHIEVEMENTS,
     } from "../../services/game/stats";
+    import { selectSong } from "../../stores/audio.svelte";
 
     // PROD FIX: If we have an OZ API key, use direct relayer regardless of hostname.
     const hasApiKey = !!import.meta.env.PUBLIC_RELAYER_API_KEY;
@@ -86,6 +87,23 @@
     let settleDelayTimeout: ReturnType<typeof setTimeout> | null = null;
     let redirectTimeout: ReturnType<typeof setTimeout> | null = null;
 
+    // Floating Particles
+    type Particle = { id: number; emoji: string; x: number };
+    let particles = $state<Particle[]>([]);
+    let particleIdCounter = 0;
+
+    function spawnParticle(emoji: string, dir: "left" | "right") {
+        const id = particleIdCounter++;
+        // Center the explosion more, less lateral movement
+        const xOffset = dir === "right" ? 50 : -50;
+        particles.push({ id, emoji, x: xOffset });
+        
+        // Cleanup after animation
+        setTimeout(() => {
+            particles = particles.filter(p => p.id !== id);
+        }, 600); // Match animation duration
+    }
+
     onMount(async () => {
         try {
             loadingTimeout = setTimeout(() => {
@@ -114,11 +132,11 @@
                     seenArtists.add(s.Address!);
                     return true;
                 })
-                .slice(0, 5);
+                .slice(0, 15);
             console.log(
                 "[KaleOrFail] Loaded",
                 smols.length,
-                "unique artists (Batch 5)",
+                "unique artists (Game Size 15)",
             );
             loading = false;
             // Don't autoplay - wait for user gesture (gameStarted)
@@ -282,6 +300,9 @@
         cardRotate.set(dir === "right" ? 25 : -25);
         cardScale.set(0.9);
 
+        // Spawn particle
+        spawnParticle(dir === "right" ? "🥬" : "💨", dir);
+
         if (swipeTimeout) clearTimeout(swipeTimeout);
         swipeTimeout = setTimeout(() => {
             swipeTimeout = null;
@@ -380,16 +401,15 @@
         const artistCount = artistList.length;
 
         try {
-            settleStatus = `Building batch for ${artistCount} artists...`;
-            console.log("[KaleOrFail] Building batch transfer:", {
+            console.log("[KaleOrFail] Building batch transfers:", {
                 artistCount,
                 totalAmount: totalTipsAmount,
             });
 
-            // Build transfers array for batch contract - filter out invalid addresses
+            // Build transfers array - filter out invalid addresses
             const NULL_ACCOUNT =
                 "GAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAWHF";
-            const transfers = artistList
+            const allTransfers = artistList
                 .filter(([artist]) => {
                     // Skip null/placeholder addresses
                     if (
@@ -412,82 +432,82 @@
                     ),
                 }));
 
-            if (transfers.length === 0) {
+            if (allTransfers.length === 0) {
                 throw new Error("No valid recipients found");
             }
 
-            // Cap batch size to avoid Relayer timeouts (ECONNRESET)
-            // OZ Relayer / standard RPCs often choke on large complex batches (>5-6 ops)
+            // Chunk transfers into batches of 5 to avoid Relayer timeouts
             const MAX_BATCH_SIZE = 5;
-            const batchTransfers = transfers.slice(0, MAX_BATCH_SIZE);
-            const isPartial = batchTransfers.length < transfers.length;
-
-            if (isPartial) {
-                console.log(
-                    `[KaleOrFail] Large batch detected (${transfers.length}). Chunking to first ${MAX_BATCH_SIZE}.`,
-                );
+            const chunks = [];
+            for (let i = 0; i < allTransfers.length; i += MAX_BATCH_SIZE) {
+                chunks.push(allTransfers.slice(i, i + MAX_BATCH_SIZE));
             }
+
+            console.log(`[KaleOrFail] Processing ${chunks.length} batches...`);
 
             // Import batch transfer utility
             const { buildBatchKaleTransfer } = await import(
                 "../../utils/batch-transfer"
             );
 
-            // Fetch sequence once for signing expiration (not needed for builder with NULL_ACCOUNT)
-            const sequence = await getLatestSequence();
+            // Process each chunk sequentially
+            for (let i = 0; i < chunks.length; i++) {
+                const chunk = chunks[i];
+                const chunkIndex = i + 1;
+                
+                settleStatus = `Processing Batch ${chunkIndex}/${chunks.length} (${chunk.length} artists)...`;
+                console.log(`[KaleOrFail] Starting batch ${chunkIndex}/${chunks.length}`, chunk);
 
-            const batchXdr = await buildBatchKaleTransfer(
-                userState.contractId,
-                batchTransfers,
-            );
+                // Fetch sequence fresh for each batch to avoid expiration overlap
+                const sequence = await getLatestSequence();
 
-            settleStatus = `Signing ${batchTransfers.length} tips (one signature)...`;
-            settleStep = 1;
+                const batchXdr = await buildBatchKaleTransfer(
+                    userState.contractId,
+                    chunk,
+                );
 
-            // Sign the batch transaction once
-            const signedXdr = await account.get().sign(batchXdr, {
-                rpId: getSafeRpId(window.location.hostname),
-                keyId: userState.keyId,
-                expiration: sequence + 60,
-            });
+                settleStatus = `Signing Batch ${chunkIndex}/${chunks.length}...`;
+                settleStep = Math.floor((chunkIndex / chunks.length) * 50); // Progress visual
 
-            settleStatus = `Sending to ${batchTransfers.length} artists...`;
-            settleStep = 2;
+                // Sign
+                const signedXdr = await account.get().sign(batchXdr, {
+                    rpId: getSafeRpId(window.location.hostname),
+                    keyId: userState.keyId,
+                    expiration: sequence + 60,
+                });
 
-            // Send the batch
-            await send(signedXdr, turnstileToken);
+                settleStatus = `Sending Batch ${chunkIndex}/${chunks.length}...`;
+                
+                // Send
+                await send(signedXdr, turnstileToken);
+                
+                // Remove PAID tips from queue specific to this chunk
+                const paidAddresses = new Set(chunk.map((t) => t.to));
+                tipQueue = tipQueue.filter((tip) => !paidAddresses.has(tip.artist));
 
-            console.log("[KaleOrFail] Batch transfer successful:", {
-                count: batchTransfers.length,
-                totalAmount: totalTipsAmount, // Note: this is total of queue, not batch, but okay for log
-            });
+                // Small delay between batches to be nice to relayer
+                if (i < chunks.length - 1) {
+                    settleStatus = `Cooling down for next batch...`;
+                    await new Promise(r => setTimeout(r, 1000));
+                }
+            }
+
+            console.log("[KaleOrFail] All batches successful!");
 
             // Epic confetti!
             confetti({
-                particleCount: 150,
-                spread: 70,
+                particleCount: 200,
+                spread: 100,
                 origin: { y: 0.6 },
                 colors: ["#50FA7B", "#ffffff"], // KALE green and white
             });
 
-            // Remove PAID tips from queue
-            const paidAddresses = new Set(batchTransfers.map((t) => t.to));
-            tipQueue = tipQueue.filter((tip) => !paidAddresses.has(tip.artist));
+            settleStatus = "All Sent! 🥬";
+            setTimeout(() => {
+                isSettling = false;
+                settleStatus = "";
+            }, 2000);
 
-            if (tipQueue.length > 0) {
-                settleStatus = `Batch sent! ${tipQueue.length} tips remaining...`;
-                // Keep settling mode active but reset status after delay so user can click again
-                setTimeout(() => {
-                    isSettling = false;
-                    settleStatus = "";
-                }, 2000);
-            } else {
-                settleStatus = "Sent! 🥬";
-                setTimeout(() => {
-                    isSettling = false;
-                    settleStatus = "";
-                }, 2000);
-            }
         } catch (e: any) {
             console.error("Batch settle error:", e);
             const msg = e?.message || String(e);
@@ -498,10 +518,10 @@
                 msg.includes("500")
             ) {
                 alert(
-                    `Relayer connection failed (${msg}). The batch might be too large for the current network conditions. Please try waiting momentarily or refresh.`,
+                    `Relayer connection failed (${msg}). Some batches may have succeeded. Please check your balance/history.`,
                 );
             } else {
-                alert(`Failed to send tips: ${msg}`);
+                alert(`Failed to send remaining tips: ${msg}`);
             }
             isSettling = false;
         }
@@ -510,8 +530,6 @@
         if (userState.contractId) {
             updateContractBalance(userState.contractId);
         }
-
-        isSettling = false;
     }
 
     // Progress indicator
@@ -567,6 +585,8 @@
             <button
                 onclick={() => {
                     gameStarted = true;
+                    // Stop Global Player to prevent conflicts
+                    selectSong(null);
                     playCurrent();
                 }}
                 class="border-2 border-[#9ae600] bg-[#9ae600]/10 px-8 py-4 rounded-xl text-[#9ae600] text-xl font-bold hover:bg-[#9ae600] hover:text-black transition-all active:scale-95"
@@ -595,6 +615,18 @@
                         <div class="text-slate-400">Lifetime Sent</div>
                         <div class="text-[#9ae600] font-bold">
                             {stats.totalKaleSent}
+                        </div>
+                    </div>
+                    <div class="bg-[#222] p-2 rounded-lg">
+                        <div class="text-slate-400">Total Fails</div>
+                        <div class="text-red-400 font-bold">
+                            {stats.totalSkips}
+                        </div>
+                    </div>
+                    <div class="bg-[#222] p-2 rounded-lg">
+                        <div class="text-slate-400">Best Streak</div>
+                        <div class="text-orange-400 font-bold">
+                            {stats.maxKaleStreak} 🔥
                         </div>
                     </div>
                 </div>
@@ -702,12 +734,58 @@
             {/if}
         </div>
     {:else}
+        <!-- Ambient Background -->
+        {#if smols[currentIndex]}
+            <div
+                class="fixed inset-0 -z-10 pointer-events-none overflow-hidden transition-opacity duration-1000 origin-center"
+                in:fade
+            >
+                <img
+                    src="{import.meta.env.PUBLIC_API_URL}/image/{smols[
+                        currentIndex
+                    ].Id}.png"
+                    alt="bg"
+                    class="w-full h-full object-cover opacity-30 blur-3xl scale-125 saturate-150 animate-pulse-slow"
+                />
+            </div>
+        {/if}
+
         <!-- Card Stack -->
-        <div class="relative h-[480px]">
+        <div class="relative h-[480px] perspective-1000">
+            <!-- Background cards (next in queue) -->
+            {#each smols
+                .slice(currentIndex + 1, currentIndex + 2)
+                .reverse() as song, i (song.Id)}
+                {@const index = i}
+                <!-- reverse makes i go 1, 0 but we want depth -->
+                <div
+                    class="absolute inset-0 bg-[#111] border border-[#333] rounded-2xl overflow-hidden glass-panel select-none touch-none pointer-events-none transition-all duration-500 ease-out"
+                    style="
+                        z-index: {5 - i};
+                        transform: 
+                            translateY({(2 - i) * 12}px) 
+                            scale({0.9 - (2 - i) * 0.05});
+                        opacity: 0.5;
+                    "
+                >
+                    <img
+                        src="{import.meta.env
+                            .PUBLIC_API_URL}/image/{song.Id}.png"
+                        alt="next"
+                        class="w-full h-full object-cover grayscale opacity-50"
+                        loading="eager"
+                    />
+                </div>
+            {/each}
+
+            <!-- Active Card -->
             {#each [smols[currentIndex]] as song (song.Id)}
                 <div
-                    class="absolute inset-0 bg-black border border-[#333] rounded-2xl overflow-hidden glass-panel select-none touch-none cursor-grab active:cursor-grabbing"
-                    style="transform: translate({$cardX}px, {$cardY}px) rotate({$cardRotate}deg) scale({$cardScale});"
+                    class="absolute inset-0 bg-black border border-[#333] rounded-2xl overflow-hidden glass-panel select-none touch-none cursor-grab active:cursor-grabbing shadow-2xl
+                    {stats.currentStreak >= 5
+                        ? 'ring-4 ring-orange-500 ring-opacity-50 shadow-orange-500/50 animate-pulse'
+                        : ''}"
+                    style="transform: translate({$cardX}px, {$cardY}px) rotate({$cardRotate}deg) scale({$cardScale}); z-index: 50;"
                     onmousedown={handlePanStart}
                     onmousemove={handlePanMove}
                     onmouseup={handlePanEnd}
@@ -721,9 +799,10 @@
                         src="{import.meta.env
                             .PUBLIC_API_URL}/image/{song.Id}.png"
                         alt={song.Title}
-                        class="w-full h-3/4 object-cover pointer-events-none"
+                        class="w-full h-full object-cover pointer-events-none"
                         draggable="false"
                         oncontextmenu={(e) => e.preventDefault()}
+                        loading="eager"
                     />
 
                     <!-- Audio Visualizer Overlay -->
@@ -737,6 +816,18 @@
                                 height="64"
                                 class="w-full h-full opacity-70"
                             ></canvas>
+                        </div>
+                    {/if}
+
+                    <!-- Streak Fire Overlay -->
+                    {#if stats.currentStreak >= 5}
+                        <div
+                            class="absolute inset-0 pointer-events-none border-4 border-orange-500/30 rounded-2xl animate-pulse"
+                        ></div>
+                        <div
+                            class="absolute top-2 right-2 text-2xl animate-bounce"
+                        >
+                            🔥
                         </div>
                     {/if}
 
@@ -761,7 +852,7 @@
 
                     <!-- Overlay Stamps -->
                     <div
-                        class="absolute top-1/3 left-1/2 -translate-x-1/2 -translate-y-1/2 border-4 border-[#9ae600] text-[#9ae600] px-6 py-3 rounded-xl text-3xl font-bold uppercase -rotate-12 transition-opacity pointer-events-none"
+                        class="absolute top-1/3 left-1/2 -translate-x-1/2 -translate-y-1/2 border-4 border-[#9ae600] text-[#9ae600] px-6 py-3 rounded-xl text-3xl font-bold uppercase -rotate-12 transition-opacity pointer-events-none bg-black/50 backdrop-blur-sm"
                         style="opacity: {$cardX > 50
                             ? Math.min(($cardX - 50) / 80, 1)
                             : 0}; text-shadow: 0 0 20px rgba(154,230,0,0.5);"
@@ -769,12 +860,24 @@
                         TIP! 🥬
                     </div>
                     <div
-                        class="absolute top-1/3 left-1/2 -translate-x-1/2 -translate-y-1/2 border-4 border-red-500 text-red-500 px-6 py-3 rounded-xl text-3xl font-bold uppercase rotate-12 transition-opacity pointer-events-none"
+                        class="absolute top-1/3 left-1/2 -translate-x-1/2 -translate-y-1/2 border-4 border-red-500 text-red-500 px-6 py-3 rounded-xl text-3xl font-bold uppercase rotate-12 transition-opacity pointer-events-none bg-black/50 backdrop-blur-sm"
                         style="opacity: {$cardX < -50
                             ? Math.min((-$cardX - 50) / 80, 1)
                             : 0}; text-shadow: 0 0 20px rgba(239,68,68,0.5);"
                     >
                         PASS ✕
+                    </div>
+                </div>
+            {/each}
+
+            <!-- Floating Particles -->
+            {#each particles as p (p.id)}
+                <div
+                    class="absolute top-1/2 left-1/2 text-8xl pointer-events-none select-none z-[60]"
+                    style="transform: translate({p.x}px, 0);"
+                >
+                    <div class="animate-explode">
+                        {p.emoji}
                     </div>
                 </div>
             {/each}
@@ -862,6 +965,8 @@
     {/if}
 </div>
 
+</style>
+
 <style>
     .glass-panel {
         backdrop-filter: blur(10px);
@@ -872,5 +977,21 @@
     input::-webkit-inner-spin-button {
         -webkit-appearance: none;
         margin: 0;
+    }
+
+    /* Visual Enhancements */
+    @keyframes explode-pop {
+        0% { transform: translate(-50%, -50%) scale(0.5); opacity: 0; }
+        20% { opacity: 1; }
+        100% { transform: translate(-50%, -50%) scale(4); opacity: 0; }
+    }
+    .animate-explode {
+        animation: explode-pop 0.6s cubic-bezier(0.1, 0.7, 1.0, 0.1) forwards;
+    }
+    .animate-pulse-slow {
+        animation: pulse 4s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+    }
+    .perspective-1000 {
+        perspective: 1000px;
     }
 </style>
