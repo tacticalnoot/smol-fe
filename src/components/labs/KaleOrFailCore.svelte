@@ -498,9 +498,35 @@
 
                 // Send
                 // Send
+                const RETRY_MESSAGES = [
+                    "Relayer is napping. Waking it up... 😴",
+                    "Blockchain traffic jam. Honking... 🚗",
+                    "Polishing the kale leaves... 🥬",
+                    "Convincing the nodes to agree... 🤝",
+                    "Rerouting power to thrusters... 🚀",
+                    "Feeding the server hamsters... 🐹",
+                    "Retrying... trust the process. 🙏",
+                    "The chain is sleepy today... 🌙",
+                    "Greasing the validator gears... ⚙️",
+                    "Photosynthesizing... ☀️",
+                    "Watering the transaction... 🚿",
+                ];
+
                 await withRetry(
                     () => send(signedXdr, turnstileToken),
-                    { maxRetries: 5, baseDelayMs: 2000 },
+                    {
+                        maxRetries: 5,
+                        baseDelayMs: 2000,
+                        onRetry: (attempt, _err, _delay) => {
+                            const randomMsg =
+                                RETRY_MESSAGES[
+                                    Math.floor(
+                                        Math.random() * RETRY_MESSAGES.length,
+                                    )
+                                ];
+                            settleStatus = `${randomMsg} (Try ${attempt}/5)`;
+                        },
+                    },
                     "SendBatch",
                 );
 
