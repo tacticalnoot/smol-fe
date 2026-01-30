@@ -61,10 +61,10 @@ export async function findTokenTransfers(
     tokenContractId: string,
     options: {
         limit?: number;
-        startLedger?: number; // Defaults to recent history if not specified
+        startLedger?: number;
     } = {}
 ): Promise<TokenTransfer[]> {
-    const log = logger; // Use global logger or create scoped one if preferred
+    const log = logger;
     const { limit = 100, startLedger } = options;
 
     log.debug(LogCategory.RPC, 'findTokenTransfers called', { fromAddress, toAddress, tokenContractId });
