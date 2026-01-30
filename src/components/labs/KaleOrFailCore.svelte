@@ -3,6 +3,7 @@
     import { safeFetchSmols } from "../../services/api/smols";
     import { getLatestSequence } from "../../utils/base";
     import { account, send } from "../../utils/passkey-kit";
+    import { withRetry } from "../../utils/retry";
     // NOTE: Dynamic import for confetti to avoid SSR crash
     import { userState } from "../../stores/user.svelte.ts";
     import {
@@ -471,11 +472,16 @@
                 );
 
                 // Fetch sequence fresh for each batch to avoid expiration overlap
-                const sequence = await getLatestSequence();
+                const sequence = await withRetry(
+                    () => getLatestSequence(),
+                    {},
+                    "GetSequence",
+                );
 
-                const batchXdr = await buildBatchKaleTransfer(
-                    userState.contractId,
-                    chunk,
+                const batchXdr = await withRetry(
+                    () => buildBatchKaleTransfer(userState.contractId, chunk),
+                    {},
+                    "BuildBatch",
                 );
 
                 settleStatus = `Signing Batch ${chunkIndex}/${chunks.length}...`;
@@ -491,7 +497,12 @@
                 settleStatus = `Sending Batch ${chunkIndex}/${chunks.length}...`;
 
                 // Send
-                await send(signedXdr, turnstileToken);
+                // Send
+                await withRetry(
+                    () => send(signedXdr, turnstileToken),
+                    { maxRetries: 5, baseDelayMs: 2000 },
+                    "SendBatch",
+                );
 
                 // Remove PAID tips from queue specific to this chunk
                 const paidAddresses = new Set(chunk.map((t) => t.to));
