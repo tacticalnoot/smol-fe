@@ -17,9 +17,11 @@ import {
     rpc,
     xdr
 } from "@stellar/stellar-sdk";
-import { getRpcUrl } from "./base";
 
 const { Server, Api, assembleTransaction } = rpc;
+
+// RPC URL from environment
+const RPC_URL = import.meta.env.PUBLIC_RPC_URL || "https://rpc.ankr.com/stellar_soroban";
 
 // Deployed batch transfer contract on mainnet
 const BATCH_CONTRACT_ID = "CAZ4E2ZSMWMJDZQWB2OLXHYISBN6VSWUV2GOUM7AQ4ZDM4KBWHGKLDKX";
@@ -54,8 +56,7 @@ export async function buildBatchKaleTransfer(
         contract: BATCH_CONTRACT_ID
     });
 
-    const rpcUrl = getRpcUrl();
-    const server = new Server(rpcUrl);
+    const server = new Server(RPC_URL);
     const batchContract = new Contract(BATCH_CONTRACT_ID);
     const sourceAccount = new Account(NULL_ACCOUNT, "0");
 
