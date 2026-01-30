@@ -15,6 +15,12 @@
     import type { Smol } from "../../types/domain";
     import Loader from "../ui/Loader.svelte";
     import { Turnstile } from "svelte-turnstile";
+    import {
+        recordInteraction,
+        loadStats,
+        type GameStats,
+        ACHIEVEMENTS,
+    } from "../../services/game/stats";
 
     // PROD FIX: If we have an OZ API key, use direct relayer regardless of hostname.
     const hasApiKey = !!import.meta.env.PUBLIC_RELAYER_API_KEY;
@@ -62,6 +68,7 @@
         tipQueue.reduce((acc, t) => acc + t.amount, 0),
     );
     let turnstileToken = $state("");
+    let stats = $state<GameStats>(loadStats());
 
     // Balance derived
     let formattedBalance = $derived(
@@ -107,8 +114,12 @@
                     seenArtists.add(s.Address!);
                     return true;
                 })
-                .slice(0, 10);
-            console.log("[KaleOrFail] Loaded", smols.length, "unique artists");
+                .slice(0, 5);
+            console.log(
+                "[KaleOrFail] Loaded",
+                smols.length,
+                "unique artists (Batch 5)",
+            );
             loading = false;
             // Don't autoplay - wait for user gesture (gameStarted)
 
@@ -280,6 +291,35 @@
                 userState.contractId &&
                 song.Address.toLowerCase() ===
                     userState.contractId.toLowerCase();
+
+            // Record stats
+            if (!isSelfTip) {
+                const result = recordInteraction(
+                    song.Id,
+                    dir === "right" ? "kale" : "fail",
+                    dir === "right"
+                        ? isCustom
+                            ? parseFloat(customTipAmount) || 1
+                            : selectedTipAmount
+                        : 0,
+                );
+                stats = result.stats;
+
+                // Show achievements
+                if (result.newAchievements.length > 0) {
+                    result.newAchievements.forEach((ach) => {
+                        console.log(
+                            `[Achievement] ${ach.title}: ${ach.description}`,
+                        );
+                        confetti({
+                            particleCount: 50,
+                            spread: 60,
+                            origin: { y: 0.8 },
+                            colors: ["#FFD700", "#FFA500"], // Gold colors
+                        });
+                    });
+                }
+            }
 
             if (dir === "right" && song.Address && !isSelfTip) {
                 const amount = isCustom
@@ -543,6 +583,49 @@
             <h2 class="text-2xl text-white">Game Over!</h2>
 
             <div class="space-y-3 w-full max-w-xs">
+                <!-- Stats Summary -->
+                <div class="grid grid-cols-2 gap-2 text-xs">
+                    <div class="bg-[#222] p-2 rounded-lg">
+                        <div class="text-slate-400">Total Kaled</div>
+                        <div class="text-white font-bold">
+                            {stats.totalTips}
+                        </div>
+                    </div>
+                    <div class="bg-[#222] p-2 rounded-lg">
+                        <div class="text-slate-400">Lifetime Sent</div>
+                        <div class="text-[#9ae600] font-bold">
+                            {stats.totalKaleSent}
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Achievements -->
+                {#if stats.unlockedAchievements.length > 0}
+                    <div class="flex flex-wrap gap-2 justify-center py-2">
+                        {#each ACHIEVEMENTS as ach}
+                            <div
+                                class="relative group cursor-help transition-all duration-300
+                                {stats.unlockedAchievements.includes(ach.id)
+                                    ? 'opacity-100 scale-100 grayscale-0'
+                                    : 'opacity-30 scale-90 grayscale'}"
+                            >
+                                <span class="text-2xl">{ach.icon}</span>
+                                <!-- Tooltip -->
+                                <div
+                                    class="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 px-2 py-1 bg-black border border-[#333] rounded text-[10px] whitespace-nowrap opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none z-10 w-max max-w-[150px]"
+                                >
+                                    <div class="font-bold text-[#9ae600]">
+                                        {ach.title}
+                                    </div>
+                                    <div class="text-slate-400 text-wrap">
+                                        {ach.description}
+                                    </div>
+                                </div>
+                            </div>
+                        {/each}
+                    </div>
+                {/if}
+
                 <div class="bg-[#1a1a1a] border border-[#333] rounded-xl p-4">
                     <p class="text-[#9ae600] text-lg font-bold">
                         {tipQueue.length} Tips Queued
