@@ -381,13 +381,12 @@
                 "../../utils/batch-transfer"
             );
 
-            // Fetch sequence once for both building and signing
+            // Fetch sequence once for signing expiration (not needed for builder with NULL_ACCOUNT)
             const sequence = await getLatestSequence();
 
             const batchXdr = await buildBatchKaleTransfer(
                 userState.contractId,
                 transfers,
-                sequence,
             );
 
             settleStatus = `Signing ${artistCount} tips (one signature)...`;
