@@ -328,17 +328,21 @@
         isSettling = true;
         settleStep = 0;
 
+        // Group tips by artist
         const amountByArtist = new Map<string, number>();
         for (const tip of tipQueue) {
             const current = amountByArtist.get(tip.artist) || 0;
             amountByArtist.set(tip.artist, current + tip.amount);
         }
 
-        const artistCount = amountByArtist.size;
+        const artistList = Array.from(amountByArtist.entries());
+        const artistCount = artistList.length;
         let completed = 0;
+        const failedArtists: string[] = [];
+        const completedArtists: string[] = [];
 
-        try {
-            for (const [artist, totalAmount] of amountByArtist) {
+        for (const [artist, totalAmount] of artistList) {
+            try {
                 settleStatus = `Tipping ${artist.slice(0, 4)}...${artist.slice(-4)} (${totalAmount} 🥬)`;
                 const amountBigInt = BigInt(
                     Math.floor(totalAmount * Number(DECIMALS_FACTOR)),
@@ -362,37 +366,54 @@
                 // 3. Send
                 await send(tx, turnstileToken);
 
+                // Success - mark as completed
+                completedArtists.push(artist);
                 completed++;
                 settleStep = completed;
-
-                // Small delay between transactions
-                if (completed < artistCount) {
-                    await new Promise((r) => {
-                        settleDelayTimeout = setTimeout(() => {
-                            settleDelayTimeout = null;
-                            r(undefined);
-                        }, 800);
-                    });
-                }
+                console.log(
+                    `[KaleOrFail] Tip sent to ${artist}: ${totalAmount} KALE`,
+                );
+            } catch (e: any) {
+                console.error(`[KaleOrFail] Failed to tip ${artist}:`, e);
+                failedArtists.push(artist);
+                // Continue to next artist, don't stop the whole flow
             }
 
+            // Small delay between transactions
+            if (completed + failedArtists.length < artistCount) {
+                await new Promise((r) => {
+                    settleDelayTimeout = setTimeout(() => {
+                        settleDelayTimeout = null;
+                        r(undefined);
+                    }, 800);
+                });
+            }
+        }
+
+        // Remove completed tips from queue (prevents double-tipping on retry)
+        tipQueue = tipQueue.filter(
+            (tip) => !completedArtists.includes(tip.artist),
+        );
+
+        // Update status based on results
+        if (failedArtists.length === 0) {
             settleStatus = "🎉 All tips sent!";
-
-            // Refresh balance
-            if (userState.contractId) {
-                updateContractBalance(userState.contractId);
-            }
-
             redirectTimeout = setTimeout(() => {
                 redirectTimeout = null;
                 window.location.href = "/labs";
             }, 2500);
-        } catch (e: any) {
-            console.error(e);
-            settleStatus = `❌ ${e.message}`;
-        } finally {
-            isSettling = false;
+        } else if (completed > 0) {
+            settleStatus = `⚠️ ${completed} sent, ${failedArtists.length} failed. Retry remaining?`;
+        } else {
+            settleStatus = `❌ All ${failedArtists.length} tips failed`;
         }
+
+        // Refresh balance
+        if (userState.contractId) {
+            updateContractBalance(userState.contractId);
+        }
+
+        isSettling = false;
     }
 
     // Progress indicator
