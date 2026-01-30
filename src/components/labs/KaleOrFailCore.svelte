@@ -345,11 +345,35 @@
                 totalAmount: totalTipsAmount,
             });
 
-            // Build transfers array for batch contract
-            const transfers = artistList.map(([artist, amount]) => ({
-                to: artist,
-                amount: BigInt(Math.floor(amount * Number(DECIMALS_FACTOR))),
-            }));
+            // Build transfers array for batch contract - filter out invalid addresses
+            const NULL_ACCOUNT =
+                "GAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAWHF";
+            const transfers = artistList
+                .filter(([artist]) => {
+                    // Skip null/placeholder addresses
+                    if (
+                        !artist ||
+                        artist === NULL_ACCOUNT ||
+                        artist.length < 56
+                    ) {
+                        console.warn(
+                            "[KaleOrFail] Skipping invalid address:",
+                            artist,
+                        );
+                        return false;
+                    }
+                    return true;
+                })
+                .map(([artist, amount]) => ({
+                    to: artist,
+                    amount: BigInt(
+                        Math.floor(amount * Number(DECIMALS_FACTOR)),
+                    ),
+                }));
+
+            if (transfers.length === 0) {
+                throw new Error("No valid recipients found");
+            }
 
             // Import batch transfer utility
             const { buildBatchKaleTransfer } = await import(
