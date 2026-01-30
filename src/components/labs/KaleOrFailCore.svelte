@@ -2,7 +2,7 @@
     import { onMount, onDestroy } from "svelte";
     import { safeFetchSmols } from "../../services/api/smols";
     import { getLatestSequence } from "../../utils/base";
-    import { account, kale, send } from "../../utils/passkey-kit";
+    import { account, send } from "../../utils/passkey-kit";
     import { userState } from "../../stores/user.svelte.ts";
     import {
         balanceState,
@@ -337,75 +337,67 @@
 
         const artistList = Array.from(amountByArtist.entries());
         const artistCount = artistList.length;
-        let completed = 0;
-        const failedArtists: string[] = [];
-        const completedArtists: string[] = [];
 
-        for (const [artist, totalAmount] of artistList) {
-            try {
-                settleStatus = `Tipping ${artist.slice(0, 4)}...${artist.slice(-4)} (${totalAmount} 🥬)`;
-                const amountBigInt = BigInt(
-                    Math.floor(totalAmount * Number(DECIMALS_FACTOR)),
-                );
+        try {
+            settleStatus = `Building batch transfer for ${artistCount} artists...`;
+            console.log("[KaleOrFail] Building batch transfer:", {
+                artistCount,
+                totalAmount: totalTipsAmount,
+            });
 
-                // 1. Build Tx
-                let tx = await kale.get().transfer({
-                    from: userState.contractId,
+            // Build transfers array
+            const transfers: { to: string; amount: bigint }[] = artistList.map(
+                ([artist, amount]) => ({
                     to: artist,
-                    amount: amountBigInt,
-                });
+                    amount: BigInt(
+                        Math.floor(amount * Number(DECIMALS_FACTOR)),
+                    ),
+                }),
+            );
 
-                // 2. Sign
-                const sequence = await getLatestSequence();
-                tx = await account.get().sign(tx, {
-                    rpId: getSafeRpId(window.location.hostname),
-                    keyId: userState.keyId,
-                    expiration: sequence + 60,
-                });
+            // Import and use batch transfer
+            const { buildBatchKaleTransfer } = await import(
+                "../../utils/batch-transfer"
+            );
+            const batchXdr = await buildBatchKaleTransfer(
+                userState.contractId,
+                transfers,
+            );
 
-                // 3. Send
-                await send(tx, turnstileToken);
+            settleStatus = `Signing ${artistCount} tips (one signature)...`;
+            settleStep = 1;
 
-                // Success - mark as completed
-                completedArtists.push(artist);
-                completed++;
-                settleStep = completed;
-                console.log(
-                    `[KaleOrFail] Tip sent to ${artist}: ${totalAmount} KALE`,
-                );
-            } catch (e: any) {
-                console.error(`[KaleOrFail] Failed to tip ${artist}:`, e);
-                failedArtists.push(artist);
-                // Continue to next artist, don't stop the whole flow
-            }
+            // Sign the batch transaction
+            const sequence = await getLatestSequence();
+            const signedXdr = await account.get().sign(batchXdr, {
+                rpId: getSafeRpId(window.location.hostname),
+                keyId: userState.keyId,
+                expiration: sequence + 60,
+            });
 
-            // Small delay between transactions
-            if (completed + failedArtists.length < artistCount) {
-                await new Promise((r) => {
-                    settleDelayTimeout = setTimeout(() => {
-                        settleDelayTimeout = null;
-                        r(undefined);
-                    }, 800);
-                });
-            }
-        }
+            settleStatus = `Sending batch to ${artistCount} artists...`;
+            settleStep = 2;
 
-        // Remove completed tips from queue (prevents double-tipping on retry)
-        tipQueue = tipQueue.filter(
-            (tip) => !completedArtists.includes(tip.artist),
-        );
+            // Send the batch
+            await send(signedXdr, turnstileToken);
 
-        // Update status based on results
-        if (failedArtists.length === 0) {
+            console.log("[KaleOrFail] Batch transfer successful:", {
+                artistCount,
+                totalAmount: totalTipsAmount,
+            });
+
+            // Clear the queue - all tips sent
+            tipQueue = [];
+            settleStep = artistCount;
             settleStatus = "🎉 All tips sent!";
+
             redirectTimeout = setTimeout(() => {
                 redirectTimeout = null;
                 window.location.href = "/labs";
             }, 2500);
-        } else if (completed > 0) {
-            settleStatus = `⚠️ ${completed} sent, ${failedArtists.length} failed. Retry remaining?`;
-        } else {
-            settleStatus = `❌ All ${failedArtists.length} tips failed`;
+        } catch (e: any) {
+            console.error("[KaleOrFail] Batch transfer failed:", e);
+            settleStatus = `❌ ${e.message || "Batch transfer failed"}`;
         }
 
         // Refresh balance
