@@ -796,7 +796,7 @@
                 <img
                     src="{import.meta.env.PUBLIC_API_URL}/image/{smols[
                         currentIndex
-                    ].Id}.png"
+                    ].Id}.png?scale=800"
                     alt="bg"
                     class="w-full h-full object-cover opacity-30 blur-3xl scale-125 saturate-150 animate-pulse-slow"
                 />
@@ -823,7 +823,7 @@
                 >
                     <img
                         src="{import.meta.env
-                            .PUBLIC_API_URL}/image/{song.Id}.png"
+                            .PUBLIC_API_URL}/image/{song.Id}.png?scale=800"
                         alt="next"
                         class="w-full h-full object-cover grayscale opacity-50"
                         loading="eager"
@@ -850,7 +850,7 @@
                 >
                     <img
                         src="{import.meta.env
-                            .PUBLIC_API_URL}/image/{song.Id}.png"
+                            .PUBLIC_API_URL}/image/{song.Id}.png?scale=800"
                         alt={song.Title}
                         class="w-full h-full object-cover pointer-events-none"
                         draggable="false"
