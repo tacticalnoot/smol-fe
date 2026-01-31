@@ -16,8 +16,7 @@ import {
     Account,
     xdr,
 } from "@stellar/stellar-sdk/minimal";
-import { Server, Api } from "@stellar/stellar-sdk/minimal/rpc";
-import { assembleTransaction } from "@stellar/stellar-sdk/minimal/contract";
+import { Server, Api, assembleTransaction } from "@stellar/stellar-sdk/minimal/rpc";
 
 // RPC URL from environment or failover
 const RPC_URL = import.meta.env.PUBLIC_RPC_URL || "https://rpc.ankr.com/stellar_soroban";
