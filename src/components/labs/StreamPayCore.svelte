@@ -307,6 +307,41 @@
                 amount: BigInt(amount) * 10_000_000n, // Convert to 7 Decimals
             }));
 
+            // 1.5. BALANCE PRE-CHECK - Verify user has enough KALE before proceeding
+            settlementStatus = "Verifying balance...";
+            const totalTransferAmount = transfers.reduce(
+                (sum, t) => sum + t.amount,
+                0n,
+            );
+
+            try {
+                const kaleContract = await kale.get();
+                const { result: userBalance } = await kaleContract.balance({
+                    id: userState.contractId,
+                });
+
+                console.log(
+                    `[StreamPay] Balance check: Need ${totalTransferAmount}, Have ${userBalance}`,
+                );
+
+                if (userBalance < totalTransferAmount) {
+                    const needed = Number(totalTransferAmount) / 10_000_000;
+                    const have = Number(userBalance) / 10_000_000;
+                    throw new Error(
+                        `Insufficient KALE balance. Need ${needed.toFixed(2)}, have ${have.toFixed(2)}`,
+                    );
+                }
+            } catch (e: any) {
+                if (e.message?.includes("Insufficient KALE")) {
+                    throw e; // Re-throw balance errors
+                }
+                console.warn(
+                    "[StreamPay] Balance pre-check failed, proceeding anyway:",
+                    e.message,
+                );
+                // Continue - simulation will catch any real issues
+            }
+
             // 2. Build Batch Transaction
             // The batch contract takes the SENDER'S C-address.
             settlementStatus = "Simulating transaction...";
