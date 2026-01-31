@@ -1,6 +1,8 @@
 // No top-level imports of PasskeyKit or SACClient to keep them out of server bundle
-import { AssembledTransaction } from "@stellar/stellar-sdk/minimal/contract";
-import type { Tx } from "@stellar/stellar-sdk/minimal/contract";
+import { contract } from "@stellar/stellar-sdk/minimal";
+const { AssembledTransaction } = contract;
+import type { Transaction, FeeBumpTransaction } from "@stellar/stellar-sdk/minimal";
+type Tx = Transaction | FeeBumpTransaction;
 import { getTurnstileToken } from "../stores/turnstile.svelte.ts";
 import logger, { LogCategory } from "./debug-logger";
 
