@@ -6,9 +6,7 @@
     import { userState } from "../../stores/user.svelte.ts";
     import { getSafeRpId } from "../../utils/domains";
     import { fade, slide } from "svelte/transition";
-    import { Keypair, Networks } from "@stellar/stellar-sdk";
-    import { SignerStore } from "passkey-kit";
-    import { buildBatchKaleTransfer } from "../../utils/batch-transfer";
+    import type { Keypair as KeypairType } from "@stellar/stellar-sdk";
     import type { Smol } from "../../types/domain";
     import Loader from "../ui/Loader.svelte";
     import { Turnstile } from "svelte-turnstile";
@@ -24,7 +22,7 @@
     let depositAmount = $state(100); // Initial Deposit Request
 
     // Session
-    let sessionKey = $state<Keypair | null>(null);
+    let sessionKey = $state<KeypairType | null>(null);
     let isAuthorizing = $state(false);
     let isSettling = $state(false);
     let sessionBalance = $state(0); // Current tracked balance (Virtual)
@@ -64,7 +62,23 @@
         }
     }
 
+    // Dynamic Imports for heavy deps
+    let Keypair: any;
+    let SignerStore: any;
+    let buildBatchKaleTransfer: any;
+    let Networks: any;
+
     onMount(async () => {
+        // Load heavy SDKs only on the client
+        const sdk = await import("@stellar/stellar-sdk/minimal");
+        const pk = await import("passkey-kit");
+        const bt = await import("../../utils/batch-transfer");
+
+        Keypair = sdk.Keypair;
+        Networks = sdk.Networks;
+        SignerStore = pk.SignerStore;
+        buildBatchKaleTransfer = bt.buildBatchKaleTransfer;
+
         // Push state to enable popstate trap
         history.pushState(null, "", window.location.href);
 
@@ -110,7 +124,7 @@
                 "[StreamPay] Authorizing Session Key:",
                 key.publicKey(),
             );
-            const pk = account.get();
+            const pk = await account.get();
             await pk.addEd25519(
                 key.publicKey(),
                 undefined, // No specific limits for the experiment
@@ -230,7 +244,9 @@
             // 3. BACKGROUND SIGN using the Session Key
             // NO PASSKEY PROMPT HERE!
             console.log("[StreamPay] Signing Batch Tx with Session Key...");
-            const signedTx = await account.get().sign(xdr, {
+            const signedTx = await (
+                await account.get()
+            ).sign(xdr, {
                 keypair: sessionKey,
                 networkPassphrase: Networks.PUBLIC,
             });

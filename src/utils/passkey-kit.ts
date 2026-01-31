@@ -1,4 +1,4 @@
-import { PasskeyKit, SACClient } from "passkey-kit";
+// No top-level imports of PasskeyKit or SACClient to keep them out of server bundle
 import { AssembledTransaction } from "@stellar/stellar-sdk/minimal/contract";
 import type { Tx } from "@stellar/stellar-sdk/minimal/contract";
 import { getTurnstileToken } from "../stores/turnstile.svelte.ts";
@@ -14,10 +14,11 @@ import { getRpcUrl } from "./rpc";
  * set after connectWallet() is called. Creating a new instance for each
  * operation loses this state.
  */
-let _passkeyKitInstance: PasskeyKit | null = null;
+let _passkeyKitInstance: any = null;
 
-function getPasskeyKit(): PasskeyKit {
+async function getPasskeyKit(): Promise<any> {
     if (!_passkeyKitInstance) {
+        const { PasskeyKit } = await import("passkey-kit");
         _passkeyKitInstance = new PasskeyKit({
             rpcUrl: getRpcUrl(),
             networkPassphrase: import.meta.env.PUBLIC_NETWORK_PASSPHRASE,
@@ -40,22 +41,25 @@ export const account = {
 };
 
 export const sac = {
-    get: () => new SACClient({
-        rpcUrl: getRpcUrl(), // Dynamic failover
-        networkPassphrase: import.meta.env.PUBLIC_NETWORK_PASSPHRASE,
-    })
+    get: async () => {
+        const { SACClient } = await import("passkey-kit");
+        return new SACClient({
+            rpcUrl: getRpcUrl(), // Dynamic failover
+            networkPassphrase: import.meta.env.PUBLIC_NETWORK_PASSPHRASE,
+        });
+    }
 };
 
 export const kale = {
-    get: () => sac.get().getSACClient(import.meta.env.PUBLIC_KALE_SAC_ID)
+    get: async () => (await sac.get()).getSACClient(import.meta.env.PUBLIC_KALE_SAC_ID)
 };
 
 export const xlm = {
-    get: () => sac.get().getSACClient(import.meta.env.PUBLIC_XLM_SAC_ID || "CAS3J7GYLGXMF6TDJBBYYSE3HQ6BBSMLNUQ34T6TZMYMW2EVH34XOWMA")
+    get: async () => (await sac.get()).getSACClient(import.meta.env.PUBLIC_XLM_SAC_ID || "CAS3J7GYLGXMF6TDJBBYYSE3HQ6BBSMLNUQ34T6TZMYMW2EVH34XOWMA")
 };
 
 export const usdc = {
-    get: () => sac.get().getSACClient("CCW67TSZV3SSS2HXMBQ5JFGCKJNXKZM7UQUWUZPUTHXSTZLEO7SJMI75")
+    get: async () => (await sac.get()).getSACClient("CCW67TSZV3SSS2HXMBQ5JFGCKJNXKZM7UQUWUZPUTHXSTZLEO7SJMI75")
 };
 
 /**
