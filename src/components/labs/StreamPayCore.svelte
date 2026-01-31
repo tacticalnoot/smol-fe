@@ -263,14 +263,49 @@
                 artistDebts,
             );
 
-            // 1. Prepare Transfers
+            // 1. Prepare Transfers - filter out invalid addresses
             settlementStatus = "Building transfer batch...";
-            const transfers = Object.entries(artistDebts).map(
-                ([to, amount]) => ({
-                    to,
-                    amount: BigInt(amount) * 10_000_000n, // Convert to 7 Decimals
-                }),
+
+            // Filter out NULL_ACCOUNT and invalid addresses
+            const NULL_ACCOUNT =
+                "GAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAWHF";
+            const validEntries = Object.entries(artistDebts).filter(
+                ([addr, amount]) => {
+                    // Skip null/undefined addresses
+                    if (!addr) return false;
+                    // Skip NULL_ACCOUNT
+                    if (addr === NULL_ACCOUNT) {
+                        console.warn(
+                            "[StreamPay] Skipping NULL_ACCOUNT recipient",
+                        );
+                        return false;
+                    }
+                    // Skip if amount is 0 or negative
+                    if (amount <= 0) return false;
+                    // Basic format validation (C-addr or G-addr)
+                    if (!addr.startsWith("C") && !addr.startsWith("G")) {
+                        console.warn(
+                            "[StreamPay] Skipping invalid address:",
+                            addr,
+                        );
+                        return false;
+                    }
+                    return true;
+                },
             );
+
+            if (validEntries.length === 0) {
+                throw new Error("No valid artist addresses to pay");
+            }
+
+            console.log(
+                `[StreamPay] Paying ${validEntries.length} artists (filtered from ${Object.keys(artistDebts).length})`,
+            );
+
+            const transfers = validEntries.map(([to, amount]) => ({
+                to,
+                amount: BigInt(amount) * 10_000_000n, // Convert to 7 Decimals
+            }));
 
             // 2. Build Batch Transaction
             // The batch contract takes the SENDER'S C-address.
