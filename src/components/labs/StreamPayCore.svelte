@@ -14,8 +14,17 @@
     const DECIMALS = 10_000_000n; // 7 Decimals
 
     // Phases
-    type Phase = "AGREEMENT" | "DEPOSIT" | "PLAYING" | "SETTLING" | "EMPTY";
+    type Phase =
+        | "AGREEMENT"
+        | "DEPOSIT"
+        | "PLAYING"
+        | "SETTLING"
+        | "SUCCESS"
+        | "EMPTY";
     let phase = $state<Phase>("AGREEMENT");
+
+    // Success state
+    let txHash = $state("");
 
     // Config
     let rate = $state(1); // KALE per second
@@ -319,12 +328,14 @@
                 const result = await send(signedTx);
                 console.log("[StreamPay] Settlement Success!", result);
 
+                // Capture transaction hash from result
+                txHash =
+                    result?.hash || result?.transactionHash || result?.id || "";
                 settlementStatus = "✓ Settlement complete!";
-                alert(
-                    `Settlement Success! Paid out ${totalSpent} KALE to artists. Remaining ${sessionBalance} KALE remains in your wallet (unspent).`,
-                );
 
-                window.location.reload();
+                // Transition to success screen instead of reload
+                isSettling = false;
+                phase = "SUCCESS";
                 return; // Success - exit retry loop
             } catch (e: any) {
                 lastError = e;
@@ -604,6 +615,116 @@
                 </button>
             {/if}
         </div>
+    {:else if phase === "SUCCESS"}
+        <div
+            class="flex flex-col h-full gap-6 text-center justify-center relative overflow-hidden"
+            transition:fade
+        >
+            <!-- Confetti -->
+            <div
+                class="confetti-container absolute inset-0 pointer-events-none overflow-hidden"
+            >
+                {#each Array(20) as _, i}
+                    <div
+                        class="confetti"
+                        style="--delay: {i * 0.1}s; --x: {Math.random() *
+                            100}%; --color: {[
+                            '#9ae600',
+                            '#ff6b6b',
+                            '#4ecdc4',
+                            '#ffe66d',
+                            '#95e1d3',
+                        ][i % 5]}"
+                    ></div>
+                {/each}
+            </div>
+
+            <!-- Animated Success Checkmark -->
+            <div class="relative mx-auto">
+                <div
+                    class="w-24 h-24 rounded-full border-4 border-[#9ae600] flex items-center justify-center bg-[#9ae600]/10 animate-pulse"
+                >
+                    <span class="text-5xl text-[#9ae600]">✓</span>
+                </div>
+                <div
+                    class="absolute -top-2 -right-2 w-8 h-8 rounded-full bg-[#9ae600] text-black text-sm font-bold flex items-center justify-center animate-bounce"
+                >
+                    🎵
+                </div>
+            </div>
+
+            <h2 class="text-2xl text-[#9ae600] font-bold tracking-wide">
+                STREAM COMPLETE
+            </h2>
+
+            <!-- Session Stats -->
+            <div
+                class="bg-[#111] border border-[#333] p-6 mx-auto w-full max-w-sm space-y-3"
+            >
+                <div class="flex justify-between text-sm">
+                    <span class="text-[#555]">Duration</span>
+                    <span class="text-white font-mono">{secondsListened}s</span>
+                </div>
+                <div class="flex justify-between text-sm">
+                    <span class="text-[#555]">Artists Paid</span>
+                    <span class="text-[#9ae600] font-mono"
+                        >{Object.keys(artistDebts).length}</span
+                    >
+                </div>
+                <div
+                    class="flex justify-between text-sm border-t border-[#333] pt-3"
+                >
+                    <span class="text-[#555]">Total Paid</span>
+                    <span class="text-[#9ae600] font-bold text-lg"
+                        >{totalSpent} KALE</span
+                    >
+                </div>
+                <div class="flex justify-between text-sm">
+                    <span class="text-[#555]">Unspent (returned)</span>
+                    <span class="text-white font-mono"
+                        >{sessionBalance} KALE</span
+                    >
+                </div>
+            </div>
+
+            <!-- Transaction Link -->
+            {#if txHash}
+                <a
+                    href="https://stellar.expert/explorer/public/tx/{txHash}"
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    class="group mx-auto flex items-center gap-2 px-4 py-2 border border-[#333] hover:border-[#9ae600] transition-all rounded-full text-xs"
+                >
+                    <span
+                        class="text-[#555] group-hover:text-[#9ae600] transition-colors"
+                        >View on Stellar Expert</span
+                    >
+                    <span
+                        class="text-[#9ae600] font-mono truncate max-w-[120px]"
+                        >{txHash.substring(0, 8)}...{txHash.substring(
+                            txHash.length - 4,
+                        )}</span
+                    >
+                    <span
+                        class="text-[#555] group-hover:translate-x-1 transition-transform"
+                        >→</span
+                    >
+                </a>
+            {/if}
+
+            <!-- Play Again -->
+            <button
+                onclick={() => window.location.reload()}
+                class="mt-4 mx-auto bg-[#9ae600] text-black px-8 py-4 uppercase font-bold text-sm hover:scale-105 transition-transform tracking-widest"
+            >
+                🔄 PLAY AGAIN
+            </button>
+
+            <p class="text-[8px] text-[#555] mt-2">
+                Thanks for using StreamPay! Artists have been compensated
+                directly.
+            </p>
+        </div>
     {/if}
 </div>
 
@@ -617,6 +738,45 @@
         }
         to {
             transform: rotate(360deg);
+        }
+    }
+
+    /* Confetti Animation */
+    .confetti {
+        position: absolute;
+        width: 10px;
+        height: 10px;
+        background: var(--color, #9ae600);
+        left: var(--x, 50%);
+        top: -20px;
+        opacity: 0;
+        animation: confetti-fall 3s ease-out var(--delay, 0s) forwards;
+    }
+
+    .confetti:nth-child(odd) {
+        width: 6px;
+        height: 12px;
+        border-radius: 2px;
+    }
+
+    .confetti:nth-child(even) {
+        width: 8px;
+        height: 8px;
+        border-radius: 50%;
+    }
+
+    @keyframes confetti-fall {
+        0% {
+            transform: translateY(0) rotate(0deg) scale(0);
+            opacity: 0;
+        }
+        10% {
+            opacity: 1;
+            transform: translateY(20px) rotate(45deg) scale(1);
+        }
+        100% {
+            transform: translateY(400px) rotate(720deg) scale(0.5);
+            opacity: 0;
         }
     }
 </style>
