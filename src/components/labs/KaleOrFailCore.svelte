@@ -491,7 +491,9 @@
                 settleStep = Math.floor((chunkIndex / chunks.length) * 50); // Progress visual
 
                 // Sign
-                const signedXdr = await account.get().sign(batchXdr, {
+                const signedXdr = await (
+                    await account.get()
+                ).sign(batchXdr, {
                     rpId: getSafeRpId(window.location.hostname),
                     keyId: userState.keyId,
                     expiration: sequence + 60,

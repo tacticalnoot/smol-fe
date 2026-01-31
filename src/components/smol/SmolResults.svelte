@@ -328,10 +328,12 @@
         const mintToken = data?.d1?.Mint_Token;
         const contractId = userState.contractId;
         if (mintToken && contractId) {
-            const client = sac.get().getSACClient(mintToken);
-            getTokenBalance(client, contractId).then(
-                (b) => (tradeMintBalance = b),
-            );
+            sac.get().then((kit) => {
+                const client = kit.getSACClient(mintToken);
+                getTokenBalance(client, contractId).then(
+                    (b) => (tradeMintBalance = b),
+                );
+            });
         }
     });
 
@@ -482,7 +484,9 @@
             {/if}
 
             <!-- Song Title -->
-            <h2 class="text-xl md:text-2xl font-bold text-white mb-2 text-center px-4">
+            <h2
+                class="text-xl md:text-2xl font-bold text-white mb-2 text-center px-4"
+            >
                 {data.kv_do?.lyrics?.title || data.d1?.Title || "Untitled"}
             </h2>
 
@@ -1296,7 +1300,8 @@
                                                         class="text-white/60 font-mono text-[10px]"
                                                     >
                                                         {new Date(
-                                                            data.d1?.Created_At ||
+                                                            data.d1
+                                                                ?.Created_At ||
                                                                 "",
                                                         ).toLocaleDateString()}
                                                     </div>
