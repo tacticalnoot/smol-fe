@@ -6,6 +6,9 @@
     import { userState } from "../../stores/user.svelte.ts";
     import { getSafeRpId } from "../../utils/domains";
     import { fade, slide } from "svelte/transition";
+    import { Keypair, Networks } from "@stellar/stellar-sdk";
+    import { SignerStore } from "passkey-kit";
+    import { buildBatchKaleTransfer } from "../../utils/batch-transfer";
     import type { Smol } from "../../types/domain";
     import Loader from "../ui/Loader.svelte";
     import { Turnstile } from "svelte-turnstile";
@@ -21,9 +24,12 @@
     let depositAmount = $state(100); // Initial Deposit Request
 
     // Session
+    let sessionKey = $state<Keypair | null>(null);
+    let isAuthorizing = $state(false);
+    let isSettling = $state(false);
     let sessionBalance = $state(0); // Current tracked balance (Virtual)
     let totalSpent = $state(0);
-    let sessionStartTime = 0;
+    let artistDebts = $state<Record<string, number>>({}); // artistAddress -> secondCount
 
     // Playlist
     let smols = $state<Smol[]>([]);
@@ -75,7 +81,7 @@
         if (audio) {
             audio.removeEventListener("ended", handleNext);
             audio.pause();
-            audio.src = '';
+            audio.src = "";
             audio = null;
         }
         window.removeEventListener("beforeunload", handleUnload);
@@ -92,22 +98,41 @@
             return;
         }
 
-        // In a real Pay Channel, we would lock funds in a contract.
-        // Here, we will just simulate the verification of funds or a "Sign to Start"
-        // asking to transfer 'depositAmount' to a HOLDING address.
-        // For EXP-005, we will simulate the Holding Address as 'userState.contractId' (Self-to-Self lock?)
-        // Or a Null Address.
+        isAuthorizing = true;
+        try {
+            // 1. Generate Ephemeral Session Key
+            const key = Keypair.random();
+            sessionKey = key;
 
-        // User asked to "Devise a transaction...".
-        // Let's do a Transfer to a "Lab Wallet" (Simulated).
-        // note: We won't actually burn funds, but we will Mock the Tx for the experiment flow
-        // to show we CAN force it.
+            // 2. Authorize via Passkey (Biometric Sign)
+            // This adds the Ed25519 key as a temporary signer to the smart wallet
+            console.log(
+                "[StreamPay] Authorizing Session Key:",
+                key.publicKey(),
+            );
+            const pk = account.get();
+            await pk.addEd25519(
+                key.publicKey(),
+                undefined, // No specific limits for the experiment
+                SignerStore.Temporary,
+            );
 
-        // Simulating Deposit:
-        sessionBalance = depositAmount;
-        phase = "PLAYING";
-        playSong();
-        startTimer();
+            // 3. Start Session
+            sessionBalance = depositAmount;
+            phase = "PLAYING";
+            playSong();
+            startTimer();
+            console.log(
+                "[StreamPay] Session Authorized. Background signing enabled.",
+            );
+        } catch (e) {
+            console.error("[StreamPay] Authorization Failed:", e);
+            alert(
+                "Authorization failed. Ensure your wallet is connected and try again.",
+            );
+        } finally {
+            isAuthorizing = false;
+        }
     }
 
     function startTimer() {
@@ -120,6 +145,15 @@
                 secondsListened += 1;
                 sessionBalance -= rate;
                 totalSpent += rate;
+
+                // Track Artist Debt
+                const artist =
+                    currentSong?.Creator ||
+                    currentSong?.Address ||
+                    currentSong?.artist;
+                if (artist) {
+                    artistDebts[artist] = (artistDebts[artist] || 0) + rate;
+                }
 
                 if (sessionBalance <= 0) {
                     // Out of funds
@@ -165,16 +199,57 @@
     }
 
     async function settle() {
-        // Send the SPENT amount to... Artists?
-        // We tracked "secondsListened".
-        // In a real stream pay, we'd batch pay each artist based on their specific seconds.
-        // For MVP, we just "Cash Out".
-        alert(
-            `Session Ended. Total Cost: ${totalSpent} KALE. Remaining: ${sessionBalance} KALE refunded.`,
-        );
+        if (!userState.contractId || !sessionKey || totalSpent <= 0) {
+            alert("Nothing to settle.");
+            phase = "EMPTY";
+            return;
+        }
 
-        // In reality, we'd run the Batch Settle Tx here.
-        window.location.reload();
+        isSettling = true;
+        try {
+            console.log(
+                "[StreamPay] Finalizing Session. Batch Paying Artists...",
+                artistDebts,
+            );
+
+            // 1. Prepare Transfers
+            const transfers = Object.entries(artistDebts).map(
+                ([to, amount]) => ({
+                    to,
+                    amount: BigInt(amount) * 10_000_000n, // Convert to 7 Decimals
+                }),
+            );
+
+            // 2. Build Batch Transaction
+            // The batch contract takes the SENDER'S C-address.
+            const xdr = await buildBatchKaleTransfer(
+                userState.contractId,
+                transfers,
+            );
+
+            // 3. BACKGROUND SIGN using the Session Key
+            // NO PASSKEY PROMPT HERE!
+            console.log("[StreamPay] Signing Batch Tx with Session Key...");
+            const signedTx = await account.get().sign(xdr, {
+                keypair: sessionKey,
+                networkPassphrase: Networks.PUBLIC,
+            });
+
+            // 4. Submit to Relayer
+            const result = await send(signedTx);
+            console.log("[StreamPay] Settlement Success!", result);
+
+            alert(
+                `Settlement Success! Paid out ${totalSpent} KALE to artists. Remaining ${sessionBalance} KALE remains in your wallet (unspent).`,
+            );
+
+            window.location.reload();
+        } catch (e) {
+            console.error("[StreamPay] Settlement Failed:", e);
+            alert("Settlement failed. Check console for details.");
+        } finally {
+            isSettling = false;
+        }
     }
 </script>
 
@@ -270,7 +345,20 @@
                 </p>
             </div>
 
-            {#if !userState.contractId}
+            {#if isAuthorizing}
+                <div class="flex flex-col items-center gap-4 py-8">
+                    <Loader />
+                    <p
+                        class="text-xs animate-pulse text-[#9ae600] uppercase font-bold tracking-widest"
+                    >
+                        Authorizing Session Key...
+                    </p>
+                    <p class="text-[10px] text-[#555] font-sans">
+                        Sign exactly ONCE via Passkey to delegate background
+                        payments.
+                    </p>
+                </div>
+            {:else if !userState.contractId}
                 <div class="text-red-500">Connect Wallet Required</div>
                 <button
                     onclick={() => (userState.contractId = "CFAKE")}
@@ -364,29 +452,44 @@
     {:else if phase === "SETTLING"}
         <div class="flex flex-col h-full gap-6 text-center justify-center">
             <h2 class="text-lg">SESSION FINALIZED</h2>
-            <div class="space-y-2">
-                <p class="text-[#555]">
-                    Total Listened: <span class="text-white"
-                        >{secondsListened}s</span
+            {#if isSettling}
+                <div class="flex flex-col items-center gap-4 py-8">
+                    <Loader />
+                    <p
+                        class="text-xs animate-pulse text-[#9ae600] uppercase font-bold tracking-widest"
                     >
-                </p>
-                <p class="text-[#555]">
-                    Total Paid: <span class="text-[#9ae600]"
-                        >{totalSpent} KALE</span
-                    >
-                </p>
-                <p class="text-[#555]">
-                    Refunded: <span class="text-white"
-                        >{sessionBalance} KALE</span
-                    >
-                </p>
-            </div>
-            <button
-                onclick={settle}
-                class="mt-8 border border-white px-8 py-3 hover:bg-white hover:text-black transition-colors"
-            >
-                CLOSE TICKET
-            </button>
+                        Atomic Settlement In Progress...
+                    </p>
+                    <p class="text-[10px] text-[#555] font-sans">
+                        Utilizing Session Key for background signature. <br />
+                        No Passkey prompt required.
+                    </p>
+                </div>
+            {:else}
+                <div class="space-y-2">
+                    <p class="text-[#555]">
+                        Total Listened: <span class="text-white"
+                            >{secondsListened}s</span
+                        >
+                    </p>
+                    <p class="text-[#555]">
+                        Total Paid: <span class="text-[#9ae600]"
+                            >{totalSpent} KALE</span
+                        >
+                    </p>
+                    <p class="text-[#555]">
+                        Refunded: <span class="text-white"
+                            >{sessionBalance} KALE</span
+                        >
+                    </p>
+                </div>
+                <button
+                    onclick={settle}
+                    class="mt-8 border border-white px-8 py-3 hover:bg-white hover:text-black transition-colors"
+                >
+                    CLOSE TICKET
+                </button>
+            {/if}
         </div>
     {/if}
 </div>
