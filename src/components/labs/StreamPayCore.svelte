@@ -118,20 +118,30 @@
             const key = Keypair.random();
             sessionKey = key;
 
-            // 2. Authorize via Passkey (Biometric Sign)
+            // 2. Build the "add signer" transaction
             // This adds the Ed25519 key as a temporary signer to the smart wallet
             console.log(
                 "[StreamPay] Authorizing Session Key:",
                 key.publicKey(),
             );
             const pk = await account.get();
-            await pk.addEd25519(
+            const addSignerTx = await pk.addEd25519(
                 key.publicKey(),
                 undefined, // No specific limits for the experiment
                 SignerStore.Temporary,
             );
 
-            // 3. Start Session
+            // 3. Sign with Passkey (biometric prompt) and submit
+            // This is the ONLY passkey signature needed for the entire session
+            console.log("[StreamPay] Signing session key authorization...");
+            await pk.sign(addSignerTx);
+
+            // 4. Submit to relayer
+            console.log("[StreamPay] Submitting session key authorization...");
+            await send(addSignerTx);
+            console.log("[StreamPay] Session Key registered on-chain!");
+
+            // 5. Start Session
             sessionBalance = depositAmount;
             phase = "PLAYING";
             playSong();
