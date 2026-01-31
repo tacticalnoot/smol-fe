@@ -373,37 +373,34 @@
     class="border border-[#9ae600] p-4 min-h-[400px] flex flex-col relative bg-black/50 backdrop-blur-md"
 >
     {#if phase === "AGREEMENT"}
-        <div class="flex flex-col h-full gap-6 text-center justify-center p-4">
+        <div class="flex flex-col h-full gap-4 text-center justify-center p-4">
             <h2 class="text-xl animate-pulse">🎧 STREAM. PAY. VIBE.</h2>
-            <div class="text-sm text-[#888] space-y-4 font-sans">
+            <div class="text-sm text-[#888] space-y-3 font-sans">
                 <p>
                     Welcome to <strong class="text-[#9ae600]">StreamPay</strong>
-                    — where every second counts (literally).
+                    — where every second counts.
                 </p>
                 <p>
-                    Deposit KALE, hit play, and watch artists get paid
-                    <strong class="text-[#9ae600]">in real-time</strong> as you listen.
-                </p>
-                <p>
-                    No subscriptions. No middlemen. Just
-                    <strong class="text-red-500"
-                        >pure, per-second compensation</strong
+                    Deposit KALE, hit play, and watch artists get paid <strong
+                        class="text-[#9ae600]">in real-time</strong
                     >.
                 </p>
-                <p
-                    class="text-xs text-[#888] mt-4 border border-[#333] p-3 rounded bg-[#111]"
-                >
-                    <strong class="text-[#9ae600]">🔐 Session Keys:</strong><br
-                    />
-                    One passkey sign = unlimited background payments. Close or refresh
-                    mid-session and your deposit burns.
-                    <span class="text-red-500/70">
-                        (Artists only get paid when you properly eject!)
-                    </span>
-                    <br /><span class="text-[10px] opacity-70">
-                        Don't worry—we'll warn you before anything drastic.
-                    </span>
+                <p>
+                    No subscriptions. No middlemen. Just <strong
+                        class="text-red-500">per-second compensation</strong
+                    >.
                 </p>
+                <div
+                    class="text-xs text-[#888] mt-4 border border-[#333] p-3 rounded bg-[#111] text-left"
+                >
+                    <strong class="text-[#9ae600]">🔐 Session Keys:</strong>
+                    <span class="block mt-1"
+                        >One passkey = unlimited background payments.</span
+                    >
+                    <span class="block text-red-500/70 mt-1"
+                        >⚠ Close mid-session = deposit burns. Eject properly!</span
+                    >
+                </div>
             </div>
 
             <div class="mt-8">
