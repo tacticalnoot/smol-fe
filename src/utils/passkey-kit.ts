@@ -17,18 +17,30 @@ import { getRpcUrl } from "./rpc";
  * operation loses this state.
  */
 let _passkeyKitInstance: any = null;
+let _passkeyKitPromise: Promise<any> | null = null;
 
 async function getPasskeyKit(): Promise<any> {
-    if (!_passkeyKitInstance) {
-        const { PasskeyKit } = await import("passkey-kit");
-        _passkeyKitInstance = new PasskeyKit({
-            rpcUrl: getRpcUrl(),
-            networkPassphrase: import.meta.env.PUBLIC_NETWORK_PASSPHRASE,
-            walletWasmHash: import.meta.env.PUBLIC_WALLET_WASM_HASH,
-            timeoutInSeconds: 30,
-        });
+    // Fast path: instance already exists
+    if (_passkeyKitInstance) {
+        return _passkeyKitInstance;
     }
-    return _passkeyKitInstance;
+
+    // Serialize initialization: cache the in-flight promise so all concurrent
+    // callers share the same instance instead of each creating their own
+    if (!_passkeyKitPromise) {
+        _passkeyKitPromise = (async () => {
+            const { PasskeyKit } = await import("passkey-kit");
+            _passkeyKitInstance = new PasskeyKit({
+                rpcUrl: getRpcUrl(),
+                networkPassphrase: import.meta.env.PUBLIC_NETWORK_PASSPHRASE,
+                walletWasmHash: import.meta.env.PUBLIC_WALLET_WASM_HASH,
+                timeoutInSeconds: 30,
+            });
+            return _passkeyKitInstance;
+        })();
+    }
+
+    return _passkeyKitPromise;
 }
 
 /**
@@ -36,6 +48,7 @@ async function getPasskeyKit(): Promise<any> {
  */
 export function resetPasskeyKit(): void {
     _passkeyKitInstance = null;
+    _passkeyKitPromise = null;
 }
 
 export const account = {
