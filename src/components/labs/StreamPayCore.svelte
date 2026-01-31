@@ -688,13 +688,14 @@
         >
             <!-- Confetti -->
             <div
-                class="confetti-container absolute inset-0 pointer-events-none overflow-hidden"
+                class="confetti-container absolute inset-0 pointer-events-none overflow-hidden flex items-center justify-center"
             >
-                {#each Array(20) as _, i}
+                {#each Array(30) as _, i}
                     <div
                         class="confetti"
-                        style="--delay: {i * 0.1}s; --x: {Math.random() *
-                            100}%; --color: {[
+                        style="--delay: {i * 0.03}s; --angle: {(i * 360) /
+                            30}deg; --distance: {80 +
+                            Math.random() * 120}px; --color: {[
                             '#9ae600',
                             '#ff6b6b',
                             '#4ecdc4',
@@ -807,16 +808,14 @@
         }
     }
 
-    /* Confetti Animation */
+    /* Confetti Explosion Animation */
     .confetti {
         position: absolute;
         width: 10px;
         height: 10px;
         background: var(--color, #9ae600);
-        left: var(--x, 50%);
-        top: -20px;
         opacity: 0;
-        animation: confetti-fall 3s ease-out var(--delay, 0s) forwards;
+        animation: confetti-explode 1.5s ease-out var(--delay, 0s) forwards;
     }
 
     .confetti:nth-child(odd) {
@@ -831,17 +830,19 @@
         border-radius: 50%;
     }
 
-    @keyframes confetti-fall {
+    @keyframes confetti-explode {
         0% {
-            transform: translateY(0) rotate(0deg) scale(0);
+            transform: rotate(var(--angle)) translateY(0) scale(0);
             opacity: 0;
         }
-        10% {
+        20% {
             opacity: 1;
-            transform: translateY(20px) rotate(45deg) scale(1);
+            transform: rotate(var(--angle))
+                translateY(calc(var(--distance) * 0.3)) scale(1.2);
         }
         100% {
-            transform: translateY(400px) rotate(720deg) scale(0.5);
+            transform: rotate(var(--angle)) translateY(var(--distance))
+                rotate(720deg) scale(0);
             opacity: 0;
         }
     }
