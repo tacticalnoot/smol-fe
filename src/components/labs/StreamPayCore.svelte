@@ -199,8 +199,10 @@
 
     function playSong() {
         if (!currentSong || !audio) return;
-        const url = currentSong.Song_1;
-        if (url) {
+        // Song_1 is a UUID, construct full URL
+        const songId = currentSong.Song_1 || currentSong.Id;
+        if (songId) {
+            const url = `${import.meta.env.PUBLIC_API_URL}/song/${songId}.mp3`;
             audio.src = url;
             audio.play().catch((e) => console.error(e));
         }
