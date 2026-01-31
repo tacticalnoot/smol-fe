@@ -27,7 +27,7 @@ pnpm-debug.log*
 .wrangler/
 
 # Large data files (exceed Cloudflare 25 MiB limit)
-data/all-smols.json!.agent/
+data/all-smols.json
 
 test-results/
 playwright-report/
@@ -37,6 +37,35 @@ tldts-results*.txt
 usernames.txt
 verification-check.txt
 check-output.txt
+check_results.txt
+commits_ahead.txt
+commits_behind.txt
+final_test_output.txt
+fix_layout_verification.txt
+fix_verification.txt
+fix_verification_2.txt
+svelte-check-output.txt
+
+# Documentation and script logs
+docs/error_*.log
+scripts/matrix-report.txt
+scripts/ralph/progress.txt
+
+# Rust build artifacts
+contracts/**/target/
+contracts/**/Cargo.lock
+
+# Build outputs
+contract.wasm
+*.wasm
+
+# Node lock files in subdirectories
+remotion-studio/package-lock.json
+remotion-studio/out/
+
+# Audit and verification artifacts
+artifacts/audit/
+artifacts/phase-*.json
 
 .agent/_reports/
 
