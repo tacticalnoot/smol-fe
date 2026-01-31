@@ -372,42 +372,41 @@
 >
     {#if phase === "AGREEMENT"}
         <div class="flex flex-col h-full gap-6 text-center justify-center p-4">
-            <h2 class="text-xl animate-pulse">⚠ PAYMENT STREAM REQUIRED</h2>
+            <h2 class="text-xl animate-pulse">🎧 STREAM. PAY. VIBE.</h2>
             <div class="text-sm text-[#888] space-y-4 font-sans">
                 <p>
-                    This experiment utilizes a <strong class="text-[#9ae600]"
-                        >Continuous Payment Stream</strong
+                    Welcome to <strong class="text-[#9ae600]">StreamPay</strong>
+                    — where every second counts (literally).
+                </p>
+                <p>
+                    Deposit KALE, hit play, and watch artists get paid
+                    <strong class="text-[#9ae600]">in real-time</strong> as you listen.
+                </p>
+                <p>
+                    No subscriptions. No middlemen. Just
+                    <strong class="text-red-500"
+                        >pure, per-second compensation</strong
                     >.
-                </p>
-                <p>
-                    You must deposit funds to initialize the listening session.
-                </p>
-                <p>
-                    Funds are deducted <strong class="text-red-500"
-                        >PER SECOND</strong
-                    > of audio playback.
                 </p>
                 <p
                     class="text-xs text-[#888] mt-4 border border-[#333] p-3 rounded bg-[#111]"
                 >
-                    <strong class="text-[#9ae600]">Note for the curious:</strong
-                    ><br />
-                    Once the session begins, your specific browser tab becomes the
-                    Signer. Closing it or refreshing <em>during playback</em>
-                    will burn the deposit.
-                    <span class="text-red-500/70"
-                        >(Artists are NOT paid in this scenario as no proof is
-                        generated).</span
-                    >
-                    <br /><span class="text-[10px] opacity-70"
-                        >(We'll warn you before it happens!)</span
-                    >
+                    <strong class="text-[#9ae600]">🔐 Session Keys:</strong><br
+                    />
+                    One passkey sign = unlimited background payments. Close or refresh
+                    mid-session and your deposit burns.
+                    <span class="text-red-500/70">
+                        (Artists only get paid when you properly eject!)
+                    </span>
+                    <br /><span class="text-[10px] opacity-70">
+                        Don't worry—we'll warn you before anything drastic.
+                    </span>
                 </p>
             </div>
 
             <div class="mt-8">
                 <label class="text-xs uppercase mb-2 block"
-                    >Set Streaming Rate</label
+                    >Pick Your Burn Rate</label
                 >
                 <div class="flex justify-center gap-4">
                     {#each [1, 5, 10, 100] as r}
@@ -427,18 +426,18 @@
                 onclick={acceptAgreement}
                 class="mt-8 bg-[#9ae600] text-black px-8 py-3 uppercase font-bold hover:scale-105 transition-transform"
             >
-                I Understand ->
+                LET'S GO →
             </button>
         </div>
     {:else if phase === "DEPOSIT"}
         <div class="flex flex-col h-full gap-6 text-center justify-center">
-            <h2 class="text-lg">INITIALIZE SESSION</h2>
+            <h2 class="text-lg">💰 LOAD UP</h2>
 
             <div
                 class="bg-[#111] p-6 border border-[#333] mx-auto w-full max-w-xs"
             >
                 <label class="text-xs text-[#555] block mb-2"
-                    >DEPOSIT AMOUNT (Collateral)</label
+                    >SESSION BUDGET</label
                 >
                 <div
                     class="flex items-center justify-center gap-2 text-2xl text-[#9ae600]"
@@ -455,7 +454,7 @@
                     >
                 </div>
                 <p class="text-[10px] text-[#555] mt-2">
-                    Est. Time: {Math.floor(depositAmount / rate)} seconds
+                    ≈ {Math.floor(depositAmount / rate)} seconds of music
                 </p>
             </div>
 
@@ -465,11 +464,10 @@
                     <p
                         class="text-xs animate-pulse text-[#9ae600] uppercase font-bold tracking-widest"
                     >
-                        Authorizing Session Key...
+                        Generating Session Key...
                     </p>
                     <p class="text-[10px] text-[#555] font-sans">
-                        Sign exactly ONCE via Passkey to delegate background
-                        payments.
+                        One passkey prompt, then hands-free streaming.
                     </p>
                 </div>
             {:else if !userState.contractId}
@@ -483,10 +481,10 @@
                     onclick={handleDeposit}
                     class="mx-auto w-full max-w-xs border border-[#9ae600] text-[#9ae600] py-3 hover:bg-[#9ae600] hover:text-black transition-colors text-xs"
                 >
-                    AUTHORIZE SESSION KEY & DEPOSIT
+                    🔑 UNLOCK SESSION
                 </button>
                 <p class="text-[8px] text-[#555] mt-2 max-w-xs mx-auto">
-                    *Signs a delegation for background streaming.
+                    One-time passkey auth enables hands-free payments.
                 </p>
             {/if}
         </div>
@@ -553,7 +551,7 @@
                     onclick={stop}
                     class="border border-red-500 text-red-500 py-4 hover:bg-red-500 hover:text-white transition-colors uppercase tracking-widest text-xs"
                 >
-                    ⏏ EJECT (SETTLE)
+                    ⏏️ EJECT
                 </button>
                 <button
                     onclick={handleNext}
@@ -565,7 +563,7 @@
         </div>
     {:else if phase === "SETTLING"}
         <div class="flex flex-col h-full gap-6 text-center justify-center">
-            <h2 class="text-lg">SESSION FINALIZED</h2>
+            <h2 class="text-lg">⏹️ SESSION COMPLETE</h2>
             {#if isSettling}
                 <div class="flex flex-col items-center gap-4 py-8">
                     <Loader />
@@ -585,8 +583,7 @@
                         </div>
                     {/if}
                     <p class="text-[10px] text-[#555] font-sans">
-                        Utilizing Session Key for background signature. <br />
-                        No Passkey prompt required.
+                        Session key doing the heavy lifting. Sit back.
                     </p>
                 </div>
             {:else}
@@ -611,7 +608,7 @@
                     onclick={settle}
                     class="mt-8 border border-white px-8 py-3 hover:bg-white hover:text-black transition-colors"
                 >
-                    CLOSE TICKET
+                    💸 PAY THE ARTISTS
                 </button>
             {/if}
         </div>
