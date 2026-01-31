@@ -222,6 +222,19 @@
         playSong();
     }
 
+    // Retry configuration
+    const MAX_RETRIES = 3;
+    const INITIAL_DELAY_MS = 2000;
+    let retryCount = $state(0);
+    let settlementStatus = $state("");
+
+    /**
+     * Delay helper with exponential backoff
+     */
+    function delay(ms: number): Promise<void> {
+        return new Promise((resolve) => setTimeout(resolve, ms));
+    }
+
     async function settle() {
         if (!userState.contractId || !sessionKey || totalSpent <= 0) {
             alert("Nothing to settle.");
@@ -230,6 +243,9 @@
         }
 
         isSettling = true;
+        retryCount = 0;
+        settlementStatus = "Preparing batch payment...";
+
         try {
             console.log(
                 "[StreamPay] Finalizing Session. Batch Paying Artists...",
@@ -237,6 +253,7 @@
             );
 
             // 1. Prepare Transfers
+            settlementStatus = "Building transfer batch...";
             const transfers = Object.entries(artistDebts).map(
                 ([to, amount]) => ({
                     to,
@@ -246,6 +263,7 @@
 
             // 2. Build Batch Transaction
             // The batch contract takes the SENDER'S C-address.
+            settlementStatus = "Simulating transaction...";
             const xdr = await buildBatchKaleTransfer(
                 userState.contractId,
                 transfers,
@@ -253,6 +271,7 @@
 
             // 3. BACKGROUND SIGN using the Session Key
             // NO PASSKEY PROMPT HERE!
+            settlementStatus = "Signing with session key...";
             console.log("[StreamPay] Signing Batch Tx with Session Key...");
             const signedTx = await (
                 await account.get()
@@ -261,21 +280,79 @@
                 networkPassphrase: Networks.PUBLIC,
             });
 
-            // 4. Submit to Relayer
-            const result = await send(signedTx);
-            console.log("[StreamPay] Settlement Success!", result);
-
-            alert(
-                `Settlement Success! Paid out ${totalSpent} KALE to artists. Remaining ${sessionBalance} KALE remains in your wallet (unspent).`,
-            );
-
-            window.location.reload();
-        } catch (e) {
+            // 4. Submit to Relayer with Retry
+            await submitWithRetry(signedTx);
+        } catch (e: any) {
             console.error("[StreamPay] Settlement Failed:", e);
-            alert("Settlement failed. Check console for details.");
+            const msg = e?.message || "Unknown error";
+            settlementStatus = `Failed: ${msg.substring(0, 50)}...`;
+            alert(`Settlement failed: ${msg}`);
         } finally {
             isSettling = false;
         }
+    }
+
+    /**
+     * Submit transaction with automatic retry and exponential backoff
+     */
+    async function submitWithRetry(signedTx: any) {
+        let lastError: Error | null = null;
+
+        for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
+            retryCount = attempt;
+
+            if (attempt > 0) {
+                const waitTime = INITIAL_DELAY_MS * Math.pow(2, attempt - 1);
+                settlementStatus = `Retry ${attempt}/${MAX_RETRIES} in ${(waitTime / 1000).toFixed(0)}s...`;
+                console.log(
+                    `[StreamPay] Retry ${attempt}/${MAX_RETRIES} after ${waitTime}ms...`,
+                );
+                await delay(waitTime);
+            }
+
+            settlementStatus =
+                attempt > 0
+                    ? `Retry ${attempt}/${MAX_RETRIES}: Submitting...`
+                    : "Submitting to network...";
+
+            try {
+                const result = await send(signedTx);
+                console.log("[StreamPay] Settlement Success!", result);
+
+                settlementStatus = "✓ Settlement complete!";
+                alert(
+                    `Settlement Success! Paid out ${totalSpent} KALE to artists. Remaining ${sessionBalance} KALE remains in your wallet (unspent).`,
+                );
+
+                window.location.reload();
+                return; // Success - exit retry loop
+            } catch (e: any) {
+                lastError = e;
+                const msg = e?.message || "";
+
+                // Check if it's a retryable error (503, 502, timeout)
+                const isRetryable =
+                    msg.includes("temporarily unavailable") ||
+                    msg.includes("503") ||
+                    msg.includes("502") ||
+                    msg.includes("timeout");
+
+                if (isRetryable && attempt < MAX_RETRIES) {
+                    console.warn(
+                        `[StreamPay] Attempt ${attempt + 1} failed (retryable):`,
+                        msg,
+                    );
+                    settlementStatus = `Network busy... preparing retry ${attempt + 1}`;
+                    continue; // Try again
+                }
+
+                // Non-retryable error or max retries reached
+                throw e;
+            }
+        }
+
+        // If we get here, all retries failed
+        throw lastError || new Error("All retry attempts failed");
     }
 </script>
 
@@ -484,8 +561,18 @@
                     <p
                         class="text-xs animate-pulse text-[#9ae600] uppercase font-bold tracking-widest"
                     >
-                        Atomic Settlement In Progress...
+                        {settlementStatus || "Atomic Settlement In Progress..."}
                     </p>
+                    {#if retryCount > 0}
+                        <div
+                            class="flex items-center gap-2 text-[10px] text-yellow-500"
+                        >
+                            <span
+                                class="inline-block w-2 h-2 rounded-full bg-yellow-500 animate-pulse"
+                            ></span>
+                            Retry {retryCount}/{MAX_RETRIES}
+                        </div>
+                    {/if}
                     <p class="text-[10px] text-[#555] font-sans">
                         Utilizing Session Key for background signature. <br />
                         No Passkey prompt required.
