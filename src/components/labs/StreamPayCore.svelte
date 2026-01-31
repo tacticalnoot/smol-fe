@@ -397,8 +397,8 @@
                     <span class="block mt-1"
                         >One passkey = unlimited background payments.</span
                     >
-                    <span class="block text-red-500/70 mt-1"
-                        >⚠ Close mid-session = deposit burns. Eject properly!</span
+                    <span class="block text-[#888] mt-1"
+                        >Eject anytime → artists get paid, you keep the rest.</span
                     >
                 </div>
             </div>
