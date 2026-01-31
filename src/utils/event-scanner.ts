@@ -1,5 +1,5 @@
-import { xdr, Address } from '@stellar/stellar-sdk/minimal';
-import { scValToNative } from '@stellar/stellar-sdk/minimal/contract';
+import { xdr, Address, contract } from '@stellar/stellar-sdk/minimal';
+const { scValToNative } = contract;
 import { getBestRpcUrl } from './rpc';
 import logger, { LogCategory } from './debug-logger';
 
