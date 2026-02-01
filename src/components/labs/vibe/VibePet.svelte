@@ -262,22 +262,45 @@
         {/if}
     </div>
 
-    <!-- UI Card (Floating) -->
-    <div class="absolute bottom-4 right-4 z-50 pointer-events-auto font-pixel">
+    <!-- UI Card (Floating HUD) -->
+    <div
+        class="absolute bottom-6 right-6 z-50 pointer-events-auto font-pixel group"
+    >
         <div
-            class="bg-black/80 border border-[#9ae600]/30 p-3 rounded shadow-lg backdrop-blur-sm flex flex-col gap-2 items-center"
+            class="bg-black/90 border-2 border-[#333] group-hover:border-[#9ae600] p-4 rounded-xl shadow-2xl backdrop-blur-md flex flex-col gap-3 items-center min-w-[140px] transition-all duration-300"
         >
-            <div class="text-[8px] text-[#9ae600] uppercase tracking-widest">
-                The Vibe
+            <div
+                class="flex items-center gap-2 w-full justify-between pb-2 border-b border-[#333]"
+            >
+                <span class="text-[8px] text-[#555] font-bold"
+                    >VIBE OS v1.0</span
+                >
+                <span
+                    class="w-1.5 h-1.5 bg-[#9ae600] rounded-full animate-pulse shadow-[0_0_5px_#9ae600]"
+                ></span>
             </div>
+
+            <!-- Mood Indicator -->
+            <div
+                class="text-[10px] text-[#9ae600] uppercase tracking-widest font-bold"
+            >
+                {vibeStore.mood === "AWAKE" ? "ONLINE" : "SLEEP MODE"}
+            </div>
+
             <button
-                class="bg-[#9ae600] text-black text-[8px] px-2 py-1 hover:bg-white active:scale-95 transition-all w-full uppercase font-bold"
+                class="bg-[#9ae600] text-black text-[10px] py-3 px-4 rounded hover:bg-[#b0ff1a] active:scale-95 transition-all w-full uppercase font-bold shadow-[0_0_10px_rgba(154,230,0,0.3)] hover:shadow-[0_0_20px_rgba(154,230,0,0.6)]"
                 on:click|stopPropagation={handleFeed}
             >
-                Feed 1 KALE
+                FEED KALE
             </button>
-            <div class="text-[6px] text-[#555]">
-                PENDING: {vibeStore.pendingSnacks}
+
+            <div
+                class="flex justify-between w-full text-[8px] text-[#555] pt-1"
+            >
+                <span>SNACKS</span>
+                <span class="text-white font-mono"
+                    >{vibeStore.pendingSnacks.toString().padStart(3, "0")}</span
+                >
             </div>
         </div>
     </div>

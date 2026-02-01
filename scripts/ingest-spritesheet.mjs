@@ -41,21 +41,43 @@ async function ingest() {
     // Resize if needed (Force fit to grid)
     if (metadata.width !== GRID.totalW || metadata.height !== GRID.totalH) {
         console.warn(`[Ingest] Resizing image from ${metadata.width}x${metadata.height} to ${GRID.totalW}x${GRID.totalH}`);
-
-        // We resize without maintaining aspect ratio if it's close, or contain if not.
-        // Ideally for pixel art sprite sheets, we want exact pixels, but for a prototype/AI asset,
-        // resizing to fit the grid is the best localized fix.
-        // using 'fill' might distort, but ensures grid alignment.
-
-        const resizedBuffer = await image
-            .resize(GRID.totalW, GRID.totalH, { fit: 'fill' })
-            .toBuffer();
-
-        // Overwrite the file with the corrected version so the web app serves the correct size
-        // Use fs.writeFileSync to act as atomic write
-        fs.writeFileSync(INPUT_PATH, resizedBuffer);
-        console.log(`[Ingest] Fixed image dimensions and saved to ${INPUT_PATH}`);
+        image.resize(GRID.totalW, GRID.totalH, { fit: 'fill' });
     }
+
+    // Remove White Background (Make Transparent)
+    // Get raw pixel data
+    const { data, info } = await image
+        .ensureAlpha()
+        .raw()
+        .toBuffer({ resolveWithObject: true });
+
+    // Iterate pixels (4 channels: R, G, B, A)
+    let transparentCount = 0;
+    for (let i = 0; i < data.length; i += 4) {
+        const r = data[i];
+        const g = data[i + 1];
+        const b = data[i + 2];
+
+        // Check if near white (tolerance of 20)
+        if (r > 235 && g > 235 && b > 235) {
+            data[i + 3] = 0; // Set Alpha to 0
+            transparentCount++;
+        }
+    }
+    console.log(`[Ingest] Made ${transparentCount} pixels transparent.`);
+
+    // Create new Sharp instance from modified buffer
+    const finalBuffer = await sharp(data, {
+        raw: {
+            width: info.width,
+            height: info.height,
+            channels: 4
+        }
+    }).png().toBuffer();
+
+    // Overwrite the file with the corrected version
+    fs.writeFileSync(INPUT_PATH, finalBuffer);
+    console.log(`[Ingest] Fixed image dimensions/transparency and saved to ${INPUT_PATH}`);
 
     // Generate Map
     const mapKey = {
