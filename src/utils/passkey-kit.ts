@@ -89,7 +89,7 @@ export const usdc = {
  * - If failover attempted but fails: pages.dev users can't use PROXY (no Turnstile)
  * - Check isDirectMode to see which path is taken
  */
-export async function send<T>(txn: AssembledTransaction<T> | Tx | string, turnstileToken?: string) {
+export async function send<T>(txn: any /* AssembledTransaction<T> | Tx | string */, turnstileToken?: string) {
     // Extract XDR from transaction
     let xdr: string;
     if (txn instanceof AssembledTransaction) {

@@ -47,7 +47,9 @@ export async function ensureWalletConnected(): Promise<void> {
       const { account } = await import("../utils/passkey-kit");
 
       const rpId = getSafeRpId(window.location.hostname);
-      const result = await (await account.get()).connectWallet({
+
+      const kit = await account.get();
+      const result = await kit.connectWallet({
         rpId,
         keyId,
         getContractId: async () => contractId,
