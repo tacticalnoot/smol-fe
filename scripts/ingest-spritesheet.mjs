@@ -38,13 +38,13 @@ async function ingest() {
 
     console.log(`[Ingest] Dimensions: ${metadata.width}x${metadata.height}`);
 
-    // Resize if needed (Force fit to grid)
+    // Resize if needed (Force fit to grid) using Nearest Neighbor to preserve pixel art
     if (metadata.width !== GRID.totalW || metadata.height !== GRID.totalH) {
         console.warn(`[Ingest] Resizing image from ${metadata.width}x${metadata.height} to ${GRID.totalW}x${GRID.totalH}`);
-        image.resize(GRID.totalW, GRID.totalH, { fit: 'fill' });
+        image.resize(GRID.totalW, GRID.totalH, { fit: 'fill', kernel: 'nearest' });
     }
 
-    // Remove White Background (Make Transparent)
+    // Remove White/Grey Backgrounds (Enhanced)
     // Get raw pixel data
     const { data, info } = await image
         .ensureAlpha()
@@ -58,9 +58,17 @@ async function ingest() {
         const g = data[i + 1];
         const b = data[i + 2];
 
-        // Check if near white (tolerance of 20)
-        if (r > 235 && g > 235 && b > 235) {
-            data[i + 3] = 0; // Set Alpha to 0
+        // Heuristic: Is it achromatic (Grey/White)?
+        // The sprout is green, so it should be colorful.
+        // Background is usually White (255,255,255) or Checkerboard Grey (192,192,192 etc)
+        const maxVal = Math.max(r, g, b);
+        const minVal = Math.min(r, g, b);
+        const saturation = maxVal - minVal; // Simple range check
+
+        // If it's bright enough AND has low saturation (grey/white), zap it.
+        // Thresholds: Brightness > 150, Saturation < 30
+        if (maxVal > 150 && saturation < 30) {
+            data[i + 3] = 0; // Alpha 0
             transparentCount++;
         }
     }
