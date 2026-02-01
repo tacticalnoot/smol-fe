@@ -117,23 +117,5 @@
             "Audio"
         ],
         "isLocked": false
-    },
-    {
-        "id": "lab_vibe",
-        "title": "The Vibe",
-        "badge": "EXP-007",
-        "status_color": "GREEN",
-        "readiness_score": 90,
-        "last_reviewed": "2026-02-01",
-        "blast_radius": "LABS_ONLY",
-        "path": "experiments/vibe/experiment.yml",
-        "href": "/labs/vibe",
-        "description": "Your persistent audio-reactive desktop companion. Treats + Beats.",
-        "tags": [
-            "Game",
-            "Audio",
-            "Pet"
-        ],
-        "isLocked": false
     }
 ]
