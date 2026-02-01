@@ -1,0 +1,118 @@
+
+> smol-fe@1.5.4 check
+> svelte-check --tsconfig ./tsconfig.json
+
+Loading svelte-check in workspace: c:\Users\Jeff\Mixtape Auto\smol-fe
+Getting Svelte diagnostics...
+
+c:\Users\Jeff\Mixtape Auto\smol-fe\[32msrc\components\labs\vibe\vibeState.svelte.ts[39m:52:9
+[31mError[39m: Type 'string' is not assignable to type '"AWAKE"'. 
+[36m        this.pendingSnacks = saved.pendingSnacks;
+        [35mthis.mood[36m = saved.mood;
+        this.pos = saved.pos;[39m
+
+c:\Users\Jeff\Mixtape Auto\smol-fe\[32msrc\components\labs\vibe\vibeState.svelte.ts[39m:58:13
+[31mError[39m: Type '"ASLEEP"' is not assignable to type '"AWAKE"'. 
+[36m        if (timeSince > VIBE_CONSTANTS.SLEEP_TIMEOUT_MS) {
+            [35mthis.mood[36m = VIBE_CONSTANTS.MOODS.ASLEEP;
+            this.currentState = VIBE_CONSTANTS.STATES.SLEEP;[39m
+
+c:\Users\Jeff\Mixtape Auto\smol-fe\[32msrc\components\labs\vibe\vibeState.svelte.ts[39m:59:13
+[31mError[39m: Type '"SLEEP"' is not assignable to type '"IDLE"'. 
+[36m            this.mood = VIBE_CONSTANTS.MOODS.ASLEEP;
+            [35mthis.currentState[36m = VIBE_CONSTANTS.STATES.SLEEP;
+        }[39m
+
+c:\Users\Jeff\Mixtape Auto\smol-fe\[32msrc\components\labs\vibe\vibeState.svelte.ts[39m:66:13
+[31mError[39m: This comparison appears to be unintentional because the types '"IDLE"' and '"SLEEP"' have no overlap. 
+[36m        this.lastSeenAt = Date.now();
+        if ([35mthis.currentState === VIBE_CONSTANTS.STATES.SLEEP[36m) {
+            this.currentState = VIBE_CONSTANTS.STATES.IDLE;[39m
+
+c:\Users\Jeff\Mixtape Auto\smol-fe\[32msrc\components\labs\vibe\VibePet.svelte[39m:10:27
+[31mError[39m: Cannot find module '../../../../../public/sprites/sprout_v1.json' or its corresponding type declarations. (ts)
+[36m    // Asset Map
+    import sproutMap from [35m"../../../../../public/sprites/sprout_v1.json"[36m;[39m
+
+c:\Users\Jeff\Mixtape Auto\smol-fe\[32msrc\components\labs\vibe\VibePet.svelte[39m:82:28
+[31mError[39m: This comparison appears to be unintentional because the types '"AWAKE"' and '"ASLEEP"' have no overlap. (ts)
+[36m        // Force Wake on Audio
+        if (audioActive && [35mvibeStore.mood === VIBE_CONSTANTS.MOODS.ASLEEP[36m) {
+            vibeStore.wakeUp();[39m
+
+c:\Users\Jeff\Mixtape Auto\smol-fe\[32msrc\components\labs\vibe\VibePet.svelte[39m:87:13
+[31mError[39m: This comparison appears to be unintentional because the types '"IDLE"' and '"EAT"' have no overlap. (ts)
+[36m        // Determine State
+        if ([35mvibeStore.currentState === VIBE_CONSTANTS.STATES.EAT[36m) {
+            // Handled by timer/timeout usually? Or frame count.[39m
+
+c:\Users\Jeff\Mixtape Auto\smol-fe\[32msrc\components\labs\vibe\VibePet.svelte[39m:93:20
+[31mError[39m: This comparison appears to be unintentional because the types '"AWAKE"' and '"ASLEEP"' have no overlap. (ts)
+[36m            // Let's use a local lock for EAT for now or check animation completion.
+        } else if ([35mvibeStore.mood === VIBE_CONSTANTS.MOODS.ASLEEP[36m) {
+            vibeStore.currentState = VIBE_CONSTANTS.STATES.SLEEP;[39m
+
+c:\Users\Jeff\Mixtape Auto\smol-fe\[32msrc\components\labs\vibe\VibePet.svelte[39m:94:13
+[31mError[39m: Type '"SLEEP"' is not assignable to type '"IDLE"'. (ts)
+[36m        } else if (vibeStore.mood === VIBE_CONSTANTS.MOODS.ASLEEP) {
+            [35mvibeStore.currentState[36m = VIBE_CONSTANTS.STATES.SLEEP;
+        } else if (audioActive) {[39m
+
+c:\Users\Jeff\Mixtape Auto\smol-fe\[32msrc\components\labs\vibe\VibePet.svelte[39m:96:13
+[31mError[39m: Type '"RAVE"' is not assignable to type '"IDLE"'. (ts)
+[36m        } else if (audioActive) {
+            [35mvibeStore.currentState[36m = VIBE_CONSTANTS.STATES.RAVE;
+        } else {[39m
+
+c:\Users\Jeff\Mixtape Auto\smol-fe\[32msrc\components\labs\vibe\VibePet.svelte[39m:100:17
+[31mError[39m: This comparison appears to be unintentional because the types '"IDLE"' and '"WANDER"' have no overlap. (ts)
+[36m            if (
+                [35mvibeStore.currentState !== VIBE_CONSTANTS.STATES.WANDER[36m &&
+                vibeStore.currentState !== VIBE_CONSTANTS.STATES.IDLE[39m
+
+c:\Users\Jeff\Mixtape Auto\smol-fe\[32msrc\components\labs\vibe\VibePet.svelte[39m:108:17
+[31mError[39m: Type '"IDLE" | "WANDER"' is not assignable to type '"IDLE"'.
+  Type '"WANDER"' is not assignable to type '"IDLE"'. (ts)
+[36m            if (Math.random() < 0.01) {
+                [35mvibeStore.currentState[36m =
+                    vibeStore.currentState === VIBE_CONSTANTS.STATES.WANDER[39m
+
+c:\Users\Jeff\Mixtape Auto\smol-fe\[32msrc\components\labs\vibe\VibePet.svelte[39m:109:21
+[31mError[39m: This comparison appears to be unintentional because the types '"IDLE"' and '"WANDER"' have no overlap. (ts)
+[36m                vibeStore.currentState =
+                    [35mvibeStore.currentState === VIBE_CONSTANTS.STATES.WANDER[36m
+                        ? VIBE_CONSTANTS.STATES.IDLE[39m
+
+c:\Users\Jeff\Mixtape Auto\smol-fe\[32msrc\components\labs\vibe\VibePet.svelte[39m:114:21
+[31mError[39m: This comparison appears to be unintentional because the types '"IDLE"' and '"WANDER"' have no overlap. (ts)
+[36m                // Pick new velocity if wandering
+                if ([35mvibeStore.currentState === VIBE_CONSTANTS.STATES.WANDER[36m) {
+                    const angle = Math.random() * Math.PI * 2;[39m
+
+c:\Users\Jeff\Mixtape Auto\smol-fe\[32msrc\components\labs\vibe\VibePet.svelte[39m:125:13
+[31mError[39m: This comparison appears to be unintentional because the types '"IDLE"' and '"WANDER"' have no overlap. (ts)
+[36m        // 3. Physics (Wander)
+        if ([35mvibeStore.currentState === VIBE_CONSTANTS.STATES.WANDER[36m) {
+            vibeStore.pos.x += vibeStore.vel.x * dt;[39m
+
+c:\Users\Jeff\Mixtape Auto\smol-fe\[32msrc\components\labs\vibe\VibePet.svelte[39m:182:17
+[31mError[39m: This comparison appears to be unintentional because the types '"IDLE"' and '"EAT"' have no overlap. (ts)
+[36m            // Handle One-Shot Animations (EAT)
+            if ([35mvibeStore.currentState === VIBE_CONSTANTS.STATES.EAT[36m) {
+                const eatFrames = sproutMap.animations.EAT;[39m
+
+c:\Users\Jeff\Mixtape Auto\smol-fe\[32msrc\components\labs\vibe\VibePet.svelte[39m:215:9
+[31mError[39m: Type '"EAT"' is not assignable to type '"IDLE"'. (ts)
+[36m    async function handleFeed() {
+        [35mvibeStore.currentState[36m = VIBE_CONSTANTS.STATES.EAT;
+        vibeStore.addSnack();[39m
+
+c:\Users\Jeff\Mixtape Auto\smol-fe\[32msrc\components\labs\vibe\VibePet.svelte[39m:256:14
+[31mError[39m: This comparison appears to be unintentional because the types '"AWAKE"' and '"ASLEEP"' have no overlap. (ts)
+[36m        <!-- Debug / Speech Bubble -->
+        {#if [35mvibeStore.mood === VIBE_CONSTANTS.MOODS.ASLEEP[36m}
+            <div[39m
+
+====================================
+[31msvelte-check found 18 errors and 0 warnings in 2 files
+[39m

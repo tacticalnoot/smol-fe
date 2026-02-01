@@ -1,0 +1,74 @@
+---
+import Layout from "../../layouts/Layout.astro";
+import BackLink from "../../components/labs/BackLink.astro";
+import VibePet from "../../components/labs/vibe/VibePet.svelte";
+import { SMOL_IDENTITY } from "../../utils/seo-schema";
+
+const schema = [{
+    "@context": "https://schema.org",
+    "@type": "SoftwareApplication",
+    "name": "The Vibe",
+    "description": "A persistent, audio-reactive desktop pet that lives in the Smol Labs.",
+    "genre": "Virtual Pet",
+    "applicationCategory": "Game",
+    "operatingSystem": "Web Browser",
+    "url": "https://noot.smol.xyz/labs/vibe",
+    "author": SMOL_IDENTITY,
+    "offers": {
+        "@type": "Offer",
+        "price": "0.00",
+        "priceCurrency": "USD",
+        "availability": "https://schema.org/InStock"
+    }
+}];
+---
+
+<Layout
+    title="The Vibe | Smol Labs"
+    description="Meet your new audio-reactive companion. Feed it KALE, play some tunes, and watch it vibe."
+    schema={schema}
+>
+  <div class="min-h-screen bg-black text-white font-pixel p-4 md:p-8 pt-24 relative overflow-hidden">
+    <!-- Background Grid Effect -->
+    <div class="absolute inset-0 opacity-20 pointer-events-none">
+        <div class="absolute inset-0 bg-[linear-gradient(rgba(18,18,18,0)_50%,rgba(0,0,0,0.25)_50%),linear-gradient(90deg,rgba(154,230,0,0.06),rgba(0,255,0,0.02),rgba(0,0,255,0.06))] z-10 bg-[length:100%_2px,3px_100%]"></div>
+    </div>
+
+    <div class="max-w-7xl mx-auto relative z-10 h-full flex flex-col">
+      <BackLink href="/labs" />
+
+      <div class="mt-8 flex flex-col items-center justify-center flex-grow min-h-[60vh] border border-[#333] rounded-lg bg-[#111] relative overflow-hidden">
+        
+        <!-- The Pet Container -->
+        <!-- We give it a specific container so it doesn't wander off the 'screen' -->
+        <div class="absolute inset-0 w-full h-full">
+            <VibePet client:only="svelte" />
+        </div>
+
+        <!-- Placeholder / Center Text if needed, though Pet UI handles most -->
+        <div class="pointer-events-none opacity-20 text-center select-none">
+            <h1 class="text-4xl md:text-6xl font-bold text-[#9ae600]">THE VIBE</h1>
+            <p class="text-xs mt-2 text-[#555]">AUDIO DETECTED // SYSTEM ONLINE</p>
+        </div>
+
+      </div>
+
+      <!-- Instructions -->
+      <div class="mt-8 max-w-2xl mx-auto p-6 border border-[#333] rounded-lg bg-[#111]/80 backdrop-blur">
+        <h3 class="text-lg font-bold text-[#9ae600] mb-4">CARE INSTRUCTIONS</h3>
+        <div class="space-y-3 text-xs text-[#999]">
+          <p>🥬 <strong>Feed It:</strong> Click the "Feed" button to give it a snack. Don't let it go hungry!</p>
+          <p>🎵 <strong>Play Music:</strong> It loves the radio. Play any song and watch it bounce to the beat.</p>
+          <p>💤 <strong>Sleep Mode:</strong> If you don't visit for 24 hours, it will fall asleep. Click to wake it up.</p>
+          <p class="pt-2 border-t border-[#333] text-[10px] text-[#555]">
+            <strong class="text-[#9ae600]">PERSISTENCE:</strong> Your pet's state is saved to your local browser storage.
+          </p>
+        </div>
+      </div>
+    </div>
+  </div>
+</Layout>
+
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Press+Start+2P&display=swap');
+</style>
