@@ -1,0 +1,19 @@
+{
+  "id": "asteroid-dodge",
+  "title": "Asteroid Dodge (Run Proof)",
+  "smartWallet": "CC5U5CPVY3ZVZHYV4PEKXSSB7K4GFD4OAN3NXR6OZECY7BNL3D7D3FBA",
+  "network": "stellar-testnet",
+  "circuit": "DodgeSeal v0.2",
+  "proof": "0x8f1d4e2c7a9b6f5d3c1a0b9e8d7f6a5c4b3a291e0f1a2b3c4d5e6f7a8b9c0d1",
+  "publicInputs": {
+    "runLength": 7,
+    "actionHash": "0x6f2a1d9c3b8e5a7f0c2d4e6f8a1b3c5d7e9f0a2b4c6d8e0f1a3b5c7d9e0f2a4",
+    "commitment": "0x2b9e1d7c4a6f5e3d2c1b0a9f8e7d6c5b4a3f2e1d0c9b8a7f6e5d4c3b2a1f0e9"
+  },
+  "outputs": {
+    "attestation": "run-verified",
+    "badge": "asteroid-dodge"
+  },
+  "generatedAt": "2026-03-02T13:22:11.000Z",
+  "source": "smol labs / the farm"
+}
