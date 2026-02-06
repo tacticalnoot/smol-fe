@@ -9,6 +9,7 @@
         formatKaleBalance,
         generateCommitment,
         generateSalt,
+        buildProofPacket,
         saveEarnedBadge,
         loadAllBadges,
         type EarnedBadge,
@@ -17,6 +18,7 @@
     // ── State ──────────────────────────────────────────────────────────────
     let proving = $state(false);
     let error = $state<string | null>(null);
+    let copied = $state(false);
     let earned = $state<Record<string, EarnedBadge>>({});
     let audioOn = $state(false);
     let mounted = $state(false);
@@ -77,6 +79,23 @@
             error = e.message || 'Proof generation failed';
         } finally {
             proving = false;
+        }
+    }
+
+    async function copyProofPacket() {
+        if (!userState.contractId) return;
+        const badge = earned["proof-of-farm"];
+        if (!badge) return;
+        copied = false;
+        try {
+            const packet = buildProofPacket(badge, userState.contractId);
+            await navigator.clipboard.writeText(JSON.stringify(packet, null, 2));
+            copied = true;
+            setTimeout(() => {
+                copied = false;
+            }, 2000);
+        } catch (e: any) {
+            error = e.message || "Unable to copy proof payload";
         }
     }
 
@@ -222,6 +241,15 @@
                             badge={earned['proof-of-farm']}
                             def={BADGE_REGISTRY[0]}
                         />
+                        <div class="proof-tools">
+                            <p class="proof-tools-text">
+                                Verify by recomputing the commitment from your wallet address,
+                                your KALE balance, and the saved salt.
+                            </p>
+                            <button class="proof-tools-btn" type="button" onclick={copyProofPacket}>
+                                {copied ? "Proof payload copied" : "Copy proof payload"}
+                            </button>
+                        </div>
                     {:else if proving}
                         <div class="proving-card">
                             <div class="proving-spinner"></div>
@@ -558,6 +586,37 @@
         text-align: center;
         line-height: 1.8;
         max-width: 300px;
+    }
+    .proof-tools {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        gap: 10px;
+        margin-top: 16px;
+        text-align: center;
+    }
+    .proof-tools-text {
+        font-size: 9px;
+        color: #666;
+        max-width: 320px;
+        line-height: 1.6;
+    }
+    .proof-tools-btn {
+        font-family: 'Press Start 2P', monospace;
+        font-size: 8px;
+        color: #9ae600;
+        background: rgba(13, 13, 15, 0.6);
+        border: 1px solid rgba(154, 230, 0, 0.3);
+        border-radius: 999px;
+        padding: 8px 14px;
+        cursor: pointer;
+        letter-spacing: 1px;
+        transition: all 0.2s ease;
+    }
+    .proof-tools-btn:hover {
+        color: #c6ff3b;
+        border-color: rgba(198, 255, 59, 0.8);
+        box-shadow: 0 0 18px rgba(154, 230, 0, 0.2);
     }
     .proof-error {
         font-size: 9px;
