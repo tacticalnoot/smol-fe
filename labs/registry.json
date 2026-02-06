@@ -117,5 +117,22 @@
             "Audio"
         ],
         "isLocked": false
+    },
+    {
+        "id": "lab_the_farm",
+        "title": "The Farm",
+        "badge": "ZK-001",
+        "status_color": "ORANGE",
+        "readiness_score": 70,
+        "last_reviewed": "2026-02-06",
+        "blast_radius": "LABS_ONLY",
+        "path": "experiments/the-farm/experiment.yml",
+        "href": "/labs/the-farm",
+        "description": "ZK Proof of Farm. Prove your KALE tier on-chain without revealing your balance. Smart Wallet Dreamboard.",
+        "tags": [
+            "ZK",
+            "Blockchain"
+        ],
+        "isLocked": false
     }
 ]
