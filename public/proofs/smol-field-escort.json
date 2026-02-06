@@ -1,0 +1,18 @@
+{
+  "id": "field-escort",
+  "title": "Field Escort (Route Commitment)",
+  "smartWallet": "CAG6XPLT3VQ5WB3D6I5QEXER2Q4RA6N3PHJ2G5Q4BNRVR4F46Q4Q6SGB",
+  "network": "stellar-testnet",
+  "circuit": "RouteShield v0.1",
+  "proof": "0x2a6d4f8b1c9e7d5f3a2b1c0d9e8f7a6b5c4d3e2f1a9b8c7d6e5f4a3b2c1d0e9",
+  "publicInputs": {
+    "shipmentId": "kale-escort-2219",
+    "routeCommitment": "0x1f2e3d4c5b6a79808f9e0d1c2b3a495867768594a3b2c1d0e9f8a7b6c5d4e3f2"
+  },
+  "outputs": {
+    "escortValid": true,
+    "handoffWindow": "2026-02-08T09:00:00Z"
+  },
+  "generatedAt": "2026-02-06T18:54:37.000Z",
+  "source": "smol smart wallet logistics"
+}

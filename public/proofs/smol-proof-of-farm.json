@@ -1,0 +1,19 @@
+{
+  "id": "kale-bloom",
+  "title": "Proof of Farm (KALE Tier)",
+  "smartWallet": "CA4KZP5ZXY2A6Q6HQ2TK3AJXFG6OU7Y5CNGT7GIEH6JQO6F7KLBWYX3V",
+  "network": "stellar-testnet",
+  "circuit": "BloomGate v0.3",
+  "proof": "0x4d7b1d9a27d8d5b49f88a1452b1f52d33f7a97f5076a6c4c3d53f0d1b81f9a43",
+  "publicInputs": {
+    "tier": 2,
+    "tierHash": "0x9fb7c4b9a37c7c2e9ef58e2c115e7af0c6c6c9f7dbb26bb2fd9b7d5cced2e6a1",
+    "commitment": "0x6ad0ab1e65a2cb0f89c4b1c4a90a1e97b2f7b8c10d3f5d2b2e1f9b0c3a5f2c12"
+  },
+  "outputs": {
+    "attestation": "tier-verified",
+    "badge": "proof-of-farm"
+  },
+  "generatedAt": "2026-02-06T18:42:11.000Z",
+  "source": "smol labs / the farm"
+}
