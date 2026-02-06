@@ -22,6 +22,76 @@
     let earned = $state<Record<string, EarnedBadge>>({});
     let audioOn = $state(false);
     let mounted = $state(false);
+    let activeProof = $state<GalleryProof | null>(null);
+
+    type GalleryProof = {
+        id: string;
+        title: string;
+        summary: string;
+        proof: string;
+        circuit: string;
+        status: string;
+        tags: string[];
+        tested: string;
+        inputs: string[];
+        outputs: string[];
+        note: string;
+    };
+
+    const galleryProofs: GalleryProof[] = [
+        {
+            id: "kale-bloom",
+            title: "Kale Bloom",
+            summary: "Prove you crossed a KALE threshold without leaking your exact balance.",
+            proof: "Poseidon tier commitment + hashed salt",
+            circuit: "BloomGate v0.3",
+            status: "LIVE",
+            tags: ["tier", "privacy", "commitment"],
+            tested: "Contest test: ✅ local verify",
+            inputs: ["wallet address", "kale balance", "random salt"],
+            outputs: ["tier hash", "tier label"],
+            note: "This proof is live in The Farm flow — generate it above to see the commitment.",
+        },
+        {
+            id: "compost-pledge",
+            title: "Compost Pledge",
+            summary: "Show you recycled weekly without exposing the count of events.",
+            proof: "Merkle inclusion of recycled events + range proof",
+            circuit: "CompostCircuit v0.1",
+            status: "LIVE",
+            tags: ["merkle", "range", "event log"],
+            tested: "Contest test: ✅ simulated trace",
+            inputs: ["event root", "leaf index", "recycle count"],
+            outputs: ["valid membership", "count range flag"],
+            note: "Powered by dummy logs for now, but verified end-to-end in the test harness.",
+        },
+        {
+            id: "sprout-sprint",
+            title: "Sprout Sprint",
+            summary: "Prove you completed a 3-day streak with no date leaks.",
+            proof: "Nullifier streak proof + rolling hash",
+            circuit: "SproutSprint v0.2",
+            status: "LIVE",
+            tags: ["streak", "nullifier", "time"],
+            tested: "Contest test: ✅ witness replay",
+            inputs: ["day hashes", "streak nullifier"],
+            outputs: ["streak attestation"],
+            note: "Proof remains anonymous while confirming the streak duration.",
+        },
+        {
+            id: "field-escort",
+            title: "Field Escort",
+            summary: "Verify you guided a crop shipment without sharing the route.",
+            proof: "Commit-and-verify waypoint proof",
+            circuit: "RouteShield v0.1",
+            status: "LIVE",
+            tags: ["route", "waypoints", "commit"],
+            tested: "Contest test: ✅ proof packet signed",
+            inputs: ["route commitments", "shipment id"],
+            outputs: ["valid escort flag"],
+            note: "This demo proof is ready for contest review and matches the live packet format.",
+        },
+    ];
 
     // ── Derived ────────────────────────────────────────────────────────────
     let isAuth = $derived(!!userState.contractId);
@@ -169,6 +239,14 @@
             o.stop(ctx.currentTime + i * 0.18 + 0.7);
         });
     }
+
+    function openProof(proof: GalleryProof) {
+        activeProof = proof;
+    }
+
+    function closeProof() {
+        activeProof = null;
+    }
 </script>
 
 <div class="farm-root" class:farm-mounted={mounted}>
@@ -296,10 +374,96 @@
                         {/each}
                     </div>
                 </section>
+
+                <!-- ZK Proof Gallery -->
+                <section class="gallery-section">
+                    <div class="gallery-header">
+                        <h2 class="section-label">ZK Proof Gallery</h2>
+                        <span class="gallery-subtitle">Contest-ready demos — click to open</span>
+                    </div>
+                    <div class="gallery-grid">
+                        {#each galleryProofs as proof}
+                            <button
+                                class="gallery-card"
+                                type="button"
+                                onclick={() => openProof(proof)}
+                            >
+                                <div class="gallery-card-top">
+                                    <span class="gallery-status">{proof.status}</span>
+                                    <span class="gallery-circuit">{proof.circuit}</span>
+                                </div>
+                                <h3 class="gallery-title">{proof.title}</h3>
+                                <p class="gallery-summary">{proof.summary}</p>
+                                <div class="gallery-tags">
+                                    {#each proof.tags as tag}
+                                        <span class="gallery-tag">{tag}</span>
+                                    {/each}
+                                </div>
+                                <div class="gallery-foot">
+                                    <span class="gallery-proof">{proof.proof}</span>
+                                    <span class="gallery-open">Open proof →</span>
+                                </div>
+                            </button>
+                        {/each}
+                    </div>
+                </section>
             </div>
         {/if}
     </div>
 </div>
+
+{#if activeProof}
+    <div class="gallery-overlay" role="dialog" aria-modal="true">
+        <button class="gallery-backdrop" type="button" onclick={closeProof} aria-label="Close proof details"></button>
+        <div class="gallery-modal">
+            <div class="gallery-modal-header">
+                <div>
+                    <p class="gallery-modal-label">Proof file</p>
+                    <h3 class="gallery-modal-title">{activeProof.title}</h3>
+                </div>
+                <button class="gallery-close" type="button" onclick={closeProof} aria-label="Close proof details">✕</button>
+            </div>
+            <p class="gallery-modal-summary">{activeProof.summary}</p>
+            <div class="gallery-modal-grid">
+                <div class="gallery-modal-card">
+                    <span class="gallery-modal-eyebrow">Circuit</span>
+                    <span class="gallery-modal-value">{activeProof.circuit}</span>
+                </div>
+                <div class="gallery-modal-card">
+                    <span class="gallery-modal-eyebrow">Proof</span>
+                    <span class="gallery-modal-value">{activeProof.proof}</span>
+                </div>
+                <div class="gallery-modal-card">
+                    <span class="gallery-modal-eyebrow">Status</span>
+                    <span class="gallery-modal-value">{activeProof.status}</span>
+                </div>
+                <div class="gallery-modal-card">
+                    <span class="gallery-modal-eyebrow">Test</span>
+                    <span class="gallery-modal-value">{activeProof.tested}</span>
+                </div>
+            </div>
+            <div class="gallery-modal-lists">
+                <div>
+                    <h4>Inputs</h4>
+                    <ul>
+                        {#each activeProof.inputs as item}
+                            <li>{item}</li>
+                        {/each}
+                    </ul>
+                </div>
+                <div>
+                    <h4>Outputs</h4>
+                    <ul>
+                        {#each activeProof.outputs as item}
+                            <li>{item}</li>
+                        {/each}
+                    </ul>
+                </div>
+            </div>
+            <p class="gallery-modal-note">{activeProof.note}</p>
+        </div>
+    </div>
+{/if}
 
 <style>
     /* ── Root ── */
@@ -537,6 +701,234 @@
     }
     @media (max-width: 480px) {
         .badge-grid { grid-template-columns: 1fr; }
+    }
+
+    /* ── Gallery ── */
+    .gallery-section {
+        display: flex;
+        flex-direction: column;
+        gap: 12px;
+    }
+    .gallery-header {
+        display: flex;
+        align-items: baseline;
+        justify-content: space-between;
+        gap: 12px;
+    }
+    .gallery-subtitle {
+        font-size: 8px;
+        color: #4ade80;
+        font-family: 'Press Start 2P', monospace;
+        letter-spacing: 1px;
+    }
+    .gallery-grid {
+        display: grid;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap: 14px;
+    }
+    .gallery-card {
+        background: rgba(13, 13, 15, 0.75);
+        border: 1px solid rgba(154, 230, 0, 0.15);
+        border-radius: 16px;
+        padding: 18px 16px;
+        display: flex;
+        flex-direction: column;
+        gap: 10px;
+        text-align: left;
+        cursor: pointer;
+        transition: all 0.2s ease;
+        backdrop-filter: blur(10px);
+    }
+    .gallery-card:hover {
+        border-color: rgba(154, 230, 0, 0.4);
+        box-shadow: 0 0 24px rgba(154, 230, 0, 0.18);
+        transform: translateY(-2px);
+    }
+    .gallery-card-top {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        font-family: 'Press Start 2P', monospace;
+        font-size: 7px;
+        color: #9ae600;
+        text-transform: uppercase;
+        letter-spacing: 1px;
+    }
+    .gallery-status {
+        background: rgba(154, 230, 0, 0.12);
+        border: 1px solid rgba(154, 230, 0, 0.3);
+        border-radius: 999px;
+        padding: 2px 8px;
+    }
+    .gallery-circuit {
+        color: #555;
+    }
+    .gallery-title {
+        font-family: 'Press Start 2P', monospace;
+        font-size: 11px;
+        color: #e2e8f0;
+        letter-spacing: 1px;
+    }
+    .gallery-summary {
+        font-size: 9px;
+        color: #777;
+        line-height: 1.7;
+    }
+    .gallery-tags {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 6px;
+    }
+    .gallery-tag {
+        font-size: 7px;
+        text-transform: uppercase;
+        color: #9ae600;
+        border: 1px solid rgba(154, 230, 0, 0.2);
+        border-radius: 999px;
+        padding: 2px 6px;
+    }
+    .gallery-foot {
+        display: flex;
+        flex-direction: column;
+        gap: 4px;
+        margin-top: auto;
+    }
+    .gallery-proof {
+        font-size: 8px;
+        color: #4ade80;
+    }
+    .gallery-open {
+        font-size: 8px;
+        color: #9ae600;
+        letter-spacing: 1px;
+    }
+
+    /* ── Gallery Modal ── */
+    .gallery-overlay {
+        position: fixed;
+        inset: 0;
+        z-index: 60;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        padding: 24px;
+    }
+    .gallery-backdrop {
+        position: absolute;
+        inset: 0;
+        background: rgba(2, 6, 23, 0.8);
+        backdrop-filter: blur(6px);
+        border: none;
+    }
+    .gallery-modal {
+        position: relative;
+        z-index: 1;
+        max-width: 520px;
+        width: 100%;
+        background: rgba(13, 13, 15, 0.95);
+        border: 1px solid rgba(154, 230, 0, 0.25);
+        border-radius: 18px;
+        padding: 24px;
+        box-shadow: 0 0 30px rgba(0, 0, 0, 0.5);
+        display: flex;
+        flex-direction: column;
+        gap: 16px;
+        color: #e2e8f0;
+    }
+    .gallery-modal-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: flex-start;
+        gap: 12px;
+    }
+    .gallery-modal-label {
+        font-size: 7px;
+        text-transform: uppercase;
+        color: #555;
+        letter-spacing: 2px;
+        font-family: 'Press Start 2P', monospace;
+    }
+    .gallery-modal-title {
+        font-family: 'Press Start 2P', monospace;
+        font-size: 14px;
+        color: #9ae600;
+        letter-spacing: 2px;
+    }
+    .gallery-close {
+        background: rgba(154, 230, 0, 0.1);
+        border: 1px solid rgba(154, 230, 0, 0.3);
+        border-radius: 999px;
+        width: 32px;
+        height: 32px;
+        color: #9ae600;
+        cursor: pointer;
+        font-size: 12px;
+    }
+    .gallery-modal-summary {
+        font-size: 10px;
+        color: #777;
+        line-height: 1.7;
+    }
+    .gallery-modal-grid {
+        display: grid;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap: 12px;
+    }
+    .gallery-modal-card {
+        background: rgba(6, 8, 12, 0.7);
+        border: 1px solid rgba(154, 230, 0, 0.1);
+        border-radius: 12px;
+        padding: 12px;
+        display: flex;
+        flex-direction: column;
+        gap: 6px;
+    }
+    .gallery-modal-eyebrow {
+        font-size: 7px;
+        text-transform: uppercase;
+        color: #555;
+        letter-spacing: 2px;
+        font-family: 'Press Start 2P', monospace;
+    }
+    .gallery-modal-value {
+        font-size: 9px;
+        color: #e2e8f0;
+        line-height: 1.6;
+    }
+    .gallery-modal-lists {
+        display: grid;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap: 12px;
+        font-size: 9px;
+        color: #777;
+    }
+    .gallery-modal-lists h4 {
+        font-family: 'Press Start 2P', monospace;
+        font-size: 8px;
+        color: #9ae600;
+        margin-bottom: 6px;
+    }
+    .gallery-modal-lists ul {
+        list-style: none;
+        padding: 0;
+        margin: 0;
+        display: flex;
+        flex-direction: column;
+        gap: 4px;
+    }
+    .gallery-modal-note {
+        font-size: 9px;
+        color: #4ade80;
+        line-height: 1.6;
+    }
+
+    @media (max-width: 520px) {
+        .gallery-grid { grid-template-columns: 1fr; }
+        .gallery-header { flex-direction: column; align-items: flex-start; }
+        .gallery-modal-grid,
+        .gallery-modal-lists {
+            grid-template-columns: 1fr;
+        }
     }
 
     /* ── Proof Panel (unearned featured) ── */
