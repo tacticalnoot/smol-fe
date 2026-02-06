@@ -129,6 +129,7 @@
     }
 
     function playChime() {
+        const transient = !audioCtx;
         const ctx = audioCtx ?? new AudioContext();
         const notes = [261.63, 329.63, 392.0, 493.88]; // C-E-G-B
         notes.forEach((freq, i) => {
@@ -140,6 +141,11 @@
             g.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + i * 0.18 + 0.7);
             o.connect(g);
             g.connect(ctx.destination);
+            if (transient && i === notes.length - 1) {
+                o.onended = () => {
+                    ctx.close().catch(() => {});
+                };
+            }
             o.start(ctx.currentTime + i * 0.18);
             o.stop(ctx.currentTime + i * 0.18 + 0.7);
         });
