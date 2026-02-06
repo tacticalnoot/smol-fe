@@ -39,6 +39,8 @@
         inputs: string[];
         outputs: string[];
         note: string;
+        requiresKale?: boolean;
+        requirementCopy?: string;
     };
 
     const galleryProofs: GalleryProof[] = [
@@ -56,6 +58,8 @@
             inputs: ["wallet address", "kale balance", "random salt"],
             outputs: ["tier hash", "tier label"],
             note: "This proof is live in The Farm flow — generate it above to see the commitment.",
+            requiresKale: true,
+            requirementCopy: "Mine or trade KALE in the Kale Farm to verify this proof.",
         },
         {
             id: "compost-pledge",
@@ -71,6 +75,8 @@
             inputs: ["event root", "leaf index", "recycle count"],
             outputs: ["valid membership", "count range flag"],
             note: "Powered by dummy logs for now, but verified end-to-end in the test harness.",
+            requiresKale: false,
+            requirementCopy: "No KALE activity required — ready for anyone to verify.",
         },
         {
             id: "sprout-sprint",
@@ -86,6 +92,8 @@
             inputs: ["day hashes", "streak nullifier"],
             outputs: ["streak attestation"],
             note: "Proof remains anonymous while confirming the streak duration.",
+            requiresKale: false,
+            requirementCopy: "No KALE activity required — this demo is open to all.",
         },
         {
             id: "field-escort",
@@ -101,6 +109,8 @@
             inputs: ["route commitments", "shipment id"],
             outputs: ["valid escort flag"],
             note: "This demo proof is ready for contest review and matches the live packet format.",
+            requiresKale: false,
+            requirementCopy: "No KALE activity required — open demo proof.",
         },
     ];
 
@@ -111,6 +121,7 @@
     let tier = $derived(balance !== null ? getTierForBalance(balance) : 0);
     let tierCfg = $derived(TIER_CONFIG[tier]);
     let hasProof = $derived(!!earned['proof-of-farm']);
+    let hasKale = $derived(balance !== null && balance > 0n);
     const confettiPieces = Array.from({ length: 24 }, (_, idx) => idx);
 
     // ── Effects ────────────────────────────────────────────────────────────
@@ -390,6 +401,12 @@
                                 Generate a cryptographic proof of your farming tier.
                                 Your balance stays private — only the tier is attested.
                             </p>
+                            {#if !hasKale}
+                                <div class="proof-nudge">
+                                    <p>Need KALE activity to verify this proof.</p>
+                                    <a class="proof-nudge-link" href="/kale">Head to the Kale Farm →</a>
+                                </div>
+                            {/if}
 
                             {#if error}
                                 <p class="proof-error">{error}</p>
@@ -441,6 +458,9 @@
                                     {#each proof.tags as tag}
                                         <span class="gallery-tag">{tag}</span>
                                     {/each}
+                                    <span class="gallery-tag gallery-tag--status">
+                                        {proof.requiresKale ? "Needs KALE" : "No KALE needed"}
+                                    </span>
                                 </div>
                                 <div class="gallery-foot">
                                     <span class="gallery-proof">{proof.proof}</span>
@@ -514,6 +534,13 @@
                     >
                         {activeProof.file}
                     </a>
+                </div>
+                <div class="gallery-modal-card gallery-modal-requirement">
+                    <span class="gallery-modal-eyebrow">Availability</span>
+                    <span class="gallery-modal-value">{activeProof.requirementCopy}</span>
+                    {#if activeProof.requiresKale && !hasKale}
+                        <a class="gallery-modal-cta" href="/kale">Complete Kale Farm task →</a>
+                    {/if}
                 </div>
             </div>
             <div class="gallery-modal-lists">
@@ -889,6 +916,11 @@
         border-radius: 999px;
         padding: 2px 6px;
     }
+    .gallery-tag--status {
+        color: #cbd5f5;
+        border-color: rgba(203, 213, 245, 0.35);
+        background: rgba(51, 65, 85, 0.35);
+    }
     .gallery-foot {
         display: flex;
         flex-direction: column;
@@ -1021,6 +1053,21 @@
         flex-direction: column;
         gap: 6px;
     }
+    .gallery-modal-requirement {
+        grid-column: span 2;
+        border-color: rgba(148, 163, 184, 0.2);
+    }
+    .gallery-modal-cta {
+        font-size: 8px;
+        text-transform: uppercase;
+        color: #9ae600;
+        letter-spacing: 1px;
+        text-decoration: none;
+        margin-top: 4px;
+    }
+    .gallery-modal-cta:hover {
+        text-decoration: underline;
+    }
     .gallery-modal-eyebrow {
         font-size: 7px;
         text-transform: uppercase;
@@ -1116,6 +1163,28 @@
         text-align: center;
         line-height: 1.8;
         max-width: 300px;
+    }
+    .proof-nudge {
+        text-align: center;
+        background: rgba(15, 23, 42, 0.6);
+        border: 1px solid rgba(148, 163, 184, 0.3);
+        border-radius: 12px;
+        padding: 12px 14px;
+        font-size: 9px;
+        color: #cbd5f5;
+        line-height: 1.6;
+    }
+    .proof-nudge-link {
+        display: inline-block;
+        margin-top: 6px;
+        color: #9ae600;
+        font-size: 8px;
+        text-transform: uppercase;
+        letter-spacing: 1px;
+        text-decoration: none;
+    }
+    .proof-nudge-link:hover {
+        text-decoration: underline;
     }
     .proof-tools {
         display: flex;
