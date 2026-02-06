@@ -1,0 +1,22 @@
+---
+import Layout from "../../layouts/Layout.astro";
+import TheFarmCore from "../../components/labs/the-farm/TheFarmCore.svelte";
+---
+
+<Layout title="The Farm | Smol Labs" description="ZK Proof of Farm — prove your KALE farming tier without revealing your balance. Smart Wallet Dreamboard on Stellar.">
+  <link href="https://fonts.googleapis.com/css2?family=Press+Start+2P&display=swap" rel="stylesheet">
+
+  <div class="fixed inset-0 overflow-hidden flex flex-col items-center justify-center pointer-events-none" style="font-family: 'Press Start 2P', cursive;">
+
+    <!-- Nav Back -->
+    <a href="/labs" class="absolute top-4 left-4 md:top-8 md:left-8 z-30 text-[10px] md:text-xs uppercase tracking-widest text-[#5a8a5a] hover:text-[#9ae600] flex items-center gap-2 transition-colors pointer-events-auto">
+      <span>&larr; LABS</span>
+    </a>
+
+    <!-- Island -->
+    <div class="relative z-10 w-full h-full pointer-events-auto overflow-y-auto">
+      <TheFarmCore client:only="svelte" />
+    </div>
+
+  </div>
+</Layout>
