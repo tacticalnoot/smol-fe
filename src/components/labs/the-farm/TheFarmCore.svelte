@@ -23,6 +23,7 @@
     let audioOn = $state(false);
     let mounted = $state(false);
     let activeProof = $state<GalleryProof | null>(null);
+    let showCelebration = $state(false);
 
     type GalleryProof = {
         id: string;
@@ -110,6 +111,7 @@
     let tier = $derived(balance !== null ? getTierForBalance(balance) : 0);
     let tierCfg = $derived(TIER_CONFIG[tier]);
     let hasProof = $derived(!!earned['proof-of-farm']);
+    const confettiPieces = Array.from({ length: 24 }, (_, idx) => idx);
 
     // ── Effects ────────────────────────────────────────────────────────────
     $effect(() => {
@@ -154,7 +156,11 @@
 
             saveEarnedBadge(userState.contractId, badge);
             earned = loadAllBadges(userState.contractId);
+            showCelebration = true;
             playChime();
+            setTimeout(() => {
+                showCelebration = false;
+            }, 2600);
         } catch (e: any) {
             error = e.message || 'Proof generation failed';
         } finally {
@@ -324,6 +330,24 @@
                 <section class="featured-section">
                     <h2 class="section-label">Featured Achievement</h2>
 
+                    {#if showCelebration}
+                        <div class="proof-celebration" aria-live="polite">
+                            <div class="proof-celebration-card">
+                                <span class="proof-celebration-eyebrow">Proof forged</span>
+                                <p class="proof-celebration-title">ZK commitment minted ✨</p>
+                                <p class="proof-celebration-body">
+                                    We generated your tier commitment, sealed it with a new salt,
+                                    and stored the proof packet for verification.
+                                </p>
+                            </div>
+                            <div class="proof-confetti" aria-hidden="true">
+                                {#each confettiPieces as piece}
+                                    <span class="confetti" style={`--i:${piece}`}></span>
+                                {/each}
+                            </div>
+                        </div>
+                    {/if}
+
                     {#if hasProof}
                         <FarmBadge
                             badge={earned['proof-of-farm']}
@@ -337,6 +361,9 @@
                             <button class="proof-tools-btn" type="button" onclick={copyProofPacket}>
                                 {copied ? "Proof payload copied" : "Copy proof payload"}
                             </button>
+                            <p class="proof-tools-meta">
+                                Tier {tierCfg.name} sealed · commitment stored locally in your proof vault.
+                            </p>
                         </div>
                     {:else if proving}
                         <div class="proving-card">
@@ -389,7 +416,17 @@
                 <section class="gallery-section">
                     <div class="gallery-header">
                         <h2 class="section-label">ZK Proof Gallery</h2>
-                        <span class="gallery-subtitle">Contest-ready demos — click to open</span>
+                        <div class="gallery-header-right">
+                            <span class="gallery-subtitle">Contest-ready demos — click to open</span>
+                            <button
+                                class="gallery-cta"
+                                type="button"
+                                onclick={generateProof}
+                                disabled={balance === null || proving || hasProof}
+                            >
+                                {hasProof ? "Proof minted" : "Forge a live proof"}
+                            </button>
+                        </div>
                     </div>
                     <div class="gallery-grid">
                         {#each galleryProofs as proof}
@@ -748,15 +785,44 @@
     }
     .gallery-header {
         display: flex;
-        align-items: baseline;
+        align-items: center;
         justify-content: space-between;
         gap: 12px;
+        flex-wrap: wrap;
+    }
+    .gallery-header-right {
+        display: flex;
+        align-items: center;
+        gap: 12px;
+        flex-wrap: wrap;
     }
     .gallery-subtitle {
         font-size: 8px;
         color: #4ade80;
         font-family: 'Press Start 2P', monospace;
         letter-spacing: 1px;
+    }
+    .gallery-cta {
+        font-family: 'Press Start 2P', monospace;
+        font-size: 8px;
+        color: #051015;
+        background: linear-gradient(135deg, #22c55e, #14b8a6);
+        border: none;
+        border-radius: 999px;
+        padding: 8px 16px;
+        cursor: pointer;
+        letter-spacing: 1px;
+        box-shadow: 0 10px 18px rgba(20, 184, 166, 0.25);
+        transition: transform 0.2s ease, box-shadow 0.2s ease, opacity 0.2s ease;
+    }
+    .gallery-cta:hover:enabled {
+        transform: translateY(-2px) scale(1.01);
+        box-shadow: 0 14px 22px rgba(34, 197, 94, 0.3);
+    }
+    .gallery-cta:disabled {
+        opacity: 0.5;
+        cursor: not-allowed;
+        box-shadow: none;
     }
     .gallery-grid {
         display: grid;
@@ -1065,6 +1131,11 @@
         max-width: 320px;
         line-height: 1.6;
     }
+    .proof-tools-meta {
+        font-size: 8px;
+        color: rgba(226, 232, 240, 0.6);
+        font-family: 'Press Start 2P', monospace;
+    }
     .proof-tools-btn {
         font-family: 'Press Start 2P', monospace;
         font-size: 8px;
@@ -1086,6 +1157,82 @@
         font-size: 9px;
         color: #ef4444;
         font-family: 'Press Start 2P', monospace;
+    }
+    .proof-celebration {
+        position: relative;
+        margin: 16px 0 20px;
+        border-radius: 18px;
+        background: radial-gradient(circle at top, rgba(34, 197, 94, 0.28), transparent 60%),
+            linear-gradient(135deg, rgba(15, 118, 110, 0.55), rgba(13, 148, 136, 0.15));
+        border: 1px solid rgba(20, 184, 166, 0.4);
+        padding: 16px;
+        overflow: hidden;
+        box-shadow: 0 24px 48px rgba(15, 118, 110, 0.25);
+    }
+    .proof-celebration-card {
+        position: relative;
+        z-index: 2;
+        display: flex;
+        flex-direction: column;
+        gap: 6px;
+        color: #ecfeff;
+        text-align: left;
+    }
+    .proof-celebration-eyebrow {
+        text-transform: uppercase;
+        letter-spacing: 0.2em;
+        font-size: 7px;
+        font-weight: 600;
+        color: rgba(167, 243, 208, 0.9);
+    }
+    .proof-celebration-title {
+        font-size: 14px;
+        font-weight: 700;
+        margin: 0;
+    }
+    .proof-celebration-body {
+        margin: 0;
+        font-size: 9px;
+        color: rgba(240, 253, 250, 0.85);
+        line-height: 1.6;
+    }
+    .proof-confetti {
+        position: absolute;
+        inset: 0;
+        pointer-events: none;
+    }
+    .confetti {
+        position: absolute;
+        top: 8%;
+        left: 50%;
+        width: 10px;
+        height: 18px;
+        border-radius: 4px;
+        background: hsl(calc(var(--i) * 16deg), 90%, 60%);
+        animation: confetti-fall 2.2s ease-out forwards;
+        transform: translate3d(0, 0, 0) rotate(0deg);
+        opacity: 0;
+    }
+    .confetti:nth-child(odd) {
+        width: 8px;
+        height: 14px;
+    }
+    .confetti {
+        animation-delay: calc(var(--i) * 0.04s);
+        left: calc(10% + (var(--i) * 3.2%));
+    }
+    @keyframes confetti-fall {
+        0% {
+            opacity: 0;
+            transform: translate3d(0, -40px, 0) rotate(0deg);
+        }
+        10% {
+            opacity: 1;
+        }
+        100% {
+            opacity: 0;
+            transform: translate3d(calc((var(--i) - 12) * 6px), 220px, 0) rotate(360deg);
+        }
     }
     .generate-btn {
         font-family: 'Press Start 2P', monospace;
