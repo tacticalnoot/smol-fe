@@ -31,6 +31,13 @@ export interface EarnedBadge {
     data: Record<string, unknown>;
 }
 
+export interface ProofPacket {
+    farmer: string;
+    tier: number;
+    commitment: string;
+    salt: string;
+}
+
 /** All badges that exist (or will exist) on the dreamboard. */
 export const BADGE_REGISTRY: BadgeDef[] = [
     {
@@ -128,6 +135,43 @@ export function generateSalt(): Uint8Array {
 
 export function truncateHash(hash: string): string {
     return `${hash.slice(0, 8)}\u2026${hash.slice(-4)}`;
+}
+
+function hexToBytes(hex: string): Uint8Array {
+    const normalized = hex.trim().toLowerCase();
+    if (normalized.length % 2 !== 0) {
+        throw new Error("Invalid hex length");
+    }
+    const bytes = new Uint8Array(normalized.length / 2);
+    for (let i = 0; i < normalized.length; i += 2) {
+        bytes[i / 2] = Number.parseInt(normalized.slice(i, i + 2), 16);
+    }
+    return bytes;
+}
+
+export async function verifyCommitment(
+    farmerAddress: string,
+    balance: bigint,
+    saltHex: string,
+    expectedCommitment: string,
+): Promise<boolean> {
+    const salt = hexToBytes(saltHex);
+    const recomputed = await generateCommitment(farmerAddress, balance, salt);
+    return recomputed === expectedCommitment;
+}
+
+export function buildProofPacket(badge: EarnedBadge, farmerAddress: string): ProofPacket {
+    const data = badge.data as {
+        tier?: number;
+        commitment?: string;
+        salt?: string;
+    };
+    return {
+        farmer: farmerAddress,
+        tier: data.tier ?? 0,
+        commitment: data.commitment ?? "",
+        salt: data.salt ?? "",
+    };
 }
 
 // ---------------------------------------------------------------------------
