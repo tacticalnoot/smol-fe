@@ -1,0 +1,18 @@
+{
+  "id": "sprout-sprint",
+  "title": "Sprout Sprint (Streak Proof)",
+  "smartWallet": "CC7K4YFZP5Q6R5C42J6KQJ4U6P4V4A2I4Y4K3QFQ4N6J5X7PN4F5QEA",
+  "network": "stellar-testnet",
+  "circuit": "SproutSprint v0.2",
+  "proof": "0x3b8ef0d4c7a1d58f1e7a6b2f9c5d1b0c9f7a6e2d5b4f1a9c8d7e6f5a4b3c2d1e",
+  "publicInputs": {
+    "streakHash": "0x5c2f9d8a7e6b4c1f0a9d8e7c6b5a4f3e2d1c0b9a8d7e6f5a4b3c2d1e0f9a8b7c",
+    "minimumDays": 3
+  },
+  "outputs": {
+    "streakVerified": true,
+    "nullifier": "0x8d7c6b5a4f3e2d1c0b9a8d7e6f5a4b3c2d1e0f9a8b7c6d5e4f3a2b1c0d9e8f7"
+  },
+  "generatedAt": "2026-02-06T18:50:09.000Z",
+  "source": "smol smart wallet habit proofs"
+}

@@ -31,6 +31,8 @@
         proof: string;
         circuit: string;
         status: string;
+        file: string;
+        wallet: string;
         tags: string[];
         tested: string;
         inputs: string[];
@@ -46,6 +48,8 @@
             proof: "Poseidon tier commitment + hashed salt",
             circuit: "BloomGate v0.3",
             status: "LIVE",
+            file: "/proofs/smol-proof-of-farm.json",
+            wallet: "CA4KZP5ZXY2A6Q6HQ2TK3AJXFG6OU7Y5CNGT7GIEH6JQO6F7KLBWYX3V",
             tags: ["tier", "privacy", "commitment"],
             tested: "Contest test: ✅ local verify",
             inputs: ["wallet address", "kale balance", "random salt"],
@@ -59,6 +63,8 @@
             proof: "Merkle inclusion of recycled events + range proof",
             circuit: "CompostCircuit v0.1",
             status: "LIVE",
+            file: "/proofs/smol-compost-pledge.json",
+            wallet: "CBM5FJ3VUGD5YI4GJ4LZ2H2V6MWZVJ4UP5B6O6GJMXZ6H2Q6EV7R5O2A",
             tags: ["merkle", "range", "event log"],
             tested: "Contest test: ✅ simulated trace",
             inputs: ["event root", "leaf index", "recycle count"],
@@ -72,6 +78,8 @@
             proof: "Nullifier streak proof + rolling hash",
             circuit: "SproutSprint v0.2",
             status: "LIVE",
+            file: "/proofs/smol-sprout-sprint.json",
+            wallet: "CC7K4YFZP5Q6R5C42J6KQJ4U6P4V4A2I4Y4K3QFQ4N6J5X7PN4F5QEA",
             tags: ["streak", "nullifier", "time"],
             tested: "Contest test: ✅ witness replay",
             inputs: ["day hashes", "streak nullifier"],
@@ -85,6 +93,8 @@
             proof: "Commit-and-verify waypoint proof",
             circuit: "RouteShield v0.1",
             status: "LIVE",
+            file: "/proofs/smol-field-escort.json",
+            wallet: "CAG6XPLT3VQ5WB3D6I5QEXER2Q4RA6N3PHJ2G5Q4BNRVR4F46Q4Q6SGB",
             tags: ["route", "waypoints", "commit"],
             tested: "Contest test: ✅ proof packet signed",
             inputs: ["route commitments", "shipment id"],
@@ -383,11 +393,7 @@
                     </div>
                     <div class="gallery-grid">
                         {#each galleryProofs as proof}
-                            <button
-                                class="gallery-card"
-                                type="button"
-                                onclick={() => openProof(proof)}
-                            >
+                            <article class="gallery-card">
                                 <div class="gallery-card-top">
                                     <span class="gallery-status">{proof.status}</span>
                                     <span class="gallery-circuit">{proof.circuit}</span>
@@ -401,9 +407,25 @@
                                 </div>
                                 <div class="gallery-foot">
                                     <span class="gallery-proof">{proof.proof}</span>
-                                    <span class="gallery-open">Open proof →</span>
+                                    <div class="gallery-actions">
+                                        <button
+                                            class="gallery-open"
+                                            type="button"
+                                            onclick={() => openProof(proof)}
+                                        >
+                                            View details
+                                        </button>
+                                        <a
+                                            class="gallery-link"
+                                            href={proof.file}
+                                            target="_blank"
+                                            rel="noreferrer"
+                                        >
+                                            Open proof file →
+                                        </a>
+                                    </div>
                                 </div>
-                            </button>
+                            </article>
                         {/each}
                     </div>
                 </section>
@@ -440,6 +462,21 @@
                 <div class="gallery-modal-card">
                     <span class="gallery-modal-eyebrow">Test</span>
                     <span class="gallery-modal-value">{activeProof.tested}</span>
+                </div>
+                <div class="gallery-modal-card">
+                    <span class="gallery-modal-eyebrow">Wallet</span>
+                    <span class="gallery-modal-value">{activeProof.wallet}</span>
+                </div>
+                <div class="gallery-modal-card">
+                    <span class="gallery-modal-eyebrow">Proof file</span>
+                    <a
+                        class="gallery-modal-link"
+                        href={activeProof.file}
+                        target="_blank"
+                        rel="noreferrer"
+                    >
+                        {activeProof.file}
+                    </a>
                 </div>
             </div>
             <div class="gallery-modal-lists">
@@ -735,7 +772,6 @@
         flex-direction: column;
         gap: 10px;
         text-align: left;
-        cursor: pointer;
         transition: all 0.2s ease;
         backdrop-filter: blur(10px);
     }
@@ -797,10 +833,46 @@
         font-size: 8px;
         color: #4ade80;
     }
+    .gallery-actions {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 8px;
+        align-items: center;
+    }
     .gallery-open {
-        font-size: 8px;
+        border: none;
+        background: rgba(154, 230, 0, 0.12);
         color: #9ae600;
-        letter-spacing: 1px;
+        font-size: 8px;
+        padding: 4px 8px;
+        border-radius: 999px;
+        letter-spacing: 0.8px;
+        text-transform: uppercase;
+        cursor: pointer;
+        transition: background 0.2s ease, color 0.2s ease;
+    }
+    .gallery-open:hover {
+        background: rgba(154, 230, 0, 0.25);
+        color: #e2e8f0;
+    }
+    .gallery-link {
+        font-size: 8px;
+        color: #4ade80;
+        letter-spacing: 0.8px;
+        text-transform: uppercase;
+        text-decoration: none;
+    }
+    .gallery-link:hover {
+        text-decoration: underline;
+    }
+    .gallery-modal-link {
+        font-size: 9px;
+        color: #4ade80;
+        text-decoration: none;
+        word-break: break-all;
+    }
+    .gallery-modal-link:hover {
+        text-decoration: underline;
     }
 
     /* ── Gallery Modal ── */
