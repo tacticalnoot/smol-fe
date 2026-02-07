@@ -239,7 +239,8 @@ export async function checkAttestation(farmerAddress: string): Promise<{
 }> {
     try {
         // Dynamic import to avoid load issues
-        const { Server, Contract, Address, xdr, scValToNative } = await import("@stellar/stellar-sdk");
+        const sdk = await import("@stellar/stellar-sdk");
+        const { Server, Contract, Address, scValToNative } = sdk;
         const { getBestRpcUrl } = await import("../../../utils/rpc");
 
         const server = new Server(getBestRpcUrl());
@@ -331,7 +332,7 @@ export async function checkAttestation(farmerAddress: string): Promise<{
                     timestamp: Number(result.verified_at),
                     // commitment is bytes, might be Uint8Array
                     commitment: result.commitment ?
-                        Array.from(result.commitment).map(b => b.toString(16).padStart(2, '0')).join('') : undefined
+                        Array.from(result.commitment).map((b: any) => b.toString(16).padStart(2, '0')).join('') : undefined
                 };
             }
         }
