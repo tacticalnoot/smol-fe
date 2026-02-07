@@ -1,13 +1,19 @@
 #![no_std]
 use soroban_sdk::{contract, contractimpl, contracttype, Address, BytesN, Env};
 
-/// A zero-knowledge farming tier badge.
+/// A farming tier attestation badge.
 ///
 /// The commitment hides the farmer's actual KALE balance:
-///   commitment = poseidon_hash(farmer_address || balance || salt)
+///   commitment = sha256(farmer_address || balance || salt)
 ///
 /// Only the tier (Sprout/Grower/Harvester/Whale) and the opaque commitment
 /// are stored on-chain — never the raw balance.
+///
+/// Note: This is a commit-reveal scheme, not a full ZK proof system.
+/// The client generates commitments using SHA-256 with a random salt.
+/// Verification works by recomputing the hash from known inputs.
+/// A future upgrade path is to add a ZK circuit (e.g. via CAP-0075)
+/// that proves tier membership without revealing the balance at all.
 #[contracttype]
 #[derive(Clone, Debug)]
 pub struct Badge {
@@ -27,12 +33,12 @@ pub struct ProofOfFarm;
 
 #[contractimpl]
 impl ProofOfFarm {
-    /// Attest a farming tier with a zero-knowledge commitment.
+    /// Attest a farming tier with a cryptographic commitment.
     ///
     /// # Arguments
     /// * `farmer`     – Caller's address (requires auth)
     /// * `tier`       – Claimed tier (0-3)
-    /// * `commitment` – poseidon_hash(address || balance || salt)
+    /// * `commitment` – sha256(address || balance || salt)
     ///
     /// # Panics
     /// If `tier > 3` or auth fails.

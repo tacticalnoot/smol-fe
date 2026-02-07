@@ -2,7 +2,7 @@
 name = "proof-of-farm"
 version = "0.1.0"
 edition = "2021"
-description = "ZK Proof of Farm — Poseidon-committed farming tier badges on Stellar"
+description = "Proof of Farm — SHA-256 committed farming tier attestation badges on Stellar"
 
 [lib]
 crate-type = ["cdylib"]

@@ -1,9 +1,20 @@
 /**
- * THE FARM — Badge system & ZK proof utilities.
+ * THE FARM — Badge system & cryptographic commitment utilities.
  *
  * Architecture: extensible badge registry so THE FARM grows into a
  * Smart Wallet Dreamboard. Proof of Farm is the first earnable badge;
  * future badges slot into the same system.
+ *
+ * Commitment scheme: SHA-256(address || balance || salt).
+ * This is a commit-reveal scheme — the salt makes the commitment hiding
+ * (you can't recover the balance from the hash) and SHA-256 makes it
+ * binding (you can't find a different balance that produces the same hash).
+ * Verification works by recomputing the hash from the original inputs.
+ *
+ * This is NOT a zero-knowledge proof system. A ZK proof would additionally
+ * prove that the committed balance falls within a tier range without
+ * revealing the balance itself. That requires a circuit + proving system
+ * (e.g. Groth16/PLONK) which is planned as a future upgrade via CAP-0075.
  */
 
 // ---------------------------------------------------------------------------
@@ -43,7 +54,7 @@ export const BADGE_REGISTRY: BadgeDef[] = [
     {
         id: 'proof-of-farm',
         title: 'Proof of Farm',
-        description: 'ZK-attested farming tier on Stellar',
+        description: 'Commitment-attested farming tier on Stellar',
         icon: '🌾',
         available: true,
     },
@@ -109,7 +120,7 @@ export function formatKaleBalance(balance: bigint): string {
 }
 
 // ---------------------------------------------------------------------------
-// ZK commitment (client-side stand-in for on-chain Poseidon / CAP-0075)
+// SHA-256 commitment (client-side; upgrade path: on-chain Poseidon via CAP-0075)
 // ---------------------------------------------------------------------------
 
 export async function generateCommitment(

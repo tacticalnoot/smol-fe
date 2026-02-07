@@ -121,16 +121,16 @@
     {
         "id": "lab_the_farm",
         "title": "The Farm",
-        "badge": "ZK-001",
+        "badge": "COMMIT-001",
         "status_color": "ORANGE",
         "readiness_score": 70,
-        "last_reviewed": "2026-02-06",
+        "last_reviewed": "2026-02-07",
         "blast_radius": "LABS_ONLY",
         "path": "experiments/the-farm/experiment.yml",
         "href": "/labs/the-farm",
-        "description": "ZK Proof of Farm. Prove your KALE tier on-chain without revealing your balance. Smart Wallet Dreamboard.",
+        "description": "Proof of Farm. Commit your KALE tier with SHA-256 + salt. Smart Wallet Dreamboard with on-chain attestation via Soroban.",
         "tags": [
-            "ZK",
+            "Commitment",
             "Blockchain"
         ],
         "isLocked": false
