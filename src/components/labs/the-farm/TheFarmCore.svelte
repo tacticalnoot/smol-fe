@@ -332,12 +332,14 @@
         const walletId =
             userState.contractId ?? zkGamesLogic.getOrCreateGameWalletId();
         gameWallet = walletId;
-        gameProofs = zkGamesLogic.loadGameProofs(walletId);
+        const loadedProofs = zkGamesLogic.loadGameProofs(walletId);
+        gameProofs = loadedProofs;
 
         // Use untrack to prevent infinite loop since we are writing to zkGames
+        // AND use loadedProofs (local) instead of gameProofs (state) to avoid tracking that dependency
         zkGames = untrack(() => zkGames).map((game) => ({
             ...game,
-            proof: gameProofs[game.id],
+            proof: loadedProofs[game.id],
         }));
     });
 
