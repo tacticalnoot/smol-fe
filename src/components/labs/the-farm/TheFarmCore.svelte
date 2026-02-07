@@ -9,32 +9,19 @@
         BADGE_REGISTRY,
         TIER_CONFIG,
         getTierForBalance,
+        getTierIdForBalance,
         formatKaleBalance,
         buildProofPacket,
         saveEarnedBadge,
         loadAllBadges,
         type EarnedBadge,
-    } from "./proof";
-    // Real ZK proof generation
-    import {
-        generateTierProof,
-        generateRandomSalt,
-        hashAddress,
-        getTierIdForBalance,
-        proofToBytes,
-        submitProofToContract,
-        hashProof,
-        checkAttestation,
+        type TierProofInputs,
         type ProofResult,
-    } from "./zkProof";
-    import {
-        createGameProof,
-        buildGameProofPacket,
-        loadGameProofs,
-        saveGameProof,
-        getOrCreateGameWalletId,
         type ZkGameProof,
-    } from "./zkGames";
+    } from "./zkTypes";
+    // Dynamic Logic Modules (Types only)
+    import type * as ZkProofModule from "./zkProof";
+    import type * as ZkGamesModule from "./zkGames";
 
     // ── State ──────────────────────────────────────────────────────────────
     let proving = $state(false);
@@ -55,6 +42,10 @@
     let proofData = $state<ProofResult | null>(null);
     let txHash = $state<string | null>(null);
     let onChainVerified = $state<boolean | null>(null);
+
+    // Dynamic Modules
+    let zkLogic = $state<typeof ZkProofModule | null>(null);
+    let zkGamesLogic = $state<typeof ZkGamesModule | null>(null);
 
     type GalleryProof = {
         id: string;
@@ -287,16 +278,45 @@
     // ── Effects ────────────────────────────────────────────────────────────
     $effect(() => {
         mounted = true;
+
+        // Dynamically load ZK logic to prevent SSR/Load crash
+        (async () => {
+            try {
+                const [zk, games] = await Promise.all([
+                    import("./zkProof"),
+                    import("./zkGames"),
+                ]);
+                zkLogic = zk;
+                zkGamesLogic = games;
+                console.log("[Farm] ZK Logic loaded");
+            } catch (e) {
+                console.error("[Farm] Failed to load ZK logic", e);
+            }
+        })();
+
         return () => {
             stopAmbient();
         };
     });
 
     // Load badges + refresh balance when authenticated
+    // Load badges + refresh balance when authenticated
     $effect(() => {
         if (isAuth && userState.contractId) {
             earned = loadAllBadges(userState.contractId);
             updateContractBalance(userState.contractId);
+
+            if (zkLogic) {
+                zkLogic.checkAttestation(userState.contractId).then((res) => {
+                    if (res.verified) {
+                        onChainVerified = true;
+                        console.log(
+                            "[Farm] Confirmed existing on-chain attestation",
+                            res,
+                        );
+                    }
+                });
+            }
         } else {
             earned = {};
         }
@@ -304,9 +324,14 @@
 
     $effect(() => {
         if (typeof window === "undefined") return;
-        const walletId = userState.contractId ?? getOrCreateGameWalletId();
+
+        // Wait for dynamic module to load
+        if (!zkGamesLogic) return;
+
+        const walletId =
+            userState.contractId ?? zkGamesLogic.getOrCreateGameWalletId();
         gameWallet = walletId;
-        gameProofs = loadGameProofs(walletId);
+        gameProofs = zkGamesLogic.loadGameProofs(walletId);
         zkGames = zkGames.map((game) => ({
             ...game,
             proof: gameProofs[game.id],
@@ -324,8 +349,11 @@
 
         try {
             // 1. Compute inputs for the ZK circuit
-            const addressHash = await hashAddress(userState.contractId);
-            const salt = generateRandomSalt();
+            if (!zkLogic)
+                throw new Error("ZK Logic not loaded yet. Please wait.");
+
+            const addressHash = await zkLogic.hashAddress(userState.contractId);
+            const salt = zkLogic.generateRandomSalt();
             const tierId = getTierIdForBalance(balance);
 
             console.log("[ZK] Generating real Groth16 proof...", {
@@ -334,7 +362,7 @@
             });
 
             // 2. Generate the REAL ZK proof
-            const result = await generateTierProof(
+            const result = await zkLogic.generateTierProof(
                 addressHash,
                 balance,
                 salt,
@@ -413,8 +441,8 @@
             console.log("[ZK] Starting on-chain verification...");
 
             // 1. Verify locally first (fast check)
-            const { verifyProofLocally } = await import("./zkProof");
-            const isValid = await verifyProofLocally(
+            if (!zkLogic) throw new Error("ZK Logic not loaded");
+            const isValid = await zkLogic.verifyProofLocally(
                 badge.data.proof as any,
                 badge.data.publicSignals as string[],
             );
@@ -441,7 +469,7 @@
                 tier: number;
             };
 
-            const proofHash = await hashProof(proofData.proof);
+            const proofHash = await zkLogic.hashProof(proofData.proof);
 
             // Helper to convert bigint string to 32-byte Uint8Array
             const toBytes32 = (n: bigint | string) => {
@@ -456,7 +484,7 @@
 
             const commitmentBytes = toBytes32(proofData.commitment);
 
-            const result = await submitProofToContract(
+            const result = await zkLogic.submitProofToContract(
                 kit,
                 userState.contractId,
                 proofData.tier,
@@ -619,7 +647,8 @@
         gameError = null;
         gameForging = game.id;
         try {
-            const proof = await createGameProof(
+            if (!zkGamesLogic) throw new Error("ZK Logic not loaded");
+            const proof = await zkGamesLogic.createGameProof(
                 game.id,
                 game.title,
                 walletId,
@@ -630,8 +659,8 @@
                     goal: game.goal,
                 },
             );
-            saveGameProof(walletId, proof);
-            gameProofs = loadGameProofs(walletId);
+            zkGamesLogic.saveGameProof(walletId, proof);
+            gameProofs = zkGamesLogic.loadGameProofs(walletId);
             const nextLevel = Math.min(
                 game.level + 1,
                 game.requirements.length,
@@ -655,7 +684,8 @@
         if (!game.proof) return;
         gameCopied = null;
         try {
-            const packet = buildGameProofPacket(game.proof);
+            if (!zkGamesLogic) throw new Error("ZK Logic not loaded");
+            const packet = zkGamesLogic.buildGameProofPacket(game.proof);
             await navigator.clipboard.writeText(
                 JSON.stringify(packet, null, 2),
             );

@@ -16,32 +16,16 @@
  * - verification_key.json — For local verification debug
  */
 
-// snarkjs is loaded dynamically to prevent SSR/environment issues during page load
+import {
+    type ProofResult,
+    type TierProofInputs,
+    type Groth16Proof,
+    TIER_VERIFIER_CONTRACT_ID
+} from "./zkTypes";
 
-// ============================================================================
-// Types
-// ============================================================================
-
-export interface TierProofInputs {
-    tier_id: string;
-    commitment_expected: string;
-    address_hash: string;
-    balance: string;
-    salt: string;
-}
-
-export interface Groth16Proof {
-    pi_a: string[];
-    pi_b: string[][];
-    pi_c: string[];
-    protocol: "groth16";
-    curve: "bn254";
-}
-
-export interface ProofResult {
-    proof: Groth16Proof;
-    publicSignals: string[];
-}
+// Re-export specific helpers that might be needed, or let consumers import from zkTypes
+// But for compatibility with existing imports, we might not need to re-export everything if we update call sites.
+// Actually, let's keep the logic functions here.
 
 // ============================================================================
 // Poseidon Hash (matches circuit)
@@ -204,29 +188,8 @@ export function proofToBytes(proof: Groth16Proof): Uint8Array {
 }
 
 // ============================================================================
-// Constants
-// ============================================================================
-
-export const TIER_THRESHOLDS = {
-    SPROUT: 0n,
-    GROWER: 100n * 10_000_000n,      // 100 KALE
-    HARVESTER: 1_000n * 10_000_000n, // 1,000 KALE
-    WHALE: 10_000n * 10_000_000n,    // 10,000 KALE
-};
-
-export function getTierIdForBalance(balance: bigint): number {
-    if (balance >= TIER_THRESHOLDS.WHALE) return 3;
-    if (balance >= TIER_THRESHOLDS.HARVESTER) return 2;
-    if (balance >= TIER_THRESHOLDS.GROWER) return 1;
-    return 0;
-}
-
-// ============================================================================
 // On-Chain Contract Integration
 // ============================================================================
-
-/** Mainnet contract ID for tier verifier */
-export const TIER_VERIFIER_CONTRACT_ID = "CBGLUCGJNVEP3NN6U5KCWSTWKHALXCXOGF5FE6V6C3RIGBQ37O2CTPCO";
 
 /**
  * Check if a farmer has already verified their tier on-chain.
@@ -240,7 +203,9 @@ export async function checkAttestation(farmerAddress: string): Promise<{
     try {
         // Dynamic import to avoid load issues
         const sdk = await import("@stellar/stellar-sdk");
-        const { Server, Contract, Address, scValToNative } = sdk;
+        // @ts-ignore - Handle different SDK versions for Server (Horizon.Server)
+        const Server = sdk.Server || sdk.Horizon?.Server;
+        const { Contract, Address, scValToNative } = sdk;
         const { getBestRpcUrl } = await import("../../../utils/rpc");
 
         const server = new Server(getBestRpcUrl());
@@ -252,37 +217,6 @@ export async function checkAttestation(farmerAddress: string): Promise<{
             "get_attestation",
             new Address(farmerAddress).toScVal()
         );
-
-        // Create a dummy transaction to simulate
-        // We need a source account, but for simulation any valid public key works usually,
-        // or we can use the "call" simulation approach if available.
-        // Easiest is to use the server.simulateTransaction with a minimal tx.
-        // However, building a tx requires a source account sequence.
-        // "get_attestation" is a read-only View function (if marked as such, or just reading persistent state).
-
-        // Actually, for simple state reads, we can use `server.getContractData` if we know the storage key.
-        // The contract uses `DataKey::Attestation(Address)`.
-        // Start by trying to read contract storage directly? 
-        // Ledger entry key generation is complex client-side without the SDK helpers.
-
-        // Better: use simulateTransaction with a random source or the farmer's address (if we don't have seq, it might fail).
-        // Let's use a "dirty" read with an arbitrary source if the SDK supports `call` simulation.
-        // In basic SDK, we typically do: `transaction = new TransactionBuilder(...)`.
-
-        // Let's try to just read the ledger entry if possible. 
-        // `get_attestation` returns `Option<TierAttestation>`.
-
-        // SIMPLIFICATION: We'll wrap it in a transaction using the farmer as source (0 sequence) 
-        // and simulate. The RPC usually allows simulation even with bad sequence for reads.
-
-        // We need 'TransactionBuilder' and 'Account'.
-        // Since we don't want to fetch sequence, let's use a zero-account approach or specific RPC call if available.
-        // But standard practice is simulateTransaction.
-
-        // Let's rely on the fact that we can construct a specialized read tx.
-        // Or simpler: assume we might not get it easily without a connected wallet context?
-        // No, we want to check even if wallet not connected? well, we need farmerAddress.
-        // If we have farmerAddress, we can fetch their sequence.
 
         const accountResponse = await server.loadAccount(farmerAddress).catch(() => null);
         let seq = "0";
@@ -312,14 +246,8 @@ export async function checkAttestation(farmerAddress: string): Promise<{
         }
 
         // Parse result
-        // If "latestLedger" is present it succeeded mostly.
-        // Look for result xdr.
         if (sim.results && sim.results[0] && sim.results[0].retval) {
             const val = sim.results[0].retval;
-            // Val is xdr.ScVal. decode it.
-            // It returns Option<TierAttestation>. 
-            // Option::None is represented as... ScValType.scValVoid()? Or null?
-            // In Rust SDK Option::None is usually Void or specific enum variant.
 
             const result = scValToNative(val);
             if (!result) return { verified: false };
