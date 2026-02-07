@@ -1,18 +1,22 @@
 {
   "id": "compost-pledge",
-  "title": "Compost Pledge (Recycling Attestation)",
+  "title": "Compost Pledge (Design Concept)",
+  "description": "Concept: prove weekly recycling events via Merkle inclusion + range proof. Not yet implemented.",
   "smartWallet": "CBM5FJ3VUGD5YI4GJ4LZ2H2V6MWZVJ4UP5B6O6GJMXZ6H2Q6EV7R5O2A",
   "network": "stellar-testnet",
-  "circuit": "CompostCircuit v0.1",
-  "proof": "0x7ed2d1bc5f9886c0a77b9e94b8b2d6c3f31908e4c6d14a2a6b0f8a4d29f1a8c5",
-  "publicInputs": {
-    "eventRoot": "0x0f3f9a5b62b814c8e9d04e7f5b71f8f6b2a2d5c3a8d7b3c4e4f9a7d2b1c0f3a1",
-    "rangeFlag": true
+  "scheme": "Planned — Merkle inclusion + range proof",
+  "status": "concept",
+  "designInputs": {
+    "eventRoot": "Merkle root of recycling event hashes",
+    "leafIndex": "Position of the user's event in the tree",
+    "recycleCount": "Number of events (private input)"
   },
-  "outputs": {
-    "membership": "valid",
-    "weeklyTargetMet": true
+  "designOutputs": {
+    "membership": "Boolean — leaf is a valid member of the Merkle tree",
+    "rangeFlag": "Boolean — count meets weekly threshold without revealing exact count"
   },
+  "verification": "Not yet implemented. Would require a Merkle proof circuit and range constraint.",
   "generatedAt": "2026-02-06T18:45:55.000Z",
-  "source": "smol smart wallet stewardship"
+  "source": "smol smart wallet stewardship",
+  "note": "Design concept only. This file documents the intended proof format for future implementation."
 }

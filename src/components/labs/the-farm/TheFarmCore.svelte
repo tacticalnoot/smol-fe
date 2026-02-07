@@ -9,6 +9,7 @@
         formatKaleBalance,
         generateCommitment,
         generateSalt,
+        verifyCommitment,
         buildProofPacket,
         saveEarnedBadge,
         loadAllBadges,
@@ -37,6 +38,8 @@
     let gameCopied = $state<string | null>(null);
     let gameForging = $state<string | null>(null);
     let gameWallet = $state<string | null>(null);
+    let verifying = $state(false);
+    let verifyResult = $state<boolean | null>(null);
 
     type GalleryProof = {
         id: string;
@@ -124,121 +127,121 @@
         {
             id: "kale-bloom",
             title: "Kale Bloom",
-            summary: "Prove you crossed a KALE threshold without leaking your exact balance.",
-            proof: "Poseidon tier commitment + hashed salt",
-            circuit: "BloomGate v0.3",
+            summary: "Commit to your KALE tier without revealing your exact balance. SHA-256 commitment with random salt — verifiable by recomputing the hash.",
+            proof: "SHA-256 commitment: sha256(address || balance || salt)",
+            circuit: "Commit-Reveal Scheme",
             status: "LIVE",
             file: "/proofs/smol-proof-of-farm.json",
             wallet: "CA4KZP5ZXY2A6Q6HQ2TK3AJXFG6OU7Y5CNGT7GIEH6JQO6F7KLBWYX3V",
-            tags: ["tier", "privacy", "commitment"],
-            tested: "Contest test: ✅ local verify",
-            inputs: ["wallet address", "kale balance", "random salt"],
-            outputs: ["tier hash", "tier label"],
-            note: "This proof is live in The Farm flow — generate it above to see the commitment.",
+            tags: ["tier", "commitment", "sha-256"],
+            tested: "Verified: commitment recomputation matches",
+            inputs: ["wallet address", "kale balance", "random 32-byte salt"],
+            outputs: ["commitment hash (32 bytes)", "tier index (0-3)"],
+            note: "Live commitment generation — generate above, then verify by recomputing the hash from your address + balance + salt.",
             requiresKale: true,
-            requirementCopy: "Mine or trade KALE in the Kale Farm to verify this proof.",
+            requirementCopy: "Mine or trade KALE in the Kale Farm to generate this commitment.",
         },
         {
             id: "compost-pledge",
             title: "Compost Pledge",
-            summary: "Show you recycled weekly without exposing the count of events.",
-            proof: "Merkle inclusion of recycled events + range proof",
-            circuit: "CompostCircuit v0.1",
-            status: "LIVE",
+            summary: "Concept: prove weekly recycling events via Merkle inclusion + range proof. Circuit not yet implemented.",
+            proof: "Planned: Merkle inclusion + range proof circuit",
+            circuit: "Concept — not yet implemented",
+            status: "CONCEPT",
             file: "/proofs/smol-compost-pledge.json",
             wallet: "CBM5FJ3VUGD5YI4GJ4LZ2H2V6MWZVJ4UP5B6O6GJMXZ6H2Q6EV7R5O2A",
-            tags: ["merkle", "range", "event log"],
-            tested: "Contest test: ✅ simulated trace",
+            tags: ["merkle", "range", "planned"],
+            tested: "Not yet implemented — sample data only",
             inputs: ["event root", "leaf index", "recycle count"],
             outputs: ["valid membership", "count range flag"],
-            note: "Powered by dummy logs for now, but verified end-to-end in the test harness.",
+            note: "Design concept with sample proof format. Requires a Merkle tree + range proof circuit to be built.",
             requiresKale: false,
-            requirementCopy: "No KALE activity required — ready for anyone to verify.",
+            requirementCopy: "Concept proof — not yet interactive.",
         },
         {
             id: "sprout-sprint",
             title: "Sprout Sprint",
-            summary: "Prove you completed a 3-day streak with no date leaks.",
-            proof: "Nullifier streak proof + rolling hash",
-            circuit: "SproutSprint v0.2",
-            status: "LIVE",
+            summary: "Concept: prove a 3-day streak using nullifiers so each day can only be claimed once. Circuit not yet implemented.",
+            proof: "Planned: Nullifier-based streak circuit",
+            circuit: "Concept — not yet implemented",
+            status: "CONCEPT",
             file: "/proofs/smol-sprout-sprint.json",
             wallet: "CC7K4YFZP5Q6R5C42J6KQJ4U6P4V4A2I4Y4K3QFQ4N6J5X7PN4F5QEA",
-            tags: ["streak", "nullifier", "time"],
-            tested: "Contest test: ✅ witness replay",
+            tags: ["streak", "nullifier", "planned"],
+            tested: "Not yet implemented — sample data only",
             inputs: ["day hashes", "streak nullifier"],
             outputs: ["streak attestation"],
-            note: "Proof remains anonymous while confirming the streak duration.",
+            note: "Design concept. Requires a nullifier circuit that prevents double-claiming days.",
             requiresKale: false,
-            requirementCopy: "No KALE activity required — this demo is open to all.",
+            requirementCopy: "Concept proof — not yet interactive.",
         },
         {
             id: "field-escort",
             title: "Field Escort",
-            summary: "Verify you guided a crop shipment without sharing the route.",
-            proof: "Commit-and-verify waypoint proof",
-            circuit: "RouteShield v0.1",
-            status: "LIVE",
+            summary: "Concept: verify a crop shipment route via sequential waypoint commitments. Circuit not yet implemented.",
+            proof: "Planned: Chained waypoint commitment circuit",
+            circuit: "Concept — not yet implemented",
+            status: "CONCEPT",
             file: "/proofs/smol-field-escort.json",
             wallet: "CAG6XPLT3VQ5WB3D6I5QEXER2Q4RA6N3PHJ2G5Q4BNRVR4F46Q4Q6SGB",
-            tags: ["route", "waypoints", "commit"],
-            tested: "Contest test: ✅ proof packet signed",
+            tags: ["route", "waypoints", "planned"],
+            tested: "Not yet implemented — sample data only",
             inputs: ["route commitments", "shipment id"],
             outputs: ["valid escort flag"],
-            note: "This demo proof is ready for contest review and matches the live packet format.",
+            note: "Design concept. Would require chained commitments per waypoint with sequential verification.",
             requiresKale: false,
-            requirementCopy: "No KALE activity required — open demo proof.",
+            requirementCopy: "Concept proof — not yet interactive.",
         },
         {
             id: "tic-tac-tac",
             title: "Stellar Tic-Tac-Tac",
-            summary: "Prove a 3-move win streak without revealing the full grid.",
-            proof: "Move hash + win line proof",
-            circuit: "GridMate v0.1",
+            summary: "SHA-256 commitment of your game actions and score. Play the game below to generate a real commitment.",
+            proof: "SHA-256 commitment: sha256(wallet + game + score + actions + salt)",
+            circuit: "Commit-Reveal Scheme",
             status: "LIVE",
             file: "/proofs/smol-tic-tac-proof.json",
             wallet: "CDWJ4P7PLVKG4Q3TFFZ5B5C5RXKFYI6K7Z2R4V7BPNLBNHGQWZLQHXO",
-            tags: ["game", "grid", "commitment"],
-            tested: "Contest test: ✅ local sim",
-            inputs: ["move hash", "win line index", "salt"],
-            outputs: ["win attestation", "session hash"],
-            note: "Generated by the Stellar Tic-Tac-Tac mini game below.",
+            tags: ["game", "commitment", "sha-256"],
+            tested: "Verified: commitment generated from real game actions",
+            inputs: ["wallet address", "game actions", "score", "salt"],
+            outputs: ["action hash", "commitment hash"],
+            note: "Play Tic-Tac-Tac below to generate a commitment from real game actions.",
             requiresKale: false,
-            requirementCopy: "No KALE activity required — play the mini game to mint it.",
+            requirementCopy: "No KALE activity required — play the mini game to generate a commitment.",
         },
         {
             id: "asteroid-dodge",
             title: "Asteroid Dodge",
-            summary: "Prove you cleared a dodge run without exposing the path.",
-            proof: "Dodge action hash + run proof",
-            circuit: "DodgeSeal v0.2",
+            summary: "SHA-256 commitment of your dodge run. Complete the sequence below to generate a real commitment.",
+            proof: "SHA-256 commitment: sha256(wallet + game + score + actions + salt)",
+            circuit: "Commit-Reveal Scheme",
             status: "LIVE",
             file: "/proofs/smol-asteroid-dodge.json",
             wallet: "CC5U5CPVY3ZVZHYV4PEKXSSB7K4GFD4OAN3NXR6OZECY7BNL3D7D3FBA",
-            tags: ["game", "runner", "nullifier"],
-            tested: "Contest test: ✅ trace replay",
-            inputs: ["action hash", "run length", "salt"],
-            outputs: ["run attestation"],
-            note: "Mintable by completing the Asteroid Dodge sequence below.",
+            tags: ["game", "commitment", "sha-256"],
+            tested: "Verified: commitment generated from real game actions",
+            inputs: ["wallet address", "game actions", "run length", "salt"],
+            outputs: ["action hash", "commitment hash"],
+            note: "Complete the Asteroid Dodge sequence below to generate a commitment.",
             requiresKale: false,
-            requirementCopy: "No KALE activity required — clear the run to mint.",
+            requirementCopy: "No KALE activity required — clear the run to generate a commitment.",
         },
         {
             id: "pattern-runner",
             title: "Pattern Runner",
-            summary: "Prove you hit a secret rhythm streak.",
-            proof: "Beat match hash + streak proof",
-            circuit: "RhythmLock v0.1",
+            summary: "SHA-256 commitment of your rhythm streak. Hit the targets below to generate a real commitment.",
+            proof: "SHA-256 commitment: sha256(wallet + game + score + actions + salt)",
+            circuit: "Commit-Reveal Scheme",
             status: "LIVE",
             file: "/proofs/smol-pattern-runner.json",
             wallet: "CBNQ2X6T7JXK5B2M5AGPSZ5XKQZV6K7W2Q4R2J5P6K3X6ZL7PRX7G5QY",
-            tags: ["game", "streak", "commitment"],
-            tested: "Contest test: ✅ witness replay",
-            inputs: ["beat hash", "streak length", "salt"],
-            outputs: ["streak attestation"],
-            note: "Play the rhythm sequence to mint a proof packet.",
+            tags: ["game", "commitment", "sha-256"],
+            tested: "Verified: commitment generated from real game actions",
+            inputs: ["wallet address", "beat actions", "streak length", "salt"],
+            outputs: ["action hash", "commitment hash"],
+            note: "Play the rhythm sequence below to generate a commitment from your real actions.",
             requiresKale: false,
-            requirementCopy: "No KALE activity required — hit the streak to mint.",
+            requirementCopy: "No KALE activity required — hit the streak to generate a commitment.",
         },
     ];
 
@@ -335,6 +338,33 @@
             }, 2000);
         } catch (e: any) {
             error = e.message || "Unable to copy proof payload";
+        }
+    }
+
+    async function verifyProof() {
+        if (!userState.contractId || balance === null) return;
+        const badge = earned["proof-of-farm"];
+        if (!badge) return;
+        const saltHex = badge.data?.salt as string | undefined;
+        const commitment = badge.data?.commitment as string | undefined;
+        if (!saltHex || !commitment) return;
+
+        verifying = true;
+        verifyResult = null;
+        error = null;
+        try {
+            const result = await verifyCommitment(
+                userState.contractId,
+                balance,
+                saltHex,
+                commitment,
+            );
+            verifyResult = result;
+        } catch (e: any) {
+            error = e.message || "Verification failed";
+            verifyResult = false;
+        } finally {
+            verifying = false;
         }
     }
 
@@ -577,11 +607,12 @@
                     {#if showCelebration}
                         <div class="proof-celebration" aria-live="polite">
                             <div class="proof-celebration-card">
-                                <span class="proof-celebration-eyebrow">Proof forged</span>
-                                <p class="proof-celebration-title">ZK commitment minted ✨</p>
+                                <span class="proof-celebration-eyebrow">Commitment sealed</span>
+                                <p class="proof-celebration-title">Tier commitment generated ✨</p>
                                 <p class="proof-celebration-body">
-                                    We generated your tier commitment, sealed it with a new salt,
-                                    and stored the proof packet for verification.
+                                    We hashed your tier with a random salt using SHA-256.
+                                    The commitment is stored locally — verify it anytime by
+                                    recomputing the hash from your address, balance, and salt.
                                 </p>
                             </div>
                             <div class="proof-confetti" aria-hidden="true">
@@ -599,21 +630,35 @@
                         />
                         <div class="proof-tools">
                             <p class="proof-tools-text">
-                                Verify by recomputing the commitment from your wallet address,
-                                your KALE balance, and the saved salt.
+                                Verify by recomputing SHA-256(address || balance || salt)
+                                and checking it matches the stored commitment.
                             </p>
-                            <button class="proof-tools-btn" type="button" onclick={copyProofPacket}>
-                                {copied ? "Proof payload copied" : "Copy proof payload"}
-                            </button>
+                            <div class="proof-tools-actions">
+                                <button class="proof-tools-btn" type="button" onclick={verifyProof} disabled={verifying}>
+                                    {verifying ? "Verifying..." : "Verify commitment"}
+                                </button>
+                                <button class="proof-tools-btn" type="button" onclick={copyProofPacket}>
+                                    {copied ? "Payload copied" : "Copy proof payload"}
+                                </button>
+                            </div>
+                            {#if verifyResult === true}
+                                <p class="proof-tools-verify proof-tools-verify--pass">
+                                    Commitment verified — SHA-256 hash matches stored value.
+                                </p>
+                            {:else if verifyResult === false}
+                                <p class="proof-tools-verify proof-tools-verify--fail">
+                                    Verification failed — balance may have changed since commitment was generated.
+                                </p>
+                            {/if}
                             <p class="proof-tools-meta">
-                                Tier {tierCfg.name} sealed · commitment stored locally in your proof vault.
+                                Tier {tierCfg.name} · commitment stored locally · on-chain attestation via Soroban contract.
                             </p>
                         </div>
                     {:else if proving}
                         <div class="proving-card">
                             <div class="proving-spinner"></div>
-                            <p class="proving-text">Generating zero-knowledge commitment...</p>
-                            <p class="proving-sub">Hashing your tier with Poseidon (SHA-256 stand-in)</p>
+                            <p class="proving-text">Generating cryptographic commitment...</p>
+                            <p class="proving-sub">Computing SHA-256(address || balance || salt)</p>
                         </div>
                     {:else}
                         <!-- Balance + tier + generate button -->
@@ -631,8 +676,8 @@
                             {/if}
 
                             <p class="proof-desc">
-                                Generate a cryptographic proof of your farming tier.
-                                Your balance stays private — only the tier is attested.
+                                Generate a cryptographic commitment of your farming tier.
+                                The commitment hides your balance behind a salted SHA-256 hash.
                             </p>
                             {#if !hasKale}
                                 <div class="proof-nudge">
@@ -662,19 +707,19 @@
                     </div>
                 </section>
 
-                <!-- ZK Proof Gallery -->
+                <!-- Commitment Gallery -->
                 <section class="gallery-section">
                     <div class="gallery-header">
-                        <h2 class="section-label">ZK Proof Gallery</h2>
+                        <h2 class="section-label">Commitment Gallery</h2>
                         <div class="gallery-header-right">
-                            <span class="gallery-subtitle">Contest-ready demos — click to open</span>
+                            <span class="gallery-subtitle">Live commitments & design concepts — click to open</span>
                             <button
                                 class="gallery-cta"
                                 type="button"
                                 onclick={generateProof}
                                 disabled={balance === null || proving || hasProof}
                             >
-                                {hasProof ? "Proof minted" : "Forge a live proof"}
+                                {hasProof ? "Commitment sealed" : "Generate a live commitment"}
                             </button>
                         </div>
                     </div>
@@ -725,9 +770,9 @@
 
     <section class="game-section">
         <div class="game-header">
-            <h2 class="section-label">ZK Mini Game Lab</h2>
+            <h2 class="section-label">Mini Game Commitment Lab</h2>
             <p class="game-subtitle">
-                Repeatable, progressive proofs tied directly to mini game actions.
+                Repeatable, progressive commitments tied directly to mini game actions.
             </p>
             {#if !isAuth}
                 <p class="game-subtitle game-wallet">
@@ -790,7 +835,7 @@
                             onclick={() => forgeGameProof(game)}
                             disabled={game.status !== "complete" || gameForging === game.id}
                         >
-                            {gameForging === game.id ? "Forging..." : "Forge ZK proof"}
+                            {gameForging === game.id ? "Sealing..." : "Seal commitment"}
                         </button>
                     </div>
                     {#if game.proof}
@@ -832,11 +877,11 @@
             <p class="gallery-modal-summary">{activeProof.summary}</p>
             <div class="gallery-modal-grid">
                 <div class="gallery-modal-card">
-                    <span class="gallery-modal-eyebrow">Circuit</span>
+                    <span class="gallery-modal-eyebrow">Scheme</span>
                     <span class="gallery-modal-value">{activeProof.circuit}</span>
                 </div>
                 <div class="gallery-modal-card">
-                    <span class="gallery-modal-eyebrow">Proof</span>
+                    <span class="gallery-modal-eyebrow">Method</span>
                     <span class="gallery-modal-value">{activeProof.proof}</span>
                 </div>
                 <div class="gallery-modal-card">
@@ -1705,6 +1750,12 @@
         color: rgba(226, 232, 240, 0.6);
         font-family: 'Press Start 2P', monospace;
     }
+    .proof-tools-actions {
+        display: flex;
+        gap: 8px;
+        flex-wrap: wrap;
+        justify-content: center;
+    }
     .proof-tools-btn {
         font-family: 'Press Start 2P', monospace;
         font-size: 8px;
@@ -1717,10 +1768,32 @@
         letter-spacing: 1px;
         transition: all 0.2s ease;
     }
-    .proof-tools-btn:hover {
+    .proof-tools-btn:hover:not(:disabled) {
         color: #c6ff3b;
         border-color: rgba(198, 255, 59, 0.8);
         box-shadow: 0 0 18px rgba(154, 230, 0, 0.2);
+    }
+    .proof-tools-btn:disabled {
+        opacity: 0.5;
+        cursor: not-allowed;
+    }
+    .proof-tools-verify {
+        font-family: 'Press Start 2P', monospace;
+        font-size: 8px;
+        text-align: center;
+        padding: 8px 12px;
+        border-radius: 8px;
+        letter-spacing: 0.5px;
+    }
+    .proof-tools-verify--pass {
+        color: #4ade80;
+        background: rgba(74, 222, 128, 0.1);
+        border: 1px solid rgba(74, 222, 128, 0.3);
+    }
+    .proof-tools-verify--fail {
+        color: #fb923c;
+        background: rgba(251, 146, 60, 0.1);
+        border: 1px solid rgba(251, 146, 60, 0.3);
     }
     .proof-error {
         font-size: 9px;
