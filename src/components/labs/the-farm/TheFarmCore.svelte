@@ -1,8 +1,9 @@
-    import { userState, getPasskeyKit } from "../../../stores/user.svelte";
+<script lang="ts">
+    import { userState, getPasskeyKit } from "../../../stores/user.svelte.ts";
     import {
         balanceState,
         updateContractBalance,
-    } from "../../../stores/balance.svelte";
+    } from "../../../stores/balance.svelte.ts";
     import FarmBadge from "./FarmBadge.svelte";
     import {
         BADGE_REGISTRY,
@@ -34,7 +35,6 @@
         getOrCreateGameWalletId,
         type ZkGameProof,
     } from "./zkGames";
-
 
     // ── State ──────────────────────────────────────────────────────────────
     let proving = $state(false);
