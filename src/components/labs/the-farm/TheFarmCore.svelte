@@ -24,6 +24,7 @@
         proofToBytes,
         submitProofToContract,
         hashProof,
+        checkAttestation,
         type ProofResult,
     } from "./zkProof";
     import {

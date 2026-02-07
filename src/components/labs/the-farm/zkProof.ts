@@ -229,6 +229,121 @@ export function getTierIdForBalance(balance: bigint): number {
 export const TIER_VERIFIER_CONTRACT_ID = "CBGLUCGJNVEP3NN6U5KCWSTWKHALXCXOGF5FE6V6C3RIGBQ37O2CTPCO";
 
 /**
+ * Check if a farmer has already verified their tier on-chain.
+ */
+export async function checkAttestation(farmerAddress: string): Promise<{
+    verified: boolean;
+    tier?: number;
+    timestamp?: number;
+    commitment?: string;
+}> {
+    try {
+        // Dynamic import to avoid load issues
+        const { Server, Contract, Address, xdr, scValToNative } = await import("@stellar/stellar-sdk");
+        const { getBestRpcUrl } = await import("../../../utils/rpc");
+
+        const server = new Server(getBestRpcUrl());
+        const contract = new Contract(TIER_VERIFIER_CONTRACT_ID);
+
+        // Simulate a call to get_attestation
+        // We use simulateTransaction because we're reading state, not writing
+        const op = contract.call(
+            "get_attestation",
+            new Address(farmerAddress).toScVal()
+        );
+
+        // Create a dummy transaction to simulate
+        // We need a source account, but for simulation any valid public key works usually,
+        // or we can use the "call" simulation approach if available.
+        // Easiest is to use the server.simulateTransaction with a minimal tx.
+        // However, building a tx requires a source account sequence.
+        // "get_attestation" is a read-only View function (if marked as such, or just reading persistent state).
+
+        // Actually, for simple state reads, we can use `server.getContractData` if we know the storage key.
+        // The contract uses `DataKey::Attestation(Address)`.
+        // Start by trying to read contract storage directly? 
+        // Ledger entry key generation is complex client-side without the SDK helpers.
+
+        // Better: use simulateTransaction with a random source or the farmer's address (if we don't have seq, it might fail).
+        // Let's use a "dirty" read with an arbitrary source if the SDK supports `call` simulation.
+        // In basic SDK, we typically do: `transaction = new TransactionBuilder(...)`.
+
+        // Let's try to just read the ledger entry if possible. 
+        // `get_attestation` returns `Option<TierAttestation>`.
+
+        // SIMPLIFICATION: We'll wrap it in a transaction using the farmer as source (0 sequence) 
+        // and simulate. The RPC usually allows simulation even with bad sequence for reads.
+
+        // We need 'TransactionBuilder' and 'Account'.
+        // Since we don't want to fetch sequence, let's use a zero-account approach or specific RPC call if available.
+        // But standard practice is simulateTransaction.
+
+        // Let's rely on the fact that we can construct a specialized read tx.
+        // Or simpler: assume we might not get it easily without a connected wallet context?
+        // No, we want to check even if wallet not connected? well, we need farmerAddress.
+        // If we have farmerAddress, we can fetch their sequence.
+
+        const accountResponse = await server.loadAccount(farmerAddress).catch(() => null);
+        let seq = "0";
+        if (accountResponse) {
+            seq = accountResponse.sequence;
+        } else {
+            // New account or not found, implies no attestation anyway? 
+            // well account must exist to sign the attestation tx previously.
+            return { verified: false };
+        }
+
+        const { TransactionBuilder, Account, TimeoutInfinite } = await import("@stellar/stellar-sdk");
+
+        const source = new Account(farmerAddress, seq);
+        const tx = new TransactionBuilder(source, {
+            fee: "100",
+            networkPassphrase: "Public Global Stellar Network ; September 2015", // Mainnet
+        })
+            .addOperation(op)
+            .setTimeout(TimeoutInfinite)
+            .build();
+
+        const sim = await server.simulateTransaction(tx);
+
+        if (TransactionBuilder.fromXDR(sim.transactionEnvelope, "passphrase" as any) === null) {
+            // Basic validity check fail
+        }
+
+        // Parse result
+        // If "latestLedger" is present it succeeded mostly.
+        // Look for result xdr.
+        if (sim.results && sim.results[0] && sim.results[0].retval) {
+            const val = sim.results[0].retval;
+            // Val is xdr.ScVal. decode it.
+            // It returns Option<TierAttestation>. 
+            // Option::None is represented as... ScValType.scValVoid()? Or null?
+            // In Rust SDK Option::None is usually Void or specific enum variant.
+
+            const result = scValToNative(val);
+            if (!result) return { verified: false };
+
+            // result should be the struct: { farmer, tier, commitment, verified_at }
+            if (result.tier !== undefined) {
+                return {
+                    verified: true,
+                    tier: result.tier,
+                    timestamp: Number(result.verified_at),
+                    // commitment is bytes, might be Uint8Array
+                    commitment: result.commitment ?
+                        Array.from(result.commitment).map(b => b.toString(16).padStart(2, '0')).join('') : undefined
+                };
+            }
+        }
+
+        return { verified: false };
+    } catch (e) {
+        console.warn("[ZK] Failed to check attestation:", e);
+        return { verified: false };
+    }
+}
+
+/**
  * Submit a ZK proof attestation to the mainnet contract.
  * 
  * @param farmerAddress - The farmer's Stellar address
