@@ -1,8 +1,8 @@
-    import { userState, getPasskeyKit } from "../../../stores/user.svelte.ts";
+    import { userState, getPasskeyKit } from "../../../stores/user.svelte";
     import {
         balanceState,
         updateContractBalance,
-    } from "../../../stores/balance.svelte.ts";
+    } from "../../../stores/balance.svelte";
     import FarmBadge from "./FarmBadge.svelte";
     import {
         BADGE_REGISTRY,
