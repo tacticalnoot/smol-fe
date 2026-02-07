@@ -2139,9 +2139,37 @@
     .proof-tools-verify--pass {
         color: #4ade80;
         background: rgba(74, 222, 128, 0.1);
-        .proof-tools-verify--pass {
-            color: #4ade80;
-        }
+        border: 1px solid rgba(74, 222, 128, 0.3);
+    }
+    .proof-onchain-success {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        gap: 6px;
+        margin-top: 12px;
+        padding: 12px;
+        background: rgba(74, 222, 128, 0.1);
+        border: 1px solid rgba(74, 222, 128, 0.3);
+        border-radius: 12px;
+        width: 100%;
+    }
+    .proof-success-title {
+        font-family: "Press Start 2P", monospace;
+        font-size: 9px;
+        color: #4ade80;
+        margin: 0;
+    }
+    .proof-tx-link {
+        font-size: 9px;
+        color: #4ade80;
+        text-decoration: underline;
+        opacity: 0.8;
+    }
+    .proof-tx-link:hover {
+        opacity: 1;
+    }
+    .proof-tools-verify--fail {
+        color: #fb923c;
         background: rgba(251, 146, 60, 0.1);
         border: 1px solid rgba(251, 146, 60, 0.3);
     }
