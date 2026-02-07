@@ -1,4 +1,5 @@
 <script lang="ts">
+    import { untrack } from "svelte";
     import { userState, getPasskeyKit } from "../../../stores/user.svelte.ts";
     import {
         balanceState,
@@ -332,7 +333,9 @@
             userState.contractId ?? zkGamesLogic.getOrCreateGameWalletId();
         gameWallet = walletId;
         gameProofs = zkGamesLogic.loadGameProofs(walletId);
-        zkGames = zkGames.map((game) => ({
+
+        // Use untrack to prevent infinite loop since we are writing to zkGames
+        zkGames = untrack(() => zkGames).map((game) => ({
             ...game,
             proof: gameProofs[game.id],
         }));
