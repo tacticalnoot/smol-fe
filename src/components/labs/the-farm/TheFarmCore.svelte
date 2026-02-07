@@ -1,5 +1,4 @@
-<script lang="ts">
-    import { userState } from "../../../stores/user.svelte.ts";
+    import { userState, getPasskeyKit } from "../../../stores/user.svelte.ts";
     import {
         balanceState,
         updateContractBalance,
@@ -35,7 +34,7 @@
         getOrCreateGameWalletId,
         type ZkGameProof,
     } from "./zkGames";
-    import { getPasskeyKit } from "../../../stores/user.svelte";
+
 
     // ── State ──────────────────────────────────────────────────────────────
     let proving = $state(false);
