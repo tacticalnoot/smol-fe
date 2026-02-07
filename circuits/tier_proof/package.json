@@ -1,0 +1,19 @@
+{
+    "name": "tier-proof-circuit",
+    "version": "1.0.0",
+    "description": "Circom circuit for Proof of Farm tier verification",
+    "scripts": {
+        "compile": "circom tier_proof.circom --r1cs --wasm --sym",
+        "setup": "snarkjs groth16 setup tier_proof.r1cs pot12_final.ptau tier_proof_0000.zkey",
+        "contribute": "snarkjs zkey contribute tier_proof_0000.zkey tier_proof_final.zkey --name=\"smol-farm\" -v",
+        "export-vkey": "snarkjs zkey export verificationkey tier_proof_final.zkey verification_key.json",
+        "prove": "snarkjs groth16 prove tier_proof_final.zkey witness.wtns proof.json public.json",
+        "verify": "snarkjs groth16 verify verification_key.json public.json proof.json",
+        "gen-verifier": "soroban-verifier-gen --vk verification_key.json --out ../contracts/tier-verifier --curve bn254 --contract-name TierVerifier",
+        "full-setup": "npm run compile && npm run setup && npm run contribute && npm run export-vkey"
+    },
+    "dependencies": {
+        "circomlib": "^2.0.5",
+        "snarkjs": "^0.7.4"
+    }
+}

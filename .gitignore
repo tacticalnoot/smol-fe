@@ -69,3 +69,8 @@ artifacts/phase-*.json
 
 .agent/_reports/
 
+
+# Deployer keys - DO NOT COMMIT
+DEPLOYER_KEY.md
+deployer-credentials.md
+**/DEPLOYER_KEY.md

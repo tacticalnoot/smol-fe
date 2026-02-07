@@ -1,20 +1,29 @@
 <script lang="ts">
     import { userState } from "../../../stores/user.svelte.ts";
-    import { balanceState, updateContractBalance } from "../../../stores/balance.svelte.ts";
+    import {
+        balanceState,
+        updateContractBalance,
+    } from "../../../stores/balance.svelte.ts";
     import FarmBadge from "./FarmBadge.svelte";
     import {
         BADGE_REGISTRY,
         TIER_CONFIG,
         getTierForBalance,
         formatKaleBalance,
-        generateCommitment,
-        generateSalt,
-        verifyCommitment,
         buildProofPacket,
         saveEarnedBadge,
         loadAllBadges,
         type EarnedBadge,
     } from "./proof";
+    // Real ZK proof generation
+    import {
+        generateTierProof,
+        generateRandomSalt,
+        hashAddress,
+        getTierIdForBalance,
+        proofToBytes,
+        type ProofResult,
+    } from "./zkProof";
     import {
         createGameProof,
         buildGameProofPacket,
@@ -40,6 +49,9 @@
     let gameWallet = $state<string | null>(null);
     let verifying = $state(false);
     let verifyResult = $state<boolean | null>(null);
+    let proofData = $state<ProofResult | null>(null);
+    let txHash = $state<string | null>(null);
+    let onChainVerified = $state<boolean | null>(null);
 
     type GalleryProof = {
         id: string;
@@ -127,7 +139,8 @@
         {
             id: "kale-bloom",
             title: "Kale Bloom",
-            summary: "Commit to your KALE tier without revealing your exact balance. SHA-256 commitment with random salt — verifiable by recomputing the hash.",
+            summary:
+                "Commit to your KALE tier without revealing your exact balance. SHA-256 commitment with random salt — verifiable by recomputing the hash.",
             proof: "SHA-256 commitment: sha256(address || balance || salt)",
             circuit: "Commit-Reveal Scheme",
             status: "LIVE",
@@ -139,12 +152,14 @@
             outputs: ["commitment hash (32 bytes)", "tier index (0-3)"],
             note: "Live commitment generation — generate above, then verify by recomputing the hash from your address + balance + salt.",
             requiresKale: true,
-            requirementCopy: "Mine or trade KALE in the Kale Farm to generate this commitment.",
+            requirementCopy:
+                "Mine or trade KALE in the Kale Farm to generate this commitment.",
         },
         {
             id: "compost-pledge",
             title: "Compost Pledge",
-            summary: "Concept: prove weekly recycling events via Merkle inclusion + range proof. Circuit not yet implemented.",
+            summary:
+                "Concept: prove weekly recycling events via Merkle inclusion + range proof. Circuit not yet implemented.",
             proof: "Planned: Merkle inclusion + range proof circuit",
             circuit: "Concept — not yet implemented",
             status: "CONCEPT",
@@ -161,7 +176,8 @@
         {
             id: "sprout-sprint",
             title: "Sprout Sprint",
-            summary: "Concept: prove a 3-day streak using nullifiers so each day can only be claimed once. Circuit not yet implemented.",
+            summary:
+                "Concept: prove a 3-day streak using nullifiers so each day can only be claimed once. Circuit not yet implemented.",
             proof: "Planned: Nullifier-based streak circuit",
             circuit: "Concept — not yet implemented",
             status: "CONCEPT",
@@ -178,7 +194,8 @@
         {
             id: "field-escort",
             title: "Field Escort",
-            summary: "Concept: verify a crop shipment route via sequential waypoint commitments. Circuit not yet implemented.",
+            summary:
+                "Concept: verify a crop shipment route via sequential waypoint commitments. Circuit not yet implemented.",
             proof: "Planned: Chained waypoint commitment circuit",
             circuit: "Concept — not yet implemented",
             status: "CONCEPT",
@@ -195,7 +212,8 @@
         {
             id: "tic-tac-tac",
             title: "Stellar Tic-Tac-Tac",
-            summary: "SHA-256 commitment of your game actions and score. Play the game below to generate a real commitment.",
+            summary:
+                "SHA-256 commitment of your game actions and score. Play the game below to generate a real commitment.",
             proof: "SHA-256 commitment: sha256(wallet + game + score + actions + salt)",
             circuit: "Commit-Reveal Scheme",
             status: "LIVE",
@@ -207,12 +225,14 @@
             outputs: ["action hash", "commitment hash"],
             note: "Play Tic-Tac-Tac below to generate a commitment from real game actions.",
             requiresKale: false,
-            requirementCopy: "No KALE activity required — play the mini game to generate a commitment.",
+            requirementCopy:
+                "No KALE activity required — play the mini game to generate a commitment.",
         },
         {
             id: "asteroid-dodge",
             title: "Asteroid Dodge",
-            summary: "SHA-256 commitment of your dodge run. Complete the sequence below to generate a real commitment.",
+            summary:
+                "SHA-256 commitment of your dodge run. Complete the sequence below to generate a real commitment.",
             proof: "SHA-256 commitment: sha256(wallet + game + score + actions + salt)",
             circuit: "Commit-Reveal Scheme",
             status: "LIVE",
@@ -224,12 +244,14 @@
             outputs: ["action hash", "commitment hash"],
             note: "Complete the Asteroid Dodge sequence below to generate a commitment.",
             requiresKale: false,
-            requirementCopy: "No KALE activity required — clear the run to generate a commitment.",
+            requirementCopy:
+                "No KALE activity required — clear the run to generate a commitment.",
         },
         {
             id: "pattern-runner",
             title: "Pattern Runner",
-            summary: "SHA-256 commitment of your rhythm streak. Hit the targets below to generate a real commitment.",
+            summary:
+                "SHA-256 commitment of your rhythm streak. Hit the targets below to generate a real commitment.",
             proof: "SHA-256 commitment: sha256(wallet + game + score + actions + salt)",
             circuit: "Commit-Reveal Scheme",
             status: "LIVE",
@@ -241,7 +263,8 @@
             outputs: ["action hash", "commitment hash"],
             note: "Play the rhythm sequence below to generate a commitment from your real actions.",
             requiresKale: false,
-            requirementCopy: "No KALE activity required — hit the streak to generate a commitment.",
+            requirementCopy:
+                "No KALE activity required — hit the streak to generate a commitment.",
         },
     ];
 
@@ -251,7 +274,7 @@
     let loading = $derived(balanceState.loading);
     let tier = $derived(balance !== null ? getTierForBalance(balance) : 0);
     let tierCfg = $derived(TIER_CONFIG[tier]);
-    let hasProof = $derived(!!earned['proof-of-farm']);
+    let hasProof = $derived(!!earned["proof-of-farm"]);
     let hasKale = $derived(balance !== null && balance > 0n);
     let gameWalletLabel = $derived(
         gameWallet ? `${gameWallet.slice(0, 6)}…${gameWallet.slice(-4)}` : "",
@@ -261,7 +284,9 @@
     // ── Effects ────────────────────────────────────────────────────────────
     $effect(() => {
         mounted = true;
-        return () => { stopAmbient(); };
+        return () => {
+            stopAmbient();
+        };
     });
 
     // Load badges + refresh balance when authenticated
@@ -285,28 +310,50 @@
         }));
     });
 
-    // ── Proof Generation ───────────────────────────────────────────────────
+    // ── REAL ZK Proof Generation ────────────────────────────────────────────
     async function generateProof() {
         if (!userState.contractId || balance === null) return;
         error = null;
         proving = true;
+        proofData = null;
+        txHash = null;
+        onChainVerified = null;
 
         try {
-            // Simulate slight delay for UX (real tx would take ~5s)
-            await new Promise((r) => setTimeout(r, 1200));
+            // 1. Compute inputs for the ZK circuit
+            const addressHash = await hashAddress(userState.contractId);
+            const salt = generateRandomSalt();
+            const tierId = getTierIdForBalance(balance);
 
-            const salt = generateSalt();
-            const commitment = await generateCommitment(userState.contractId, balance, salt);
+            console.log("[ZK] Generating real Groth16 proof...", {
+                tier: tierId,
+                tierName: TIER_CONFIG[tierId]?.name,
+            });
 
+            // 2. Generate the REAL ZK proof
+            const result = await generateTierProof(
+                addressHash,
+                balance,
+                salt,
+                tierId,
+            );
+
+            proofData = result;
+            console.log("[ZK] Proof generated:", result.proof);
+
+            // 3. Save locally with proof data
             const badge: EarnedBadge = {
-                id: 'proof-of-farm',
+                id: "proof-of-farm",
                 earnedAt: Date.now(),
                 data: {
-                    tier,
-                    tierName: tierCfg.name,
-                    tierIcon: tierCfg.icon,
-                    commitment,
-                    salt: Array.from(salt).map((b) => b.toString(16).padStart(2, '0')).join(''),
+                    tier: tierId,
+                    tierName: TIER_CONFIG[tierId]?.name,
+                    tierIcon: TIER_CONFIG[tierId]?.icon,
+                    commitment: result.publicSignals[1], // commitment from proof
+                    salt: salt.toString(),
+                    proof: result.proof, // Store the real proof
+                    publicSignals: result.publicSignals,
+                    isRealZk: true, // Flag: this is REAL ZK
                 },
             };
 
@@ -318,7 +365,8 @@
                 showCelebration = false;
             }, 2600);
         } catch (e: any) {
-            error = e.message || 'Proof generation failed';
+            console.error("[ZK] Proof generation failed:", e);
+            error = e.message || "Proof generation failed";
         } finally {
             proving = false;
         }
@@ -331,7 +379,9 @@
         copied = false;
         try {
             const packet = buildProofPacket(badge, userState.contractId);
-            await navigator.clipboard.writeText(JSON.stringify(packet, null, 2));
+            await navigator.clipboard.writeText(
+                JSON.stringify(packet, null, 2),
+            );
             copied = true;
             setTimeout(() => {
                 copied = false;
@@ -341,26 +391,45 @@
         }
     }
 
+    // ── REAL On-Chain Verification ──────────────────────────────────────────
     async function verifyProof() {
-        if (!userState.contractId || balance === null) return;
+        if (!userState.contractId) return;
         const badge = earned["proof-of-farm"];
-        if (!badge) return;
-        const saltHex = badge.data?.salt as string | undefined;
-        const commitment = badge.data?.commitment as string | undefined;
-        if (!saltHex || !commitment) return;
+        if (!badge?.data?.proof) {
+            error = "No real ZK proof found. Generate a new proof first.";
+            return;
+        }
 
         verifying = true;
         verifyResult = null;
         error = null;
+        txHash = null;
+        onChainVerified = null;
+
         try {
-            const result = await verifyCommitment(
-                userState.contractId,
-                balance,
-                saltHex,
-                commitment,
+            // TODO: Submit to Soroban tier-verifier contract
+            // const proofBytes = proofToBytes(badge.data.proof);
+            // const tx = await submitTierProof(userState.contractId, badge.data.tier, badge.data.commitment, proofBytes);
+            // txHash = tx.hash;
+            // onChainVerified = tx.success;
+
+            // For now, verify locally using snarkjs
+            const { verifyProofLocally } = await import("./zkProof");
+            const isValid = await verifyProofLocally(
+                badge.data.proof as any,
+                badge.data.publicSignals as string[],
             );
-            verifyResult = result;
+            verifyResult = isValid;
+
+            if (isValid) {
+                console.log("[ZK] Local verification passed! ✓");
+                // In production, this would be on-chain via:
+                // onChainVerified = await verifyOnChain(...);
+            } else {
+                console.error("[ZK] Verification FAILED");
+            }
         } catch (e: any) {
+            console.error("[ZK] Verification error:", e);
             error = e.message || "Verification failed";
             verifyResult = false;
         } finally {
@@ -390,7 +459,7 @@
             const osc = audioCtx!.createOscillator();
             const g = audioCtx!.createGain();
             g.gain.value = 0.5;
-            osc.type = 'sine';
+            osc.type = "sine";
             osc.frequency.value = freq;
 
             const lfo = audioCtx!.createOscillator();
@@ -409,7 +478,11 @@
     }
 
     function stopAmbient() {
-        oscs.forEach((o) => { try { o.stop(); } catch {} });
+        oscs.forEach((o) => {
+            try {
+                o.stop();
+            } catch {}
+        });
         oscs = [];
         audioCtx?.close().catch(() => {});
         audioCtx = null;
@@ -423,10 +496,13 @@
         notes.forEach((freq, i) => {
             const o = ctx.createOscillator();
             const g = ctx.createGain();
-            o.type = 'triangle';
+            o.type = "triangle";
             o.frequency.value = freq;
             g.gain.setValueAtTime(0.12, ctx.currentTime + i * 0.18);
-            g.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + i * 0.18 + 0.7);
+            g.gain.exponentialRampToValueAtTime(
+                0.001,
+                ctx.currentTime + i * 0.18 + 0.7,
+            );
             o.connect(g);
             g.connect(ctx.destination);
             if (transient && i === notes.length - 1) {
@@ -448,7 +524,9 @@
     }
 
     function getRequirement(game: ZkGameSession): number {
-        return game.requirements[Math.min(game.level - 1, game.requirements.length - 1)];
+        return game.requirements[
+            Math.min(game.level - 1, game.requirements.length - 1)
+        ];
     }
 
     function updateGame(gameId: string, updates: Partial<ZkGameSession>) {
@@ -467,7 +545,10 @@
         const action = actions[Math.floor(Math.random() * actions.length)];
         const scoreGain = 10 + Math.floor(Math.random() * 12);
         const nextProgress = game.progress + 1;
-        const requirement = game.requirements[Math.min(game.level - 1, game.requirements.length - 1)];
+        const requirement =
+            game.requirements[
+                Math.min(game.level - 1, game.requirements.length - 1)
+            ];
         const nextStatus = nextProgress >= requirement ? "complete" : "playing";
 
         updateGame(game.id, {
@@ -507,7 +588,10 @@
             );
             saveGameProof(walletId, proof);
             gameProofs = loadGameProofs(walletId);
-            const nextLevel = Math.min(game.level + 1, game.requirements.length);
+            const nextLevel = Math.min(
+                game.level + 1,
+                game.requirements.length,
+            );
             updateGame(game.id, {
                 proof,
                 level: nextLevel,
@@ -528,7 +612,9 @@
         gameCopied = null;
         try {
             const packet = buildGameProofPacket(game.proof);
-            await navigator.clipboard.writeText(JSON.stringify(packet, null, 2));
+            await navigator.clipboard.writeText(
+                JSON.stringify(packet, null, 2),
+            );
             gameCopied = game.id;
             setTimeout(() => {
                 gameCopied = null;
@@ -540,32 +626,65 @@
 </script>
 
 <div class="farm-root" class:farm-mounted={mounted}>
-
     <!-- ── Background Particles (CSS-only) ── -->
     <div class="particles" aria-hidden="true">
         {#each Array(12) as _, i}
-            <span class="particle" style="--d:{0.6 + Math.random() * 0.6};--x:{Math.random() * 100};--s:{8 + Math.random() * 14}"></span>
+            <span
+                class="particle"
+                style="--d:{0.6 + Math.random() * 0.6};--x:{Math.random() *
+                    100};--s:{8 + Math.random() * 14}"
+            ></span>
         {/each}
     </div>
 
     <!-- ── Swaying Stems (CSS-only) ── -->
     <div class="stems" aria-hidden="true">
         {#each Array(7) as _, i}
-            <span class="stem" style="--h:{40 + Math.random() * 30};--left:{8 + i * 14};--delay:{Math.random() * 2}"></span>
+            <span
+                class="stem"
+                style="--h:{40 + Math.random() * 30};--left:{8 +
+                    i * 14};--delay:{Math.random() * 2}"
+            ></span>
         {/each}
     </div>
 
     <!-- ── Audio Toggle ── -->
-    <button class="audio-toggle" onclick={toggleAudio} title={audioOn ? 'Mute ambient' : 'Play ambient'}>
+    <button
+        class="audio-toggle"
+        onclick={toggleAudio}
+        title={audioOn ? "Mute ambient" : "Play ambient"}
+    >
         {#if audioOn}
-            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"/><path d="M19.07 4.93a10 10 0 0 1 0 14.14"/><path d="M15.54 8.46a5 5 0 0 1 0 7.07"/></svg>
+            <svg
+                width="18"
+                height="18"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                stroke-width="2"
+                ><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5" /><path
+                    d="M19.07 4.93a10 10 0 0 1 0 14.14"
+                /><path d="M15.54 8.46a5 5 0 0 1 0 7.07" /></svg
+            >
         {:else}
-            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"/><line x1="23" y1="9" x2="17" y2="15"/><line x1="17" y1="9" x2="23" y2="15"/></svg>
+            <svg
+                width="18"
+                height="18"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                stroke-width="2"
+                ><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5" /><line
+                    x1="23"
+                    y1="9"
+                    x2="17"
+                    y2="15"
+                /><line x1="17" y1="9" x2="23" y2="15" /></svg
+            >
         {/if}
     </button>
 
     <div class="farm-content">
-
         <!-- ── Header ── -->
         <header class="farm-header">
             <h1 class="farm-title">
@@ -586,20 +705,19 @@
             <div class="landing-cta">
                 <p class="landing-line">Prove your KALE farming tier</p>
                 <p class="landing-line dim">without revealing your balance.</p>
-                <p class="landing-connect">Connect via the header to enter your farm</p>
+                <p class="landing-connect">
+                    Connect via the header to enter your farm
+                </p>
             </div>
-
         {:else if loading && balance === null}
             <!-- ── Loading balance ── -->
             <div class="loading-state">
                 <div class="loading-spinner"></div>
                 <p class="loading-text">Reading your KALE balance...</p>
             </div>
-
         {:else}
             <!-- ── Dreamboard ── -->
             <div class="dreamboard">
-
                 <!-- Featured: Proof of Farm -->
                 <section class="featured-section">
                     <h2 class="section-label">Featured Achievement</h2>
@@ -607,17 +725,25 @@
                     {#if showCelebration}
                         <div class="proof-celebration" aria-live="polite">
                             <div class="proof-celebration-card">
-                                <span class="proof-celebration-eyebrow">Commitment sealed</span>
-                                <p class="proof-celebration-title">Tier commitment generated ✨</p>
+                                <span class="proof-celebration-eyebrow"
+                                    >Commitment sealed</span
+                                >
+                                <p class="proof-celebration-title">
+                                    Tier commitment generated ✨
+                                </p>
                                 <p class="proof-celebration-body">
-                                    We hashed your tier with a random salt using SHA-256.
-                                    The commitment is stored locally — verify it anytime by
-                                    recomputing the hash from your address, balance, and salt.
+                                    We hashed your tier with a random salt using
+                                    SHA-256. The commitment is stored locally —
+                                    verify it anytime by recomputing the hash
+                                    from your address, balance, and salt.
                                 </p>
                             </div>
                             <div class="proof-confetti" aria-hidden="true">
                                 {#each confettiPieces as piece}
-                                    <span class="confetti" style={`--i:${piece}`}></span>
+                                    <span
+                                        class="confetti"
+                                        style={`--i:${piece}`}
+                                    ></span>
                                 {/each}
                             </div>
                         </div>
@@ -625,64 +751,100 @@
 
                     {#if hasProof}
                         <FarmBadge
-                            badge={earned['proof-of-farm']}
+                            badge={earned["proof-of-farm"]}
                             def={BADGE_REGISTRY[0]}
                         />
                         <div class="proof-tools">
                             <p class="proof-tools-text">
-                                Verify by recomputing SHA-256(address || balance || salt)
-                                and checking it matches the stored commitment.
+                                Verify by recomputing SHA-256(address || balance
+                                || salt) and checking it matches the stored
+                                commitment.
                             </p>
                             <div class="proof-tools-actions">
-                                <button class="proof-tools-btn" type="button" onclick={verifyProof} disabled={verifying}>
-                                    {verifying ? "Verifying..." : "Verify commitment"}
+                                <button
+                                    class="proof-tools-btn"
+                                    type="button"
+                                    onclick={verifyProof}
+                                    disabled={verifying}
+                                >
+                                    {verifying
+                                        ? "Verifying..."
+                                        : "Verify commitment"}
                                 </button>
-                                <button class="proof-tools-btn" type="button" onclick={copyProofPacket}>
-                                    {copied ? "Payload copied" : "Copy proof payload"}
+                                <button
+                                    class="proof-tools-btn"
+                                    type="button"
+                                    onclick={copyProofPacket}
+                                >
+                                    {copied
+                                        ? "Payload copied"
+                                        : "Copy proof payload"}
                                 </button>
                             </div>
                             {#if verifyResult === true}
-                                <p class="proof-tools-verify proof-tools-verify--pass">
-                                    Commitment verified — SHA-256 hash matches stored value.
+                                <p
+                                    class="proof-tools-verify proof-tools-verify--pass"
+                                >
+                                    Commitment verified — SHA-256 hash matches
+                                    stored value.
                                 </p>
                             {:else if verifyResult === false}
-                                <p class="proof-tools-verify proof-tools-verify--fail">
-                                    Verification failed — balance may have changed since commitment was generated.
+                                <p
+                                    class="proof-tools-verify proof-tools-verify--fail"
+                                >
+                                    Verification failed — balance may have
+                                    changed since commitment was generated.
                                 </p>
                             {/if}
                             <p class="proof-tools-meta">
-                                Tier {tierCfg.name} · commitment stored locally · on-chain attestation via Soroban contract.
+                                Tier {tierCfg.name} · commitment stored locally ·
+                                on-chain attestation via Soroban contract.
                             </p>
                         </div>
                     {:else if proving}
                         <div class="proving-card">
                             <div class="proving-spinner"></div>
-                            <p class="proving-text">Generating cryptographic commitment...</p>
-                            <p class="proving-sub">Computing SHA-256(address || balance || salt)</p>
+                            <p class="proving-text">
+                                Generating cryptographic commitment...
+                            </p>
+                            <p class="proving-sub">
+                                Computing SHA-256(address || balance || salt)
+                            </p>
                         </div>
                     {:else}
                         <!-- Balance + tier + generate button -->
                         <div class="proof-panel">
                             <div class="tier-display">
                                 <span class="tier-icon">{tierCfg.icon}</span>
-                                <span class="tier-name" style="color:{tierCfg.color}">{tierCfg.name}</span>
+                                <span
+                                    class="tier-name"
+                                    style="color:{tierCfg.color}"
+                                    >{tierCfg.name}</span
+                                >
                             </div>
 
                             {#if balance !== null}
                                 <div class="balance-row">
-                                    <span class="balance-val">{formatKaleBalance(balance)}</span>
+                                    <span class="balance-val"
+                                        >{formatKaleBalance(balance)}</span
+                                    >
                                     <span class="balance-label">KALE</span>
                                 </div>
                             {/if}
 
                             <p class="proof-desc">
-                                Generate a cryptographic commitment of your farming tier.
-                                The commitment hides your balance behind a salted SHA-256 hash.
+                                Generate a cryptographic commitment of your
+                                farming tier. The commitment hides your balance
+                                behind a salted SHA-256 hash.
                             </p>
                             {#if !hasKale}
                                 <div class="proof-nudge">
-                                    <p>Need KALE activity to verify this proof.</p>
-                                    <a class="proof-nudge-link" href="/kale">Head to the Kale Farm →</a>
+                                    <p>
+                                        Need KALE activity to verify this proof.
+                                    </p>
+                                    <a class="proof-nudge-link" href="/kale"
+                                        >Head to the Kale Farm →</a
+                                    >
                                 </div>
                             {/if}
 
@@ -690,7 +852,11 @@
                                 <p class="proof-error">{error}</p>
                             {/if}
 
-                            <button class="generate-btn" onclick={generateProof} disabled={balance === null}>
+                            <button
+                                class="generate-btn"
+                                onclick={generateProof}
+                                disabled={balance === null}
+                            >
                                 Generate Proof of Farm
                             </button>
                         </div>
@@ -702,7 +868,11 @@
                     <h2 class="section-label">Dreamboard</h2>
                     <div class="badge-grid">
                         {#each BADGE_REGISTRY.slice(1) as def}
-                            <FarmBadge badge={null} {def} locked={!def.available} />
+                            <FarmBadge
+                                badge={null}
+                                {def}
+                                locked={!def.available}
+                            />
                         {/each}
                     </div>
                 </section>
@@ -712,14 +882,21 @@
                     <div class="gallery-header">
                         <h2 class="section-label">Commitment Gallery</h2>
                         <div class="gallery-header-right">
-                            <span class="gallery-subtitle">Live commitments & design concepts — click to open</span>
+                            <span class="gallery-subtitle"
+                                >Live commitments & design concepts — click to
+                                open</span
+                            >
                             <button
                                 class="gallery-cta"
                                 type="button"
                                 onclick={generateProof}
-                                disabled={balance === null || proving || hasProof}
+                                disabled={balance === null ||
+                                    proving ||
+                                    hasProof}
                             >
-                                {hasProof ? "Commitment sealed" : "Generate a live commitment"}
+                                {hasProof
+                                    ? "Commitment sealed"
+                                    : "Generate a live commitment"}
                             </button>
                         </div>
                     </div>
@@ -727,8 +904,12 @@
                         {#each galleryProofs as proof}
                             <article class="gallery-card">
                                 <div class="gallery-card-top">
-                                    <span class="gallery-status">{proof.status}</span>
-                                    <span class="gallery-circuit">{proof.circuit}</span>
+                                    <span class="gallery-status"
+                                        >{proof.status}</span
+                                    >
+                                    <span class="gallery-circuit"
+                                        >{proof.circuit}</span
+                                    >
                                 </div>
                                 <h3 class="gallery-title">{proof.title}</h3>
                                 <p class="gallery-summary">{proof.summary}</p>
@@ -736,12 +917,18 @@
                                     {#each proof.tags as tag}
                                         <span class="gallery-tag">{tag}</span>
                                     {/each}
-                                    <span class="gallery-tag gallery-tag--status">
-                                        {proof.requiresKale ? "Needs KALE" : "No KALE needed"}
+                                    <span
+                                        class="gallery-tag gallery-tag--status"
+                                    >
+                                        {proof.requiresKale
+                                            ? "Needs KALE"
+                                            : "No KALE needed"}
                                     </span>
                                 </div>
                                 <div class="gallery-foot">
-                                    <span class="gallery-proof">{proof.proof}</span>
+                                    <span class="gallery-proof"
+                                        >{proof.proof}</span
+                                    >
                                     <div class="gallery-actions">
                                         <button
                                             class="gallery-open"
@@ -772,7 +959,8 @@
         <div class="game-header">
             <h2 class="section-label">Mini Game Commitment Lab</h2>
             <p class="game-subtitle">
-                Repeatable, progressive commitments tied directly to mini game actions.
+                Repeatable, progressive commitments tied directly to mini game
+                actions.
             </p>
             {#if !isAuth}
                 <p class="game-subtitle game-wallet">
@@ -797,13 +985,16 @@
                     <div class="game-progress">
                         <div class="game-progress-top">
                             <span>Progress</span>
-                            <span>{game.progress}/{getRequirement(game)} actions</span>
+                            <span
+                                >{game.progress}/{getRequirement(game)} actions</span
+                            >
                         </div>
                         <div class="game-progress-bar">
                             <span
                                 class="game-progress-fill"
                                 style={`width:${Math.min(
-                                    (game.progress / getRequirement(game)) * 100,
+                                    (game.progress / getRequirement(game)) *
+                                        100,
                                     100,
                                 )}%`}
                             ></span>
@@ -833,27 +1024,36 @@
                             class="game-action-btn primary"
                             type="button"
                             onclick={() => forgeGameProof(game)}
-                            disabled={game.status !== "complete" || gameForging === game.id}
+                            disabled={game.status !== "complete" ||
+                                gameForging === game.id}
                         >
-                            {gameForging === game.id ? "Sealing..." : "Seal commitment"}
+                            {gameForging === game.id
+                                ? "Sealing..."
+                                : "Seal commitment"}
                         </button>
                     </div>
                     {#if game.proof}
                         <div class="game-proof">
                             <div>
                                 <p class="game-proof-label">Action hash</p>
-                                <p class="game-proof-value">{game.proof.actionHash}</p>
+                                <p class="game-proof-value">
+                                    {game.proof.actionHash}
+                                </p>
                             </div>
                             <div>
                                 <p class="game-proof-label">Commitment</p>
-                                <p class="game-proof-value">{game.proof.commitment}</p>
+                                <p class="game-proof-value">
+                                    {game.proof.commitment}
+                                </p>
                             </div>
                             <button
                                 class="game-copy-btn"
                                 type="button"
                                 onclick={() => copyGameProof(game)}
                             >
-                                {gameCopied === game.id ? "Copied proof packet" : "Copy proof packet"}
+                                {gameCopied === game.id
+                                    ? "Copied proof packet"
+                                    : "Copy proof packet"}
                             </button>
                         </div>
                     {/if}
@@ -865,20 +1065,32 @@
 
 {#if activeProof}
     <div class="gallery-overlay" role="dialog" aria-modal="true">
-        <button class="gallery-backdrop" type="button" onclick={closeProof} aria-label="Close proof details"></button>
+        <button
+            class="gallery-backdrop"
+            type="button"
+            onclick={closeProof}
+            aria-label="Close proof details"
+        ></button>
         <div class="gallery-modal">
             <div class="gallery-modal-header">
                 <div>
                     <p class="gallery-modal-label">Proof file</p>
                     <h3 class="gallery-modal-title">{activeProof.title}</h3>
                 </div>
-                <button class="gallery-close" type="button" onclick={closeProof} aria-label="Close proof details">✕</button>
+                <button
+                    class="gallery-close"
+                    type="button"
+                    onclick={closeProof}
+                    aria-label="Close proof details">✕</button
+                >
             </div>
             <p class="gallery-modal-summary">{activeProof.summary}</p>
             <div class="gallery-modal-grid">
                 <div class="gallery-modal-card">
                     <span class="gallery-modal-eyebrow">Scheme</span>
-                    <span class="gallery-modal-value">{activeProof.circuit}</span>
+                    <span class="gallery-modal-value"
+                        >{activeProof.circuit}</span
+                    >
                 </div>
                 <div class="gallery-modal-card">
                     <span class="gallery-modal-eyebrow">Method</span>
@@ -886,15 +1098,18 @@
                 </div>
                 <div class="gallery-modal-card">
                     <span class="gallery-modal-eyebrow">Status</span>
-                    <span class="gallery-modal-value">{activeProof.status}</span>
+                    <span class="gallery-modal-value">{activeProof.status}</span
+                    >
                 </div>
                 <div class="gallery-modal-card">
                     <span class="gallery-modal-eyebrow">Test</span>
-                    <span class="gallery-modal-value">{activeProof.tested}</span>
+                    <span class="gallery-modal-value">{activeProof.tested}</span
+                    >
                 </div>
                 <div class="gallery-modal-card">
                     <span class="gallery-modal-eyebrow">Wallet</span>
-                    <span class="gallery-modal-value">{activeProof.wallet}</span>
+                    <span class="gallery-modal-value">{activeProof.wallet}</span
+                    >
                 </div>
                 <div class="gallery-modal-card">
                     <span class="gallery-modal-eyebrow">Proof file</span>
@@ -909,9 +1124,13 @@
                 </div>
                 <div class="gallery-modal-card gallery-modal-requirement">
                     <span class="gallery-modal-eyebrow">Availability</span>
-                    <span class="gallery-modal-value">{activeProof.requirementCopy}</span>
+                    <span class="gallery-modal-value"
+                        >{activeProof.requirementCopy}</span
+                    >
                     {#if activeProof.requiresKale && !hasKale}
-                        <a class="gallery-modal-cta" href="/kale">Complete Kale Farm task →</a>
+                        <a class="gallery-modal-cta" href="/kale"
+                            >Complete Kale Farm task →</a
+                        >
                     {/if}
                 </div>
             </div>
@@ -944,17 +1163,29 @@
         position: relative;
         min-height: 100vh;
         width: 100%;
-        background: linear-gradient(170deg, #020617 0%, #041008 40%, #020617 100%);
+        background: linear-gradient(
+            170deg,
+            #020617 0%,
+            #041008 40%,
+            #020617 100%
+        );
         background-size: 200% 200%;
         animation: bg-drift 20s ease-in-out infinite;
         overflow: hidden;
         opacity: 0;
         transition: opacity 0.6s ease;
     }
-    .farm-mounted { opacity: 1; }
+    .farm-mounted {
+        opacity: 1;
+    }
     @keyframes bg-drift {
-        0%, 100% { background-position: 0% 0%; }
-        50% { background-position: 100% 100%; }
+        0%,
+        100% {
+            background-position: 0% 0%;
+        }
+        50% {
+            background-position: 100% 100%;
+        }
     }
 
     /* ── Particles ── */
@@ -976,10 +1207,20 @@
         animation-delay: calc(var(--d) * -10s);
     }
     @keyframes float {
-        0% { transform: translateY(0) translateX(0); opacity: 0; }
-        5% { opacity: 1; }
-        95% { opacity: 0.6; }
-        100% { transform: translateY(-100vh) translateX(calc(var(--d) * 30px)); opacity: 0; }
+        0% {
+            transform: translateY(0) translateX(0);
+            opacity: 0;
+        }
+        5% {
+            opacity: 1;
+        }
+        95% {
+            opacity: 0.6;
+        }
+        100% {
+            transform: translateY(-100vh) translateX(calc(var(--d) * 30px));
+            opacity: 0;
+        }
     }
 
     /* ── Stems ── */
@@ -998,15 +1239,24 @@
         left: calc(var(--left) * 1%);
         width: 2px;
         height: calc(var(--h) * 1%);
-        background: linear-gradient(to top, rgba(154, 230, 0, 0.15), transparent);
+        background: linear-gradient(
+            to top,
+            rgba(154, 230, 0, 0.15),
+            transparent
+        );
         transform-origin: bottom center;
         animation: sway 4s ease-in-out infinite;
         animation-delay: calc(var(--delay) * 1s);
         border-radius: 1px;
     }
     @keyframes sway {
-        0%, 100% { transform: rotate(-3deg); }
-        50% { transform: rotate(3deg); }
+        0%,
+        100% {
+            transform: rotate(-3deg);
+        }
+        50% {
+            transform: rotate(3deg);
+        }
     }
 
     /* ── Audio Toggle ── */
@@ -1059,20 +1309,20 @@
         align-items: baseline;
     }
     .title-the {
-        font-family: 'Press Start 2P', monospace;
+        font-family: "Press Start 2P", monospace;
         font-size: 14px;
         color: #555;
         letter-spacing: 4px;
     }
     .title-farm {
-        font-family: 'Press Start 2P', monospace;
+        font-family: "Press Start 2P", monospace;
         font-size: 32px;
         color: #9ae600;
         filter: drop-shadow(0 0 20px rgba(154, 230, 0, 0.4));
         letter-spacing: 4px;
     }
     .farm-subtitle {
-        font-family: 'Press Start 2P', monospace;
+        font-family: "Press Start 2P", monospace;
         font-size: 8px;
         color: #555;
         letter-spacing: 3px;
@@ -1083,7 +1333,7 @@
         align-items: center;
         gap: 6px;
         font-size: 8px;
-        font-family: 'Press Start 2P', monospace;
+        font-family: "Press Start 2P", monospace;
         color: #4ade80;
         background: rgba(74, 222, 128, 0.08);
         border: 1px solid rgba(74, 222, 128, 0.2);
@@ -1099,8 +1349,13 @@
         animation: pulse-dot 2s ease-in-out infinite;
     }
     @keyframes pulse-dot {
-        0%, 100% { opacity: 0.4; }
-        50% { opacity: 1; }
+        0%,
+        100% {
+            opacity: 0.4;
+        }
+        50% {
+            opacity: 1;
+        }
     }
 
     /* ── Landing ── */
@@ -1112,22 +1367,29 @@
         padding: 40px 0;
     }
     .landing-line {
-        font-family: 'Press Start 2P', monospace;
+        font-family: "Press Start 2P", monospace;
         font-size: 11px;
         color: #ccc;
         line-height: 2;
     }
-    .landing-line.dim { color: #666; }
+    .landing-line.dim {
+        color: #666;
+    }
     .landing-connect {
-        font-family: 'Press Start 2P', monospace;
+        font-family: "Press Start 2P", monospace;
         font-size: 8px;
         color: #9ae600;
         margin-top: 20px;
         animation: pulse-text 2s ease-in-out infinite;
     }
     @keyframes pulse-text {
-        0%, 100% { opacity: 0.5; }
-        50% { opacity: 1; }
+        0%,
+        100% {
+            opacity: 0.5;
+        }
+        50% {
+            opacity: 1;
+        }
     }
 
     /* ── Loading ── */
@@ -1146,9 +1408,13 @@
         border-radius: 50%;
         animation: spin 0.8s linear infinite;
     }
-    @keyframes spin { to { transform: rotate(360deg); } }
+    @keyframes spin {
+        to {
+            transform: rotate(360deg);
+        }
+    }
     .loading-text {
-        font-family: 'Press Start 2P', monospace;
+        font-family: "Press Start 2P", monospace;
         font-size: 9px;
         color: #666;
     }
@@ -1160,7 +1426,7 @@
         gap: 32px;
     }
     .section-label {
-        font-family: 'Press Start 2P', monospace;
+        font-family: "Press Start 2P", monospace;
         font-size: 8px;
         color: #444;
         letter-spacing: 2px;
@@ -1173,7 +1439,9 @@
         gap: 12px;
     }
     @media (max-width: 480px) {
-        .badge-grid { grid-template-columns: 1fr; }
+        .badge-grid {
+            grid-template-columns: 1fr;
+        }
     }
 
     /* ── ZK Mini Game Lab ── */
@@ -1194,7 +1462,7 @@
     }
     .game-wallet {
         color: #5eead4;
-        font-family: 'Press Start 2P', monospace;
+        font-family: "Press Start 2P", monospace;
         font-size: 8px;
         letter-spacing: 1px;
     }
@@ -1222,11 +1490,18 @@
         content: "";
         position: absolute;
         inset: 0;
-        background: radial-gradient(circle at top, color-mix(in srgb, var(--accent, #38bdf8) 24%, transparent), transparent 60%);
+        background: radial-gradient(
+            circle at top,
+            color-mix(in srgb, var(--accent, #38bdf8) 24%, transparent),
+            transparent 60%
+        );
         opacity: 0.7;
         pointer-events: none;
     }
-    .game-card > * { position: relative; z-index: 1; }
+    .game-card > * {
+        position: relative;
+        z-index: 1;
+    }
     .game-card-top {
         display: flex;
         justify-content: space-between;
@@ -1299,7 +1574,9 @@
         color: #e2e8f0;
         font-size: 10px;
         cursor: pointer;
-        transition: transform 0.2s ease, border 0.2s ease;
+        transition:
+            transform 0.2s ease,
+            border 0.2s ease;
     }
     .game-action-btn:hover {
         transform: translateY(-1px);
@@ -1371,11 +1648,11 @@
     .gallery-subtitle {
         font-size: 8px;
         color: #4ade80;
-        font-family: 'Press Start 2P', monospace;
+        font-family: "Press Start 2P", monospace;
         letter-spacing: 1px;
     }
     .gallery-cta {
-        font-family: 'Press Start 2P', monospace;
+        font-family: "Press Start 2P", monospace;
         font-size: 8px;
         color: #051015;
         background: linear-gradient(135deg, #22c55e, #14b8a6);
@@ -1385,7 +1662,10 @@
         cursor: pointer;
         letter-spacing: 1px;
         box-shadow: 0 10px 18px rgba(20, 184, 166, 0.25);
-        transition: transform 0.2s ease, box-shadow 0.2s ease, opacity 0.2s ease;
+        transition:
+            transform 0.2s ease,
+            box-shadow 0.2s ease,
+            opacity 0.2s ease;
     }
     .gallery-cta:hover:enabled {
         transform: translateY(-2px) scale(1.01);
@@ -1422,7 +1702,7 @@
         display: flex;
         justify-content: space-between;
         align-items: center;
-        font-family: 'Press Start 2P', monospace;
+        font-family: "Press Start 2P", monospace;
         font-size: 7px;
         color: #9ae600;
         text-transform: uppercase;
@@ -1438,7 +1718,7 @@
         color: #555;
     }
     .gallery-title {
-        font-family: 'Press Start 2P', monospace;
+        font-family: "Press Start 2P", monospace;
         font-size: 11px;
         color: #e2e8f0;
         letter-spacing: 1px;
@@ -1492,7 +1772,9 @@
         letter-spacing: 0.8px;
         text-transform: uppercase;
         cursor: pointer;
-        transition: background 0.2s ease, color 0.2s ease;
+        transition:
+            background 0.2s ease,
+            color 0.2s ease;
     }
     .gallery-open:hover {
         background: rgba(154, 230, 0, 0.25);
@@ -1561,10 +1843,10 @@
         text-transform: uppercase;
         color: #555;
         letter-spacing: 2px;
-        font-family: 'Press Start 2P', monospace;
+        font-family: "Press Start 2P", monospace;
     }
     .gallery-modal-title {
-        font-family: 'Press Start 2P', monospace;
+        font-family: "Press Start 2P", monospace;
         font-size: 14px;
         color: #9ae600;
         letter-spacing: 2px;
@@ -1618,7 +1900,7 @@
         text-transform: uppercase;
         color: #555;
         letter-spacing: 2px;
-        font-family: 'Press Start 2P', monospace;
+        font-family: "Press Start 2P", monospace;
     }
     .gallery-modal-value {
         font-size: 9px;
@@ -1633,7 +1915,7 @@
         color: #777;
     }
     .gallery-modal-lists h4 {
-        font-family: 'Press Start 2P', monospace;
+        font-family: "Press Start 2P", monospace;
         font-size: 8px;
         color: #9ae600;
         margin-bottom: 6px;
@@ -1653,8 +1935,13 @@
     }
 
     @media (max-width: 520px) {
-        .gallery-grid { grid-template-columns: 1fr; }
-        .gallery-header { flex-direction: column; align-items: flex-start; }
+        .gallery-grid {
+            grid-template-columns: 1fr;
+        }
+        .gallery-header {
+            flex-direction: column;
+            align-items: flex-start;
+        }
         .gallery-modal-grid,
         .gallery-modal-lists {
             grid-template-columns: 1fr;
@@ -1682,7 +1969,7 @@
         font-size: 2.5rem;
     }
     .tier-name {
-        font-family: 'Press Start 2P', monospace;
+        font-family: "Press Start 2P", monospace;
         font-size: 16px;
         letter-spacing: 2px;
     }
@@ -1692,12 +1979,12 @@
         gap: 8px;
     }
     .balance-val {
-        font-family: 'Press Start 2P', monospace;
+        font-family: "Press Start 2P", monospace;
         font-size: 20px;
         color: #e2e8f0;
     }
     .balance-label {
-        font-family: 'Press Start 2P', monospace;
+        font-family: "Press Start 2P", monospace;
         font-size: 9px;
         color: #9ae600;
         letter-spacing: 2px;
@@ -1748,7 +2035,7 @@
     .proof-tools-meta {
         font-size: 8px;
         color: rgba(226, 232, 240, 0.6);
-        font-family: 'Press Start 2P', monospace;
+        font-family: "Press Start 2P", monospace;
     }
     .proof-tools-actions {
         display: flex;
@@ -1757,7 +2044,7 @@
         justify-content: center;
     }
     .proof-tools-btn {
-        font-family: 'Press Start 2P', monospace;
+        font-family: "Press Start 2P", monospace;
         font-size: 8px;
         color: #9ae600;
         background: rgba(13, 13, 15, 0.6);
@@ -1778,7 +2065,7 @@
         cursor: not-allowed;
     }
     .proof-tools-verify {
-        font-family: 'Press Start 2P', monospace;
+        font-family: "Press Start 2P", monospace;
         font-size: 8px;
         text-align: center;
         padding: 8px 12px;
@@ -1798,14 +2085,22 @@
     .proof-error {
         font-size: 9px;
         color: #ef4444;
-        font-family: 'Press Start 2P', monospace;
+        font-family: "Press Start 2P", monospace;
     }
     .proof-celebration {
         position: relative;
         margin: 16px 0 20px;
         border-radius: 18px;
-        background: radial-gradient(circle at top, rgba(34, 197, 94, 0.28), transparent 60%),
-            linear-gradient(135deg, rgba(15, 118, 110, 0.55), rgba(13, 148, 136, 0.15));
+        background: radial-gradient(
+                circle at top,
+                rgba(34, 197, 94, 0.28),
+                transparent 60%
+            ),
+            linear-gradient(
+                135deg,
+                rgba(15, 118, 110, 0.55),
+                rgba(13, 148, 136, 0.15)
+            );
         border: 1px solid rgba(20, 184, 166, 0.4);
         padding: 16px;
         overflow: hidden;
@@ -1873,11 +2168,12 @@
         }
         100% {
             opacity: 0;
-            transform: translate3d(calc((var(--i) - 12) * 6px), 220px, 0) rotate(360deg);
+            transform: translate3d(calc((var(--i) - 12) * 6px), 220px, 0)
+                rotate(360deg);
         }
     }
     .generate-btn {
-        font-family: 'Press Start 2P', monospace;
+        font-family: "Press Start 2P", monospace;
         font-size: 10px;
         color: #020617;
         background: linear-gradient(135deg, #9ae600, #4ade80);
@@ -1919,7 +2215,7 @@
         animation: spin 0.7s linear infinite;
     }
     .proving-text {
-        font-family: 'Press Start 2P', monospace;
+        font-family: "Press Start 2P", monospace;
         font-size: 9px;
         color: #9ae600;
         text-align: center;
@@ -1933,8 +2229,14 @@
 
     /* ── Responsive ── */
     @media (max-width: 480px) {
-        .title-farm { font-size: 24px; }
-        .balance-val { font-size: 16px; }
-        .farm-content { padding: 80px 16px 100px; }
+        .title-farm {
+            font-size: 24px;
+        }
+        .balance-val {
+            font-size: 16px;
+        }
+        .farm-content {
+            padding: 80px 16px 100px;
+        }
     }
 </style>
