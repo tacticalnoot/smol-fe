@@ -22,6 +22,8 @@
         hashAddress,
         getTierIdForBalance,
         proofToBytes,
+        submitProofToContract,
+        hashProof,
         type ProofResult,
     } from "./zkProof";
     import {
@@ -32,6 +34,7 @@
         getOrCreateGameWalletId,
         type ZkGameProof,
     } from "./zkGames";
+    import { getPasskeyKit } from "../../../stores/user.svelte";
 
     // ── State ──────────────────────────────────────────────────────────────
     let proving = $state(false);
@@ -407,26 +410,67 @@
         onChainVerified = null;
 
         try {
-            // TODO: Submit to Soroban tier-verifier contract
-            // const proofBytes = proofToBytes(badge.data.proof);
-            // const tx = await submitTierProof(userState.contractId, badge.data.tier, badge.data.commitment, proofBytes);
-            // txHash = tx.hash;
-            // onChainVerified = tx.success;
+            console.log("[ZK] Starting on-chain verification...");
 
-            // For now, verify locally using snarkjs
+            // 1. Verify locally first (fast check)
             const { verifyProofLocally } = await import("./zkProof");
             const isValid = await verifyProofLocally(
                 badge.data.proof as any,
                 badge.data.publicSignals as string[],
             );
-            verifyResult = isValid;
 
-            if (isValid) {
-                console.log("[ZK] Local verification passed! ✓");
-                // In production, this would be on-chain via:
-                // onChainVerified = await verifyOnChain(...);
+            if (!isValid) {
+                throw new Error("Local verification failed. Proof is invalid.");
+            }
+            verifyResult = true;
+
+            // 2. Submit to Soroban tier-verifier contract
+            console.log("[ZK] Submitting to mainnet contract...");
+
+            // Get passkey kit
+            const kit = await getPasskeyKit();
+            if (!kit) {
+                throw new Error("Wallet not connected or kit not available.");
+            }
+
+            // Prepare inputs
+            // Cast badge data to expected type since earnBadge uses a generic record
+            const proofData = badge.data as {
+                proof: any;
+                commitment: string;
+                tier: number;
+            };
+
+            const proofHash = await hashProof(proofData.proof);
+
+            // Helper to convert bigint string to 32-byte Uint8Array
+            const toBytes32 = (n: bigint | string) => {
+                let b = BigInt(n);
+                const bytes = new Uint8Array(32);
+                for (let i = 31; i >= 0; i--) {
+                    bytes[i] = Number(b & 0xffn);
+                    b >>= 8n;
+                }
+                return bytes; // Big-endian
+            };
+
+            const commitmentBytes = toBytes32(proofData.commitment);
+
+            const result = await submitProofToContract(
+                kit,
+                userState.contractId,
+                proofData.tier,
+                commitmentBytes,
+                proofHash,
+            );
+
+            if (result.success && result.txHash) {
+                txHash = result.txHash;
+                onChainVerified = true;
+                console.log("[ZK] On-chain verification successful!", txHash);
+                playChime();
             } else {
-                console.error("[ZK] Verification FAILED");
+                throw new Error(result.error || "Transaction failed");
             }
         } catch (e: any) {
             console.error("[ZK] Verification error:", e);
@@ -756,20 +800,24 @@
                         />
                         <div class="proof-tools">
                             <p class="proof-tools-text">
-                                Verify by recomputing SHA-256(address || balance
-                                || salt) and checking it matches the stored
-                                commitment.
+                                Verify this ZK proof on-chain. This will submit
+                                your commitment and proof hash to the Stellar
+                                mainnet verifier contract.
                             </p>
                             <div class="proof-tools-actions">
                                 <button
-                                    class="proof-tools-btn"
+                                    class="proof-tools-btn primary"
                                     type="button"
                                     onclick={verifyProof}
-                                    disabled={verifying}
+                                    disabled={verifying || onChainVerified}
                                 >
-                                    {verifying
-                                        ? "Verifying..."
-                                        : "Verify commitment"}
+                                    {#if verifying}
+                                        Verifying...
+                                    {:else if onChainVerified}
+                                        Verified On-Chain
+                                    {:else}
+                                        Verify On-Chain
+                                    {/if}
                                 </button>
                                 <button
                                     class="proof-tools-btn"
@@ -781,21 +829,36 @@
                                         : "Copy proof payload"}
                                 </button>
                             </div>
+
                             {#if verifyResult === true}
                                 <p
                                     class="proof-tools-verify proof-tools-verify--pass"
                                 >
-                                    Commitment verified — SHA-256 hash matches
-                                    stored value.
-                                </p>
-                            {:else if verifyResult === false}
-                                <p
-                                    class="proof-tools-verify proof-tools-verify--fail"
-                                >
-                                    Verification failed — balance may have
-                                    changed since commitment was generated.
+                                    ✓ Local proof valid
                                 </p>
                             {/if}
+
+                            {#if onChainVerified}
+                                <div class="proof-onchain-success">
+                                    <p class="proof-success-title">
+                                        ✅ On-Chain Verified
+                                    </p>
+                                    <a
+                                        href={`https://stellar.expert/explorer/public/tx/${txHash}`}
+                                        target="_blank"
+                                        rel="noreferrer"
+                                        class="proof-tx-link"
+                                    >
+                                        View TX: {txHash?.slice(
+                                            0,
+                                            8,
+                                        )}...{txHash?.slice(-8)}
+                                    </a>
+                                </div>
+                            {:else if error}
+                                <p class="proof-error">{error}</p>
+                            {/if}
+
                             <p class="proof-tools-meta">
                                 Tier {tierCfg.name} · commitment stored locally ·
                                 on-chain attestation via Soroban contract.
@@ -2075,10 +2138,9 @@
     .proof-tools-verify--pass {
         color: #4ade80;
         background: rgba(74, 222, 128, 0.1);
-        border: 1px solid rgba(74, 222, 128, 0.3);
-    }
-    .proof-tools-verify--fail {
-        color: #fb923c;
+        .proof-tools-verify--pass {
+            color: #4ade80;
+        }
         background: rgba(251, 146, 60, 0.1);
         border: 1px solid rgba(251, 146, 60, 0.3);
     }
@@ -2238,5 +2300,29 @@
         .farm-content {
             padding: 80px 16px 100px;
         }
+    }
+
+    .proof-onchain-success {
+        background: rgba(74, 222, 128, 0.1);
+        border: 1px solid rgba(74, 222, 128, 0.3);
+        border-radius: 12px;
+        padding: 12px;
+        text-align: center;
+        width: 100%;
+        max-width: 300px;
+    }
+    .proof-success-title {
+        font-family: "Press Start 2P", monospace;
+        font-size: 10px;
+        color: #4ade80;
+        margin: 0 0 6px;
+    }
+    .proof-tx-link {
+        font-size: 9px;
+        color: #9ae600;
+        text-decoration: none;
+    }
+    .proof-tx-link:hover {
+        text-decoration: underline;
     }
 </style>

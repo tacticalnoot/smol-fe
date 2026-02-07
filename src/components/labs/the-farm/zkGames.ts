@@ -1,4 +1,15 @@
-import { generateSalt } from "./proof";
+import { generateRandomSalt, poseidonHash, hashAddress } from "./zkProof";
+
+// Helper to hash string to bigint (for game IDs)
+async function hashString(str: string): Promise<bigint> {
+    const encoder = new TextEncoder();
+    const data = encoder.encode(str);
+    const buffer = await crypto.subtle.digest("SHA-256", data);
+    const hex = Array.from(new Uint8Array(buffer))
+        .map((b) => b.toString(16).padStart(2, "0"))
+        .join("");
+    return BigInt("0x" + hex.slice(0, 60)); // Truncate to fit in field
+}
 
 export type ZkGameProof = {
     id: string;
@@ -49,17 +60,46 @@ export async function createGameProof(
     score: number,
     actions: unknown,
 ): Promise<ZkGameProof> {
-    const salt = generateSalt();
-    const saltHex = bytesToHex(salt);
-    const actionHash = await hashPayload({ gameId, actions });
-    const commitment = await hashPayload({
-        wallet,
-        gameId,
-        level,
-        score,
-        actionHash,
-        salt: saltHex,
-    });
+    const salt = generateRandomSalt(); // BigInt
+    const saltHex = salt.toString(16);
+
+    // Hash actions to a field element (via SHA-256 first)
+    // actions is an object { actions: string[], goal: string }
+    const encoder = new TextEncoder();
+    const actionData = encoder.encode(JSON.stringify(actions));
+    const actionDigest = await crypto.subtle.digest("SHA-256", actionData);
+    const actionHashHex = Array.from(new Uint8Array(actionDigest))
+        .map((b) => b.toString(16).padStart(2, "0"))
+        .join("");
+    const actionHashInt = BigInt("0x" + actionHashHex.slice(0, 60));
+
+    // Inputs for the commitment:
+    // 1. Wallet Address Hash (BigInt)
+    // 2. Game ID Hash (BigInt)
+    // 3. Level (BigInt)
+    // 4. Score (BigInt)
+    // 5. Action Hash (BigInt)
+    // 6. Salt (BigInt)
+
+    // If wallet is "guest", hash it as string; if address, use hashAddress
+    let walletHash: bigint;
+    if (wallet.startsWith("G") && wallet.length === 56) {
+        walletHash = await hashAddress(wallet);
+    } else {
+        walletHash = await hashString(wallet);
+    }
+
+    const gameIdHash = await hashString(gameId);
+
+    // Compute commitment: Poseidon([wallet, gameId, level, score, actionHash, salt])
+    const commitmentInt = await poseidonHash([
+        walletHash,
+        gameIdHash,
+        BigInt(level),
+        BigInt(score),
+        actionHashInt,
+        salt,
+    ]);
 
     return {
         id: gameId,
@@ -68,9 +108,9 @@ export async function createGameProof(
         level,
         score,
         actions,
-        actionHash,
-        commitment,
-        salt: saltHex,
+        actionHash: actionHashHex,
+        commitment: commitmentInt.toString(), // Store as string for JSON
+        salt: salt.toString(),
         createdAt: Date.now(),
     };
 }

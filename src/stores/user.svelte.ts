@@ -32,6 +32,14 @@ export async function clearUserAuth() {
 }
 
 /**
+ * Get the PasskeyKit instance directly (for custom transactions)
+ */
+export async function getPasskeyKit(): Promise<any> {
+  const { account } = await import("../utils/passkey-kit");
+  return account.get();
+}
+
+/**
  * FACTORY FRESH: Passkey Reconnection
  * @see https://deepwiki.com/repo/kalepail/smol-fe#silent-reconnect
  * 

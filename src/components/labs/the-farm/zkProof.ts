@@ -50,7 +50,7 @@ export interface ProofResult {
 
 // TODO: Import actual Poseidon implementation
 // For now, this is a placeholder that will be replaced with circomlibjs
-async function poseidonHash(inputs: bigint[]): Promise<bigint> {
+export async function poseidonHash(inputs: bigint[]): Promise<bigint> {
     // This needs circomlibjs or a compatible Poseidon implementation
     // The hash must match the circuit's Poseidon(3) template
     // @ts-ignore - circomlibjs lacks TypeScript declarations
