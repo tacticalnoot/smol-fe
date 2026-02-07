@@ -16,8 +16,7 @@
  * - verification_key.json — For local verification debug
  */
 
-// @ts-ignore - snarkjs is loaded from CDN or bundled
-import * as snarkjs from "snarkjs";
+// snarkjs is loaded dynamically to prevent SSR/environment issues during page load
 
 // ============================================================================
 // Types
@@ -97,6 +96,9 @@ export async function generateTierProof(
     // 3. Generate the proof
     console.log("[ZK] Generating Groth16 proof...", { tierId, commitment: commitment.toString() });
 
+    // @ts-ignore - snarkjs lacks some types or is loaded via CDN
+    const snarkjs = await import("snarkjs");
+
     const { proof, publicSignals } = await snarkjs.groth16.fullProve(
         inputs,
         CIRCUIT_WASM_PATH,
@@ -121,6 +123,9 @@ export async function verifyProofLocally(
 ): Promise<boolean> {
     const vkeyResponse = await fetch("/zk/verification_key.json");
     const vkey = await vkeyResponse.json();
+
+    // @ts-ignore
+    const snarkjs = await import("snarkjs");
     return snarkjs.groth16.verify(vkey, publicSignals, proof);
 }
 
