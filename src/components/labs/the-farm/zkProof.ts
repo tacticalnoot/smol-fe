@@ -319,6 +319,7 @@ export async function submitProofToContract(
         const { Contract, Address, nativeToScVal, xdr, TransactionBuilder, rpc, Account, Networks } = await import("@stellar/stellar-sdk/minimal");
         const NULL_ACCOUNT = "GAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAWHF";
         const { send } = await import("../../../utils/passkey-kit");
+        const { withRetry } = await import("../../../utils/retry");
         const { getBestRpcUrl } = await import("../../../utils/rpc");
         const { getSafeRpId } = await import("../../../utils/domains");
         const { getLatestSequence } = await import("../../../utils/base");
@@ -381,8 +382,18 @@ export async function submitProofToContract(
             expiration: sequence + 60,
         });
 
-        // Send via relayer
-        const result = await send(signedTx);
+        // Send via relayer with retry
+        const result = await withRetry(
+            () => send(signedTx),
+            {
+                maxRetries: 5,
+                baseDelayMs: 2000,
+                onRetry: (attempt, _err, delay) => {
+                    console.log(`[ZK] Relayer retry ${attempt}/5 in ${delay}ms...`);
+                },
+            },
+            "ZK-ProofSubmit"
+        );
 
         console.log("[ZK] Proof verified and attestation stored on-chain!", result);
 
@@ -467,8 +478,18 @@ async function submitLegacyAttestation(
             expiration: sequence + 60,
         });
 
-        // Send via relayer
-        const result = await send(signedTx);
+        // Send via relayer with retry
+        const result = await withRetry(
+            () => send(signedTx),
+            {
+                maxRetries: 5,
+                baseDelayMs: 2000,
+                onRetry: (attempt, _err, delay) => {
+                    console.log(`[ZK] Legacy attestation retry ${attempt}/5 in ${delay}ms...`);
+                },
+            },
+            "ZK-LegacyAttest"
+        );
 
         console.log("[ZK] Legacy attestation submitted!", result);
 
