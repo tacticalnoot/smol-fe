@@ -58,6 +58,7 @@ contracts/**/Cargo.lock
 # Build outputs
 contract.wasm
 *.wasm
+!public/zk/*.wasm
 
 # Node lock files in subdirectories
 remotion-studio/package-lock.json
