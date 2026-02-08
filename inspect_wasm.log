@@ -1,0 +1,248 @@
+Env Meta: AAAAAAAAABYAAAAA
+ • Protocol Version: 22
+
+Contract Meta:
+ • rsver: 1.91.1
+ • rssdkver: 22.0.9#3890521426d71bb4d892b21f5a283a1e836cfa38
+ • cliver: 23.3.0#08473ac20016c369067ce0dbca91d9595e72d6d4
+
+Contract Spec:
+ • Function: upgrade
+     Docs: Upgrade the contract to a new WASM hash.
+           Only callable by admin.
+     Inputs: VecM(
+         [
+             ScSpecFunctionInputV0 {
+                 doc: StringM(),
+                 name: StringM(new_wasm_hash),
+                 type_: BytesN(
+                     ScSpecTypeBytesN {
+                         n: 32,
+                     },
+                 ),
+             },
+         ],
+     )
+     Output: VecM(
+         [
+             Result(
+                 ScSpecTypeResult {
+                     ok_type: Tuple(
+                         ScSpecTypeTuple {
+                             value_types: VecM(
+                                 [],
+                             ),
+                         },
+                     ),
+                     error_type: Udt(
+                         ScSpecTypeUdt {
+                             name: StringM(TierVerifierError),
+                         },
+                     ),
+                 },
+             ),
+         ],
+     )
+
+ • Union: DataKey
+     Cases:
+      • VoidV0(
+            ScSpecUdtUnionCaseVoidV0 {
+                doc: StringM(),
+                name: StringM(Admin),
+            },
+        )
+      • TupleV0(
+            ScSpecUdtUnionCaseTupleV0 {
+                doc: StringM(),
+                name: StringM(Attestation),
+                type_: VecM(
+                    [
+                        Address,
+                    ],
+                ),
+            },
+        )
+
+ • Function: initialize
+     Docs: Initialize the contract with an admin address.
+     Inputs: VecM(
+         [
+             ScSpecFunctionInputV0 {
+                 doc: StringM(),
+                 name: StringM(admin),
+                 type_: Address,
+             },
+         ],
+     )
+     Output: VecM(
+         [
+             Result(
+                 ScSpecTypeResult {
+                     ok_type: Tuple(
+                         ScSpecTypeTuple {
+                             value_types: VecM(
+                                 [],
+                             ),
+                         },
+                     ),
+                     error_type: Udt(
+                         ScSpecTypeUdt {
+                             name: StringM(TierVerifierError),
+                         },
+                     ),
+                 },
+             ),
+         ],
+     )
+
+ • Function: attest_tier
+     Docs: Store a tier attestation (placeholder for ZK verification).
+           
+           In the next upgrade, this will perform actual Groth16 verification
+           using Protocol 25 BN254 host functions.
+           
+           For now, it stores the attestation with a proof hash for later verification.
+     Inputs: VecM(
+         [
+             ScSpecFunctionInputV0 {
+                 doc: StringM(),
+                 name: StringM(farmer),
+                 type_: Address,
+             },
+             ScSpecFunctionInputV0 {
+                 doc: StringM(),
+                 name: StringM(tier),
+                 type_: U32,
+             },
+             ScSpecFunctionInputV0 {
+                 doc: StringM(),
+                 name: StringM(commitment),
+                 type_: BytesN(
+                     ScSpecTypeBytesN {
+                         n: 32,
+                     },
+                 ),
+             },
+             ScSpecFunctionInputV0 {
+                 doc: StringM(),
+                 name: StringM(proof_hash),
+                 type_: BytesN(
+                     ScSpecTypeBytesN {
+                         n: 32,
+                     },
+                 ),
+             },
+         ],
+     )
+     Output: VecM(
+         [
+             Result(
+                 ScSpecTypeResult {
+                     ok_type: Bool,
+                     error_type: Udt(
+                         ScSpecTypeUdt {
+                             name: StringM(TierVerifierError),
+                         },
+                     ),
+                 },
+             ),
+         ],
+     )
+
+ • Struct: ProofData
+     Docs: Proof data (for future ZK verification)
+     Fields:
+      • pi_a: Vec(
+            ScSpecTypeVec {
+                element_type: BytesN(
+                    ScSpecTypeBytesN {
+                        n: 32,
+                    },
+                ),
+            },
+        )
+      • pi_b: Vec(
+            ScSpecTypeVec {
+                element_type: Vec(
+                    ScSpecTypeVec {
+                        element_type: BytesN(
+                            ScSpecTypeBytesN {
+                                n: 32,
+                            },
+                        ),
+                    },
+                ),
+            },
+        )
+      • pi_c: Vec(
+            ScSpecTypeVec {
+                element_type: BytesN(
+                    ScSpecTypeBytesN {
+                        n: 32,
+                    },
+                ),
+            },
+        )
+
+ • Function: get_attestation
+     Docs: Lookup a farmer's tier attestation.
+     Inputs: VecM(
+         [
+             ScSpecFunctionInputV0 {
+                 doc: StringM(),
+                 name: StringM(farmer),
+                 type_: Address,
+             },
+         ],
+     )
+     Output: VecM(
+         [
+             Option(
+                 ScSpecTypeOption {
+                     value_type: Udt(
+                         ScSpecTypeUdt {
+                             name: StringM(TierAttestation),
+                         },
+                     ),
+                 },
+             ),
+         ],
+     )
+
+ • Struct: TierAttestation
+     Docs: A verified tier attestation stored on-chain
+     Fields:
+      • commitment: BytesN(
+            ScSpecTypeBytesN {
+                n: 32,
+            },
+        )
+      • farmer: Address
+      • tier: U32
+      • verified_at: U64
+
+ • Error: TierVerifierError
+     Cases:
+      • ScSpecUdtErrorEnumCaseV0 {
+            doc: StringM(),
+            name: StringM(InvalidProof),
+            value: 1,
+        }
+      • ScSpecUdtErrorEnumCaseV0 {
+            doc: StringM(),
+            name: StringM(InvalidTier),
+            value: 2,
+        }
+      • ScSpecUdtErrorEnumCaseV0 {
+            doc: StringM(),
+            name: StringM(NotAdmin),
+            value: 3,
+        }
+      • ScSpecUdtErrorEnumCaseV0 {
+            doc: StringM(),
+            name: StringM(AlreadyInitialized),
+            value: 4,
+        }
+
+
