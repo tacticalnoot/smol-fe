@@ -1154,6 +1154,7 @@
         }
         50% {
             opacity: 1;
+        }
     }
 
     /* ── Proof Section ── */
@@ -1210,14 +1211,14 @@
         font-size: 8px;
         padding: 10px 16px;
         border-radius: 8px;
-        border: 1px solid rgba(255,255,255,0.1);
-        background: rgba(255,255,255,0.05);
+        border: 1px solid rgba(255, 255, 255, 0.1);
+        background: rgba(255, 255, 255, 0.05);
         color: #ccc;
         cursor: pointer;
         transition: all 0.2s ease;
     }
     .proof-btn:hover {
-        background: rgba(255,255,255,0.1);
+        background: rgba(255, 255, 255, 0.1);
         color: #fff;
     }
     .proof-btn.primary {
@@ -1308,8 +1309,8 @@
         flex-direction: column;
         gap: 4px;
         padding: 12px 16px;
-        background: rgba(255,255,255,0.03);
-        border: 1px solid rgba(255,255,255,0.05);
+        background: rgba(255, 255, 255, 0.03);
+        border: 1px solid rgba(255, 255, 255, 0.05);
         border-radius: 8px;
     }
     .concept-title {
