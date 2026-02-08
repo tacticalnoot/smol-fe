@@ -1,117 +1,52 @@
-# Build Failure Log
+# 🛠️ Tier Verifier Deployment: Post-Mortem & Failures Log
 
-## 2026-02-08 - Duplicate identifier in Svelte state
+This document tracks the technical hurdles, errors, and "gotchas" encountered while deploying and initializing the `tier-verifier` contract on Stellar Mainnet.
 
-**Error:**
-```
-[vite-plugin-svelte] src/components/labs/the-farm/TheFarmCore.svelte (46:8): Identifier 'txHash' has already been declared
-```
+## 1. Upgrade Permissions (Admin Lock)
+- **Error:** `Contract already exists` / `Unauthorized` during upgrade.
+- **Root Cause:** The existing contract was deployed by a different address/authority. The `tier-verifier-deployer` was not the administrator.
+- **Resolution:** Deployed a **new contract instance** instead of attempting to upgrade the legacy one.
 
-**Cause:**
-`multi_replace` tool was used to add state variables, but the target range didn't include the existing `txHash` declaration, causing it to be duplicated in the replacement.
+## 2. ESM/CommonJS SDK Import Issues
+- **Error:** `SyntaxError: Named export 'SorobanRpc' not found` or `TypeError: Cannot read properties of undefined (reading 'Server')`.
+- **Root Cause:** `@stellar/stellar-sdk` behaves differently between ESM and CommonJS. Named exports like `SorobanRpc` were not available in the Node.js environment as expected.
+- **Resolution:** Used default imports:
+  ```javascript
+  import pkg from '@stellar/stellar-sdk';
+  const { rpc, xdr, ... } = pkg;
+  const server = new rpc.Server(URL);
+  ```
 
-**Fix:**
-Removed the duplicate declaration.
+## 3. ScMap Strict Sorting Requirement
+- **Error:** `HostError: Error(Object, InvalidInput)` ... `ScMap was not sorted by key for conversion to host object`.
+- **Root Cause:** Soroban requires map keys in XDR to be sorted lexicographically by their bytes.
+- **Lessons:** Even if an object has keys in order in JS, `nativeToScVal` might not guarantee the output XDR `ScMap` is sorted unless specifically handled.
+- **Final Fix:** Manually constructed `xdr.ScVal.scvMap` with a sorted array of `ScMapEntry`.
 
-**Prevention:**
-When using `multi_replace` or `replace_file_content` to add state/variables, ALWAYS check the surrounding lines for existing declarations to avoid duplicates. Use `view_file` to confirm the context before applying the edit.
+## 4. WASM Signature Mismatch (`MismatchingParameterLen`)
+- **Error:** `VM call failed: Func(MismatchingParameterLen)` for `initialize`.
+- **Root Cause:** The `lib.rs` source code defined `initialize(admin, vkey)`, but the compiled WASM being inspected/deployed only showed `initialize(admin)`. This was due to a **stale WASM artifact** in `target/` not reflecting recent source changes.
+- **Resolution:** Performed a `cargo clean` and a fresh `cargo build` to ensure the WASM interface matched the Rust source.
 
-## 2026-02-08 - Markup inside script tag
+## 5. Map Key Type Mismatch (`UnexpectedType`)
+- **Error:** `HostError: Error(Value, UnexpectedType)` during `map_unpack_to_linear_memory`.
+- **Root Cause:** `nativeToScVal` converts object keys to `scvString` by default. However, Soroban contract types (structs) expect **`scvSymbol`** for field names.
+- **Resolution:** Switched to manual `ScMap` construction using `xdr.ScVal.scvSymbol` for keys:
+  ```javascript
+  new xdr.ScMapEntry({ 
+    key: xdr.ScVal.scvSymbol("alpha_g1"), 
+    val: xdr.ScVal.scvBytes(...) 
+  })
+  ```
 
-**Error:**
-Invalid Svelte component structure (markup inside `<script>`).
+## 6. Build Context Failures
+- **Error:** `cargo build` failing with `could not find Cargo.toml`.
+- **Root Cause:** Attempting to run `cargo` from the project root instead of the contract-specific directory (`contracts/tier-verifier`).
+- **Resolution:** Always `cd` or set the correct `Cwd` when running contract builds.
 
-**Cause:**
-`multi_replace` targeted `</script>` and replaced it with `markup... </script>`, effectively placing the markup inside the script block.
+---
 
-**Fix:**
-Moved the markup to be outside the `<script>` tag.
-
-**Prevention:**
-When appending content to the end of a block, be precise about whether it goes *before* or *after* the closing tag.
-
-## 2026-02-08 - Turnstile Integration Reverted
-
-**Issue:**
-User reported "Domain Mismatch" (Error 110200) when using Turnstile on `smol-fe` pages.
-
-**Cause:**
-Turnstile widget likely requires strict domain allowlisting (e.g. `smol-fe-7jl.pages.dev` vs `localhost`).
-
-**Action:**
-Reverted Turnstile integration from `TheFarmCore.svelte` and `zkProof.ts`. Restored the original direct-to-relayer path (with retry). The `turnstileToken` logic has been removed to keep the code clean.
-
-**Status:**
-- `TheFarmCore.svelte`: Clean (no Turnstile markup/state).
-- `zkProof.ts`: Clean (legacy signatures restored).
-- `task.md`: Feature marked as reverted.
-
-## 2026-02-08 - Process Failure: Did not push after fixing issue
-
-**Issue:**
-Fixed a critical build error (`TheFarmCore` duplicate identifier) but failed to push the fix to `main` immediately.
-
-**Consequence:**
-Delayed resolution for the user and caused confusion about why the build was still failing or if the fix was deployed. The remote environment remained broken while the local environment was fixed.
-
-**Prevention:**
-**ALWAYS PUSH IMMEDIATELY** after fixing a critical build error. Do not wait for further unrelated changes (like documentation or optional features) if the build is currently broken. Validating the fix involves ensuring it reaches the deployment pipeline.
-
-- task.md: Feature marked as reverted.
-
-## 2026-02-08 - Runtime: OZ Relayer Timeout & Pool Capacity
-
-**Issue:**
-User experiences repeated `503 Service Unavailable` and `500 Internal Server Error` from OpenZeppelin Relayer.
-Specific errors:
-- `Queue error: timed out`
-- `POOL_CAPACITY` ("Too many transactions queued")
-
-**Cause:**
-The shared OpenZeppelin Relayer is overwhelmed or experiencing high latency. The `retry` logic is catching it, but the relayer remains unavailable for extended periods (5+ retries failed).
-
-**Status:**
-Turnstile failover (to Kale) was the intended fix but was reverted. Currently relying on `withRetry` logic. Need to consider more aggressive backoff or alternative redundancy if OZ remains unstable.
-
-## 2026-02-08 - Runtime: Transaction Failed (Missing Receipt)
-
-**Issue:**
-After successful relayer submission (`DIRECT mode SUCCESS`), the UI shows `Verification error: Error: Transaction failed`.
-
-**Cause:**
-The relayer is returning a success response (HTTP 200), but `TheFarmCore` or `zkProof` fails to extract the transaction hash from the response object.
-Initial fix checked `result.hash`, but logs revealed the response is nested: `{"success":true, "data":{"hash":"..."}}`.
-
-**Fix:**
-Update `zkProof.ts` to recursively check for `data.hash`, `data.transactionHash`, etc.
-
-## 2026-02-08 - Process Failure: Documentation not synced to git
-
-**Issue:**
-`build_failures.md` logs were maintained as local agent artifacts but not pushed to the repository, leading to confusion about what was documented/shared.
-
-**Cause:**
-Agent treated the log as a temporary session artifact (`.gemini/antigravity/brain/...`) rather than a repo file.
-
-**Fix:**
-Moved `BUILD_FAILURES.md` to the repository root and pushed to `main`.
-
-**Prevention:**
-Critical project documentation (like error logs) should live in the repository to ensure visibility and history tracking.
-
-## 2026-02-08 - Duplicate identifier in zkProof.ts
-
-**Error:**
-```
-The symbol "result" has already been declared
-.../zkProof.ts:400:14
-```
-
-**Cause:**
-When patching `zkProof.ts` to improve transaction hash extraction, the `withRetry` code block (which declares `const result`) was accidentally duplicated in the `replace_file_content` call. The tool appended the new code *after* the target instead of replacing it effectively, or the user copy-pasted the context into the replacement incorrectly.
-
-**Fix:**
-Removed the duplicate code blocks in `submitProofToContract` and `submitLegacyAttestation`.
-
-**Prevention:**
-Double-check `replace_file_content` inputs to ensure the `ReplacementContent` doesn't include the `TargetContent` unless intended, and verify the resulting file structure after editing.
+### ✅ Final Successful State
+- **Contract ID:** `CAU7NET7FXSFBBRMLM6X7CJMVAIHMG7RC4YPCXG6G4YOYG6C3CVGR25M`
+- **Initialzed with:** Admin Address + Full Groth16 Verification Key.
+- **Frontend Sync:** `zkTypes.ts` updated.
