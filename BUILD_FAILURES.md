@@ -57,6 +57,8 @@ Delayed resolution for the user and caused confusion about why the build was sti
 **Prevention:**
 **ALWAYS PUSH IMMEDIATELY** after fixing a critical build error. Do not wait for further unrelated changes (like documentation or optional features) if the build is currently broken. Validating the fix involves ensuring it reaches the deployment pipeline.
 
+- task.md: Feature marked as reverted.
+
 ## 2026-02-08 - Runtime: OZ Relayer Timeout & Pool Capacity
 
 **Issue:**
@@ -70,6 +72,17 @@ The shared OpenZeppelin Relayer is overwhelmed or experiencing high latency. The
 
 **Status:**
 Turnstile failover (to Kale) was the intended fix but was reverted. Currently relying on `withRetry` logic. Need to consider more aggressive backoff or alternative redundancy if OZ remains unstable.
+
+## 2026-02-08 - Runtime: Transaction Failed (Missing Receipt)
+
+**Issue:**
+After successful relayer submission (`DIRECT mode SUCCESS`), the UI shows `Verification error: Error: Transaction failed`.
+
+**Cause:**
+The relayer is returning a success response (HTTP 200), but `TheFarmCore` or `zkProof` fails to extract the transaction hash from the response object. It expects `result.hash` or `result.transactionHash`. If the relayer returns a different format (e.g. `transactionId` or valid JSON without a hash field), the app assumes failure.
+
+**Fix:**
+Update `zkProof.ts` to inspect the relayer response more thoroughly and support multiple hash property names (`hash`, `txHash`, `transactionHash`, `id`). Add debug logging to capture the actual response structure.
 
 ## 2026-02-08 - Process Failure: Documentation not synced to git
 

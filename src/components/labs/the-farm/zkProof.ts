@@ -398,9 +398,16 @@ export async function submitProofToContract(
 
         console.log("[ZK] Proof verified and attestation stored on-chain!", result);
 
+        // Robust hash extraction
+        const txHash = result.hash || result.transactionHash || result.txHash || result.id || result.transactionId;
+
+        if (!txHash) {
+            console.warn("[ZK] Relayer returned success but no hash found in result:", JSON.stringify(result));
+        }
+
         return {
             success: true,
-            txHash: result.hash || result.transactionHash,
+            txHash: txHash,
         };
     } catch (error: any) {
         // If verify_and_attest is not available (pre-upgrade), fall back to legacy
@@ -496,9 +503,16 @@ async function submitLegacyAttestation(
 
         console.log("[ZK] Legacy attestation submitted!", result);
 
+        // Robust hash extraction
+        const txHash = result.hash || result.transactionHash || result.txHash || result.id || result.transactionId;
+
+        if (!txHash) {
+            console.warn("[ZK] Relayer returned success but no hash found in result:", JSON.stringify(result));
+        }
+
         return {
             success: true,
-            txHash: result.hash || result.transactionHash,
+            txHash: txHash,
         };
     } catch (error: any) {
         console.error("[ZK] Failed to submit legacy attestation:", error);
