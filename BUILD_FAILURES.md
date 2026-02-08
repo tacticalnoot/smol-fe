@@ -61,7 +61,17 @@ This section tracks the technical hurdles encountered while deploying and initia
 - **Root Cause:** `nativeToScVal` converts object keys to `scvString`. Soroban structs expect **`scvSymbol`**.
 - **Resolution:** Switched to manual `ScMap` construction using `xdr.ScVal.scvSymbol` for keys.
 
+## 6. Build Context Failures
+- **Error:** `cargo build` failing with `could not find Cargo.toml`.
+- **Root Cause:** Attempting to run `cargo` from the project root instead of the contract-specific directory (`contracts/tier-verifier`).
+- **Resolution:** Always `cd` or set the correct `Cwd` when running contract builds.
+
+## 7. `UnreachableCodeReached` during `verify_and_attest`
+- **Error:** `HostError: Error(WasmVm, InvalidAction)` with diagnostic `VM call trapped: UnreachableCodeReached`.
+- **Status:** Investigating.
+- **Hypothesis:** Panic in `lib.rs` due to `unwrap()` on verification key points (IC) or invalid point parsing. Could be caused by incomplete initialization or serialization mismatch for the `vkey` struct.
+
 ---
-### ✅ Final Successful State
+### ✅ Final Successful State (Ongoing)
 - **Contract ID:** `CAU7NET7FXSFBBRMLM6X7CJMVAIHMG7RC4YPCXG6G4YOYG6C3CVGR25M`
-- **Initialzed with:** Admin Address + Full Groth16 Verification Key.
+- **Current Issue:** Simulation traps in `verify_and_attest`.
