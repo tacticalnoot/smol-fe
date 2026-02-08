@@ -315,6 +315,7 @@ export async function submitProofToContract(
             farmer: farmerAddress,
             tier: tierId,
         });
+        console.log("[ZK] DEBUG: Using Contract ID:", TIER_VERIFIER_CONTRACT_ID);
 
         const { Contract, Address, nativeToScVal, xdr, TransactionBuilder, rpc, Account, Networks } = await import("@stellar/stellar-sdk/minimal");
         const NULL_ACCOUNT = "GAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAWHF";
@@ -366,7 +367,8 @@ export async function submitProofToContract(
         // Simulate to get sorobanData
         const sim = await server.simulateTransaction(tx);
         if (!rpc.Api.isSimulationSuccess(sim)) {
-            throw new Error("Simulation failed: " + JSON.stringify(sim));
+            console.error("[ZK] Simulation failed for verify_and_attest:", sim);
+            throw new Error("Simulation failed for verify_and_attest: " + JSON.stringify(sim));
         }
 
         // Prepare transaction with simulation data
@@ -421,13 +423,17 @@ export async function submitProofToContract(
             txHash: txHash,
         };
     } catch (error: any) {
-        // If verify_and_attest is not available (pre-upgrade), fall back to legacy
-        if (error.message?.includes("verify_and_attest") || error.message?.includes("not found")) {
-            console.warn("[ZK] verify_and_attest not available, falling back to legacy attest_tier");
+        // More specific check: only fall back if the function truly doesn't exist (HostError: Error(WasmVm, UnexpectedSize) or similar)
+        // or if it explicitly says function not found.
+        const errorStr = (error.message || "").toLowerCase();
+        const isNotFoundError = errorStr.includes("not found") || errorStr.includes("unknown function");
+
+        if (isNotFoundError) {
+            console.warn("[ZK] verify_and_attest not found on contract, falling back to legacy attest_tier");
             return submitLegacyAttestation(kit, farmerAddress, tierId, commitment, proof);
         }
 
-        console.error("[ZK] Failed to submit proof:", error);
+        console.error("[ZK] Failed to submit proof (No Fallback):", error);
         return {
             success: false,
             error: error.message || "Unknown error",
