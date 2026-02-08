@@ -27,6 +27,20 @@ Implemented a retry mechanism with exponential backoff and localized the relayer
 
 ---
 
+## 2026-02-08 - Mainnet verifier upgrade confirmed (trap resolved)
+
+**Context:** Final upgrade simulation against Mainnet `verify_and_attest` for contract `CAU7NET7FXSFBBRMLM6X7CJMVAIHMG7RC4YPCXG6G4YOYG6C3CVGR25M`.
+
+**Result:**
+- `UnreachableCodeReached` trap is no longer observed.
+- Simulation reaches final pairing-check logic.
+- Invalid-input responses with dummy points are expected and confirm execution is now inside verifier logic.
+
+**Operational Note:**
+Treat the contract as live for real Groth16 submissions; do not use legacy attest-only fallback paths in frontend verification flow.
+
+---
+
 # 🛠️ Tier Verifier Deployment: Post-Mortem & Failures Log
 
 This section tracks the technical hurdles encountered while deploying and initializing the `tier-verifier` contract on Stellar Mainnet.
@@ -68,10 +82,12 @@ This section tracks the technical hurdles encountered while deploying and initia
 
 ## 7. `UnreachableCodeReached` during `verify_and_attest`
 - **Error:** `HostError: Error(WasmVm, InvalidAction)` with diagnostic `VM call trapped: UnreachableCodeReached`.
-- **Status:** Investigating.
-- **Hypothesis:** Panic in `lib.rs` due to `unwrap()` on verification key points (IC) or invalid point parsing. Could be caused by incomplete initialization or serialization mismatch for the `vkey` struct.
+- **Root Cause:** Soroban `g1_mul` for `Bn254G1Affine` traps when the scalar is zero (e.g., Tier 0) because affine coordinates cannot represent the resulting point at infinity.
+- **Resolution:** Implemented a zero-scalar guard in `lib.rs` to skip `g1_mul` and subsequent addition if the scalar is zero.
+- **Verification Status (2026-02-08):** Resolved on Mainnet for `CAU7NET7FXSFBBRMLM6X7CJMVAIHMG7RC4YPCXG6G4YOYG6C3CVGR25M`; simulation now reaches pairing-check stage without VM trap.
 
 ---
-### ✅ Final Successful State (Ongoing)
+### ✅ Final Successful State
 - **Contract ID:** `CAU7NET7FXSFBBRMLM6X7CJMVAIHMG7RC4YPCXG6G4YOYG6C3CVGR25M`
-- **Current Issue:** Simulation traps in `verify_and_attest`.
+- **Status:** Fixed and upgraded with zero-scalar guard.
+

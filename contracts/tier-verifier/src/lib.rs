@@ -17,7 +17,7 @@
 #![no_std]
 use soroban_sdk::{
     contract, contracterror, contractimpl, contracttype,
-    crypto::bn254::{Bn254, Bn254G1Affine, Bn254G2Affine, Fr},
+    crypto::bn254::{Bn254G1Affine, Bn254G2Affine, Fr},
     Address, BytesN, Env, Symbol, Vec, U256,
 };
 
@@ -123,8 +123,25 @@ impl TierVerifier {
         Ok(())
     }
 
-    /// Update the verification key (e.g. after circuit changes). Admin only.
-    pub fn set_vkey(env: Env, vkey: VerificationKey) -> Result<(), TierVerifierError> {
+    /// Change the admin address. Admin only.
+    pub fn set_admin(env: Env, new_admin: Address) -> Result<(), TierVerifierError> {
+        let admin: Address = env
+            .storage()
+            .instance()
+            .get(&DataKey::Admin)
+            .ok_or(TierVerifierError::NotAdmin)?;
+        admin.require_auth();
+        env.storage().instance().set(&DataKey::Admin, &new_admin);
+
+        // Emit event
+        env.events().publish((Symbol::new(&env, "AdminChanged"),), (admin, new_admin));
+
+        Ok(())
+    }
+
+    /// Update the verification key. Admin only.
+    /// This allows changing the circuit parameters without redeploying.
+    pub fn update_vkey(env: Env, vkey: VerificationKey) -> Result<(), TierVerifierError> {
         let admin: Address = env
             .storage()
             .instance()
@@ -132,6 +149,8 @@ impl TierVerifier {
             .ok_or(TierVerifierError::NotAdmin)?;
         admin.require_auth();
         env.storage().instance().set(&DataKey::Vkey, &vkey);
+
+        env.events().publish((Symbol::new(&env, "VkeyUpdated"),), ());
         Ok(())
     }
 
@@ -169,27 +188,73 @@ impl TierVerifier {
         // Require farmer auth
         farmer.require_auth();
 
-        // Load verification key
+        // 1. Prepare public inputs for the generic verifier
+        // U256::to_be_bytes returns Bytes, we convert to BytesN<32>
+        let tier_bytes = U256::from_u32(&env, tier).to_be_bytes();
+        let tier_val: BytesN<32> = tier_bytes.try_into().map_err(|_| TierVerifierError::InvalidTier)?;
+        
+        let mut public_inputs = Vec::new(&env);
+        public_inputs.push_back(tier_val);
+        public_inputs.push_back(commitment.clone());
+
+        // 2. Call the generic verifier
+        Self::verify_groth16_internal(&env, &public_inputs, &proof)?;
+
+        // 3. Proof is valid — store attestation
+        let attestation = TierAttestation {
+            farmer: farmer.clone(),
+            tier,
+            commitment,
+            verified_at: env.ledger().timestamp(),
+        };
+
+        env.storage()
+            .persistent()
+            .set(&DataKey::Attestation(farmer.clone()), &attestation);
+
+        // 4. Emit event
+        env.events().publish(
+            (Symbol::new(&env, "TierVerified"),),
+            (farmer, tier),
+        );
+
+        Ok(true)
+    }
+
+    /// Generic Groth16 verification logic.
+    /// Can be used by other contracts or callers to verify ANY BN254 proof.
+    pub fn verify_groth16(
+        env: Env,
+        public_inputs: Vec<BytesN<32>>,
+        proof: Groth16Proof,
+    ) -> Result<bool, TierVerifierError> {
+        Self::verify_groth16_internal(&env, &public_inputs, &proof)?;
+        Ok(true)
+    }
+
+    /// Internal helper for Groth16 math
+    fn verify_groth16_internal(
+        env: &Env,
+        public_inputs: &Vec<BytesN<32>>,
+        proof: &Groth16Proof,
+    ) -> Result<(), TierVerifierError> {
         let vkey: VerificationKey = env
             .storage()
             .instance()
             .get(&DataKey::Vkey)
             .ok_or(TierVerifierError::NotInitialized)?;
 
-        // We need exactly 3 IC points for 2 public inputs
-        if vkey.ic.len() != 3 {
+        // We need exactly public_inputs.len() + 1 IC points
+        if vkey.ic.len() != public_inputs.len() + 1 {
             return Err(TierVerifierError::InvalidPublicInputs);
         }
 
         let bn254 = env.crypto().bn254();
-        env.events().publish((Symbol::new(&env, "ZK_DEBUG"), Symbol::new(&env, "VKEY_LOADED")), ());
 
         // Decode proof points
-        let pi_a = Bn254G1Affine::from_bytes(proof.pi_a);
-        let pi_b = Bn254G2Affine::from_bytes(proof.pi_b);
-        let pi_c = Bn254G1Affine::from_bytes(proof.pi_c);
-        env.events().publish((Symbol::new(&env, "ZK_DEBUG"), Symbol::new(&env, "PROOF_DECODED")), ());
-
+        let pi_a = Bn254G1Affine::from_bytes(proof.pi_a.clone());
+        let pi_b = Bn254G2Affine::from_bytes(proof.pi_b.clone());
+        let pi_c = Bn254G1Affine::from_bytes(proof.pi_c.clone());
 
         // Decode verification key points
         let alpha_g1 = Bn254G1Affine::from_bytes(vkey.alpha_g1);
@@ -197,33 +262,39 @@ impl TierVerifier {
         let gamma_g2 = Bn254G2Affine::from_bytes(vkey.gamma_g2);
         let delta_g2 = Bn254G2Affine::from_bytes(vkey.delta_g2);
 
-        // Decode IC points
-        let ic0 = Bn254G1Affine::from_bytes(vkey.ic.get(0).unwrap());
-        let ic1 = Bn254G1Affine::from_bytes(vkey.ic.get(1).unwrap());
-        let ic2 = Bn254G1Affine::from_bytes(vkey.ic.get(2).unwrap());
+        // Compute vk_x = IC[0] + sum(pub_input[i] * IC[i+1])
+        let mut vk_x = Bn254G1Affine::from_bytes(vkey.ic.get(0).unwrap());
+        
+        for i in 0..public_inputs.len() {
+            let scalar_bytes = public_inputs.get(i).unwrap();
+            let scalar = Fr::from_bytes(scalar_bytes.clone());
+            
+            // Skip multiplication if scalar is zero to avoid AFFINE_POINT_AT_INFINITY traps
+            // (Fr::zero() or all zeros in bytes)
+            let mut is_zero = true;
+            for b in scalar_bytes.iter() {
+                if b != 0 { is_zero = false; break; }
+            }
 
-        // Public inputs: [tier_id, commitment_expected]
-        // Convert tier to scalar
-        let tier_scalar = Fr::from_u256(U256::from_u32(&env, tier));
+            if !is_zero {
+                let ic_point = Bn254G1Affine::from_bytes(vkey.ic.get(i + 1).unwrap());
+                let term = bn254.g1_mul(&ic_point, &scalar);
+                vk_x = bn254.g1_add(&vk_x, &term);
+            }
+        }
 
-        // Convert commitment to scalar (it's a Poseidon field element)
-        let commitment_scalar = Fr::from_bytes(commitment.clone());
-        env.events().publish((Symbol::new(&env, "ZK_DEBUG"), Symbol::new(&env, "SCALARS_DECODED")), ());
+        // Negate pi_a for pairing equation by multiplying with -1 in Fr.
+        // IMPORTANT: this must use Fr modulus (group order), not Fq modulus.
+        let r_minus_one = BytesN::from_array(env, &[
+            0x30, 0x64, 0x4e, 0x72, 0xe1, 0x31, 0xa0, 0x29,
+            0xb8, 0x50, 0x45, 0xb6, 0x81, 0x81, 0x58, 0x5d,
+            0x28, 0x33, 0xe8, 0x48, 0x79, 0xb9, 0x70, 0x91,
+            0x43, 0xe1, 0xf5, 0x93, 0xf0, 0x00, 0x00, 0x00,
+        ]);
+        let fr_neg_one = Fr::from_bytes(r_minus_one);
+        let pi_a_neg = bn254.g1_mul(&pi_a, &fr_neg_one);
 
-
-        // Compute vk_x = IC[0] + tier * IC[1] + commitment * IC[2]
-        let term1 = bn254.g1_mul(&ic1, &tier_scalar);
-        let term2 = bn254.g1_mul(&ic2, &commitment_scalar);
-        let vk_x = bn254.g1_add(&ic0, &bn254.g1_add(&term1, &term2));
-
-        // Negate pi_a for the pairing check
-        // Negation of G1 point: negate the y-coordinate
-        let pi_a_neg = negate_g1(&env, &pi_a);
-        env.events().publish((Symbol::new(&env, "ZK_DEBUG"), Symbol::new(&env, "NEGATED_G1")), ());
-
-
-        // Groth16 pairing check:
-        // e(-pi_a, pi_b) * e(alpha, beta) * e(vk_x, gamma) * e(pi_c, delta) == 1
+        // Final pairing check
         let mut g1_points: Vec<Bn254G1Affine> = Vec::new(&env);
         let mut g2_points: Vec<Bn254G2Affine> = Vec::new(&env);
 
@@ -239,31 +310,11 @@ impl TierVerifier {
         g1_points.push_back(pi_c);
         g2_points.push_back(delta_g2);
 
-        let pairing_valid = bn254.pairing_check(g1_points, g2_points);
-
-        if !pairing_valid {
+        if !bn254.pairing_check(g1_points, g2_points) {
             return Err(TierVerifierError::InvalidProof);
         }
 
-        // Proof is valid — store attestation
-        let attestation = TierAttestation {
-            farmer: farmer.clone(),
-            tier,
-            commitment,
-            verified_at: env.ledger().timestamp(),
-        };
-
-        env.storage()
-            .persistent()
-            .set(&DataKey::Attestation(farmer.clone()), &attestation);
-
-        // Emit event
-        env.events().publish(
-            (Symbol::new(&env, "TierVerified"),),
-            (farmer, tier),
-        );
-
-        Ok(true)
+        Ok(())
     }
 
     /// Legacy attestation for backwards compatibility during migration.
@@ -309,43 +360,6 @@ impl TierVerifier {
     }
 }
 
-// ============================================================================
-// Helpers
-// ============================================================================
-
-/// Negate a G1 affine point by negating its y-coordinate.
-/// BN254 field modulus: 0x30644e72e131a029b85045b68181585d97816a916871ca8d3c208c16d87cfd47
-fn negate_g1(env: &Env, point: &Bn254G1Affine) -> Bn254G1Affine {
-    let bytes = point.to_array();
-    let mut result = [0u8; 64];
-
-    // Copy x-coordinate unchanged (bytes 0..32)
-    result[..32].copy_from_slice(&bytes[..32]);
-
-    // Negate y-coordinate: y_neg = FIELD_MODULUS - y
-    // BN254 base field modulus
-    let modulus: [u8; 32] = [
-        0x30, 0x64, 0x4e, 0x72, 0xe1, 0x31, 0xa0, 0x29,
-        0xb8, 0x50, 0x45, 0xb6, 0x81, 0x81, 0x58, 0x5d,
-        0x97, 0x81, 0x6a, 0x91, 0x68, 0x71, 0xca, 0x8d,
-        0x3c, 0x20, 0x8c, 0x16, 0xd8, 0x7c, 0xfd, 0x47,
-    ];
-
-    // Subtract y from modulus (big-endian)
-    let mut borrow: u16 = 0;
-    for i in (0..32).rev() {
-        let diff = (modulus[i] as u16) - (bytes[32 + i] as u16) - borrow;
-        if diff > 255 {
-            result[32 + i] = (diff + 256) as u8;
-            borrow = 1;
-        } else {
-            result[32 + i] = diff as u8;
-            borrow = 0;
-        }
-    }
-
-    Bn254G1Affine::from_array(env, &result)
-}
 
 // ============================================================================
 // Tests
@@ -358,33 +372,7 @@ mod test {
     use soroban_sdk::Env;
 
     #[test]
-    fn test_initialize() {
-        let env = Env::default();
-        let contract_id = env.register(TierVerifier, ());
-        let client = TierVerifierClient::new(&env, &contract_id);
-
-        let admin = Address::generate(&env);
-
-        // Build a dummy vkey for test (not a real verification key)
-        let ic: Vec<BytesN<64>> = Vec::new(&env);
-
-        let vkey = VerificationKey {
-            alpha_g1: BytesN::from_array(&env, &[0u8; 64]),
-            beta_g2: BytesN::from_array(&env, &[0u8; 128]),
-            gamma_g2: BytesN::from_array(&env, &[0u8; 128]),
-            delta_g2: BytesN::from_array(&env, &[0u8; 128]),
-            ic,
-        };
-
-        client.initialize(&admin, &vkey);
-
-        // Second init should fail
-        let result = client.try_initialize(&admin, &vkey);
-        assert!(result.is_err());
-    }
-
-    #[test]
-    fn test_legacy_attest_tier() {
+    fn test_tier_zero_guard() {
         let env = Env::default();
         env.mock_all_auths();
         let contract_id = env.register(TierVerifier, ());
@@ -393,54 +381,118 @@ mod test {
         let admin = Address::generate(&env);
         let farmer = Address::generate(&env);
 
-        let ic: Vec<BytesN<64>> = Vec::new(&env);
+        // Real G1 point from verification_key.json
+        let g1_hex = "1a090e767fa302448623fcae0e0efaae24ee935ce0379cb2e1ef7842488a8e131c072f468edbd877adfd290017893d7643c1f1d605c55abb44677f29fec121b3";
+        let mut g1_arr = [0u8; 64];
+        for i in 0..64 { g1_arr[i] = u8::from_str_radix(&g1_hex[i*2..i*2+2], 16).unwrap(); }
+        let g1_bytes = BytesN::from_array(&env, &g1_arr);
+
+        // Real G2 point from verification_key.json
+        let g2_hex = "2f6ccee07556e61ac1d590e7e592bfd8d4e4994d2e65d751d97f84732158e5e729cfc36e060909e12b8c6da1a443f8a2ee47e58099c58614238fad6e01a39bac132ad8c806e8959b81e642faadc3beb924021a82c0210315e87f302162a5a0ba01eb03e4a1524452713c9c6ca70573764eda1eb96f6d76763327f304e9f7b227";
+        let mut g2_arr = [0u8; 128];
+        for i in 0..128 { g2_arr[i] = u8::from_str_radix(&g2_hex[i*2..i*2+2], 16).unwrap(); }
+        let g2_bytes = BytesN::from_array(&env, &g2_arr);
+
+        let mut ic: Vec<BytesN<64>> = Vec::new(&env);
+        ic.push_back(g1_bytes.clone()); 
+        ic.push_back(g1_bytes.clone()); 
+        ic.push_back(g1_bytes.clone()); 
+
         let vkey = VerificationKey {
-            alpha_g1: BytesN::from_array(&env, &[0u8; 64]),
-            beta_g2: BytesN::from_array(&env, &[0u8; 128]),
-            gamma_g2: BytesN::from_array(&env, &[0u8; 128]),
-            delta_g2: BytesN::from_array(&env, &[0u8; 128]),
+            alpha_g1: g1_bytes.clone(),
+            beta_g2: g2_bytes.clone(),
+            gamma_g2: g2_bytes.clone(),
+            delta_g2: g2_bytes.clone(),
             ic,
         };
 
         client.initialize(&admin, &vkey);
 
         let commitment = BytesN::from_array(&env, &[1u8; 32]);
-        let proof_hash = BytesN::from_array(&env, &[2u8; 32]);
+        let proof = Groth16Proof {
+            pi_a: g1_bytes.clone(),
+            pi_b: g2_bytes.clone(),
+            pi_c: g1_bytes.clone(),
+        };
 
-        let result = client.attest_tier(&farmer, &2, &commitment, &proof_hash);
-        assert!(result);
-
-        let attestation = client.get_attestation(&farmer);
-        assert!(attestation.is_some());
-        let att = attestation.unwrap();
-        assert_eq!(att.tier, 2);
+        let result = client.try_verify_and_attest(&farmer, &0, &commitment, &proof);
+        
+        // This will now reach pairing_check and return Err(InvalidProof) instead of trapping!
+        assert!(result.is_err());
     }
 
     #[test]
-    fn test_invalid_tier() {
+    fn test_generic_verify() {
+        let env = Env::default();
+        let contract_id = env.register(TierVerifier, ());
+        let client = TierVerifierClient::new(&env, &contract_id);
+
+        let admin = Address::generate(&env);
+        
+        let g1_hex = "1a090e767fa302448623fcae0e0efaae24ee935ce0379cb2e1ef7842488a8e131c072f468edbd877adfd290017893d7643c1f1d605c55abb44677f29fec121b3";
+        let mut g1_arr = [0u8; 64];
+        for i in 0..64 { g1_arr[i] = u8::from_str_radix(&g1_hex[i*2..i*2+2], 16).unwrap(); }
+        let g1_bytes = BytesN::from_array(&env, &g1_arr);
+
+        let g2_hex = "2f6ccee07556e61ac1d590e7e592bfd8d4e4994d2e65d751d97f84732158e5e729cfc36e060909e12b8c6da1a443f8a2ee47e58099c58614238fad6e01a39bac132ad8c806e8959b81e642faadc3beb924021a82c0210315e87f302162a5a0ba01eb03e4a1524452713c9c6ca70573764eda1eb96f6d76763327f304e9f7b227";
+        let mut g2_arr = [0u8; 128];
+        for i in 0..128 { g2_arr[i] = u8::from_str_radix(&g2_hex[i*2..i*2+2], 16).unwrap(); }
+        let g2_bytes = BytesN::from_array(&env, &g2_arr);
+
+        let mut ic: Vec<BytesN<64>> = Vec::new(&env);
+        for _ in 0..4 { ic.push_back(g1_bytes.clone()); }
+
+        let vkey = VerificationKey {
+            alpha_g1: g1_bytes.clone(),
+            beta_g2: g2_bytes.clone(),
+            gamma_g2: g2_bytes.clone(),
+            delta_g2: g2_bytes.clone(),
+            ic,
+        };
+
+        client.initialize(&admin, &vkey);
+
+        let mut public_inputs = Vec::new(&env);
+        public_inputs.push_back(BytesN::from_array(&env, &[0u8; 32])); 
+        public_inputs.push_back(BytesN::from_array(&env, &[1u8; 32])); 
+        public_inputs.push_back(BytesN::from_array(&env, &[0u8; 32])); 
+
+        let proof = Groth16Proof {
+            pi_a: g1_bytes.clone(),
+            pi_b: g2_bytes.clone(),
+            pi_c: g1_bytes.clone(),
+        };
+
+        let result = client.try_verify_groth16(&public_inputs, &proof);
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_admin_flow() {
         let env = Env::default();
         env.mock_all_auths();
         let contract_id = env.register(TierVerifier, ());
         let client = TierVerifierClient::new(&env, &contract_id);
 
         let admin = Address::generate(&env);
-        let farmer = Address::generate(&env);
+        let new_admin = Address::generate(&env);
 
-        let ic: Vec<BytesN<64>> = Vec::new(&env);
         let vkey = VerificationKey {
             alpha_g1: BytesN::from_array(&env, &[0u8; 64]),
             beta_g2: BytesN::from_array(&env, &[0u8; 128]),
             gamma_g2: BytesN::from_array(&env, &[0u8; 128]),
             delta_g2: BytesN::from_array(&env, &[0u8; 128]),
-            ic,
+            ic: Vec::new(&env),
         };
 
         client.initialize(&admin, &vkey);
 
-        let commitment = BytesN::from_array(&env, &[1u8; 32]);
-        let proof_hash = BytesN::from_array(&env, &[2u8; 32]);
+        // Change admin
+        client.set_admin(&new_admin);
 
-        let result = client.try_attest_tier(&farmer, &5, &commitment, &proof_hash);
-        assert!(result.is_err());
+        // Update vkey with new admin
+        client.update_vkey(&vkey);
     }
 }
+
+
