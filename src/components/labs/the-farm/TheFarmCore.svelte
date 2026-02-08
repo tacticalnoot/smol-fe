@@ -50,7 +50,7 @@
     let gameForging = $state<string | null>(null);
     let gameAttesting = $state<string | null>(null);
     let gameOneClickCasting = $state<string | null>(null);
-    let showArcadeGuide = $state(true);
+    let showArcadeGuide = $state(false);
     let activeToolchainTrack = $state<ToolchainTrackId>("noir-ultrahonk");
     let copiedToolchainTrack = $state<ToolchainTrackId | null>(null);
     let gamePayloadCopied = $state<string | null>(null);
@@ -2073,32 +2073,37 @@
                                 >Live: SHA-256 transcript hash</span
                             >
                         </div>
-                        <div class="game-super-paths">
-                            {#each game.zkSpec.superVerifierPaths as path}
-                                <span
-                                    class={`game-super-path ${
-                                        path.mode === "live"
-                                            ? "game-super-path--live"
-                                            : "game-super-path--ops"
-                                    }`}
-                                >
-                                    {path.method} · {path.label}
-                                </span>
-                            {/each}
-                        </div>
-                        <p class="game-zk-meta">
-                            Planned Protocol 25 host ops: {game.zkSpec.hostFunctions.join(
-                                " · ",
-                            )}
-                        </p>
-                        <p class="game-zk-meta">
-                            Public signals: {game.zkSpec.publicSignals.join(
-                                " · ",
-                            )}
-                        </p>
-                        <p class="game-zk-meta">
-                            Verifier entrypoint: {game.zkSpec.verifierEntrypoint}
-                        </p>
+                        <details class="quiet-details game-zk-details">
+                            <summary>Protocol details</summary>
+                            <div class="quiet-details-body">
+                                <div class="game-super-paths">
+                                    {#each game.zkSpec.superVerifierPaths as path}
+                                        <span
+                                            class={`game-super-path ${
+                                                path.mode === "live"
+                                                    ? "game-super-path--live"
+                                                    : "game-super-path--ops"
+                                            }`}
+                                        >
+                                            {path.method} · {path.label}
+                                        </span>
+                                    {/each}
+                                </div>
+                                <p class="game-zk-meta">
+                                    Planned Protocol 25 host ops: {game.zkSpec.hostFunctions.join(
+                                        " · ",
+                                    )}
+                                </p>
+                                <p class="game-zk-meta">
+                                    Public signals: {game.zkSpec.publicSignals.join(
+                                        " · ",
+                                    )}
+                                </p>
+                                <p class="game-zk-meta">
+                                    Verifier entrypoint: {game.zkSpec.verifierEntrypoint}
+                                </p>
+                            </div>
+                        </details>
                     </div>
                     <div class="game-magic">
                         <button
@@ -2304,138 +2309,147 @@
                             </span>
                         </div>
                     </div>
-                    <p class="game-manual-label">Advanced manual controls</p>
-                    <div class="game-actions game-actions--manual">
-                        <button
-                            class="game-action-btn"
-                            type="button"
-                            onclick={() => startGameRun(game)}
-                            disabled={game.status === "playing"}
-                        >
-                            {game.status === "playing" ? "Run active" : "Start run"}
-                        </button>
-                        <button
-                            class="game-action-btn ghost"
-                            type="button"
-                            onclick={() => resetGame(game)}
-                        >
-                            Reset run
-                        </button>
-                        <button
-                            class="game-action-btn primary"
-                            type="button"
-                            onclick={() => forgeGameProof(game)}
-                            disabled={game.status !== "complete" ||
-                                gameForging === game.id}
-                        >
-                            {gameForging === game.id
-                                ? "Sealing..."
-                                : "Seal commitment"}
-                        </button>
-                    </div>
-                    {#if game.proof}
-                        <div class="game-proof">
-                            <div>
-                                <p class="game-proof-label">Action hash</p>
-                                <p class="game-proof-value">
-                                    {game.proof.actionHash}
-                                </p>
-                            </div>
-                            <div>
-                                <p class="game-proof-label">Commitment</p>
-                                <p class="game-proof-value">
-                                    {game.proof.commitment}
-                                </p>
-                            </div>
-                            <div>
-                                <p class="game-proof-label">Poseidon inputs</p>
-                                <p class="game-proof-value">
-                                    {game.zkSpec.poseidonInputs.join(" · ")}
-                                </p>
-                            </div>
-                            <div class="game-proof-actions">
+                    <details class="quiet-details game-advanced-panel">
+                        <summary>Advanced controls and payloads</summary>
+                        <div class="quiet-details-body">
+                            <p class="game-manual-label">Manual run controls</p>
+                            <div class="game-actions game-actions--manual">
                                 <button
-                                    class="game-copy-btn"
+                                    class="game-action-btn"
                                     type="button"
-                                    onclick={() => copyGameProof(game)}
+                                    onclick={() => startGameRun(game)}
+                                    disabled={game.status === "playing"}
                                 >
-                                    {gameCopied === game.id
-                                        ? "Copied proof packet"
-                                        : "Copy proof packet"}
+                                    {game.status === "playing" ? "Run active" : "Start run"}
                                 </button>
                                 <button
-                                    class="game-copy-btn ghost"
+                                    class="game-action-btn ghost"
                                     type="button"
-                                    onclick={() => verifyGameProofLocally(game)}
-                                    disabled={gameIntegrity[game.id]?.state ===
-                                        "checking"}
+                                    onclick={() => resetGame(game)}
                                 >
-                                    {gameIntegrity[game.id]?.state === "checking"
-                                        ? "Checking..."
-                                        : "Run local verify"}
+                                    Reset run
                                 </button>
                                 <button
-                                    class="game-copy-btn ghost"
+                                    class="game-action-btn primary"
                                     type="button"
-                                    onclick={() => copyVerifierPayload(game)}
+                                    onclick={() => forgeGameProof(game)}
+                                    disabled={game.status !== "complete" ||
+                                        gameForging === game.id}
                                 >
-                                    {gamePayloadCopied === game.id
-                                        ? "Copied verifier payload"
-                                        : "Copy verifier payload"}
-                                </button>
-                                <button
-                                    class="game-copy-btn primary"
-                                    type="button"
-                                    onclick={() => submitGameAttestation(game)}
-                                    disabled={gameAttesting === game.id ||
-                                        !!game.proof.onchainTxHash}
-                                >
-                                    {gameAttesting === game.id
-                                        ? "Submitting..."
-                                        : game.proof.onchainTxHash
-                                            ? "Submitted ✓"
-                                            : "Submit on-chain"}
+                                    {gameForging === game.id
+                                        ? "Sealing..."
+                                        : "Seal commitment"}
                                 </button>
                             </div>
-                            {#if game.proof.onchainTxHash}
-                                <a
-                                    href={`https://stellar.expert/explorer/public/tx/${game.proof.onchainTxHash}`}
-                                    target="_blank"
-                                    rel="noreferrer"
-                                    class="proof-tx"
-                                >
-                                    TX: {game.proof.onchainTxHash.slice(0, 8)}...{game.proof.onchainTxHash.slice(
-                                        -8,
-                                    )}
-                                </a>
-                            {/if}
-                            {#if gameAttestNotes[game.id]}
+                            {#if game.proof}
+                                <div class="game-proof">
+                                    <div>
+                                        <p class="game-proof-label">Action hash</p>
+                                        <p class="game-proof-value">
+                                            {game.proof.actionHash}
+                                        </p>
+                                    </div>
+                                    <div>
+                                        <p class="game-proof-label">Commitment</p>
+                                        <p class="game-proof-value">
+                                            {game.proof.commitment}
+                                        </p>
+                                    </div>
+                                    <div>
+                                        <p class="game-proof-label">Poseidon inputs</p>
+                                        <p class="game-proof-value">
+                                            {game.zkSpec.poseidonInputs.join(" · ")}
+                                        </p>
+                                    </div>
+                                    <div class="game-proof-actions">
+                                        <button
+                                            class="game-copy-btn"
+                                            type="button"
+                                            onclick={() => copyGameProof(game)}
+                                        >
+                                            {gameCopied === game.id
+                                                ? "Copied proof packet"
+                                                : "Copy proof packet"}
+                                        </button>
+                                        <button
+                                            class="game-copy-btn ghost"
+                                            type="button"
+                                            onclick={() => verifyGameProofLocally(game)}
+                                            disabled={gameIntegrity[game.id]?.state ===
+                                                "checking"}
+                                        >
+                                            {gameIntegrity[game.id]?.state === "checking"
+                                                ? "Checking..."
+                                                : "Run local verify"}
+                                        </button>
+                                        <button
+                                            class="game-copy-btn ghost"
+                                            type="button"
+                                            onclick={() => copyVerifierPayload(game)}
+                                        >
+                                            {gamePayloadCopied === game.id
+                                                ? "Copied verifier payload"
+                                                : "Copy verifier payload"}
+                                        </button>
+                                        <button
+                                            class="game-copy-btn primary"
+                                            type="button"
+                                            onclick={() => submitGameAttestation(game)}
+                                            disabled={gameAttesting === game.id ||
+                                                !!game.proof.onchainTxHash}
+                                        >
+                                            {gameAttesting === game.id
+                                                ? "Submitting..."
+                                                : game.proof.onchainTxHash
+                                                    ? "Submitted ✓"
+                                                    : "Submit on-chain"}
+                                        </button>
+                                    </div>
+                                    {#if game.proof.onchainTxHash}
+                                        <a
+                                            href={`https://stellar.expert/explorer/public/tx/${game.proof.onchainTxHash}`}
+                                            target="_blank"
+                                            rel="noreferrer"
+                                            class="proof-tx"
+                                        >
+                                            TX: {game.proof.onchainTxHash.slice(0, 8)}...{game.proof.onchainTxHash.slice(
+                                                -8,
+                                            )}
+                                        </a>
+                                    {/if}
+                                    {#if gameAttestNotes[game.id]}
+                                        <p class="game-proof-note">
+                                            {gameAttestNotes[game.id]}
+                                        </p>
+                                    {/if}
+                                    {#if gameIntegrity[game.id]}
+                                        <p
+                                            class={`game-proof-note ${gameIntegrity[
+                                                game.id
+                                            ]?.state === "pass"
+                                                ? "game-proof-note--pass"
+                                                : gameIntegrity[game.id]?.state ===
+                                                    "fail"
+                                                  ? "game-proof-note--fail"
+                                                  : ""}`}
+                                        >
+                                            {gameIntegrity[game.id]?.message}
+                                        </p>
+                                    {/if}
+                                    {#if gameVerifierPayloads[game.id]}
+                                        <details class="game-verifier-payload">
+                                            <summary>Verifier payload preview</summary>
+                                            <pre>{gameVerifierPayloads[game.id]}</pre>
+                                        </details>
+                                    {/if}
+                                </div>
+                            {:else}
                                 <p class="game-proof-note">
-                                    {gameAttestNotes[game.id]}
+                                    Seal a run to unlock payload tools and detailed diagnostics.
                                 </p>
-                            {/if}
-                            {#if gameIntegrity[game.id]}
-                                <p
-                                    class={`game-proof-note ${gameIntegrity[
-                                        game.id
-                                    ]?.state === "pass"
-                                        ? "game-proof-note--pass"
-                                        : gameIntegrity[game.id]?.state ===
-                                            "fail"
-                                          ? "game-proof-note--fail"
-                                          : ""}`}
-                                >
-                                    {gameIntegrity[game.id]?.message}
-                                </p>
-                            {/if}
-                            {#if gameVerifierPayloads[game.id]}
-                                <details class="game-verifier-payload">
-                                    <summary>Verifier payload preview</summary>
-                                    <pre>{gameVerifierPayloads[game.id]}</pre>
-                                </details>
                             {/if}
                         </div>
-                    {/if}
+                    </details>
                 </article>
             {/each}
         </div>
@@ -2524,43 +2538,6 @@
                         <p class="toolchain-path">
                             Stellar path: {selectedToolchainTrack.stellarPath}
                         </p>
-                        <div class="toolchain-grid">
-                            <div class="toolchain-column">
-                                <p class="toolchain-column-title">Learn</p>
-                                <ul>
-                                    {#each selectedToolchainTrack.learningSteps as step}
-                                        <li>{step}</li>
-                                    {/each}
-                                </ul>
-                            </div>
-                            <div class="toolchain-column">
-                                <p class="toolchain-column-title">Implement</p>
-                                <ul>
-                                    {#each selectedToolchainTrack.implementationSteps as step}
-                                        <li>{step}</li>
-                                    {/each}
-                                </ul>
-                            </div>
-                            <div class="toolchain-column">
-                                <p class="toolchain-column-title">Judge signals</p>
-                                <ul>
-                                    {#each selectedToolchainTrack.judgeSignals as step}
-                                        <li>{step}</li>
-                                    {/each}
-                                </ul>
-                            </div>
-                        </div>
-                        <div class="toolchain-links">
-                            {#each selectedToolchainTrack.references as reference}
-                                <a
-                                    href={reference.href}
-                                    target="_blank"
-                                    rel="noreferrer"
-                                >
-                                    {reference.label}
-                                </a>
-                            {/each}
-                        </div>
                         <div class="toolchain-actions">
                             <button
                                 class="arcade-guide-btn"
@@ -2581,19 +2558,65 @@
                                     {selectedToolchainTrack.onchainButton}
                                 {/if}
                             </button>
-                            <button
-                                class="arcade-guide-btn toolchain-copy-btn"
-                                type="button"
-                                onclick={() =>
-                                    copyToolchainRunbook(selectedToolchainTrack)}
-                            >
-                                {#if copiedToolchainTrack === selectedToolchainTrack.id}
-                                    Runbook copied
-                                {:else}
-                                    Copy runbook
-                                {/if}
-                            </button>
                         </div>
+                        <details class="quiet-details toolchain-deep-dive">
+                            <summary>
+                                Implementation checklist, references, and runbook
+                            </summary>
+                            <div class="quiet-details-body">
+                                <div class="toolchain-grid">
+                                    <div class="toolchain-column">
+                                        <p class="toolchain-column-title">Learn</p>
+                                        <ul>
+                                            {#each selectedToolchainTrack.learningSteps as step}
+                                                <li>{step}</li>
+                                            {/each}
+                                        </ul>
+                                    </div>
+                                    <div class="toolchain-column">
+                                        <p class="toolchain-column-title">Implement</p>
+                                        <ul>
+                                            {#each selectedToolchainTrack.implementationSteps as step}
+                                                <li>{step}</li>
+                                            {/each}
+                                        </ul>
+                                    </div>
+                                    <div class="toolchain-column">
+                                        <p class="toolchain-column-title">Judge signals</p>
+                                        <ul>
+                                            {#each selectedToolchainTrack.judgeSignals as step}
+                                                <li>{step}</li>
+                                            {/each}
+                                        </ul>
+                                    </div>
+                                </div>
+                                <div class="toolchain-links">
+                                    {#each selectedToolchainTrack.references as reference}
+                                        <a
+                                            href={reference.href}
+                                            target="_blank"
+                                            rel="noreferrer"
+                                        >
+                                            {reference.label}
+                                        </a>
+                                    {/each}
+                                </div>
+                                <div class="toolchain-actions toolchain-actions--secondary">
+                                    <button
+                                        class="arcade-guide-btn toolchain-copy-btn"
+                                        type="button"
+                                        onclick={() =>
+                                            copyToolchainRunbook(selectedToolchainTrack)}
+                                    >
+                                        {#if copiedToolchainTrack === selectedToolchainTrack.id}
+                                            Runbook copied
+                                        {:else}
+                                            Copy runbook
+                                        {/if}
+                                    </button>
+                                </div>
+                            </div>
+                        </details>
                     </article>
                 </section>
 
@@ -5718,6 +5741,145 @@
             );
         border-color: rgba(199, 175, 255, 0.52);
     }
+    .toolchain-actions--secondary {
+        justify-content: flex-start;
+    }
+    .quiet-details {
+        border: 1px solid rgba(156, 179, 232, 0.3);
+        border-radius: 12px;
+        background:
+            linear-gradient(145deg, rgba(10, 20, 40, 0.72), rgba(9, 17, 34, 0.62)),
+            radial-gradient(
+                130% 180% at 100% 0%,
+                rgba(131, 224, 255, 0.12),
+                rgba(131, 224, 255, 0)
+            );
+        padding: 8px 10px;
+    }
+    .quiet-details + .quiet-details {
+        margin-top: 8px;
+    }
+    .quiet-details summary {
+        cursor: pointer;
+        list-style: none;
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 8px;
+        font-family: "Press Start 2P", monospace;
+        font-size: 8px;
+        letter-spacing: 0.8px;
+        text-transform: uppercase;
+        color: #c9d9f8;
+    }
+    .quiet-details summary::-webkit-details-marker {
+        display: none;
+    }
+    .quiet-details summary::after {
+        content: "▼";
+        font-size: 8px;
+        color: #9ed2ff;
+        transition: transform 0.2s ease;
+    }
+    .quiet-details[open] summary::after {
+        transform: rotate(180deg);
+    }
+    .quiet-details-body {
+        margin-top: 10px;
+        display: grid;
+        gap: 10px;
+    }
+    .game-zk-details {
+        margin-top: 8px;
+    }
+    .game-advanced-panel {
+        margin-top: 10px;
+    }
+    .chapter-copy,
+    .game-summary,
+    .game-goal,
+    .game-magic-copy,
+    .kale-magic-copy,
+    .arcade-guide-mini,
+    .toolchain-copy,
+    .toolchain-summary,
+    .toolchain-path,
+    .dungeon-copy {
+        font-size: 13px;
+        line-height: 1.75;
+    }
+    .game-title {
+        font-size: 17px;
+        line-height: 1.35;
+    }
+    .game-zk-title,
+    .toolchain-title {
+        font-size: 12px;
+        line-height: 1.55;
+    }
+    .kale-magic-btn,
+    .game-magic-btn,
+    .toolchain-actions .arcade-guide-btn {
+        position: relative;
+        overflow: hidden;
+        font-size: clamp(10px, 0.72vw, 12px);
+        min-height: 48px;
+        letter-spacing: 0.9px;
+        animation: cta-breathe 2.8s ease-in-out infinite;
+    }
+    .kale-magic-btn::after,
+    .game-magic-btn::after,
+    .toolchain-actions .arcade-guide-btn::after {
+        content: "";
+        position: absolute;
+        top: 0;
+        left: -120%;
+        width: 75%;
+        height: 100%;
+        transform: skewX(-20deg);
+        background: linear-gradient(
+            90deg,
+            rgba(255, 255, 255, 0),
+            rgba(255, 255, 255, 0.22),
+            rgba(255, 255, 255, 0)
+        );
+        animation: cta-sheen 3.8s ease-in-out infinite;
+        pointer-events: none;
+    }
+    .kale-magic-btn:hover:not(:disabled),
+    .game-magic-btn:hover:not(:disabled),
+    .toolchain-actions .arcade-guide-btn:hover:not(:disabled) {
+        transform: translateY(-3px) scale(1.01);
+    }
+    .game-card {
+        gap: 12px;
+    }
+    @keyframes cta-sheen {
+        0% {
+            left: -120%;
+        }
+        55% {
+            left: 150%;
+        }
+        100% {
+            left: 150%;
+        }
+    }
+    @keyframes cta-breathe {
+        0%,
+        100% {
+            box-shadow:
+                inset 0 -2px 0 rgba(6, 22, 9, 0.85),
+                0 10px 24px rgba(5, 28, 9, 0.4),
+                0 0 20px rgba(141, 255, 137, 0.18);
+        }
+        50% {
+            box-shadow:
+                inset 0 -2px 0 rgba(6, 22, 9, 0.85),
+                0 13px 26px rgba(5, 28, 9, 0.45),
+                0 0 30px rgba(141, 255, 137, 0.28);
+        }
+    }
     @media (max-width: 1280px) {
         .chapter-strip {
             grid-auto-columns: minmax(360px, 84vw);
@@ -5754,6 +5916,16 @@
             justify-content: stretch;
             gap: 6px;
         }
+        .chapter-copy,
+        .game-summary,
+        .game-goal,
+        .game-magic-copy,
+        .kale-magic-copy,
+        .toolchain-copy,
+        .toolchain-summary,
+        .toolchain-path {
+            font-size: 12px;
+        }
     }
     @media (max-width: 760px) {
         .chapter-strip {
@@ -5785,6 +5957,12 @@
         }
         .toolchain-column {
             padding: 8px;
+        }
+        .quiet-details {
+            padding: 7px 8px;
+        }
+        .quiet-details summary {
+            font-size: 7px;
         }
     }
 </style>
