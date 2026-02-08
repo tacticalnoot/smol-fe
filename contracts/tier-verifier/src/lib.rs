@@ -182,11 +182,14 @@ impl TierVerifier {
         }
 
         let bn254 = env.crypto().bn254();
+        env.events().publish((Symbol::new(&env, "ZK_DEBUG"), Symbol::new(&env, "VKEY_LOADED")), ());
 
         // Decode proof points
         let pi_a = Bn254G1Affine::from_bytes(proof.pi_a);
         let pi_b = Bn254G2Affine::from_bytes(proof.pi_b);
         let pi_c = Bn254G1Affine::from_bytes(proof.pi_c);
+        env.events().publish((Symbol::new(&env, "ZK_DEBUG"), Symbol::new(&env, "PROOF_DECODED")), ());
+
 
         // Decode verification key points
         let alpha_g1 = Bn254G1Affine::from_bytes(vkey.alpha_g1);
@@ -205,6 +208,8 @@ impl TierVerifier {
 
         // Convert commitment to scalar (it's a Poseidon field element)
         let commitment_scalar = Fr::from_bytes(commitment.clone());
+        env.events().publish((Symbol::new(&env, "ZK_DEBUG"), Symbol::new(&env, "SCALARS_DECODED")), ());
+
 
         // Compute vk_x = IC[0] + tier * IC[1] + commitment * IC[2]
         let term1 = bn254.g1_mul(&ic1, &tier_scalar);
@@ -214,6 +219,8 @@ impl TierVerifier {
         // Negate pi_a for the pairing check
         // Negation of G1 point: negate the y-coordinate
         let pi_a_neg = negate_g1(&env, &pi_a);
+        env.events().publish((Symbol::new(&env, "ZK_DEBUG"), Symbol::new(&env, "NEGATED_G1")), ());
+
 
         // Groth16 pairing check:
         // e(-pi_a, pi_b) * e(alpha, beta) * e(vk_x, gamma) * e(pi_c, delta) == 1
