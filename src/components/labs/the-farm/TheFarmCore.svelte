@@ -24,6 +24,12 @@
     // Dynamic Logic Modules (Types only)
     import type * as ZkProofModule from "./zkProof";
     import type * as ZkGamesModule from "./zkGames";
+    import {
+        HACKATHON_TOOLCHAIN_TRACKS,
+        formatToolchainRunbook,
+        type ToolchainTrack,
+        type ToolchainTrackId,
+    } from "./zkToolchains";
 
     // ── State ──────────────────────────────────────────────────────────────
     let proving = $state(false);
@@ -43,15 +49,18 @@
     let gameCopied = $state<string | null>(null);
     let gameForging = $state<string | null>(null);
     let gameAttesting = $state<string | null>(null);
-    let gameMagicCasting = $state<string | null>(null);
+    let gameOneClickCasting = $state<string | null>(null);
     let showArcadeGuide = $state(true);
+    let activeToolchainTrack = $state<ToolchainTrackId>("noir-ultrahonk");
+    let copiedToolchainTrack = $state<ToolchainTrackId | null>(null);
     let gamePayloadCopied = $state<string | null>(null);
     let gameAttestNotes = $state<Record<string, string>>({});
     let gameVerifierPayloads = $state<Record<string, string>>({});
     let gameIntegrity = $state<Record<string, GameIntegrityState>>({});
     let gameWallet = $state<string | null>(null);
     let verifying = $state(false);
-    let magicVerifying = $state(false);
+    let oneClickVerifying = $state(false);
+    let toolchainVerifying = $state<ToolchainTrackId | null>(null);
     let verifyResult = $state<boolean | null>(null);
     let proofData = $state<ProofResult | null>(null);
     let txHash = $state<string | null>(null);
@@ -328,6 +337,7 @@
         createPatternState(baseZkGames[2]?.requirements[0] ?? 4),
     );
     let patternPreviewTimer: number | null = null;
+    let toolchainCopyTimer: number | null = null;
 
     // 4 focused proofs: 1 live + 3 Smol-native concepts
     const galleryProofs: GalleryProof[] = [
@@ -427,6 +437,11 @@
     let gameWalletLabel = $derived(
         gameWallet ? `${gameWallet.slice(0, 6)}…${gameWallet.slice(-4)}` : "",
     );
+    let selectedToolchainTrack = $derived(
+        HACKATHON_TOOLCHAIN_TRACKS.find(
+            (track) => track.id === activeToolchainTrack,
+        ) ?? HACKATHON_TOOLCHAIN_TRACKS[0],
+    );
     const confettiPieces = Array.from({ length: 24 }, (_, idx) => idx);
     const GAME_TIER_THRESHOLDS = [
         0n,
@@ -460,6 +475,10 @@
         })();
 
         return () => {
+            if (toolchainCopyTimer) {
+                clearTimeout(toolchainCopyTimer);
+                toolchainCopyTimer = null;
+            }
             resetPatternTimer();
             stopAmbient();
         };
@@ -734,14 +753,14 @@
         }
     }
 
-    async function runMagicProofFlow() {
+    async function runOneClickProofFlow() {
         if (!isAuth || !userState.contractId) {
-            error = "Connect wallet first to run the magic verifier flow.";
+            error = "Connect wallet first to run one-click on-chain verification.";
             return;
         }
-        if (magicVerifying || proving || verifying) return;
+        if (oneClickVerifying || proving || verifying) return;
 
-        magicVerifying = true;
+        oneClickVerifying = true;
         try {
             if (!earned["proof-of-farm"]?.data?.proof) {
                 await generateProof();
@@ -760,9 +779,9 @@
                 );
             }
         } catch (e: any) {
-            error = e?.message || "Magic verification flow failed";
+            error = e?.message || "One-click on-chain verification failed";
         } finally {
-            magicVerifying = false;
+            oneClickVerifying = false;
         }
     }
 
@@ -1076,6 +1095,80 @@
         }
     }
 
+    function selectToolchainTrack(trackId: ToolchainTrackId) {
+        activeToolchainTrack = trackId;
+    }
+
+    function pickArcadeOnchainTarget(): ZkGameSession | null {
+        if (!zkGames.length) return null;
+        return (
+            zkGames.find((game) => !game.proof?.onchainTxHash) ??
+            zkGames[0] ??
+            null
+        );
+    }
+
+    async function runToolchainOnchainVerify(track: ToolchainTrack) {
+        if (toolchainVerifying || gameAttesting || oneClickVerifying) return;
+        if (!isAuth || !userState.contractId) {
+            const message =
+                "Connect wallet first to execute on-chain verification.";
+            error = message;
+            gameError = message;
+            return;
+        }
+
+        toolchainVerifying = track.id;
+        try {
+            if (track.onchainFlow === "kale") {
+                await runOneClickProofFlow();
+                if (!onChainVerified) {
+                    throw new Error(
+                        error ||
+                            "Kale verifier rail did not complete on-chain.",
+                    );
+                }
+                return;
+            }
+
+            const target = pickArcadeOnchainTarget();
+            if (!target) {
+                throw new Error("No arcade game session is available.");
+            }
+
+            await runGameOneClickFlow(target);
+            const refreshed = getGameSession(target.id);
+            if (!refreshed?.proof?.onchainTxHash) {
+                throw new Error(
+                    gameError ||
+                        "Arcade verifier rail did not complete on-chain.",
+                );
+            }
+        } catch (e: any) {
+            gameError = e?.message || "Toolchain on-chain verification failed";
+        } finally {
+            toolchainVerifying = null;
+        }
+    }
+
+    async function copyToolchainRunbook(track: ToolchainTrack) {
+        try {
+            await navigator.clipboard.writeText(formatToolchainRunbook(track));
+            copiedToolchainTrack = track.id;
+            if (toolchainCopyTimer) {
+                clearTimeout(toolchainCopyTimer);
+            }
+            toolchainCopyTimer = window.setTimeout(() => {
+                if (copiedToolchainTrack === track.id) {
+                    copiedToolchainTrack = null;
+                }
+                toolchainCopyTimer = null;
+            }, 2000);
+        } catch (e: any) {
+            gameError = e?.message || "Unable to copy toolchain runbook";
+        }
+    }
+
     function createTicTacState(): TicTacState {
         return {
             board: Array(9).fill(null),
@@ -1166,7 +1259,7 @@
         });
     }
 
-    function completeRunWithMagic(game: ZkGameSession) {
+    function completeRunWithAutoPlay(game: ZkGameSession) {
         const requirement = getRequirement(game);
         if (game.kind === "tic") {
             const moveLog = ["X-0", "O-3", "X-1", "O-4", "X-2"];
@@ -1175,7 +1268,7 @@
                 turn: "player",
                 finished: true,
                 winner: "player",
-                message: "Magic line executed. Commitment ready.",
+                message: "Autoplay line executed. Commitment ready.",
                 moveLog,
             };
             completeRun(game, moveLog, 24);
@@ -1486,17 +1579,17 @@
         }
     }
 
-    async function runGameMagicFlow(game: ZkGameSession) {
-        if (gameMagicCasting) return;
+    async function runGameOneClickFlow(game: ZkGameSession) {
+        if (gameOneClickCasting) return;
         gameError = null;
-        gameMagicCasting = game.id;
+        gameOneClickCasting = game.id;
 
         try {
             let current = getGameSession(game.id) ?? game;
             if (!current.proof && current.status !== "complete") {
                 startGameRun(current);
                 current = getGameSession(game.id) ?? current;
-                completeRunWithMagic(current);
+                completeRunWithAutoPlay(current);
                 current = getGameSession(game.id) ?? current;
             }
 
@@ -1506,7 +1599,7 @@
             }
 
             if (!current.proof) {
-                throw new Error("Magic flow could not seal this run. Try once more.");
+                throw new Error("One-click flow could not seal this run. Try once more.");
             }
 
             await submitGameAttestation(current);
@@ -1517,8 +1610,8 @@
                 ...gameAttestNotes,
                 [current.id]:
                     submitted
-                        ? `Magic flow complete: run sealed and submitted on-chain (${submitted.slice(0, 10)}...).`
-                        : "Magic flow complete: run sealed and payload staged.",
+                        ? `One-click flow complete: run sealed and submitted on-chain (${submitted.slice(0, 10)}...).`
+                        : "One-click flow complete: run sealed and payload staged.",
             };
             launchCelebration(
                 `${current.title} complete`,
@@ -1527,9 +1620,9 @@
                     : "Arcade proof pipeline prepared verifier payloads.",
             );
         } catch (e: any) {
-            gameError = e?.message || "Magic flow failed";
+            gameError = e?.message || "One-click flow failed";
         } finally {
-            gameMagicCasting = null;
+            gameOneClickCasting = null;
         }
     }
 
@@ -1730,7 +1823,7 @@
         {#if showCelebration}
             <section class="proof-celebration" aria-live="polite">
                 <div class="proof-celebration-card">
-                    <p class="proof-celebration-eyebrow">Magic button</p>
+                    <p class="proof-celebration-eyebrow">One-click verify</p>
                     <h3 class="proof-celebration-title">{celebrationTitle}</h3>
                     <p class="proof-celebration-body">{celebrationBody}</p>
                 </div>
@@ -1766,15 +1859,15 @@
                     <button
                         class="kale-magic-btn"
                         type="button"
-                        onclick={runMagicProofFlow}
-                        disabled={magicVerifying || proving || verifying || !isAuth}
+                        onclick={runOneClickProofFlow}
+                        disabled={oneClickVerifying || proving || verifying || !isAuth}
                     >
-                        {#if magicVerifying}
-                            Casting...
+                        {#if oneClickVerifying}
+                            Verifying...
                         {:else if onChainVerified}
-                            Magic Verify ✓
+                            On-Chain Verified ✓
                         {:else}
-                            Magic Button: Verify For Me
+                            One-Click On-Chain Verify
                         {/if}
                     </button>
                     <p class="kale-magic-copy">
@@ -1901,7 +1994,7 @@
                     <p class="chapter-tag">Chapter II</p>
                     <h2 class="chapter-title">Game Proofs Arcade</h2>
                     <p class="chapter-copy">
-                        One-click magic flow seals gameplay transcripts into
+                        One-click verify flow seals gameplay transcripts into
                         proof-ready commitments, derives Groth16 witnesses, and
                         submits live attestations through Super Verifier.
                     </p>
@@ -1916,7 +2009,7 @@
                                 : "What did we build?"}
                         </button>
                         <p class="arcade-guide-mini">
-                            Start with each card's Magic button. Manual controls
+                            Start with each card's One-Click Verify button. Manual controls
                             stay available for expert tuning and payload inspection.
                         </p>
                     </div>
@@ -2011,24 +2104,29 @@
                         <button
                             class="game-magic-btn"
                             type="button"
-                            onclick={() => runGameMagicFlow(game)}
+                            onclick={() => runGameOneClickFlow(game)}
                             disabled={!!game.proof?.onchainTxHash ||
-                                (!!gameMagicCasting && gameMagicCasting !== game.id)}
+                                !isAuth ||
+                                (!!gameOneClickCasting &&
+                                    gameOneClickCasting !== game.id)}
                         >
-                            {#if gameMagicCasting === game.id}
-                                Casting...
+                            {#if gameOneClickCasting === game.id}
+                                Verifying...
                             {:else if game.proof?.onchainTxHash}
-                                Magic: On-Chain Complete ✓
+                                On-Chain Verified ✓
                             {:else if game.proof}
-                                Magic: Submit On-Chain
+                                One-Click: Submit On-Chain
                             {:else}
-                                Magic: Auto Seal This Game
+                                One-Click: Auto Seal + Verify
                             {/if}
                         </button>
                         <p class="game-magic-copy">
                             {#if game.proof?.onchainTxHash}
-                                This run is already attested on-chain. Magic can
-                                be rerun after you seal a fresh run.
+                                This run is already attested on-chain. Re-run
+                                one-click verify after sealing a fresh run.
+                            {:else if !isAuth}
+                                Connect wallet to run one-click on-chain
+                                verification.
                             {:else if game.proof}
                                 One click runs local integrity check, generates
                                 Groth16 compatibility proof, and submits to
@@ -2381,6 +2479,123 @@
                         </div>
                     </div>
                 </div>
+
+                <section class="toolchain-section">
+                    <div class="toolchain-head">
+                        <p class="toolchain-kicker">Hackathon Tracks</p>
+                        <h3 class="toolchain-title">
+                            Noir + zkVM implementation lanes
+                        </h3>
+                        <p class="toolchain-copy">
+                            Real integration plans only. Each lane is mapped to
+                            a concrete Stellar delivery path and a Super Verifier
+                            settlement strategy.
+                        </p>
+                    </div>
+                    <div class="toolchain-tabs">
+                        {#each HACKATHON_TOOLCHAIN_TRACKS as track}
+                            <button
+                                type="button"
+                                class={`toolchain-tab ${
+                                    activeToolchainTrack === track.id
+                                        ? "toolchain-tab--active"
+                                        : ""
+                                }`}
+                                onclick={() => selectToolchainTrack(track.id)}
+                            >
+                                <span>{track.label}</span>
+                                <small>{track.engine}</small>
+                            </button>
+                        {/each}
+                    </div>
+                    <article class="toolchain-card">
+                        <div class="toolchain-top">
+                            <p class="toolchain-status">
+                                {selectedToolchainTrack.statusLabel}
+                            </p>
+                            <p class="toolchain-mode">
+                                Super Verifier mode:
+                                {selectedToolchainTrack.superVerifierMode}
+                            </p>
+                        </div>
+                        <p class="toolchain-summary">
+                            {selectedToolchainTrack.summary}
+                        </p>
+                        <p class="toolchain-path">
+                            Stellar path: {selectedToolchainTrack.stellarPath}
+                        </p>
+                        <div class="toolchain-grid">
+                            <div class="toolchain-column">
+                                <p class="toolchain-column-title">Learn</p>
+                                <ul>
+                                    {#each selectedToolchainTrack.learningSteps as step}
+                                        <li>{step}</li>
+                                    {/each}
+                                </ul>
+                            </div>
+                            <div class="toolchain-column">
+                                <p class="toolchain-column-title">Implement</p>
+                                <ul>
+                                    {#each selectedToolchainTrack.implementationSteps as step}
+                                        <li>{step}</li>
+                                    {/each}
+                                </ul>
+                            </div>
+                            <div class="toolchain-column">
+                                <p class="toolchain-column-title">Judge signals</p>
+                                <ul>
+                                    {#each selectedToolchainTrack.judgeSignals as step}
+                                        <li>{step}</li>
+                                    {/each}
+                                </ul>
+                            </div>
+                        </div>
+                        <div class="toolchain-links">
+                            {#each selectedToolchainTrack.references as reference}
+                                <a
+                                    href={reference.href}
+                                    target="_blank"
+                                    rel="noreferrer"
+                                >
+                                    {reference.label}
+                                </a>
+                            {/each}
+                        </div>
+                        <div class="toolchain-actions">
+                            <button
+                                class="arcade-guide-btn"
+                                type="button"
+                                onclick={() =>
+                                    runToolchainOnchainVerify(
+                                        selectedToolchainTrack,
+                                    )}
+                                disabled={toolchainVerifying ===
+                                        selectedToolchainTrack.id ||
+                                    oneClickVerifying ||
+                                    !!gameAttesting ||
+                                    !isAuth}
+                            >
+                                {#if toolchainVerifying === selectedToolchainTrack.id}
+                                    Verifying on-chain...
+                                {:else}
+                                    {selectedToolchainTrack.onchainButton}
+                                {/if}
+                            </button>
+                            <button
+                                class="arcade-guide-btn toolchain-copy-btn"
+                                type="button"
+                                onclick={() =>
+                                    copyToolchainRunbook(selectedToolchainTrack)}
+                            >
+                                {#if copiedToolchainTrack === selectedToolchainTrack.id}
+                                    Runbook copied
+                                {:else}
+                                    Copy runbook
+                                {/if}
+                            </button>
+                        </div>
+                    </article>
+                </section>
 
                 <section class="verifier-section">
         <div class="verifier-card">
@@ -5312,9 +5527,203 @@
     .dungeon-title {
         font-size: 14px;
     }
+    .toolchain-section {
+        margin-top: 2px;
+        display: grid;
+        gap: 10px;
+    }
+    .toolchain-head {
+        display: grid;
+        gap: 5px;
+    }
+    .toolchain-kicker {
+        margin: 0;
+        font-family: "Press Start 2P", monospace;
+        font-size: 8px;
+        letter-spacing: 1px;
+        text-transform: uppercase;
+        color: #ffbd95;
+    }
+    .toolchain-title {
+        margin: 0;
+        font-family: "Press Start 2P", monospace;
+        font-size: 12px;
+        line-height: 1.45;
+        color: #ffe8dc;
+    }
+    .toolchain-copy {
+        margin: 0;
+        font-size: 11px;
+        line-height: 1.65;
+        color: #f6cec2;
+    }
+    .toolchain-tabs {
+        display: grid;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap: 8px;
+    }
+    .toolchain-tab {
+        border: 1px solid rgba(255, 173, 148, 0.42);
+        border-radius: 12px;
+        padding: 10px;
+        background:
+            linear-gradient(150deg, rgba(25, 16, 32, 0.9), rgba(21, 11, 27, 0.92)),
+            radial-gradient(
+                120% 170% at 100% 0%,
+                rgba(255, 142, 118, 0.16),
+                rgba(255, 142, 118, 0)
+            );
+        display: grid;
+        gap: 4px;
+        text-align: left;
+        color: #ffe6dc;
+        transition: transform 0.2s ease, border-color 0.2s ease;
+    }
+    .toolchain-tab span {
+        font-family: "Press Start 2P", monospace;
+        font-size: 8px;
+        line-height: 1.4;
+        letter-spacing: 0.4px;
+    }
+    .toolchain-tab small {
+        font-size: 10px;
+        color: #ffcdb9;
+    }
+    .toolchain-tab:hover {
+        transform: translateY(-1px);
+        border-color: rgba(255, 214, 194, 0.68);
+    }
+    .toolchain-tab--active {
+        border-color: rgba(255, 229, 179, 0.8);
+        box-shadow:
+            inset 0 0 0 1px rgba(255, 236, 211, 0.22),
+            0 12px 24px rgba(0, 0, 0, 0.34);
+        background:
+            linear-gradient(150deg, rgba(54, 29, 24, 0.94), rgba(33, 19, 35, 0.94)),
+            radial-gradient(
+                120% 170% at 100% 0%,
+                rgba(255, 169, 94, 0.24),
+                rgba(255, 169, 94, 0)
+            );
+    }
+    .toolchain-card {
+        border-radius: 16px;
+        border: 1px solid rgba(255, 173, 143, 0.46);
+        padding: 14px;
+        display: grid;
+        gap: 10px;
+        background:
+            linear-gradient(160deg, rgba(37, 18, 24, 0.95), rgba(19, 14, 31, 0.92)),
+            radial-gradient(
+                120% 220% at 100% 0%,
+                rgba(255, 164, 128, 0.16),
+                rgba(255, 164, 128, 0)
+            );
+        box-shadow:
+            inset 0 0 0 1px rgba(255, 221, 203, 0.1),
+            0 18px 30px rgba(0, 0, 0, 0.38);
+    }
+    .toolchain-top {
+        display: grid;
+        gap: 4px;
+    }
+    .toolchain-status {
+        margin: 0;
+        display: inline-flex;
+        align-self: flex-start;
+        font-family: "Press Start 2P", monospace;
+        font-size: 8px;
+        letter-spacing: 1px;
+        text-transform: uppercase;
+        color: #2f180f;
+        background: linear-gradient(180deg, #ffd89a, #ffb786);
+        border: 1px solid rgba(48, 20, 14, 0.52);
+        border-radius: 999px;
+        padding: 6px 8px;
+    }
+    .toolchain-mode,
+    .toolchain-summary,
+    .toolchain-path {
+        margin: 0;
+        font-size: 11px;
+        line-height: 1.65;
+        color: #ffd8c9;
+    }
+    .toolchain-path {
+        color: #ffc8b6;
+    }
+    .toolchain-grid {
+        display: grid;
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+        gap: 10px;
+    }
+    .toolchain-column {
+        border: 1px solid rgba(255, 173, 143, 0.34);
+        border-radius: 10px;
+        padding: 10px;
+        background: rgba(45, 19, 28, 0.62);
+    }
+    .toolchain-column-title {
+        margin: 0 0 7px;
+        font-family: "Press Start 2P", monospace;
+        font-size: 8px;
+        letter-spacing: 0.8px;
+        text-transform: uppercase;
+        color: #ffe0d1;
+    }
+    .toolchain-column ul {
+        margin: 0;
+        padding-left: 14px;
+        display: grid;
+        gap: 6px;
+    }
+    .toolchain-column li {
+        font-size: 10px;
+        line-height: 1.6;
+        color: #f8cdbf;
+    }
+    .toolchain-links {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 7px;
+    }
+    .toolchain-links a {
+        font-size: 9px;
+        font-family: "Press Start 2P", monospace;
+        letter-spacing: 0.3px;
+        color: #ffe9df;
+        text-decoration: none;
+        border: 1px solid rgba(255, 173, 143, 0.42);
+        border-radius: 999px;
+        padding: 6px 9px;
+        background: rgba(67, 29, 27, 0.52);
+    }
+    .toolchain-links a:hover {
+        border-color: rgba(255, 218, 198, 0.72);
+        color: #fff8f3;
+    }
+    .toolchain-actions {
+        display: flex;
+        flex-wrap: wrap;
+        justify-content: flex-end;
+        gap: 8px;
+    }
+    .toolchain-copy-btn {
+        background:
+            linear-gradient(180deg, rgba(80, 62, 120, 0.9), rgba(53, 35, 92, 0.9)),
+            repeating-linear-gradient(
+                0deg,
+                rgba(255, 255, 255, 0.06) 0 1px,
+                rgba(255, 255, 255, 0) 1px 3px
+            );
+        border-color: rgba(199, 175, 255, 0.52);
+    }
     @media (max-width: 1280px) {
         .chapter-strip {
             grid-auto-columns: minmax(360px, 84vw);
+        }
+        .toolchain-grid {
+            grid-template-columns: 1fr 1fr;
         }
     }
     @media (max-width: 1080px) {
@@ -5334,6 +5743,16 @@
         }
         .dungeon-stats {
             grid-template-columns: 1fr;
+        }
+        .toolchain-tabs {
+            grid-template-columns: 1fr;
+        }
+        .toolchain-grid {
+            grid-template-columns: 1fr;
+        }
+        .toolchain-actions {
+            justify-content: stretch;
+            gap: 6px;
         }
     }
     @media (max-width: 760px) {
@@ -5360,6 +5779,12 @@
         }
         .game-actions--manual {
             opacity: 1;
+        }
+        .toolchain-card {
+            padding: 12px;
+        }
+        .toolchain-column {
+            padding: 8px;
         }
     }
 </style>
