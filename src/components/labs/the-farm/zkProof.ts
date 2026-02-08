@@ -498,19 +498,7 @@ async function submitLegacyAttestation(
             expiration: sequence + 60,
         });
 
-        // Send via relayer with retry
-        const result = await withRetry(
-            () => send(signedTx),
-            {
-                maxRetries: 8,
-                baseDelayMs: 3000,
-                backoffFactor: 1.5,
-                onRetry: (attempt, _err, delay) => {
-                    console.log(`[ZK] Legacy attestation retry ${attempt}/8 in ${delay}ms...`);
-                },
-            },
-            "ZK-LegacyAttest"
-        );
+
 
         // Send via relayer with retry
         const result = await withRetry(
