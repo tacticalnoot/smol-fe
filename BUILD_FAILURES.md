@@ -98,3 +98,20 @@ Moved `BUILD_FAILURES.md` to the repository root and pushed to `main`.
 
 **Prevention:**
 Critical project documentation (like error logs) should live in the repository to ensure visibility and history tracking.
+
+## 2026-02-08 - Duplicate identifier in zkProof.ts
+
+**Error:**
+```
+The symbol "result" has already been declared
+.../zkProof.ts:400:14
+```
+
+**Cause:**
+When patching `zkProof.ts` to improve transaction hash extraction, the `withRetry` code block (which declares `const result`) was accidentally duplicated in the `replace_file_content` call. The tool appended the new code *after* the target instead of replacing it effectively, or the user copy-pasted the context into the replacement incorrectly.
+
+**Fix:**
+Removed the duplicate code blocks in `submitProofToContract` and `submitLegacyAttestation`.
+
+**Prevention:**
+Double-check `replace_file_content` inputs to ensure the `ReplacementContent` doesn't include the `TargetContent` unless intended, and verify the resulting file structure after editing.
