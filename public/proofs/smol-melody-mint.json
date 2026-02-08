@@ -1,0 +1,22 @@
+{
+  "id": "melody-mint",
+  "title": "Melody Mint (Design Concept)",
+  "description": "Prove you minted N songs as NFTs on Smol without revealing which songs or your total collection size.",
+  "smartWallet": "any — uses your connected Smol wallet",
+  "network": "stellar-mainnet",
+  "scheme": "Planned — Groth16 Merkle inclusion proof (BN254)",
+  "status": "concept",
+  "designInputs": {
+    "mintRoot": "Merkle root of all user mint transaction hashes",
+    "leafProofs": "Merkle paths for N specific mint events (private)",
+    "mintCount": "Number of mints to prove (threshold, not exact)"
+  },
+  "designOutputs": {
+    "mintThreshold": "Boolean — user minted at least N songs",
+    "rootValid": "Boolean — Merkle root matches on-chain state"
+  },
+  "verification": "On-chain via Protocol 25 BN254 pairing check against Smol contract mint events.",
+  "generatedAt": "2026-02-07T20:00:00.000Z",
+  "source": "smol labs / the farm",
+  "note": "Design concept. Would prove music NFT minting activity without revealing specific songs, preserving creator privacy while proving participation."
+}

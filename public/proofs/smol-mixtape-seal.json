@@ -1,0 +1,22 @@
+{
+  "id": "mixtape-seal",
+  "title": "Mixtape Seal (Design Concept)",
+  "description": "Prove you curated a mixtape with at least N tracks without revealing the tracklist or mixtape ID.",
+  "smartWallet": "any — uses your connected Smol wallet",
+  "network": "stellar-mainnet",
+  "scheme": "Planned — Groth16 range proof + commitment (BN254)",
+  "status": "concept",
+  "designInputs": {
+    "mixtapeHash": "Hash of the mixtape metadata (private)",
+    "trackCount": "Number of tracks in the mixtape (private)",
+    "curatorAddress": "Hashed wallet address of the curator (private)"
+  },
+  "designOutputs": {
+    "trackThreshold": "Boolean — mixtape has at least N tracks",
+    "ownership": "Boolean — curator address matches commitment"
+  },
+  "verification": "On-chain via Protocol 25 BN254 pairing check. Mixtape data sourced from Smol API.",
+  "generatedAt": "2026-02-07T20:00:00.000Z",
+  "source": "smol labs / the farm",
+  "note": "Design concept. Would prove curation effort without exposing your taste or specific mixtape, enabling anonymous reputation for curators."
+}

@@ -1,0 +1,22 @@
+{
+  "id": "first-listen",
+  "title": "First Listen (Design Concept)",
+  "description": "Prove you listened to at least N songs on Smol without revealing which songs or your listening history.",
+  "smartWallet": "any — uses your connected Smol wallet",
+  "network": "stellar-mainnet",
+  "scheme": "Planned — Groth16 counter proof with nullifiers (BN254)",
+  "status": "concept",
+  "designInputs": {
+    "listenLog": "Hashed log of play events (private)",
+    "nullifiers": "Per-song nullifiers to prevent double-counting (private)",
+    "listenCount": "Total unique listens (private)"
+  },
+  "designOutputs": {
+    "listenThreshold": "Boolean — user listened to at least N unique songs",
+    "noDuplicates": "Boolean — nullifiers confirm no double-counting"
+  },
+  "verification": "On-chain via Protocol 25 BN254 pairing check. Listen data sourced from Smol player events.",
+  "generatedAt": "2026-02-07T20:00:00.000Z",
+  "source": "smol labs / the farm",
+  "note": "Design concept. Would prove platform engagement without exposing listening habits, enabling anonymous music discovery reputation."
+}
