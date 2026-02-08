@@ -382,19 +382,7 @@ export async function submitProofToContract(
             expiration: sequence + 60,
         });
 
-        // Send via relayer with retry
-        const result = await withRetry(
-            () => send(signedTx),
-            {
-                maxRetries: 8, // Increased from 5
-                baseDelayMs: 3000, // Increased from 2000
-                backoffFactor: 1.5, // Slower backoff
-                onRetry: (attempt, _err, delay) => {
-                    console.log(`[ZK] Relayer retry ${attempt}/8 in ${delay}ms...`);
-                },
-            },
-            "ZK-ProofSubmit"
-        );
+
 
         // Send via relayer with retry
         const result = await withRetry(
