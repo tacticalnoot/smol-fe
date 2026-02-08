@@ -107,6 +107,34 @@ export async function verifyProofLocally(
     return snarkjs.groth16.verify(vkey, publicSignals, proof);
 }
 
+/**
+ * Validate proof points are well-formed BN254 points before on-chain submission.
+ * This catches malformed proof artifacts early with clearer feedback than host traps.
+ */
+async function validateProofCurvePoints(proof: Groth16Proof): Promise<void> {
+    // @ts-ignore - snarkjs curve API types are not exported
+    const snarkjs = await import("snarkjs");
+    const curve = await snarkjs.curves.getCurveFromName("bn128");
+    try {
+        const g1a = curve.G1.fromObject(proof.pi_a);
+        const g2b = curve.G2.fromObject(proof.pi_b);
+        const g1c = curve.G1.fromObject(proof.pi_c);
+        const ok =
+            curve.G1.isValid(g1a) &&
+            curve.G2.isValid(g2b) &&
+            curve.G1.isValid(g1c);
+        if (!ok) {
+            throw new Error(
+                "Proof point validation failed (one or more Groth16 points are not on BN254 curve).",
+            );
+        }
+    } finally {
+        if (typeof curve.terminate === "function") {
+            await curve.terminate();
+        }
+    }
+}
+
 // ============================================================================
 // Helpers
 // ============================================================================
@@ -173,15 +201,27 @@ export function serializeG1(point: string[]): Uint8Array {
 
 /**
  * Serialize a G2 point to 128 bytes uncompressed BN254 format.
- * snarkjs pi_b format: [[x_c1, x_c0], [y_c1, y_c0], ["1","0"]]
+ * snarkjs pi_b format is typically [[x_c0, x_c1], [y_c0, y_c1], ["1","0"]]
  *
  * CAP-0074 G2 encoding: be_encode(X_c1) || be_encode(X_c0) || be_encode(Y_c1) || be_encode(Y_c0)
  */
-export function serializeG2(point: string[][]): Uint8Array {
-    const x_c1 = BigInt(point[0][0]);
-    const x_c0 = BigInt(point[0][1]);
-    const y_c1 = BigInt(point[1][0]);
-    const y_c0 = BigInt(point[1][1]);
+type G2EncodingMode = "cap0074" | "legacy";
+
+export function serializeG2(
+    point: string[][],
+    mode: G2EncodingMode = "cap0074",
+): Uint8Array {
+    const x0 = BigInt(point[0][0]);
+    const x1 = BigInt(point[0][1]);
+    const y0 = BigInt(point[1][0]);
+    const y1 = BigInt(point[1][1]);
+
+    // snarkjs typically emits Fp2 limbs in [c0, c1] order, while CAP-0074 expects c1||c0.
+    const [x_c1, x_c0, y_c1, y_c0] =
+        mode === "cap0074"
+            ? [x1, x0, y1, y0]
+            : [x0, x1, y0, y1];
+
     const result = new Uint8Array(128);
     result.set(bigintToBytes32(x_c1), 0);
     result.set(bigintToBytes32(x_c0), 32);
@@ -199,9 +239,20 @@ export function serializeProof(proof: Groth16Proof): {
     pi_b: Uint8Array;
     pi_c: Uint8Array;
 } {
+    return serializeProofWithMode(proof, "cap0074");
+}
+
+function serializeProofWithMode(
+    proof: Groth16Proof,
+    g2Mode: G2EncodingMode,
+): {
+    pi_a: Uint8Array;
+    pi_b: Uint8Array;
+    pi_c: Uint8Array;
+} {
     return {
         pi_a: serializeG1(proof.pi_a),
-        pi_b: serializeG2(proof.pi_b),
+        pi_b: serializeG2(proof.pi_b, g2Mode),
         pi_c: serializeG1(proof.pi_c),
     };
 }
@@ -314,6 +365,7 @@ export async function submitProofToContract(
             tier: tierId,
         });
         console.log("[ZK] DEBUG: Using Contract ID:", TIER_VERIFIER_CONTRACT_ID);
+        await validateProofCurvePoints(proof);
 
         const { Contract, Address, nativeToScVal, xdr, TransactionBuilder, rpc, Account, Networks } = await import("@stellar/stellar-sdk/minimal");
         const NULL_ACCOUNT = "GAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAWHF";
@@ -325,49 +377,99 @@ export async function submitProofToContract(
 
         const server = new rpc.Server(getBestRpcUrl());
         const contractObj = new Contract(TIER_VERIFIER_CONTRACT_ID);
-        const { pi_a, pi_b, pi_c } = serializeProof(proof);
+        const buildProofStruct = (serialized: {
+            pi_a: Uint8Array;
+            pi_b: Uint8Array;
+            pi_c: Uint8Array;
+        }) =>
+            xdr.ScVal.scvMap([
+                new xdr.ScMapEntry({
+                    key: xdr.ScVal.scvSymbol("pi_a"),
+                    val: nativeToScVal(Buffer.from(serialized.pi_a), { type: "bytes" }),
+                }),
+                new xdr.ScMapEntry({
+                    key: xdr.ScVal.scvSymbol("pi_b"),
+                    val: nativeToScVal(Buffer.from(serialized.pi_b), { type: "bytes" }),
+                }),
+                new xdr.ScMapEntry({
+                    key: xdr.ScVal.scvSymbol("pi_c"),
+                    val: nativeToScVal(Buffer.from(serialized.pi_c), { type: "bytes" }),
+                }),
+            ]);
 
-        // Build the Groth16Proof struct for the contract
-        const proofStruct = xdr.ScVal.scvMap([
-            new xdr.ScMapEntry({
-                key: xdr.ScVal.scvSymbol("pi_a"),
-                val: nativeToScVal(Buffer.from(pi_a), { type: "bytes" }),
-            }),
-            new xdr.ScMapEntry({
-                key: xdr.ScVal.scvSymbol("pi_b"),
-                val: nativeToScVal(Buffer.from(pi_b), { type: "bytes" }),
-            }),
-            new xdr.ScMapEntry({
-                key: xdr.ScVal.scvSymbol("pi_c"),
-                val: nativeToScVal(Buffer.from(pi_c), { type: "bytes" }),
-            }),
-        ]);
+        const buildTx = (proofStruct: any) => {
+            const op = contractObj.call(
+                "verify_and_attest",
+                new Address(farmerAddress).toScVal(),
+                nativeToScVal(tierId, { type: "u32" }),
+                nativeToScVal(Buffer.from(commitment), { type: "bytes" }),
+                proofStruct,
+            );
+            const sourceAccount = new Account(NULL_ACCOUNT, "0");
+            return new TransactionBuilder(sourceAccount, {
+                fee: "10000000", // 1 XLM max
+                networkPassphrase: Networks.PUBLIC,
+            })
+                .addOperation(op)
+                .setTimeout(300)
+                .build();
+        };
 
-        // Call verify_and_attest with the real proof
-        const op = contractObj.call(
-            "verify_and_attest",
-            new Address(farmerAddress).toScVal(),
-            nativeToScVal(tierId, { type: "u32" }),
-            nativeToScVal(Buffer.from(commitment), { type: "bytes" }),
-            proofStruct,
-        );
+        const extractFailureText = (sim: unknown): string => {
+            try {
+                return JSON.stringify(sim);
+            } catch {
+                return String(sim);
+            }
+        };
+        const summarizeFailure = (sim: unknown): string => {
+            const raw = extractFailureText(sim);
+            if (raw.includes("bn254 G2: point not on curve")) {
+                return "bn254 G2 point decode failed on-chain (likely verification-key encoding mismatch).";
+            }
+            if (raw.includes("HostError: Error(Crypto, InvalidInput)")) {
+                return "on-chain BN254 host validation failed with Crypto.InvalidInput.";
+            }
+            return raw.length > 720 ? `${raw.slice(0, 720)}...` : raw;
+        };
 
-        // Build transaction using NULL_ACCOUNT (smart wallet contract IDs can't use getAccount)
-        const sourceAccount = new Account(NULL_ACCOUNT, "0");
-        const tx = new TransactionBuilder(sourceAccount, {
-            fee: "10000000", // 1 XLM max
-            networkPassphrase: Networks.PUBLIC,
-        })
-            .addOperation(op)
-            .setTimeout(300)
-            .build();
+        const hasG2CurveError = (sim: unknown): boolean =>
+            extractFailureText(sim).includes("bn254 G2: point not on curve");
 
-        // Simulate to get sorobanData
-        const sim = await server.simulateTransaction(tx);
+        const capProof = serializeProofWithMode(proof, "cap0074");
+        const legacyProof = serializeProofWithMode(proof, "legacy");
+
+        let selectedMode: G2EncodingMode = "cap0074";
+        let tx = buildTx(buildProofStruct(capProof));
+        let sim = await server.simulateTransaction(tx);
+
+        if (!rpc.Api.isSimulationSuccess(sim) && hasG2CurveError(sim)) {
+            // Compatibility probe for contracts initialized with older G2 limb ordering.
+            const legacyTx = buildTx(buildProofStruct(legacyProof));
+            const legacySim = await server.simulateTransaction(legacyTx);
+            if (rpc.Api.isSimulationSuccess(legacySim)) {
+                selectedMode = "legacy";
+                tx = legacyTx;
+                sim = legacySim;
+                console.warn(
+                    "[ZK] Falling back to legacy G2 limb ordering for this contract instance.",
+                );
+            } else if (hasG2CurveError(legacySim)) {
+                throw new Error(
+                    "Super Verifier rejected both G2 encodings (bn254 point decode failed). The on-chain verification key likely needs an update_vkey migration with CAP-0074 encoding.",
+                );
+            } else {
+                sim = legacySim;
+            }
+        }
+
         if (!rpc.Api.isSimulationSuccess(sim)) {
             console.error("[ZK] Simulation failed for verify_and_attest:", sim);
-            throw new Error("Simulation failed for verify_and_attest: " + JSON.stringify(sim));
+            throw new Error(
+                "Simulation failed for verify_and_attest: " + summarizeFailure(sim),
+            );
         }
+        console.log(`[ZK] Simulation succeeded using ${selectedMode} G2 encoding.`);
 
         // Prepare transaction with simulation data
         const preparedTx = rpc.assembleTransaction(tx, sim).build();

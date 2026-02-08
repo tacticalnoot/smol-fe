@@ -650,7 +650,16 @@
             }
         } catch (e: any) {
             console.error("[ZK] Verification error:", e);
-            error = e.message || "Verification failed";
+            const message = e?.message || "Verification failed";
+            if (message.includes("rejected both G2 encodings")) {
+                error =
+                    "Super Verifier is live but the on-chain verification key encoding looks stale. Admin should run update_vkey with CAP-0074 G2 encoding.";
+            } else if (message.includes("Proof point validation failed")) {
+                error =
+                    "Generated proof points are malformed for BN254. Regenerate proof; if this repeats, rebuild circuit artifacts.";
+            } else {
+                error = message;
+            }
             verifyResult = false;
         } finally {
             verifying = false;
@@ -3604,210 +3613,335 @@
         opacity: 0.4;
     }
 
-    /* ── Kale Valley Theme Refresh ── */
+    /* ── Midnight Pixel Harvest Theme ── */
     .farm-root {
+        --pixel-sky-950: #02030b;
+        --pixel-sky-900: #070b1c;
+        --pixel-sky-850: #0b1430;
+        --pixel-ink-100: #f2f7ff;
+        --pixel-ink-300: #b7c4df;
+        --pixel-ink-500: #7d8bab;
+        --pixel-neon-mint: #8ff76b;
+        --pixel-neon-amber: #ffd86b;
+        --pixel-neon-cyan: #6be4ff;
+        --pixel-panel-top: rgba(24, 31, 50, 0.9);
+        --pixel-panel-bottom: rgba(10, 13, 24, 0.9);
+        --pixel-border: rgba(143, 247, 107, 0.38);
+        --pixel-border-soft: rgba(119, 137, 170, 0.42);
+        --pixel-font-heading: "Press Start 2P", monospace;
+        --pixel-font-body:
+            "Space Mono",
+            "IBM Plex Mono",
+            "JetBrains Mono",
+            monospace;
+        color: var(--pixel-ink-100);
+        font-family: var(--pixel-font-body);
         background:
             radial-gradient(
-                circle at 16% 12%,
-                rgba(255, 255, 255, 0.82) 0,
-                rgba(255, 255, 255, 0) 30%
+                circle at 13% 11%,
+                rgba(254, 233, 152, 0.2) 0,
+                rgba(254, 233, 152, 0) 30%
             ),
             radial-gradient(
-                circle at 82% 16%,
-                rgba(254, 240, 138, 0.55) 0,
-                rgba(254, 240, 138, 0) 32%
+                circle at 86% 15%,
+                rgba(128, 224, 255, 0.16) 0,
+                rgba(128, 224, 255, 0) 32%
             ),
             linear-gradient(
                 180deg,
-                #9bd8ff 0%,
-                #e0f6ff 42%,
-                #bfe6a8 69%,
-                #87c967 100%
+                var(--pixel-sky-950) 0%,
+                var(--pixel-sky-900) 38%,
+                var(--pixel-sky-850) 68%,
+                #05101f 100%
             );
-        color: #213b2a;
-        animation: none;
+        animation: night-drift 24s ease-in-out infinite;
+    }
+    @keyframes night-drift {
+        0%,
+        100% {
+            background-position: 0% 0%;
+        }
+        50% {
+            background-position: 100% 24%;
+        }
     }
     .farm-root::before {
         content: "";
         position: fixed;
-        inset: auto -8% 12% -8%;
-        height: 26vh;
+        inset: 0;
         pointer-events: none;
+        z-index: 0;
+        opacity: 0.78;
         background:
             radial-gradient(
-                120% 100% at 8% 100%,
-                rgba(106, 168, 79, 0.45) 0,
-                rgba(106, 168, 79, 0) 62%
+                circle at 72% 13%,
+                rgba(255, 248, 191, 0.92) 0 5px,
+                rgba(255, 248, 191, 0) 8px
             ),
             radial-gradient(
-                120% 100% at 92% 100%,
-                rgba(85, 155, 62, 0.4) 0,
-                rgba(85, 155, 62, 0) 60%
+                circle at 14% 22%,
+                rgba(255, 255, 255, 0.5) 0 1px,
+                transparent 2px
+            ),
+            radial-gradient(
+                circle at 31% 36%,
+                rgba(107, 228, 255, 0.42) 0 1px,
+                transparent 2px
+            ),
+            radial-gradient(
+                circle at 47% 18%,
+                rgba(255, 255, 255, 0.45) 0 1px,
+                transparent 2px
+            ),
+            radial-gradient(
+                circle at 63% 42%,
+                rgba(255, 255, 255, 0.32) 0 1px,
+                transparent 2px
+            ),
+            radial-gradient(
+                circle at 88% 29%,
+                rgba(107, 228, 255, 0.45) 0 1px,
+                transparent 2px
             );
-        z-index: 0;
+        background-size:
+            auto,
+            320px 320px,
+            320px 320px,
+            300px 300px,
+            360px 360px,
+            320px 320px;
+        animation: starlight 9s steps(6) infinite;
+    }
+    @keyframes starlight {
+        0%,
+        100% {
+            opacity: 0.66;
+        }
+        40% {
+            opacity: 0.8;
+        }
+        70% {
+            opacity: 0.56;
+        }
     }
     .farm-root::after {
         content: "";
         position: fixed;
         inset: auto 0 0 0;
-        height: 34vh;
+        height: 36vh;
         pointer-events: none;
+        z-index: 0;
         background:
+            linear-gradient(
+                180deg,
+                rgba(9, 18, 32, 0) 0%,
+                rgba(12, 31, 22, 0.2) 22%,
+                rgba(5, 16, 12, 0.86) 100%
+            ),
             repeating-linear-gradient(
                 90deg,
-                rgba(83, 142, 67, 0.14) 0 18px,
-                rgba(121, 177, 87, 0.08) 18px 36px
+                rgba(83, 142, 67, 0.16) 0 18px,
+                rgba(61, 109, 52, 0.18) 18px 36px
             ),
             linear-gradient(
                 180deg,
-                rgba(138, 198, 101, 0) 0%,
-                rgba(97, 163, 73, 0.38) 38%,
-                rgba(71, 132, 50, 0.52) 100%
+                rgba(107, 181, 79, 0.1) 0%,
+                rgba(56, 102, 45, 0.54) 44%,
+                rgba(28, 58, 25, 0.96) 100%
             );
-        z-index: 0;
+        box-shadow:
+            0 -20px 0 rgba(18, 33, 59, 0.42),
+            0 -30px 0 rgba(6, 11, 22, 0.7);
     }
     .particles .particle {
-        background: rgba(45, 118, 45, 0.28);
+        width: 2px;
+        height: 2px;
+        border-radius: 0;
+        background: rgba(143, 247, 107, 0.32);
+        box-shadow: 0 0 6px rgba(143, 247, 107, 0.5);
     }
     .farm-content {
-        max-width: 1040px;
-        padding: 82px 24px 120px;
-        gap: 26px;
+        max-width: 1120px;
+        padding: 80px 24px 120px;
+        gap: 24px;
     }
-    .farm-header {
-        background: rgba(250, 255, 240, 0.58);
-        border: 1px solid rgba(141, 198, 97, 0.55);
-        border-radius: 22px;
-        padding: 20px 22px;
-        backdrop-filter: blur(8px);
-        box-shadow: 0 12px 36px rgba(64, 122, 55, 0.17);
-    }
-    .title-the {
-        color: #567a56;
-    }
-    .title-farm {
-        color: #2f6f3d;
-        filter: drop-shadow(0 6px 14px rgba(60, 118, 58, 0.23));
-    }
-    .farm-subtitle {
-        color: #365648;
-        font-family: "Avenir Next", "Nunito Sans", "Trebuchet MS", sans-serif;
-        font-size: 11px;
-        font-weight: 700;
-        letter-spacing: 1.6px;
-        text-transform: uppercase;
-    }
-    .farm-tag {
-        color: #195d3b;
-        background: rgba(190, 242, 100, 0.25);
-        border-color: rgba(74, 124, 51, 0.35);
-        font-family: "Avenir Next", "Nunito Sans", "Trebuchet MS", sans-serif;
-        font-size: 11px;
-        font-weight: 700;
-        letter-spacing: 0.2px;
-    }
+    .farm-header,
     .proof-card,
     .game-card,
     .verifier-card,
     .gallery-card,
     .concept-card {
-        background: rgba(255, 251, 236, 0.72);
-        border: 1px solid rgba(129, 182, 102, 0.42);
-        box-shadow: 0 12px 30px rgba(86, 138, 63, 0.14);
-        backdrop-filter: blur(10px);
+        background:
+            linear-gradient(
+                180deg,
+                var(--pixel-panel-top) 0%,
+                var(--pixel-panel-bottom) 100%
+            ),
+            repeating-linear-gradient(
+                0deg,
+                rgba(255, 255, 255, 0.02) 0 2px,
+                rgba(255, 255, 255, 0) 2px 4px
+            );
+        border: 2px solid var(--pixel-border-soft);
+        border-radius: 6px;
+        box-shadow:
+            inset 0 0 0 2px rgba(5, 8, 16, 0.75),
+            0 18px 30px rgba(0, 0, 0, 0.46);
+        backdrop-filter: blur(8px);
+    }
+    .farm-header {
+        border-color: var(--pixel-border);
+        padding: 22px 20px;
+    }
+    .title-the,
+    .farm-subtitle,
+    .farm-tag,
+    .section-label,
+    .concepts-label,
+    .game-wallet,
+    .footer-tech,
+    .verifier-status,
+    .game-level,
+    .gallery-subtitle {
+        font-family: var(--pixel-font-heading);
+    }
+    .title-the {
+        color: #7f92bd;
+        letter-spacing: 3px;
+    }
+    .title-farm {
+        color: #b6ff7a;
+        text-shadow:
+            0 0 0 #b6ff7a,
+            0 0 14px rgba(143, 247, 107, 0.34);
+        filter: none;
+    }
+    .farm-subtitle {
+        color: #9db2db;
+        font-size: 9px;
+        letter-spacing: 2px;
+    }
+    .farm-tag {
+        color: #d8ffe0;
+        background: rgba(43, 115, 70, 0.45);
+        border: 2px solid rgba(143, 247, 107, 0.48);
+        border-radius: 4px;
+        padding: 5px 10px;
+        text-transform: uppercase;
     }
     .proof-card,
     .verifier-card {
-        border-radius: 20px;
-    }
-    .proof-section {
-        width: 100%;
+        border-radius: 8px;
     }
     .proof-done-label {
-        color: #166534;
+        color: #9bffb7;
     }
     .proof-nudge {
-        color: #355e3b;
+        color: var(--pixel-ink-300);
     }
     .proof-error,
     .game-error {
-        color: #b91c1c;
-        background: rgba(254, 226, 226, 0.7);
-        border: 1px solid rgba(248, 113, 113, 0.45);
-        border-radius: 10px;
+        color: #ffd8d8;
+        background: rgba(99, 31, 31, 0.62);
+        border: 2px solid rgba(248, 113, 113, 0.55);
+        border-radius: 4px;
         padding: 8px 10px;
     }
     .proof-btn,
     .proof-generate,
     .game-action-btn,
-    .game-copy-btn {
-        font-family: "Avenir Next", "Nunito Sans", "Trebuchet MS", sans-serif;
-        font-weight: 700;
-        letter-spacing: 0.2px;
-    }
-    .proof-btn.primary,
-    .proof-generate,
-    .game-action-btn.primary,
-    .game-copy-btn.primary {
-        background: linear-gradient(135deg, #b9e769, #5cbf74);
-        color: #153624;
-        border-color: rgba(68, 131, 62, 0.45);
-    }
-    .proof-btn,
-    .game-action-btn,
-    .game-copy-btn {
-        background: rgba(249, 255, 235, 0.92);
-        border: 1px solid rgba(124, 168, 90, 0.46);
-        color: #254335;
+    .game-copy-btn,
+    .gallery-cta,
+    .gallery-open,
+    .gallery-close {
+        font-family: var(--pixel-font-heading);
+        border: 2px solid #5b6b93;
+        border-radius: 4px;
+        background: linear-gradient(180deg, #27395f 0%, #172442 100%);
+        color: var(--pixel-ink-100);
+        box-shadow:
+            inset 0 -3px 0 rgba(7, 12, 24, 0.9),
+            0 6px 0 rgba(5, 8, 16, 0.72);
+        letter-spacing: 0.04em;
+        text-transform: uppercase;
     }
     .proof-btn:hover,
     .proof-generate:hover,
     .game-action-btn:hover,
-    .game-copy-btn:hover {
-        transform: translateY(-1px);
-        box-shadow: 0 6px 12px rgba(56, 97, 47, 0.14);
+    .game-copy-btn:hover,
+    .gallery-cta:hover:enabled,
+    .gallery-open:hover,
+    .gallery-close:hover {
+        transform: translateY(-2px);
+        border-color: #95a9da;
+    }
+    .proof-btn.primary,
+    .proof-generate,
+    .game-action-btn.primary,
+    .game-copy-btn.primary,
+    .gallery-cta {
+        background: linear-gradient(180deg, #c9ff76 0%, #82dd50 100%);
+        color: #132217;
+        border-color: #74bf4c;
+        box-shadow:
+            inset 0 -3px 0 rgba(43, 78, 28, 0.76),
+            0 6px 0 rgba(4, 9, 18, 0.68),
+            0 0 16px rgba(143, 247, 107, 0.34);
+    }
+    .game-action-btn.ghost,
+    .game-copy-btn.ghost {
+        background: linear-gradient(180deg, #1d2a49 0%, #141e35 100%);
+        color: #d6dff1;
+        border-color: #536283;
     }
     .game-section {
-        margin-top: 8px;
+        margin-top: 10px;
     }
     .game-header {
-        background: rgba(254, 255, 241, 0.62);
-        border: 1px solid rgba(134, 182, 91, 0.36);
-        border-radius: 16px;
+        background: rgba(14, 22, 40, 0.86);
+        border: 2px solid rgba(109, 126, 165, 0.5);
+        border-radius: 6px;
         padding: 14px 16px;
     }
     .section-label {
-        color: #375f3a;
+        color: #c7ff8f;
     }
     .game-subtitle {
-        color: #2f4f3a;
-        font-size: 13px;
+        color: #b8c7e3;
+        font-size: 12px;
     }
     .game-wallet {
-        color: #22543d;
-        font-family: "Avenir Next", "Nunito Sans", "Trebuchet MS", sans-serif;
-        font-size: 11px;
-        letter-spacing: 0.2px;
+        color: #82ffd6;
+        font-size: 8px;
     }
     .game-grid {
-        grid-template-columns: repeat(auto-fit, minmax(290px, 1fr));
+        grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
         gap: 16px;
     }
     .game-card {
-        border-radius: 20px;
+        border-radius: 6px;
+        border-color: color-mix(
+            in srgb,
+            var(--accent, var(--pixel-neon-cyan)) 40%,
+            #64749b
+        );
     }
     .game-card::before {
         background: radial-gradient(
             circle at top,
-            color-mix(in srgb, var(--accent, #38bdf8) 18%, #ffffff 32%),
-            transparent 66%
+            color-mix(
+                in srgb,
+                var(--accent, var(--pixel-neon-cyan)) 22%,
+                transparent
+            ),
+            transparent 70%
         );
     }
     .game-title {
-        color: #254537;
-        font-family: "Avenir Next", "Nunito Sans", "Trebuchet MS", sans-serif;
-        font-size: 18px;
-        font-weight: 800;
+        color: #ecf3ff;
+        font-family: var(--pixel-font-heading);
+        font-size: 12px;
+        letter-spacing: 0.02em;
     }
     .game-summary,
     .game-goal,
@@ -3815,117 +3949,206 @@
     .game-progress-meta,
     .game-zk-meta,
     .game-tip {
-        color: #345b44;
+        color: #adbcda;
+        font-family: var(--pixel-font-body);
     }
     .game-level {
-        background: rgba(199, 242, 182, 0.7);
-        border-color: rgba(97, 158, 74, 0.45);
-        color: #1f5f3a;
+        background: rgba(24, 40, 72, 0.74);
+        border: 2px solid rgba(109, 185, 255, 0.5);
+        border-radius: 4px;
+        color: #8fd9ff;
+        padding: 6px 8px;
     }
     .game-zk-rail {
-        background: rgba(238, 252, 220, 0.72);
-        border-color: rgba(112, 172, 83, 0.4);
+        background: rgba(8, 22, 40, 0.78);
+        border: 2px solid rgba(72, 130, 168, 0.44);
+        border-radius: 6px;
     }
     .game-zk-title {
-        color: #244c33;
-        font-weight: 700;
+        color: #9cf7ff;
+        font-family: var(--pixel-font-heading);
+        font-size: 8px;
+    }
+    .game-super-path {
+        color: #d7e3fa;
+        background: rgba(16, 24, 46, 0.86);
+        border: 1px solid rgba(128, 142, 180, 0.45);
+    }
+    .game-super-path--live {
+        border-color: rgba(115, 255, 158, 0.7);
+        color: #9fffbf;
+        background: rgba(20, 76, 45, 0.52);
+    }
+    .game-super-path--ops {
+        border-color: rgba(255, 216, 107, 0.66);
+        color: #ffe6a2;
+        background: rgba(96, 69, 17, 0.55);
     }
     .game-zk-tag {
-        background: rgba(198, 242, 212, 0.85);
-        border-color: rgba(78, 155, 112, 0.38);
-        color: #176341;
+        background: rgba(16, 62, 70, 0.55);
+        border: 1px solid rgba(80, 200, 210, 0.55);
+        color: #9de8ef;
     }
     .game-zk-tag--soft {
-        background: rgba(244, 236, 208, 0.8);
-        border-color: rgba(186, 150, 86, 0.34);
-        color: #6d4f28;
+        background: rgba(20, 26, 44, 0.8);
+        border-color: rgba(137, 150, 179, 0.4);
+        color: #ccd5ea;
     }
     .game-surface {
-        background: rgba(247, 255, 234, 0.76);
-        border-color: rgba(122, 176, 95, 0.4);
+        background: rgba(10, 17, 33, 0.82);
+        border: 2px solid rgba(93, 109, 143, 0.42);
+        border-radius: 6px;
     }
     .tic-cell,
     .dodge-lane,
     .pattern-dot,
     .pattern-pad {
-        background: rgba(255, 255, 255, 0.8);
+        border-radius: 3px;
+        border: 2px solid rgba(110, 126, 163, 0.45);
+        background: rgba(13, 23, 44, 0.9);
+        box-shadow: inset 0 -3px 0 rgba(6, 10, 21, 0.85);
+    }
+    .tic-cell {
+        font-family: var(--pixel-font-heading);
+        font-size: 18px;
+    }
+    .dodge-lane {
+        background:
+            repeating-linear-gradient(
+                180deg,
+                rgba(36, 47, 75, 0.7) 0 9px,
+                rgba(21, 30, 52, 0.7) 9px 18px
+            ),
+            rgba(11, 17, 33, 0.84);
+    }
+    .pattern-dot {
+        font-family: var(--pixel-font-heading);
+        font-size: 8px;
+    }
+    .pattern-pad {
+        font-family: var(--pixel-font-heading);
+        font-size: 8px;
+    }
+    .tone-gold {
+        background: linear-gradient(180deg, #ffe07d 0%, #de9d2f 100%);
+        color: #3f2600;
+    }
+    .tone-jade {
+        background: linear-gradient(180deg, #89ffaa 0%, #2fbb66 100%);
+        color: #092a14;
+    }
+    .tone-violet {
+        background: linear-gradient(180deg, #d7adff 0%, #8655d9 100%);
+        color: #220941;
+    }
+    .tone-cobalt {
+        background: linear-gradient(180deg, #9fd7ff 0%, #3d90da 100%);
+        color: #051f38;
     }
     .game-progress-bar {
-        background: rgba(124, 169, 85, 0.2);
+        border-radius: 3px;
+        height: 8px;
+        background:
+            repeating-linear-gradient(
+                90deg,
+                rgba(99, 112, 146, 0.34) 0 8px,
+                rgba(72, 86, 114, 0.34) 8px 16px
+            ),
+            rgba(33, 45, 68, 0.78);
+        border: 1px solid rgba(119, 134, 174, 0.36);
     }
     .game-progress-fill {
-        background: linear-gradient(90deg, #8bcf55, #43a564);
+        border-radius: 2px;
+        background:
+            repeating-linear-gradient(
+                90deg,
+                rgba(214, 255, 123, 0.95) 0 10px,
+                rgba(140, 224, 91, 0.95) 10px 20px
+            ),
+            linear-gradient(90deg, #bbff77, #60ce6f);
     }
     .game-proof {
-        background: rgba(248, 255, 237, 0.83);
-        border-color: rgba(125, 177, 92, 0.35);
+        background: rgba(9, 16, 30, 0.84);
+        border: 2px solid rgba(104, 122, 160, 0.4);
+        border-radius: 6px;
     }
     .game-proof-label {
-        color: #46684a;
+        color: #95a7ce;
     }
     .game-proof-value {
-        color: #2a4b37;
+        color: #dfe8ff;
     }
     .game-proof-note {
-        font-size: 11px;
+        font-size: 10px;
     }
     .game-verifier-payload {
-        background: rgba(248, 255, 234, 0.9);
-        border-color: rgba(124, 171, 82, 0.35);
+        background: rgba(9, 14, 27, 0.9);
+        border: 2px solid rgba(87, 105, 140, 0.46);
+        border-radius: 6px;
     }
     .game-verifier-payload summary {
-        color: #2e5c3f;
+        color: #8fd9ff;
     }
     .game-verifier-payload pre {
-        color: #1f3f2f;
+        color: #d4def3;
     }
     .verifier-card {
-        background: rgba(255, 251, 235, 0.76);
+        border-color: rgba(143, 247, 107, 0.38);
     }
     .verifier-label {
-        color: #4b6b51;
+        color: #94aad6;
     }
     .verifier-item {
-        background: rgba(248, 255, 233, 0.86);
-        border-color: rgba(131, 181, 90, 0.36);
+        background: rgba(8, 16, 31, 0.85);
+        border: 2px solid rgba(96, 113, 146, 0.38);
+        border-radius: 6px;
     }
     .verifier-value {
-        color: #234231;
+        color: #e4ecff;
     }
     .verifier-copy,
     .verifier-env {
-        color: #305140;
+        color: #b7c7e4;
     }
     .verifier-copy code {
-        color: #244f33;
-        background: rgba(190, 242, 100, 0.26);
-        border-color: rgba(118, 165, 78, 0.4);
+        color: #d8f4ff;
+        background: rgba(37, 69, 102, 0.58);
+        border: 1px solid rgba(107, 178, 221, 0.5);
+        border-radius: 3px;
+        padding: 1px 4px;
     }
     .gallery-card {
-        border-color: rgba(130, 185, 90, 0.34);
+        border-color: rgba(98, 112, 146, 0.48);
+        border-radius: 6px;
     }
     .gallery-title {
-        color: #305440;
+        color: #dce7ff;
+        font-family: var(--pixel-font-heading);
+        font-size: 10px;
     }
     .gallery-summary {
-        color: #4a6c52;
+        color: #9fb0cf;
+        font-family: var(--pixel-font-body);
     }
     .farm-footer {
-        border-top: 1px solid rgba(114, 160, 75, 0.36);
+        border-top: 2px solid rgba(96, 113, 145, 0.44);
     }
     .footer-tech {
-        color: #2d5f3a;
+        color: #b4ff7c;
     }
     .footer-links,
     .footer-links a {
-        color: #3d6448;
+        color: #a7b7d6;
     }
     .footer-links a:hover {
-        color: #2f6d3e;
+        color: #d8ffe5;
     }
     @media (max-width: 860px) {
         .farm-content {
-            padding: 76px 16px 106px;
+            padding: 74px 16px 104px;
+        }
+        .farm-header {
+            padding: 18px 14px;
         }
         .game-grid {
             grid-template-columns: 1fr;
