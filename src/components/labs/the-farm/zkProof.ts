@@ -316,7 +316,8 @@ export async function submitProofToContract(
             tier: tierId,
         });
 
-        const { Contract, Address, nativeToScVal, xdr, TransactionBuilder, rpc } = await import("@stellar/stellar-sdk/minimal");
+        const { Contract, Address, nativeToScVal, xdr, TransactionBuilder, rpc, Account, Networks } = await import("@stellar/stellar-sdk/minimal");
+        const NULL_ACCOUNT = "GAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAWHF";
         const { send } = await import("../../../utils/passkey-kit");
         const { getBestRpcUrl } = await import("../../../utils/rpc");
         const { getSafeRpId } = await import("../../../utils/domains");
@@ -351,14 +352,14 @@ export async function submitProofToContract(
             proofStruct,
         );
 
-        // Build transaction
-        const accountResponse = await server.getAccount(farmerAddress);
-        const tx = new TransactionBuilder(accountResponse, {
-            fee: "100000",
-            networkPassphrase: MAINNET_PASSPHRASE,
+        // Build transaction using NULL_ACCOUNT (smart wallet contract IDs can't use getAccount)
+        const sourceAccount = new Account(NULL_ACCOUNT, "0");
+        const tx = new TransactionBuilder(sourceAccount, {
+            fee: "10000000", // 1 XLM max
+            networkPassphrase: Networks.PUBLIC,
         })
             .addOperation(op)
-            .setTimeout(60)
+            .setTimeout(300)
             .build();
 
         // Simulate to get sorobanData
@@ -416,7 +417,8 @@ async function submitLegacyAttestation(
     proof: Groth16Proof,
 ): Promise<{ success: boolean; txHash?: string; error?: string }> {
     try {
-        const { Contract, Address, nativeToScVal, TransactionBuilder, rpc } = await import("@stellar/stellar-sdk/minimal");
+        const { Contract, Address, nativeToScVal, TransactionBuilder, rpc, Account, Networks } = await import("@stellar/stellar-sdk/minimal");
+        const NULL_ACCOUNT = "GAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAWHF";
         const { send } = await import("../../../utils/passkey-kit");
         const { getBestRpcUrl } = await import("../../../utils/rpc");
         const { getSafeRpId } = await import("../../../utils/domains");
@@ -436,14 +438,14 @@ async function submitLegacyAttestation(
             nativeToScVal(Buffer.from(proofHash), { type: "bytes" }),
         );
 
-        // Build transaction
-        const accountResponse = await server.getAccount(farmerAddress);
-        const tx = new TransactionBuilder(accountResponse, {
-            fee: "100000",
-            networkPassphrase: MAINNET_PASSPHRASE,
+        // Build transaction using NULL_ACCOUNT (smart wallet contract IDs can't use getAccount)
+        const sourceAccount = new Account(NULL_ACCOUNT, "0");
+        const tx = new TransactionBuilder(sourceAccount, {
+            fee: "10000000", // 1 XLM max
+            networkPassphrase: Networks.PUBLIC,
         })
             .addOperation(op)
-            .setTimeout(60)
+            .setTimeout(300)
             .build();
 
         // Simulate to get sorobanData
