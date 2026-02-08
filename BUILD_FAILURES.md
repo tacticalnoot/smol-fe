@@ -79,10 +79,11 @@ Turnstile failover (to Kale) was the intended fix but was reverted. Currently re
 After successful relayer submission (`DIRECT mode SUCCESS`), the UI shows `Verification error: Error: Transaction failed`.
 
 **Cause:**
-The relayer is returning a success response (HTTP 200), but `TheFarmCore` or `zkProof` fails to extract the transaction hash from the response object. It expects `result.hash` or `result.transactionHash`. If the relayer returns a different format (e.g. `transactionId` or valid JSON without a hash field), the app assumes failure.
+The relayer is returning a success response (HTTP 200), but `TheFarmCore` or `zkProof` fails to extract the transaction hash from the response object.
+Initial fix checked `result.hash`, but logs revealed the response is nested: `{"success":true, "data":{"hash":"..."}}`.
 
 **Fix:**
-Update `zkProof.ts` to inspect the relayer response more thoroughly and support multiple hash property names (`hash`, `txHash`, `transactionHash`, `id`). Add debug logging to capture the actual response structure.
+Update `zkProof.ts` to recursively check for `data.hash`, `data.transactionHash`, etc.
 
 ## 2026-02-08 - Process Failure: Documentation not synced to git
 

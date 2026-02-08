@@ -396,10 +396,33 @@ export async function submitProofToContract(
             "ZK-ProofSubmit"
         );
 
+        // Send via relayer with retry
+        const result = await withRetry(
+            () => send(signedTx),
+            {
+                maxRetries: 8, // Increased from 5
+                baseDelayMs: 3000, // Increased from 2000
+                backoffFactor: 1.5, // Slower backoff
+                onRetry: (attempt, _err, delay) => {
+                    console.log(`[ZK] Relayer retry ${attempt}/8 in ${delay}ms...`);
+                },
+            },
+            "ZK-ProofSubmit"
+        );
+
         console.log("[ZK] Proof verified and attestation stored on-chain!", result);
 
-        // Robust hash extraction
-        const txHash = result.hash || result.transactionHash || result.txHash || result.id || result.transactionId;
+        // Robust hash extraction (handle flat and nested 'data' structures)
+        const txHash =
+            result.hash ||
+            result.transactionHash ||
+            result.txHash ||
+            result.id ||
+            result.transactionId ||
+            result.data?.hash ||
+            result.data?.transactionHash ||
+            result.data?.txHash ||
+            result.data?.transactionId;
 
         if (!txHash) {
             console.warn("[ZK] Relayer returned success but no hash found in result:", JSON.stringify(result));
@@ -501,10 +524,33 @@ async function submitLegacyAttestation(
             "ZK-LegacyAttest"
         );
 
+        // Send via relayer with retry
+        const result = await withRetry(
+            () => send(signedTx),
+            {
+                maxRetries: 8,
+                baseDelayMs: 3000,
+                backoffFactor: 1.5,
+                onRetry: (attempt, _err, delay) => {
+                    console.log(`[ZK] Legacy attestation retry ${attempt}/8 in ${delay}ms...`);
+                },
+            },
+            "ZK-LegacyAttest"
+        );
+
         console.log("[ZK] Legacy attestation submitted!", result);
 
-        // Robust hash extraction
-        const txHash = result.hash || result.transactionHash || result.txHash || result.id || result.transactionId;
+        // Robust hash extraction (handle flat and nested 'data' structures)
+        const txHash =
+            result.hash ||
+            result.transactionHash ||
+            result.txHash ||
+            result.id ||
+            result.transactionId ||
+            result.data?.hash ||
+            result.data?.transactionHash ||
+            result.data?.txHash ||
+            result.data?.transactionId;
 
         if (!txHash) {
             console.warn("[ZK] Relayer returned success but no hash found in result:", JSON.stringify(result));
