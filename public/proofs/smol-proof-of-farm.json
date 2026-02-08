@@ -1,22 +1,24 @@
 {
   "id": "kale-bloom",
-  "title": "Proof of Farm (KALE Tier Commitment)",
-  "description": "SHA-256 commitment of a KALE balance tier. The commitment hides the balance; the tier is public.",
+  "title": "Kale Bloom — Proof of Farm",
+  "description": "Groth16 zero-knowledge proof of your KALE farming tier. Proves tier membership without revealing your exact balance.",
   "smartWallet": "CA4KZP5ZXY2A6Q6HQ2TK3AJXFG6OU7Y5CNGT7GIEH6JQO6F7KLBWYX3V",
-  "network": "stellar-testnet",
-  "scheme": "SHA-256 commit-reveal",
-  "method": "sha256(address || balance || salt)",
+  "network": "stellar-mainnet",
+  "scheme": "Groth16 (BN254) + Poseidon commitment",
+  "method": "Poseidon(address_hash, balance, salt) → commitment, then Groth16 proof of tier >= threshold",
+  "circuit": "tier_proof.circom (Circom 2.1.0)",
   "publicInputs": {
-    "tier": 2,
-    "tierLabel": "Harvester"
+    "tier_id": "Claimed tier index (0-3)",
+    "commitment_expected": "Poseidon hash commitment"
   },
-  "privateInputs": ["wallet address", "kale balance", "random 32-byte salt"],
+  "privateInputs": ["address_hash (SHA-256 of wallet)", "kale balance (stroops)", "random salt (248-bit)"],
   "outputs": {
-    "commitment": "sha256 hash (32 bytes) — recomputable from inputs",
-    "attestation": "tier-committed"
+    "proof": "Groth16 proof (pi_a: G1, pi_b: G2, pi_c: G1)",
+    "attestation": "On-chain TierAttestation via Soroban contract"
   },
-  "verification": "Recompute sha256(address || balance || salt) and compare to stored commitment hash.",
-  "generatedAt": "2026-02-06T18:42:11.000Z",
+  "verification": "On-chain via Stellar Protocol 25 BN254 host functions: bn254.g1_add, bn254.g1_mul, bn254.pairing_check",
+  "contract": "CDLZFC3SYJYDZT7KQNWZ5N5CBF4XI2O3Y3OSO54C526TBH52F5GM34M2",
+  "generatedAt": "2026-02-07T20:00:00.000Z",
   "source": "smol labs / the farm",
-  "note": "This is a commit-reveal scheme, not a ZK proof. The commitment is hiding (salted) and binding (SHA-256). A future ZK circuit upgrade would prove tier membership without revealing the balance."
+  "note": "Live proof. Generate in the browser via snarkjs, verify on-chain via Protocol 25 BN254 pairing check on the tier-verifier Soroban contract."
 }

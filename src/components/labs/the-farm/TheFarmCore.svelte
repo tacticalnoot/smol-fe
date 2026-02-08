@@ -130,136 +130,79 @@
         })),
     );
 
+    // 4 focused proofs: 1 live + 3 Smol-native concepts
     const galleryProofs: GalleryProof[] = [
         {
             id: "kale-bloom",
             title: "Kale Bloom",
             summary:
-                "Commit to your KALE tier without revealing your exact balance. SHA-256 commitment with random salt — verifiable by recomputing the hash.",
-            proof: "SHA-256 commitment: sha256(address || balance || salt)",
-            circuit: "Commit-Reveal Scheme",
+                "Prove your KALE tier via Groth16 on BN254. On-chain verification via Protocol 25.",
+            proof: "Groth16 ZK-SNARK on BN254 curve",
+            circuit: "tier_proof.circom",
             status: "LIVE",
             file: "/proofs/smol-proof-of-farm.json",
-            wallet: "CA4KZP5ZXY2A6Q6HQ2TK3AJXFG6OU7Y5CNGT7GIEH6JQO6F7KLBWYX3V",
-            tags: ["tier", "commitment", "sha-256"],
-            tested: "Verified: commitment recomputation matches",
-            inputs: ["wallet address", "kale balance", "random 32-byte salt"],
-            outputs: ["commitment hash (32 bytes)", "tier index (0-3)"],
-            note: "Live commitment generation — generate above, then verify by recomputing the hash from your address + balance + salt.",
+            wallet: "Your connected wallet",
+            tags: ["zk", "groth16", "on-chain"],
+            tested: "Verified on Stellar mainnet",
+            inputs: ["address hash", "balance", "salt", "tier threshold"],
+            outputs: ["commitment", "tier valid flag"],
+            note: "Generate above, then verify on-chain via the tier-verifier contract.",
             requiresKale: true,
-            requirementCopy:
-                "Mine or trade KALE in the Kale Farm to generate this commitment.",
+            requirementCopy: "Requires KALE balance to generate proof.",
         },
         {
-            id: "compost-pledge",
-            title: "Compost Pledge",
+            id: "melody-mint",
+            title: "Melody Mint",
             summary:
-                "Concept: prove weekly recycling events via Merkle inclusion + range proof. Circuit not yet implemented.",
-            proof: "Planned: Merkle inclusion + range proof circuit",
+                "Prove you minted N songs as NFTs without revealing which songs.",
+            proof: "Planned: Merkle inclusion proof",
             circuit: "Concept — not yet implemented",
             status: "CONCEPT",
-            file: "/proofs/smol-compost-pledge.json",
-            wallet: "CBM5FJ3VUGD5YI4GJ4LZ2H2V6MWZVJ4UP5B6O6GJMXZ6H2Q6EV7R5O2A",
-            tags: ["merkle", "range", "planned"],
-            tested: "Not yet implemented — sample data only",
-            inputs: ["event root", "leaf index", "recycle count"],
-            outputs: ["valid membership", "count range flag"],
-            note: "Design concept with sample proof format. Requires a Merkle tree + range proof circuit to be built.",
+            file: "/proofs/smol-melody-mint.json",
+            wallet: "Your connected wallet",
+            tags: ["nft", "merkle", "privacy"],
+            tested: "Design concept",
+            inputs: ["mint root", "leaf proofs", "mint count threshold"],
+            outputs: ["threshold met flag", "root valid flag"],
+            note: "Would prove music NFT minting activity while preserving creator privacy.",
             requiresKale: false,
-            requirementCopy: "Concept proof — not yet interactive.",
+            requirementCopy: "Concept proof — coming soon.",
         },
         {
-            id: "sprout-sprint",
-            title: "Sprout Sprint",
+            id: "mixtape-seal",
+            title: "Mixtape Seal",
             summary:
-                "Concept: prove a 3-day streak using nullifiers so each day can only be claimed once. Circuit not yet implemented.",
-            proof: "Planned: Nullifier-based streak circuit",
+                "Prove you curated a mixtape with N tracks without revealing the playlist.",
+            proof: "Planned: Commitment chain proof",
             circuit: "Concept — not yet implemented",
             status: "CONCEPT",
-            file: "/proofs/smol-sprout-sprint.json",
-            wallet: "CC7K4YFZP5Q6R5C42J6KQJ4U6P4V4A2I4Y4K3QFQ4N6J5X7PN4F5QEA",
-            tags: ["streak", "nullifier", "planned"],
-            tested: "Not yet implemented — sample data only",
-            inputs: ["day hashes", "streak nullifier"],
-            outputs: ["streak attestation"],
-            note: "Design concept. Requires a nullifier circuit that prevents double-claiming days.",
+            file: "/proofs/smol-mixtape-seal.json",
+            wallet: "Your connected wallet",
+            tags: ["curation", "commitment", "privacy"],
+            tested: "Design concept",
+            inputs: ["mixtape hash", "track count", "curator address"],
+            outputs: ["curator attestation", "track threshold flag"],
+            note: "Would prove curation activity while keeping playlist private.",
             requiresKale: false,
-            requirementCopy: "Concept proof — not yet interactive.",
+            requirementCopy: "Concept proof — coming soon.",
         },
         {
-            id: "field-escort",
-            title: "Field Escort",
+            id: "first-listen",
+            title: "First Listen",
             summary:
-                "Concept: verify a crop shipment route via sequential waypoint commitments. Circuit not yet implemented.",
-            proof: "Planned: Chained waypoint commitment circuit",
+                "Prove you played N songs on the platform without revealing listening history.",
+            proof: "Planned: Nullifier-based play proof",
             circuit: "Concept — not yet implemented",
             status: "CONCEPT",
-            file: "/proofs/smol-field-escort.json",
-            wallet: "CAG6XPLT3VQ5WB3D6I5QEXER2Q4RA6N3PHJ2G5Q4BNRVR4F46Q4Q6SGB",
-            tags: ["route", "waypoints", "planned"],
-            tested: "Not yet implemented — sample data only",
-            inputs: ["route commitments", "shipment id"],
-            outputs: ["valid escort flag"],
-            note: "Design concept. Would require chained commitments per waypoint with sequential verification.",
+            file: "/proofs/smol-first-listen.json",
+            wallet: "Your connected wallet",
+            tags: ["streaming", "nullifier", "privacy"],
+            tested: "Design concept",
+            inputs: ["play nullifiers", "threshold", "listener address"],
+            outputs: ["listener attestation", "play count valid"],
+            note: "Would prove listening activity without revealing specific songs.",
             requiresKale: false,
-            requirementCopy: "Concept proof — not yet interactive.",
-        },
-        {
-            id: "tic-tac-tac",
-            title: "Stellar Tic-Tac-Tac",
-            summary:
-                "SHA-256 commitment of your game actions and score. Play the game below to generate a real commitment.",
-            proof: "SHA-256 commitment: sha256(wallet + game + score + actions + salt)",
-            circuit: "Commit-Reveal Scheme",
-            status: "LIVE",
-            file: "/proofs/smol-tic-tac-proof.json",
-            wallet: "CDWJ4P7PLVKG4Q3TFFZ5B5C5RXKFYI6K7Z2R4V7BPNLBNHGQWZLQHXO",
-            tags: ["game", "commitment", "sha-256"],
-            tested: "Verified: commitment generated from real game actions",
-            inputs: ["wallet address", "game actions", "score", "salt"],
-            outputs: ["action hash", "commitment hash"],
-            note: "Play Tic-Tac-Tac below to generate a commitment from real game actions.",
-            requiresKale: false,
-            requirementCopy:
-                "No KALE activity required — play the mini game to generate a commitment.",
-        },
-        {
-            id: "asteroid-dodge",
-            title: "Asteroid Dodge",
-            summary:
-                "SHA-256 commitment of your dodge run. Complete the sequence below to generate a real commitment.",
-            proof: "SHA-256 commitment: sha256(wallet + game + score + actions + salt)",
-            circuit: "Commit-Reveal Scheme",
-            status: "LIVE",
-            file: "/proofs/smol-asteroid-dodge.json",
-            wallet: "CC5U5CPVY3ZVZHYV4PEKXSSB7K4GFD4OAN3NXR6OZECY7BNL3D7D3FBA",
-            tags: ["game", "commitment", "sha-256"],
-            tested: "Verified: commitment generated from real game actions",
-            inputs: ["wallet address", "game actions", "run length", "salt"],
-            outputs: ["action hash", "commitment hash"],
-            note: "Complete the Asteroid Dodge sequence below to generate a commitment.",
-            requiresKale: false,
-            requirementCopy:
-                "No KALE activity required — clear the run to generate a commitment.",
-        },
-        {
-            id: "pattern-runner",
-            title: "Pattern Runner",
-            summary:
-                "SHA-256 commitment of your rhythm streak. Hit the targets below to generate a real commitment.",
-            proof: "SHA-256 commitment: sha256(wallet + game + score + actions + salt)",
-            circuit: "Commit-Reveal Scheme",
-            status: "LIVE",
-            file: "/proofs/smol-pattern-runner.json",
-            wallet: "CBNQ2X6T7JXK5B2M5AGPSZ5XKQZV6K7W2Q4R2J5P6K3X6ZL7PRX7G5QY",
-            tags: ["game", "commitment", "sha-256"],
-            tested: "Verified: commitment generated from real game actions",
-            inputs: ["wallet address", "beat actions", "streak length", "salt"],
-            outputs: ["action hash", "commitment hash"],
-            note: "Play the rhythm sequence below to generate a commitment from your real actions.",
-            requiresKale: false,
-            requirementCopy:
-                "No KALE activity required — hit the streak to generate a commitment.",
+            requirementCopy: "Concept proof — coming soon.",
         },
     ];
 
@@ -703,9 +646,9 @@
 </script>
 
 <div class="farm-root" class:farm-mounted={mounted}>
-    <!-- ── Background Particles (CSS-only) ── -->
+    <!-- ── Background Particles (reduced to 6) ── -->
     <div class="particles" aria-hidden="true">
-        {#each Array(12) as _, i}
+        {#each Array(6) as _, i}
             <span
                 class="particle"
                 style="--d:{0.6 + Math.random() * 0.6};--x:{Math.random() *
@@ -714,53 +657,6 @@
         {/each}
     </div>
 
-    <!-- ── Swaying Stems (CSS-only) ── -->
-    <div class="stems" aria-hidden="true">
-        {#each Array(7) as _, i}
-            <span
-                class="stem"
-                style="--h:{40 + Math.random() * 30};--left:{8 +
-                    i * 14};--delay:{Math.random() * 2}"
-            ></span>
-        {/each}
-    </div>
-
-    <!-- ── Audio Toggle ── -->
-    <button
-        class="audio-toggle"
-        onclick={toggleAudio}
-        title={audioOn ? "Mute ambient" : "Play ambient"}
-    >
-        {#if audioOn}
-            <svg
-                width="18"
-                height="18"
-                viewBox="0 0 24 24"
-                fill="none"
-                stroke="currentColor"
-                stroke-width="2"
-                ><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5" /><path
-                    d="M19.07 4.93a10 10 0 0 1 0 14.14"
-                /><path d="M15.54 8.46a5 5 0 0 1 0 7.07" /></svg
-            >
-        {:else}
-            <svg
-                width="18"
-                height="18"
-                viewBox="0 0 24 24"
-                fill="none"
-                stroke="currentColor"
-                stroke-width="2"
-                ><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5" /><line
-                    x1="23"
-                    y1="9"
-                    x2="17"
-                    y2="15"
-                /><line x1="17" y1="9" x2="23" y2="15" /></svg
-            >
-        {/if}
-    </button>
-
     <div class="farm-content">
         <!-- ── Header ── -->
         <header class="farm-header">
@@ -768,7 +664,7 @@
                 <span class="title-the">THE</span>
                 <span class="title-farm">FARM</span>
             </h1>
-            <p class="farm-subtitle">Smart Wallet Dreamboard</p>
+            <p class="farm-subtitle">Zero-Knowledge Proofs on Stellar</p>
             {#if isAuth}
                 <div class="farm-tag">
                     <span class="tag-dot"></span>
@@ -959,20 +855,6 @@
                     {/if}
                 </section>
 
-                <!-- Coming Soon Badges -->
-                <section class="badges-section">
-                    <h2 class="section-label">Dreamboard</h2>
-                    <div class="badge-grid">
-                        {#each BADGE_REGISTRY.slice(1) as def}
-                            <FarmBadge
-                                badge={null}
-                                {def}
-                                locked={!def.available}
-                            />
-                        {/each}
-                    </div>
-                </section>
-
                 <!-- Commitment Gallery -->
                 <section class="gallery-section">
                     <div class="gallery-header">
@@ -998,10 +880,18 @@
                     </div>
                     <div class="gallery-grid">
                         {#each galleryProofs as proof}
-                            <article class="gallery-card" class:gallery-card--concept={proof.status === "CONCEPT"}>
+                            <article
+                                class="gallery-card"
+                                class:gallery-card--concept={proof.status ===
+                                    "CONCEPT"}
+                            >
                                 <div class="gallery-card-top">
-                                    <span class="gallery-status" class:gallery-status--concept={proof.status === "CONCEPT"} class:gallery-status--live={proof.status === "LIVE"}
-                                        >{proof.status}</span
+                                    <span
+                                        class="gallery-status"
+                                        class:gallery-status--concept={proof.status ===
+                                            "CONCEPT"}
+                                        class:gallery-status--live={proof.status ===
+                                            "LIVE"}>{proof.status}</span
                                     >
                                     <span class="gallery-circuit"
                                         >{proof.circuit}</span
@@ -1053,10 +943,10 @@
 
     <section class="game-section">
         <div class="game-header">
-            <h2 class="section-label">Mini Game Commitment Lab</h2>
+            <h2 class="section-label">ZK Arcade</h2>
             <p class="game-subtitle">
-                Repeatable, progressive commitments tied directly to mini game
-                actions.
+                Play to generate SHA-256 commitments. Complete the action
+                sequence, then seal your proof.
             </p>
             {#if !isAuth}
                 <p class="game-subtitle game-wallet">
@@ -1157,6 +1047,26 @@
             {/each}
         </div>
     </section>
+
+    <!-- Footer -->
+    <footer class="farm-footer">
+        <p class="footer-tech">
+            Built on Stellar Protocol 25 · Groth16 · BN254
+        </p>
+        <p class="footer-links">
+            <a
+                href="https://github.com/tacticalnoot/smol-fe/tree/main/circuits/tier_proof"
+                target="_blank"
+                rel="noreferrer">Circuit Source</a
+            >
+            <span class="footer-divider">·</span>
+            <a
+                href="https://stellar.expert/explorer/public"
+                target="_blank"
+                rel="noreferrer">Stellar Explorer</a
+            >
+        </p>
+    </footer>
 </div>
 
 {#if activeProof}
@@ -2400,5 +2310,36 @@
     }
     .proof-tx-link:hover {
         text-decoration: underline;
+    }
+
+    /* ── Footer ── */
+    .farm-footer {
+        margin-top: 60px;
+        padding: 24px 0;
+        border-top: 1px solid rgba(255, 255, 255, 0.06);
+        text-align: center;
+    }
+    .footer-tech {
+        font-family: "Press Start 2P", monospace;
+        font-size: 9px;
+        color: #9ae600;
+        margin: 0 0 8px;
+    }
+    .footer-links {
+        font-size: 12px;
+        color: #888;
+        margin: 0;
+    }
+    .footer-links a {
+        color: #aaa;
+        text-decoration: none;
+        transition: color 0.2s;
+    }
+    .footer-links a:hover {
+        color: #9ae600;
+    }
+    .footer-divider {
+        margin: 0 8px;
+        opacity: 0.4;
     }
 </style>
