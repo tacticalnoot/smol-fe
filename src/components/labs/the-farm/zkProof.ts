@@ -431,6 +431,7 @@ async function submitLegacyAttestation(
         const { Contract, Address, nativeToScVal, TransactionBuilder, rpc, Account, Networks } = await import("@stellar/stellar-sdk/minimal");
         const NULL_ACCOUNT = "GAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAWHF";
         const { send } = await import("../../../utils/passkey-kit");
+        const { withRetry } = await import("../../../utils/retry");
         const { getBestRpcUrl } = await import("../../../utils/rpc");
         const { getSafeRpId } = await import("../../../utils/domains");
         const { getLatestSequence } = await import("../../../utils/base");
