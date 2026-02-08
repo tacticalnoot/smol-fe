@@ -10,7 +10,7 @@ const __dirname = path.dirname(__filename);
 const rootDir = path.resolve(__dirname, '..');
 
 // Constants
-const CONTRACT_ID = "CDLZFC3SYJYDZT7KQNWZ5N5CBF4XI2O3Y3OSO54C526TBH52F5GM34M2";
+const CONTRACT_ID = "CDLA6S76Q362EWX5NF232AFFMHAANI3QPXI4W67YCRMS2FKV6E64AGL6";
 const WASM_PATH = "contracts/tier-verifier/target/wasm32-unknown-unknown/release/tier_verifier.optimized.wasm";
 
 async function main() {

@@ -4,7 +4,7 @@
 // Single source of truth for all Farm types, constants, and helpers.
 // ============================================================================
 
-export const TIER_VERIFIER_CONTRACT_ID = "CDLZFC3SYJYDZT7KQNWZ5N5CBF4XI2O3Y3OSO54C526TBH52F5GM34M2";
+export const TIER_VERIFIER_CONTRACT_ID = "CDLA6S76Q362EWX5NF232AFFMHAANI3QPXI4W67YCRMS2FKV6E64AGL6";
 export const STELLAR_NETWORK = "stellar-mainnet" as const;
 
 export interface TierDef {
