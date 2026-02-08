@@ -299,8 +299,6 @@ export async function checkAttestation(farmerAddress: string): Promise<{
  *
  * Calls verify_and_attest which performs the full Groth16 pairing check using
  * Protocol 25 BN254 host functions before storing the attestation.
- *
- * Falls back to legacy attest_tier if the contract hasn't been upgraded yet.
  */
 export async function submitProofToContract(
     kit: any, // PasskeyKit instance
@@ -423,127 +421,7 @@ export async function submitProofToContract(
             txHash: txHash,
         };
     } catch (error: any) {
-        // More specific check: only fall back if the function truly doesn't exist (HostError: Error(WasmVm, UnexpectedSize) or similar)
-        // or if it explicitly says function not found.
-        const errorStr = (error.message || "").toLowerCase();
-        const isNotFoundError = errorStr.includes("not found") || errorStr.includes("unknown function");
-
-        if (isNotFoundError) {
-            console.warn("[ZK] verify_and_attest not found on contract, falling back to legacy attest_tier");
-            return submitLegacyAttestation(kit, farmerAddress, tierId, commitment, proof);
-        }
-
-        console.error("[ZK] Failed to submit proof (No Fallback):", error);
-        return {
-            success: false,
-            error: error.message || "Unknown error",
-        };
-    }
-}
-
-/**
- * Legacy attestation path — stores proof hash only (no on-chain verification).
- * Used when the contract hasn't been upgraded to Protocol 25 yet.
- */
-async function submitLegacyAttestation(
-    kit: any,
-    farmerAddress: string,
-    tierId: number,
-    commitment: Uint8Array,
-    proof: Groth16Proof,
-): Promise<{ success: boolean; txHash?: string; error?: string }> {
-    try {
-        const { Contract, Address, nativeToScVal, TransactionBuilder, rpc, Account, Networks } = await import("@stellar/stellar-sdk/minimal");
-        const NULL_ACCOUNT = "GAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAWHF";
-        const { send } = await import("../../../utils/passkey-kit");
-        const { withRetry } = await import("../../../utils/retry");
-        const { getBestRpcUrl } = await import("../../../utils/rpc");
-        const { getSafeRpId } = await import("../../../utils/domains");
-        const { getLatestSequence } = await import("../../../utils/base");
-
-        const server = new rpc.Server(getBestRpcUrl());
-        const contractObj = new Contract(TIER_VERIFIER_CONTRACT_ID);
-
-        // Hash the proof for on-chain storage
-        const proofHash = await hashProof(proof);
-
-        const op = contractObj.call(
-            "attest_tier",
-            new Address(farmerAddress).toScVal(),
-            nativeToScVal(tierId, { type: "u32" }),
-            nativeToScVal(Buffer.from(commitment), { type: "bytes" }),
-            nativeToScVal(Buffer.from(proofHash), { type: "bytes" }),
-        );
-
-        // Build transaction using NULL_ACCOUNT (smart wallet contract IDs can't use getAccount)
-        const sourceAccount = new Account(NULL_ACCOUNT, "0");
-        const tx = new TransactionBuilder(sourceAccount, {
-            fee: "10000000", // 1 XLM max
-            networkPassphrase: Networks.PUBLIC,
-        })
-            .addOperation(op)
-            .setTimeout(300)
-            .build();
-
-        // Simulate to get sorobanData
-        const sim = await server.simulateTransaction(tx);
-        if (!rpc.Api.isSimulationSuccess(sim)) {
-            throw new Error("Simulation failed: " + JSON.stringify(sim));
-        }
-
-        // Prepare transaction with simulation data
-        const preparedTx = rpc.assembleTransaction(tx, sim).build();
-
-        // Sign with PasskeyKit
-        const rpId = getSafeRpId(window.location.hostname);
-        const sequence = await getLatestSequence();
-
-        const signedTx = await kit.sign(preparedTx, {
-            rpId,
-            keyId: kit.wallet?.keyId,
-            expiration: sequence + 60,
-        });
-
-
-
-        // Send via relayer with retry
-        const result = await withRetry(
-            () => send(signedTx),
-            {
-                maxRetries: 8,
-                baseDelayMs: 3000,
-                backoffFactor: 1.5,
-                onRetry: (attempt, _err, delay) => {
-                    console.log(`[ZK] Legacy attestation retry ${attempt}/8 in ${delay}ms...`);
-                },
-            },
-            "ZK-LegacyAttest"
-        );
-
-        console.log("[ZK] Legacy attestation submitted!", result);
-
-        // Robust hash extraction (handle flat and nested 'data' structures)
-        const txHash =
-            result.hash ||
-            result.transactionHash ||
-            result.txHash ||
-            result.id ||
-            result.transactionId ||
-            result.data?.hash ||
-            result.data?.transactionHash ||
-            result.data?.txHash ||
-            result.data?.transactionId;
-
-        if (!txHash) {
-            console.warn("[ZK] Relayer returned success but no hash found in result:", JSON.stringify(result));
-        }
-
-        return {
-            success: true,
-            txHash: txHash,
-        };
-    } catch (error: any) {
-        console.error("[ZK] Failed to submit legacy attestation:", error);
+        console.error("[ZK] Failed to submit verify_and_attest transaction:", error);
         return {
             success: false,
             error: error.message || "Unknown error",

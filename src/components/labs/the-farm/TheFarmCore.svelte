@@ -9,6 +9,7 @@
     import {
         BADGE_REGISTRY,
         TIER_CONFIG,
+        TIER_VERIFIER_CONTRACT_ID,
         getTierForBalance,
         getTierIdForBalance,
         formatKaleBalance,
@@ -37,6 +38,11 @@
     let gameError = $state<string | null>(null);
     let gameCopied = $state<string | null>(null);
     let gameForging = $state<string | null>(null);
+    let gameAttesting = $state<string | null>(null);
+    let gamePayloadCopied = $state<string | null>(null);
+    let gameAttestNotes = $state<Record<string, string>>({});
+    let gameVerifierPayloads = $state<Record<string, string>>({});
+    let gameIntegrity = $state<Record<string, GameIntegrityState>>({});
     let gameWallet = $state<string | null>(null);
     let verifying = $state(false);
     let verifyResult = $state<boolean | null>(null);
@@ -44,6 +50,8 @@
     let txHash = $state<string | null>(null);
 
     let onChainVerified = $state<boolean | null>(null);
+    const SUPER_VERIFIER_ENTRYPOINT = "verify_and_attest";
+    const SUPER_VERIFIER_CONTRACT_ID = TIER_VERIFIER_CONTRACT_ID;
 
     // Dynamic Modules
     let zkLogic = $state<typeof ZkProofModule | null>(null);
@@ -73,9 +81,76 @@
         summary: string;
         goal: string;
         circuit: string;
-        actionLabel: string;
         requirements: number[];
         color: string;
+        kind: "tic" | "dodge" | "pattern";
+        zkSpec: GameZkSpec;
+    };
+
+    type GameZkSpec = {
+        proofLabel: string;
+        poseidonInputs: string[];
+        publicSignals: string[];
+        hostFunctions: string[];
+        verifierEntrypoint: string;
+        superVerifierPaths: SuperVerifierPath[];
+    };
+
+    type SuperVerifierPath = {
+        method: "verify_and_attest" | "check_attestation" | "update_vkey" | "set_admin";
+        label: string;
+        mode: "live" | "ops";
+    };
+
+    type GameVerifierPayload = {
+        schema: "farm.game.attestation.v1";
+        protocol: "stellar-protocol-25";
+        network: "stellar-mainnet";
+        contractId: string;
+        verifierEntrypoint: string;
+        gameId: string;
+        wallet: string;
+        level: number;
+        score: number;
+        actionHash: string;
+        commitment: string;
+        salt: string;
+        createdAt: number;
+        poseidonInputs: string[];
+        publicSignals: string[];
+        superVerifierPaths: SuperVerifierPath[];
+    };
+
+    type GameIntegrityState = {
+        state: "checking" | "pass" | "fail";
+        message: string;
+        checkedAt: number;
+    };
+
+    type TicTacState = {
+        board: ("X" | "O" | null)[];
+        turn: "player" | "ai";
+        finished: boolean;
+        winner: "player" | "ai" | "draw" | null;
+        message: string;
+        moveLog: string[];
+    };
+
+    type DodgeState = {
+        lane: number;
+        hazards: number[];
+        step: number;
+        status: "ready" | "running" | "crashed" | "cleared";
+        lastHazard: number | null;
+        moveLog: string[];
+    };
+
+    type PatternState = {
+        pattern: string[];
+        input: string[];
+        stage: "idle" | "showing" | "listening" | "success" | "fail";
+        showPreview: boolean;
+        moveLog: string[];
     };
 
     type ZkGameSession = ZkGame & {
@@ -91,32 +166,137 @@
         {
             id: "tic-tac-tac",
             title: "Stellar Tic-Tac-Tac",
-            summary: "Prove a winning line without revealing the full board.",
-            goal: "Complete 3 smart moves to unlock the win proof.",
+            summary:
+                "Commit to a winning line without exposing the full board transcript.",
+            goal: "Complete 3 smart moves to unlock the win commitment.",
             circuit: "GridMate v0.1",
-            actionLabel: "Place glyph",
             requirements: [3, 5, 7],
             color: "#38bdf8",
+            kind: "tic",
+            zkSpec: {
+                proofLabel: "Private win-path commitment",
+                poseidonInputs: [
+                    "wallet_hash",
+                    "game_id_hash",
+                    "level",
+                    "score",
+                    "action_hash",
+                    "salt",
+                ],
+                publicSignals: [
+                    "commitment",
+                    "action_hash",
+                    "level_threshold",
+                ],
+                hostFunctions: [
+                    "bn254_add",
+                    "bn254_mul",
+                    "bn254_pairing_check",
+                ],
+                verifierEntrypoint: SUPER_VERIFIER_ENTRYPOINT,
+                superVerifierPaths: [
+                    {
+                        method: "verify_and_attest",
+                        label: "Tier-aware proof verify",
+                        mode: "live",
+                    },
+                    {
+                        method: "check_attestation",
+                        label: "Attestation status check",
+                        mode: "live",
+                    },
+                ],
+            },
         },
         {
             id: "asteroid-dodge",
             title: "Asteroid Dodge",
-            summary: "Prove you dodged hazards for a full run, no path leaks.",
-            goal: "Survive the dodge sequence to mint a run proof.",
+            summary:
+                "Commit to a full hazard-dodge run while keeping the lane path private.",
+            goal: "Survive the dodge sequence to mint a run commitment.",
             circuit: "DodgeSeal v0.2",
-            actionLabel: "Dodge",
             requirements: [5, 7, 9],
             color: "#f472b6",
+            kind: "dodge",
+            zkSpec: {
+                proofLabel: "Private dodge-sequence commitment",
+                poseidonInputs: [
+                    "wallet_hash",
+                    "game_id_hash",
+                    "level",
+                    "score",
+                    "action_hash",
+                    "salt",
+                ],
+                publicSignals: [
+                    "commitment",
+                    "hazard_sequence_hash",
+                    "clear_flag",
+                ],
+                hostFunctions: [
+                    "bn254_add",
+                    "bn254_mul",
+                    "bn254_pairing_check",
+                ],
+                verifierEntrypoint: SUPER_VERIFIER_ENTRYPOINT,
+                superVerifierPaths: [
+                    {
+                        method: "verify_and_attest",
+                        label: "Run commitment verify",
+                        mode: "live",
+                    },
+                    {
+                        method: "update_vkey",
+                        label: "Circuit key rotation rail",
+                        mode: "ops",
+                    },
+                ],
+            },
         },
         {
             id: "pattern-runner",
             title: "Pattern Runner",
-            summary: "Prove you matched a secret rhythm streak.",
-            goal: "Hit the rhythm targets to unlock the streak proof.",
+            summary:
+                "Commit to a matched rhythm streak without revealing full sequence details.",
+            goal: "Hit the rhythm targets to unlock the streak commitment.",
             circuit: "RhythmLock v0.1",
-            actionLabel: "Tap beat",
             requirements: [4, 6, 8],
             color: "#c084fc",
+            kind: "pattern",
+            zkSpec: {
+                proofLabel: "Private rhythm-sequence commitment",
+                poseidonInputs: [
+                    "wallet_hash",
+                    "game_id_hash",
+                    "level",
+                    "score",
+                    "action_hash",
+                    "salt",
+                ],
+                publicSignals: [
+                    "commitment",
+                    "pattern_hash",
+                    "sequence_valid",
+                ],
+                hostFunctions: [
+                    "bn254_add",
+                    "bn254_mul",
+                    "bn254_pairing_check",
+                ],
+                verifierEntrypoint: SUPER_VERIFIER_ENTRYPOINT,
+                superVerifierPaths: [
+                    {
+                        method: "verify_and_attest",
+                        label: "Pattern commitment verify",
+                        mode: "live",
+                    },
+                    {
+                        method: "set_admin",
+                        label: "Governance guard rail",
+                        mode: "ops",
+                    },
+                ],
+            },
         },
     ];
 
@@ -130,6 +310,15 @@
             status: "idle",
         })),
     );
+
+    let ticState = $state<TicTacState>(createTicTacState());
+    let dodgeState = $state<DodgeState>(
+        createDodgeState(baseZkGames[1]?.requirements[0] ?? 5),
+    );
+    let patternState = $state<PatternState>(
+        createPatternState(baseZkGames[2]?.requirements[0] ?? 4),
+    );
+    let patternPreviewTimer: number | null = null;
 
     // 4 focused proofs: 1 live + 3 Smol-native concepts
     const galleryProofs: GalleryProof[] = [
@@ -215,6 +404,17 @@
     let tierCfg = $derived(TIER_CONFIG[tier]);
     let hasProof = $derived(!!earned["proof-of-farm"]);
     let hasKale = $derived(balance !== null && balance > 0n);
+    let hasSuperVerifierContract = $derived(
+        SUPER_VERIFIER_CONTRACT_ID.length > 0,
+    );
+    let sealedGameCount = $derived(zkGames.filter((game) => !!game.proof).length);
+    let locallyVerifiedGameCount = $derived(
+        Object.values(gameIntegrity).filter((item) => item.state === "pass")
+            .length,
+    );
+    let superVerifierLabel = $derived(
+        `${SUPER_VERIFIER_CONTRACT_ID.slice(0, 8)}...${SUPER_VERIFIER_CONTRACT_ID.slice(-6)}`,
+    );
     let gameWalletLabel = $derived(
         gameWallet ? `${gameWallet.slice(0, 6)}…${gameWallet.slice(-4)}` : "",
     );
@@ -240,6 +440,7 @@
         })();
 
         return () => {
+            resetPatternTimer();
             stopAmbient();
         };
     });
@@ -554,31 +755,246 @@
         );
     }
 
-    function logGameAction(game: ZkGameSession) {
-        const actionOptions: Record<string, string[]> = {
-            "tic-tac-tac": ["glyph-corner", "glyph-center", "glyph-edge"],
-            "asteroid-dodge": ["dodge-left", "dodge-right", "boost"],
-            "pattern-runner": ["tap-gold", "tap-emerald", "tap-rose"],
+    function getGameSession(gameId: string): ZkGameSession | undefined {
+        return zkGames.find((g) => g.id === gameId);
+    }
+
+    function clearGameVerifierArtifacts(gameId: string) {
+        gameAttestNotes = Object.fromEntries(
+            Object.entries(gameAttestNotes).filter(([id]) => id !== gameId),
+        );
+        gameVerifierPayloads = Object.fromEntries(
+            Object.entries(gameVerifierPayloads).filter(([id]) => id !== gameId),
+        );
+        gameIntegrity = Object.fromEntries(
+            Object.entries(gameIntegrity).filter(([id]) => id !== gameId),
+        );
+        if (gamePayloadCopied === gameId) {
+            gamePayloadCopied = null;
+        }
+    }
+
+    async function sha256Hex(input: string): Promise<string> {
+        const encoded = new TextEncoder().encode(input);
+        const digest = await crypto.subtle.digest("SHA-256", encoded);
+        return Array.from(new Uint8Array(digest))
+            .map((byte) => byte.toString(16).padStart(2, "0"))
+            .join("");
+    }
+
+    async function hashStringToField(input: string): Promise<bigint> {
+        const digestHex = await sha256Hex(input);
+        return BigInt(`0x${digestHex.slice(0, 60)}`);
+    }
+
+    async function verifyGameProofLocally(game: ZkGameSession) {
+        if (!game.proof) return;
+        if (!zkLogic) {
+            gameError = "ZK logic not loaded yet.";
+            return;
+        }
+
+        gameIntegrity = {
+            ...gameIntegrity,
+            [game.id]: {
+                state: "checking",
+                message: "Recomputing action hash and Poseidon commitment...",
+                checkedAt: Date.now(),
+            },
         };
-        const actions = actionOptions[game.id] ?? ["tap"];
-        const action = actions[Math.floor(Math.random() * actions.length)];
-        const scoreGain = 10 + Math.floor(Math.random() * 12);
-        const nextProgress = game.progress + 1;
-        const requirement =
-            game.requirements[
-                Math.min(game.level - 1, game.requirements.length - 1)
-            ];
-        const nextStatus = nextProgress >= requirement ? "complete" : "playing";
+
+        try {
+            const proof = game.proof;
+            const actionHashHex = await sha256Hex(JSON.stringify(proof.actions));
+            const actionHashField = BigInt(`0x${actionHashHex.slice(0, 60)}`);
+            const walletHash =
+                proof.wallet.startsWith("G") && proof.wallet.length === 56
+                    ? await zkLogic.hashAddress(proof.wallet)
+                    : await hashStringToField(proof.wallet);
+            const gameIdHash = await hashStringToField(proof.id);
+            const commitment = await zkLogic.poseidonHash([
+                walletHash,
+                gameIdHash,
+                BigInt(proof.level),
+                BigInt(proof.score),
+                actionHashField,
+                BigInt(proof.salt),
+            ]);
+
+            const actionHashMatches = actionHashHex === proof.actionHash;
+            const commitmentMatches = commitment.toString() === proof.commitment;
+            const pass = actionHashMatches && commitmentMatches;
+
+            gameIntegrity = {
+                ...gameIntegrity,
+                [game.id]: {
+                    state: pass ? "pass" : "fail",
+                    message: pass
+                        ? "Local verification passed: action transcript and Poseidon commitment are consistent."
+                        : "Local verification failed: commitment mismatch detected.",
+                    checkedAt: Date.now(),
+                },
+            };
+        } catch (e: any) {
+            gameIntegrity = {
+                ...gameIntegrity,
+                [game.id]: {
+                    state: "fail",
+                    message:
+                        e?.message ||
+                        "Local verification failed due to computation error.",
+                    checkedAt: Date.now(),
+                },
+            };
+        }
+    }
+
+    function buildGameVerifierPayload(
+        game: ZkGameSession,
+    ): GameVerifierPayload | null {
+        if (!game.proof) return null;
+        return {
+            schema: "farm.game.attestation.v1",
+            protocol: "stellar-protocol-25",
+            network: "stellar-mainnet",
+            contractId: SUPER_VERIFIER_CONTRACT_ID,
+            verifierEntrypoint: game.zkSpec.verifierEntrypoint,
+            gameId: game.proof.id,
+            wallet: game.proof.wallet,
+            level: game.proof.level,
+            score: game.proof.score,
+            actionHash: game.proof.actionHash,
+            commitment: game.proof.commitment,
+            salt: game.proof.salt,
+            createdAt: game.proof.createdAt,
+            poseidonInputs: game.zkSpec.poseidonInputs,
+            publicSignals: game.zkSpec.publicSignals,
+            superVerifierPaths: game.zkSpec.superVerifierPaths,
+        };
+    }
+
+    function rememberVerifierPayload(gameId: string, payload: GameVerifierPayload) {
+        gameVerifierPayloads = {
+            ...gameVerifierPayloads,
+            [gameId]: JSON.stringify(payload, null, 2),
+        };
+    }
+
+    async function copyVerifierPayload(game: ZkGameSession) {
+        const payload = buildGameVerifierPayload(game);
+        if (!payload) return;
+        try {
+            await navigator.clipboard.writeText(JSON.stringify(payload, null, 2));
+            rememberVerifierPayload(game.id, payload);
+            gamePayloadCopied = game.id;
+            gameAttestNotes = {
+                ...gameAttestNotes,
+                [game.id]:
+                    "Verifier payload copied. Ready for verify_and_attest.",
+            };
+            setTimeout(() => {
+                if (gamePayloadCopied === game.id) {
+                    gamePayloadCopied = null;
+                }
+            }, 2000);
+        } catch (e: any) {
+            gameError = e.message || "Unable to copy verifier payload";
+        }
+    }
+
+    function createTicTacState(): TicTacState {
+        return {
+            board: Array(9).fill(null),
+            turn: "player",
+            finished: false,
+            winner: null,
+            message: "Grab center or a corner to start strong.",
+            moveLog: [],
+        };
+    }
+
+    function createDodgeState(
+        steps: number,
+        status: "ready" | "running" = "ready",
+    ): DodgeState {
+        return {
+            lane: 1,
+            hazards: Array.from({ length: steps }, () =>
+                Math.floor(Math.random() * 3),
+            ),
+            step: 0,
+            status,
+            lastHazard: null,
+            moveLog: [],
+        };
+    }
+
+    function createPatternState(length: number): PatternState {
+        const colors = ["gold", "jade", "violet", "cobalt"];
+        const pattern = Array.from({ length }, () =>
+            colors[Math.floor(Math.random() * colors.length)],
+        );
+        return {
+            pattern,
+            input: [],
+            stage: "idle",
+            showPreview: false,
+            moveLog: [],
+        };
+    }
+
+    function resetPatternTimer() {
+        if (patternPreviewTimer !== null) {
+            clearTimeout(patternPreviewTimer);
+            patternPreviewTimer = null;
+        }
+    }
+
+    function primeArcadeState(game: ZkGameSession) {
+        if (game.kind === "tic") {
+            ticState = createTicTacState();
+        } else if (game.kind === "dodge") {
+            dodgeState = createDodgeState(getRequirement(game));
+        } else {
+            resetPatternTimer();
+            patternState = createPatternState(getRequirement(game));
+        }
+    }
+
+    function startGameRun(game: ZkGameSession) {
+        if (game.kind === "tic") {
+            ticState = createTicTacState();
+        } else if (game.kind === "dodge") {
+            dodgeState = createDodgeState(getRequirement(game), "running");
+        } else {
+            startPatternRun(game);
+            return;
+        }
 
         updateGame(game.id, {
-            actionLog: [...game.actionLog, action],
-            progress: nextProgress,
-            score: game.score + scoreGain,
-            status: nextStatus,
+            status: "playing",
+            progress: 0,
+            actionLog: [],
+        });
+    }
+
+    function completeRun(
+        game: ZkGameSession,
+        actionLog: string[],
+        scoreDelta: number,
+    ) {
+        const requirement = getRequirement(game);
+        updateGame(game.id, {
+            actionLog,
+            progress: requirement,
+            score: game.score + scoreDelta,
+            status: "complete",
         });
     }
 
     function resetGame(game: ZkGameSession) {
+        primeArcadeState(game);
+        clearGameVerifierArtifacts(game.id);
         updateGame(game.id, {
             progress: 0,
             level: game.level,
@@ -586,6 +1002,213 @@
             actionLog: [],
             status: "idle",
         });
+    }
+
+    function chooseAiMove(
+        board: ("X" | "O" | null)[],
+    ): number | null {
+        const open = board
+            .map((cell, idx) => (cell === null ? idx : -1))
+            .filter((idx) => idx >= 0);
+        if (!open.length) return null;
+        return open[Math.floor(Math.random() * open.length)];
+    }
+
+    function checkTicWinner(
+        board: ("X" | "O" | null)[],
+    ): "X" | "O" | "draw" | null {
+        const lines = [
+            [0, 1, 2],
+            [3, 4, 5],
+            [6, 7, 8],
+            [0, 3, 6],
+            [1, 4, 7],
+            [2, 5, 8],
+            [0, 4, 8],
+            [2, 4, 6],
+        ];
+        for (const [a, b, c] of lines) {
+            if (board[a] && board[a] === board[b] && board[a] === board[c]) {
+                return board[a];
+            }
+        }
+        return board.every(Boolean) ? "draw" : null;
+    }
+
+    function handleTicMove(game: ZkGameSession, index: number) {
+        if (game.kind !== "tic") return;
+        if (ticState.finished || ticState.board[index]) return;
+
+        const board = [...ticState.board];
+        const moveLog = [...ticState.moveLog];
+
+        board[index] = "X";
+        moveLog.push(`X-${index}`);
+
+        let winner = checkTicWinner(board);
+
+        if (!winner) {
+            const aiIndex = chooseAiMove(board);
+            if (aiIndex !== null) {
+                board[aiIndex] = "O";
+                moveLog.push(`O-${aiIndex}`);
+            }
+            winner = checkTicWinner(board);
+        }
+
+        const finished = winner !== null;
+        const mappedWinner =
+            winner === "X" ? "player" : winner === "O" ? "ai" : winner === "draw" ? "draw" : null;
+
+        ticState = {
+            board,
+            turn: "player",
+            finished,
+            winner: mappedWinner,
+            message: finished
+                ? mappedWinner === "player"
+                    ? "Line sealed. Commitment ready."
+                    : mappedWinner === "ai"
+                      ? "AI blocked the line. Reset and retry."
+                      : "Draw game. Reset to play again."
+                : "Your move — look for a fork.",
+            moveLog,
+        };
+
+        if (winner === "X") {
+            completeRun(game, moveLog, 24);
+        } else if (winner) {
+            updateGame(game.id, {
+                status: "idle",
+                progress: 0,
+                actionLog: [],
+            });
+        } else if (game.status === "idle") {
+            updateGame(game.id, { status: "playing" });
+        }
+    }
+
+    function shiftDodgeLane(delta: number) {
+        if (dodgeState.status === "crashed" || dodgeState.status === "cleared")
+            return;
+        const nextLane = Math.min(2, Math.max(0, dodgeState.lane + delta));
+        dodgeState = { ...dodgeState, lane: nextLane };
+    }
+
+    function advanceDodgeStep(game: ZkGameSession) {
+        if (game.kind !== "dodge") return;
+        if (dodgeState.status !== "running") return;
+
+        const hazard = dodgeState.hazards[dodgeState.step];
+        const lane = dodgeState.lane;
+        const safe = lane !== hazard;
+        const moveLog = [
+            ...dodgeState.moveLog,
+            `step-${dodgeState.step + 1}:lane-${lane}:hazard-${hazard}`,
+        ];
+        const nextStep = dodgeState.step + 1;
+        const cleared = safe && nextStep >= dodgeState.hazards.length;
+
+        dodgeState = {
+            ...dodgeState,
+            step: nextStep,
+            lastHazard: hazard,
+            moveLog,
+            status: cleared ? "cleared" : safe ? "running" : "crashed",
+        };
+
+        if (!safe) {
+            updateGame(game.id, {
+                status: "idle",
+                progress: 0,
+                actionLog: [],
+            });
+            return;
+        }
+
+        const requirement = getRequirement(game);
+        if (cleared) {
+            completeRun(game, moveLog, 18);
+        } else {
+            updateGame(game.id, {
+                status: "playing",
+                progress: Math.min(nextStep, requirement),
+            });
+        }
+    }
+
+    function startPatternRun(game: ZkGameSession) {
+        if (game.kind !== "pattern") return;
+        resetPatternTimer();
+        const length = getRequirement(game);
+        patternState = {
+            ...createPatternState(length),
+            stage: "showing",
+            showPreview: true,
+        };
+        updateGame(game.id, {
+            status: "playing",
+            progress: 0,
+            actionLog: [],
+        });
+        const duration = 1000 + length * 140;
+        if (typeof window !== "undefined") {
+            patternPreviewTimer = window.setTimeout(() => {
+                patternState = {
+                    ...patternState,
+                    showPreview: false,
+                    stage: "listening",
+                };
+            }, duration);
+        } else {
+            patternState = {
+                ...patternState,
+                showPreview: false,
+                stage: "listening",
+            };
+        }
+    }
+
+    function handlePatternTap(game: ZkGameSession, color: string) {
+        if (game.kind !== "pattern") return;
+        if (patternState.stage !== "listening") return;
+
+        const nextInput = [...patternState.input, color];
+        const expected = patternState.pattern[nextInput.length - 1];
+        const isMatch = expected === color;
+
+        if (!isMatch) {
+            patternState = {
+                ...patternState,
+                input: nextInput,
+                stage: "fail",
+            };
+            updateGame(game.id, {
+                status: "idle",
+                progress: 0,
+                actionLog: [],
+            });
+            return;
+        }
+
+        const requirement = getRequirement(game);
+        if (nextInput.length === patternState.pattern.length) {
+            const actionLog = patternState.pattern.map(
+                (tone, idx) => `beat-${idx + 1}-${tone}`,
+            );
+            patternState = {
+                ...patternState,
+                input: nextInput,
+                stage: "success",
+            };
+            completeRun(game, actionLog, 22);
+        } else {
+            patternState = { ...patternState, input: nextInput };
+            updateGame(game.id, {
+                status: "playing",
+                progress: Math.min(nextInput.length, requirement),
+            });
+        }
     }
 
     async function forgeGameProof(game: ZkGameSession) {
@@ -620,6 +1243,16 @@
                 actionLog: [],
                 status: "idle",
             });
+            gameAttestNotes = {
+                ...gameAttestNotes,
+                [game.id]:
+                    "Commitment sealed. Payload is ready for verify_and_attest.",
+            };
+            const refreshed = getGameSession(game.id);
+            if (refreshed) {
+                primeArcadeState(refreshed);
+                await verifyGameProofLocally(refreshed);
+            }
         } catch (e: any) {
             gameError = e.message || "Unable to forge game proof";
         } finally {
@@ -644,6 +1277,45 @@
             gameError = e.message || "Unable to copy proof packet";
         }
     }
+
+    async function prepareGameAttestation(game: ZkGameSession) {
+        if (!game.proof) return;
+        gameError = null;
+        gameAttesting = game.id;
+
+        try {
+            const payload = buildGameVerifierPayload(game);
+            if (!payload) {
+                throw new Error("Seal a game commitment before preparing attestation.");
+            }
+
+            rememberVerifierPayload(game.id, payload);
+
+            if (!userState.contractId || !isAuth) {
+                gameAttestNotes = {
+                    ...gameAttestNotes,
+                    [game.id]:
+                        "Super Verifier payload prepared. Connect wallet to submit transaction.",
+                };
+                return;
+            }
+
+            const kit = await getPasskeyKit();
+            if (!kit) {
+                throw new Error("Wallet kit unavailable.");
+            }
+
+            gameAttestNotes = {
+                ...gameAttestNotes,
+                [game.id]:
+                    "Super Verifier invoke payload prepared for verify_and_attest submission.",
+            };
+        } catch (e: any) {
+            gameError = e.message || "Unable to prepare game attestation";
+        } finally {
+            gameAttesting = null;
+        }
+    }
 </script>
 
 <div class="farm-root" class:farm-mounted={mounted}>
@@ -665,7 +1337,9 @@
                 <span class="title-the">THE</span>
                 <span class="title-farm">FARM</span>
             </h1>
-            <p class="farm-subtitle">Zero-Knowledge Proofs on Stellar</p>
+            <p class="farm-subtitle">
+                Kale Valley Proof Garden on Stellar
+            </p>
             {#if isAuth}
                 <div class="farm-tag">
                     <span class="tag-dot"></span>
@@ -677,10 +1351,10 @@
         {#if !isAuth}
             <!-- ── Landing (not authenticated) ── -->
             <div class="landing-cta">
-                <p class="landing-line">Prove your KALE farming tier</p>
+                <p class="landing-line">Harvest your KALE proof tier</p>
                 <p class="landing-line dim">without revealing your balance.</p>
                 <p class="landing-connect">
-                    Connect via the header to enter your farm
+                    Connect your wallet to enter the valley
                 </p>
             </div>
         {:else if loading && balance === null}
@@ -799,8 +1473,8 @@
         <div class="game-header">
             <h2 class="section-label">ZK Arcade</h2>
             <p class="game-subtitle">
-                Play to generate SHA-256 commitments. Complete the action
-                sequence, then seal your proof.
+                Beat real mini-games to forge Poseidon commitments, then route
+                invoke payloads through the live Super Verifier contract.
             </p>
             {#if !isAuth}
                 <p class="game-subtitle game-wallet">
@@ -822,11 +1496,187 @@
                         <span class="game-level">Level {game.level}</span>
                     </div>
                     <p class="game-goal">{game.goal}</p>
+                    <div class="game-zk-rail">
+                        <p class="game-zk-title">{game.zkSpec.proofLabel}</p>
+                        <div class="game-zk-tags">
+                            <span class="game-zk-tag"
+                                >Live: Poseidon commitment</span
+                            >
+                            <span class="game-zk-tag"
+                                >Live: SHA-256 transcript hash</span
+                            >
+                        </div>
+                        <div class="game-super-paths">
+                            {#each game.zkSpec.superVerifierPaths as path}
+                                <span
+                                    class={`game-super-path ${
+                                        path.mode === "live"
+                                            ? "game-super-path--live"
+                                            : "game-super-path--ops"
+                                    }`}
+                                >
+                                    {path.method} · {path.label}
+                                </span>
+                            {/each}
+                        </div>
+                        <p class="game-zk-meta">
+                            Planned Protocol 25 host ops: {game.zkSpec.hostFunctions.join(
+                                " · ",
+                            )}
+                        </p>
+                        <p class="game-zk-meta">
+                            Public signals: {game.zkSpec.publicSignals.join(
+                                " · ",
+                            )}
+                        </p>
+                        <p class="game-zk-meta">
+                            Verifier entrypoint: {game.zkSpec.verifierEntrypoint}
+                        </p>
+                    </div>
+                    {#if game.kind === "tic"}
+                        <div class="game-surface">
+                            <div class="tic-grid">
+                                {#each Array(9) as _, idx}
+                                    <button
+                                        class={`tic-cell ${ticState.board[idx] === "X"
+                                            ? "tic-player"
+                                            : ""} ${ticState.board[idx] === "O"
+                                            ? "tic-ai"
+                                            : ""}`}
+                                        type="button"
+                                        onclick={() => handleTicMove(game, idx)}
+                                        disabled={game.status === "complete"}
+                                    >
+                                        {ticState.board[idx] ?? ""}
+                                    </button>
+                                {/each}
+                            </div>
+                            <p class="game-tip">{ticState.message}</p>
+                            <div class="game-chip">
+                                {ticState.finished
+                                    ? ticState.winner === "player"
+                                        ? "Victory — ready to seal"
+                                        : "AI blocked you — reset to retry"
+                                    : "Play a full round to unlock a proof-ready run."}
+                            </div>
+                        </div>
+                    {:else if game.kind === "dodge"}
+                        <div class="game-surface">
+                            <div class="dodge-lanes">
+                                {#each [0, 1, 2] as lane}
+                                    <div
+                                        class={`dodge-lane ${dodgeState.lane === lane
+                                            ? "dodge-lane--ship"
+                                            : ""} ${dodgeState.lastHazard === lane
+                                            ? "dodge-lane--hazard"
+                                            : ""}`}
+                                    >
+                                        <span class="lane-label">
+                                            {["Left", "Center", "Right"][lane]}
+                                        </span>
+                                    </div>
+                                {/each}
+                            </div>
+                            <div class="dodge-hud">
+                                <span>
+                                    Step {Math.min(
+                                        dodgeState.step + 1,
+                                        dodgeState.hazards.length,
+                                    )}/{dodgeState.hazards.length}
+                                </span>
+                                <span>
+                                    {dodgeState.status === "crashed"
+                                        ? "Crashed — reset to try again"
+                                        : dodgeState.status === "cleared"
+                                            ? "Sequence cleared — seal it"
+                                            : "Pick a lane, then advance"}
+                                </span>
+                            </div>
+                            <div class="dodge-controls">
+                                <button
+                                    class="game-action-btn ghost"
+                                    type="button"
+                                    onclick={() => shiftDodgeLane(-1)}
+                                    disabled={dodgeState.status !== "running"}
+                                >
+                                    ◀ Lane
+                                </button>
+                                <button
+                                    class="game-action-btn ghost"
+                                    type="button"
+                                    onclick={() => shiftDodgeLane(1)}
+                                    disabled={dodgeState.status !== "running"}
+                                >
+                                    Lane ▶
+                                </button>
+                                <button
+                                    class="game-action-btn"
+                                    type="button"
+                                    onclick={() => advanceDodgeStep(game)}
+                                    disabled={game.status !== "playing" ||
+                                        dodgeState.status !== "running"}
+                                >
+                                    Advance
+                                </button>
+                            </div>
+                        </div>
+                    {:else}
+                        <div class="game-surface">
+                            <div class="pattern-preview">
+                                {#each patternState.pattern as tone, idx}
+                                    <span
+                                        class={`pattern-dot ${
+                                            patternState.showPreview ||
+                                            idx < patternState.input.length
+                                                ? `tone-${tone} pattern-dot--on`
+                                                : ""
+                                        } ${patternState.stage === "fail" &&
+                                            patternState.input[idx] &&
+                                            patternState.input[idx] !== tone
+                                            ? "pattern-dot--miss"
+                                            : ""}`}
+                                    >
+                                        {patternState.showPreview ||
+                                        idx < patternState.input.length
+                                            ? tone.slice(0, 1).toUpperCase()
+                                            : "•"}
+                                    </span>
+                                {/each}
+                            </div>
+                            <div class="pattern-pads">
+                                {#each ["gold", "jade", "violet", "cobalt"] as tone}
+                                    <button
+                                        class={`pattern-pad tone-${tone} ${patternState.stage === "showing" &&
+                                            patternState.pattern[
+                                                patternState.input.length
+                                            ] === tone
+                                            ? "pattern-pad--pulse"
+                                            : ""}`}
+                                        type="button"
+                                        onclick={() => handlePatternTap(game, tone)}
+                                        disabled={game.status !== "playing" ||
+                                            patternState.stage === "showing"}
+                                    >
+                                        {tone}
+                                    </button>
+                                {/each}
+                            </div>
+                            <p class="game-tip">
+                                {patternState.stage === "showing"
+                                    ? "Memorize the flash, then tap it back."
+                                    : patternState.stage === "success"
+                                        ? "Pattern locked — seal the commitment."
+                                        : patternState.stage === "fail"
+                                            ? "Wrong beat. Reset and replay."
+                                            : "Repeat the hidden pattern to clear the run."}
+                            </p>
+                        </div>
+                    {/if}
                     <div class="game-progress">
                         <div class="game-progress-top">
                             <span>Progress</span>
                             <span
-                                >{game.progress}/{getRequirement(game)} actions</span
+                                >{game.progress}/{getRequirement(game)} steps</span
                             >
                         </div>
                         <div class="game-progress-bar">
@@ -841,17 +1691,22 @@
                         </div>
                         <div class="game-progress-meta">
                             <span>Score: {game.score}</span>
-                            <span>Status: {game.status}</span>
+                            <span>
+                                Status:
+                                {game.status === "complete"
+                                    ? "ready to seal"
+                                    : game.status}
+                            </span>
                         </div>
                     </div>
                     <div class="game-actions">
                         <button
                             class="game-action-btn"
                             type="button"
-                            onclick={() => logGameAction(game)}
-                            disabled={game.status === "complete"}
+                            onclick={() => startGameRun(game)}
+                            disabled={game.status === "playing"}
                         >
-                            {game.actionLabel}
+                            {game.status === "playing" ? "Run active" : "Start run"}
                         </button>
                         <button
                             class="game-action-btn ghost"
@@ -886,15 +1741,78 @@
                                     {game.proof.commitment}
                                 </p>
                             </div>
-                            <button
-                                class="game-copy-btn"
-                                type="button"
-                                onclick={() => copyGameProof(game)}
-                            >
-                                {gameCopied === game.id
-                                    ? "Copied proof packet"
-                                    : "Copy proof packet"}
-                            </button>
+                            <div>
+                                <p class="game-proof-label">Poseidon inputs</p>
+                                <p class="game-proof-value">
+                                    {game.zkSpec.poseidonInputs.join(" · ")}
+                                </p>
+                            </div>
+                            <div class="game-proof-actions">
+                                <button
+                                    class="game-copy-btn"
+                                    type="button"
+                                    onclick={() => copyGameProof(game)}
+                                >
+                                    {gameCopied === game.id
+                                        ? "Copied proof packet"
+                                        : "Copy proof packet"}
+                                </button>
+                                <button
+                                    class="game-copy-btn ghost"
+                                    type="button"
+                                    onclick={() => verifyGameProofLocally(game)}
+                                    disabled={gameIntegrity[game.id]?.state ===
+                                        "checking"}
+                                >
+                                    {gameIntegrity[game.id]?.state === "checking"
+                                        ? "Checking..."
+                                        : "Run local verify"}
+                                </button>
+                                <button
+                                    class="game-copy-btn ghost"
+                                    type="button"
+                                    onclick={() => copyVerifierPayload(game)}
+                                >
+                                    {gamePayloadCopied === game.id
+                                        ? "Copied verifier payload"
+                                        : "Copy verifier payload"}
+                                </button>
+                                <button
+                                    class="game-copy-btn primary"
+                                    type="button"
+                                    onclick={() => prepareGameAttestation(game)}
+                                    disabled={gameAttesting === game.id}
+                                >
+                                    {gameAttesting === game.id
+                                        ? "Preparing..."
+                                        : "Build invoke payload"}
+                                </button>
+                            </div>
+                            {#if gameAttestNotes[game.id]}
+                                <p class="game-proof-note">
+                                    {gameAttestNotes[game.id]}
+                                </p>
+                            {/if}
+                            {#if gameIntegrity[game.id]}
+                                <p
+                                    class={`game-proof-note ${gameIntegrity[
+                                        game.id
+                                    ]?.state === "pass"
+                                        ? "game-proof-note--pass"
+                                        : gameIntegrity[game.id]?.state ===
+                                            "fail"
+                                          ? "game-proof-note--fail"
+                                          : ""}`}
+                                >
+                                    {gameIntegrity[game.id]?.message}
+                                </p>
+                            {/if}
+                            {#if gameVerifierPayloads[game.id]}
+                                <details class="game-verifier-payload">
+                                    <summary>Verifier payload preview</summary>
+                                    <pre>{gameVerifierPayloads[game.id]}</pre>
+                                </details>
+                            {/if}
                         </div>
                     {/if}
                 </article>
@@ -902,10 +1820,75 @@
         </div>
     </section>
 
+    <section class="verifier-section">
+        <div class="verifier-card">
+            <div class="verifier-head">
+                <h2 class="section-label">Verifier Dock</h2>
+                <span
+                    class={`verifier-status ${hasSuperVerifierContract
+                        ? "verifier-status--ready"
+                        : "verifier-status--pending"}`}
+                >
+                    {hasSuperVerifierContract
+                        ? "Super Verifier live"
+                        : "Verifier pending"}
+                </span>
+            </div>
+            <p class="verifier-copy">
+                Live today: deterministic transcript hashing + Poseidon
+                commitment generation + local recompute verification.
+                <code>verify_and_attest</code> and
+                <code>check_attestation</code> are the live rails; governance
+                rails (<code>update_vkey</code>, <code>set_admin</code>) are
+                surfaced as ops paths for circuit lifecycle control.
+            </p>
+            <div class="verifier-grid">
+                <div class="verifier-item">
+                    <p class="verifier-label">Sealed Game Commitments</p>
+                    <p class="verifier-value">{sealedGameCount}</p>
+                </div>
+                <div class="verifier-item">
+                    <p class="verifier-label">Local Verifications Passed</p>
+                    <p class="verifier-value">{locallyVerifiedGameCount}</p>
+                </div>
+                <div class="verifier-item">
+                    <p class="verifier-label">Entrypoint</p>
+                    <p class="verifier-value">{SUPER_VERIFIER_ENTRYPOINT}</p>
+                </div>
+                <div class="verifier-item">
+                    <p class="verifier-label">Super Verifier Contract</p>
+                    <p class="verifier-value">{superVerifierLabel}</p>
+                </div>
+                <div class="verifier-item">
+                    <p class="verifier-label">Commitment Stack</p>
+                    <p class="verifier-value">Poseidon Fr over 6 inputs</p>
+                </div>
+                <div class="verifier-item">
+                    <p class="verifier-label">BN254 Host Ops</p>
+                    <p class="verifier-value">
+                        Planned: bn254_add · bn254_mul · bn254_pairing_check
+                    </p>
+                </div>
+                <div class="verifier-item">
+                    <p class="verifier-label">Super Verifier Methods</p>
+                    <p class="verifier-value">
+                        verify_and_attest · check_attestation · update_vkey ·
+                        set_admin
+                    </p>
+                </div>
+            </div>
+            <p class="verifier-env">
+                Tier proofs and arcade payloads now both target this same
+                contract. Different methods are surfaced per game for live
+                verification, attestation checks, and governance operations.
+            </p>
+        </div>
+    </section>
+
     <!-- Footer -->
     <footer class="farm-footer">
         <p class="footer-tech">
-            Built on Stellar Protocol 25 · Groth16 · BN254
+            Built on Stellar Protocol 25 · Groth16 · BN254 · Poseidon
         </p>
         <p class="footer-links">
             <a
@@ -1464,6 +2447,242 @@
         color: #e2e8f0;
         margin: 0;
     }
+    .game-zk-rail {
+        border-radius: 12px;
+        border: 1px solid rgba(94, 234, 212, 0.25);
+        background: rgba(8, 47, 73, 0.25);
+        padding: 10px;
+        display: flex;
+        flex-direction: column;
+        gap: 8px;
+    }
+    .game-zk-title {
+        margin: 0;
+        font-size: 11px;
+        color: #ccfbf1;
+    }
+    .game-zk-tags {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 6px;
+    }
+    .game-super-paths {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 6px;
+    }
+    .game-super-path {
+        font-size: 9px;
+        border-radius: 999px;
+        padding: 3px 8px;
+        border: 1px solid rgba(148, 163, 184, 0.3);
+        color: #334155;
+        background: rgba(248, 250, 252, 0.72);
+    }
+    .game-super-path--live {
+        border-color: rgba(22, 163, 74, 0.45);
+        color: #166534;
+        background: rgba(187, 247, 208, 0.8);
+    }
+    .game-super-path--ops {
+        border-color: rgba(202, 138, 4, 0.45);
+        color: #854d0e;
+        background: rgba(254, 240, 138, 0.78);
+    }
+    .game-zk-tag {
+        font-size: 9px;
+        padding: 3px 8px;
+        border-radius: 999px;
+        background: rgba(20, 184, 166, 0.2);
+        border: 1px solid rgba(45, 212, 191, 0.3);
+        color: #5eead4;
+        word-break: break-word;
+    }
+    .game-zk-tag--soft {
+        background: rgba(15, 23, 42, 0.7);
+        border-color: rgba(148, 163, 184, 0.35);
+        color: #cbd5e1;
+    }
+    .game-zk-meta {
+        margin: 0;
+        font-size: 10px;
+        color: #94a3b8;
+    }
+    .game-surface {
+        background: rgba(255, 255, 255, 0.02);
+        border: 1px solid rgba(148, 163, 184, 0.25);
+        border-radius: 14px;
+        padding: 12px;
+        display: flex;
+        flex-direction: column;
+        gap: 10px;
+    }
+    .game-tip {
+        font-size: 11px;
+        color: #a5b4fc;
+        margin: 0;
+    }
+    .game-chip {
+        align-self: flex-start;
+        padding: 6px 10px;
+        border-radius: 999px;
+        border: 1px solid rgba(94, 234, 212, 0.3);
+        background: rgba(94, 234, 212, 0.12);
+        color: #befae4;
+        font-size: 10px;
+        letter-spacing: 0.2px;
+    }
+    .tic-grid {
+        display: grid;
+        grid-template-columns: repeat(3, 1fr);
+        gap: 6px;
+    }
+    .tic-cell {
+        aspect-ratio: 1;
+        border-radius: 12px;
+        border: 1px dashed rgba(148, 163, 184, 0.5);
+        background: rgba(15, 23, 42, 0.7);
+        color: #e2e8f0;
+        font-size: 22px;
+        font-weight: 700;
+        display: grid;
+        place-items: center;
+        cursor: pointer;
+        transition:
+            transform 0.12s ease,
+            border-color 0.12s ease,
+            background 0.12s ease;
+    }
+    .tic-cell:hover {
+        transform: translateY(-1px);
+        border-color: rgba(154, 230, 0, 0.6);
+    }
+    .tic-player {
+        color: #9ae600;
+        border-color: rgba(154, 230, 0, 0.7);
+        background: rgba(154, 230, 0, 0.08);
+    }
+    .tic-ai {
+        color: #60a5fa;
+        border-color: rgba(96, 165, 250, 0.6);
+        background: rgba(37, 99, 235, 0.12);
+    }
+    .dodge-lanes {
+        display: grid;
+        grid-template-columns: repeat(3, 1fr);
+        gap: 8px;
+    }
+    .dodge-lane {
+        position: relative;
+        height: 70px;
+        border-radius: 12px;
+        background: rgba(15, 23, 42, 0.8);
+        border: 1px dashed rgba(148, 163, 184, 0.35);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        color: #94a3b8;
+        overflow: hidden;
+    }
+    .dodge-lane--ship {
+        border-color: rgba(94, 234, 212, 0.7);
+        box-shadow: 0 0 18px rgba(94, 234, 212, 0.3) inset;
+        color: #e2e8f0;
+    }
+    .dodge-lane--hazard::after {
+        content: "✦";
+        position: absolute;
+        font-size: 22px;
+        color: #f87171;
+        opacity: 0.9;
+    }
+    .lane-label {
+        font-size: 11px;
+        letter-spacing: 0.2px;
+    }
+    .dodge-hud {
+        display: flex;
+        justify-content: space-between;
+        font-size: 10px;
+        color: #94a3b8;
+    }
+    .dodge-controls {
+        display: grid;
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+        gap: 8px;
+    }
+    .pattern-preview {
+        display: flex;
+        gap: 6px;
+        justify-content: center;
+    }
+    .pattern-dot {
+        width: 26px;
+        height: 26px;
+        border-radius: 8px;
+        border: 1px solid rgba(148, 163, 184, 0.3);
+        background: rgba(15, 23, 42, 0.7);
+        color: #475569;
+        display: grid;
+        place-items: center;
+        font-size: 12px;
+        font-weight: 700;
+    }
+    .pattern-dot--on {
+        border-color: rgba(154, 230, 0, 0.55);
+        color: #9ae600;
+        box-shadow: 0 0 14px rgba(154, 230, 0, 0.35);
+    }
+    .pattern-dot--miss {
+        border-color: rgba(248, 113, 113, 0.8);
+        color: #f87171;
+        box-shadow: 0 0 12px rgba(248, 113, 113, 0.4);
+    }
+    .pattern-pads {
+        display: grid;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap: 8px;
+    }
+    .pattern-pad {
+        padding: 10px;
+        border-radius: 12px;
+        border: 1px solid rgba(148, 163, 184, 0.35);
+        background: rgba(15, 23, 42, 0.8);
+        color: #e2e8f0;
+        font-size: 12px;
+        cursor: pointer;
+        transition:
+            transform 0.12s ease,
+            box-shadow 0.12s ease,
+            border-color 0.12s ease;
+    }
+    .pattern-pad:hover {
+        transform: translateY(-1px);
+        border-color: rgba(154, 230, 0, 0.4);
+    }
+    .pattern-pad--pulse {
+        box-shadow: 0 0 18px rgba(154, 230, 0, 0.3);
+        border-color: rgba(154, 230, 0, 0.6);
+    }
+    .tone-gold {
+        background: linear-gradient(135deg, #fbbf24, #f59e0b);
+    }
+    .tone-jade {
+        background: linear-gradient(135deg, #22c55e, #10b981);
+    }
+    .tone-violet {
+        background: linear-gradient(135deg, #a855f7, #7c3aed);
+    }
+    .tone-cobalt {
+        background: linear-gradient(135deg, #38bdf8, #0ea5e9);
+    }
+    .tone-gold,
+    .tone-jade,
+    .tone-violet,
+    .tone-cobalt {
+        color: #0b1220;
+        border: none;
+    }
     .game-progress {
         display: flex;
         flex-direction: column;
@@ -1556,6 +2775,133 @@
         color: #5eead4;
         font-size: 10px;
         cursor: pointer;
+    }
+    .game-proof-actions {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(130px, 1fr));
+        gap: 8px;
+    }
+    .game-copy-btn.ghost {
+        border-color: rgba(148, 163, 184, 0.35);
+        background: rgba(15, 23, 42, 0.85);
+        color: #cbd5e1;
+    }
+    .game-copy-btn.primary {
+        border-color: rgba(154, 230, 0, 0.45);
+        background: linear-gradient(135deg, #bef264, #4ade80);
+        color: #0a0f1a;
+        font-weight: 600;
+    }
+    .game-copy-btn:disabled {
+        opacity: 0.55;
+        cursor: not-allowed;
+    }
+    .game-proof-note {
+        margin: 0;
+        font-size: 10px;
+        color: #bbf7d0;
+    }
+    .game-proof-note--pass {
+        color: #bbf7d0;
+    }
+    .game-proof-note--fail {
+        color: #fecaca;
+    }
+    .game-verifier-payload {
+        border: 1px solid rgba(148, 163, 184, 0.25);
+        border-radius: 10px;
+        background: rgba(2, 6, 23, 0.85);
+        padding: 10px;
+    }
+    .game-verifier-payload summary {
+        cursor: pointer;
+        font-size: 10px;
+        color: #93c5fd;
+        text-transform: uppercase;
+        letter-spacing: 0.08em;
+    }
+    .game-verifier-payload pre {
+        margin: 8px 0 0;
+        max-height: 180px;
+        overflow: auto;
+        font-size: 10px;
+        line-height: 1.35;
+        color: #cbd5e1;
+    }
+
+    .verifier-section {
+        margin-top: 10px;
+    }
+    .verifier-card {
+        background: rgba(9, 15, 28, 0.88);
+        border: 1px solid rgba(154, 230, 0, 0.2);
+        border-radius: 18px;
+        padding: 18px;
+        display: flex;
+        flex-direction: column;
+        gap: 12px;
+    }
+    .verifier-head {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 12px;
+        flex-wrap: wrap;
+    }
+    .verifier-status {
+        border-radius: 999px;
+        padding: 5px 10px;
+        font-size: 10px;
+        text-transform: uppercase;
+        letter-spacing: 0.08em;
+    }
+    .verifier-status--ready {
+        color: #bef264;
+        border: 1px solid rgba(190, 242, 100, 0.4);
+        background: rgba(163, 230, 53, 0.15);
+    }
+    .verifier-status--pending {
+        color: #facc15;
+        border: 1px solid rgba(250, 204, 21, 0.38);
+        background: rgba(161, 98, 7, 0.2);
+    }
+    .verifier-copy {
+        margin: 0;
+        font-size: 11px;
+        line-height: 1.6;
+        color: #cbd5e1;
+    }
+    .verifier-grid {
+        display: grid;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap: 10px;
+    }
+    .verifier-item {
+        border: 1px solid rgba(148, 163, 184, 0.25);
+        border-radius: 12px;
+        background: rgba(2, 6, 23, 0.7);
+        padding: 10px;
+        display: flex;
+        flex-direction: column;
+        gap: 6px;
+    }
+    .verifier-label {
+        margin: 0;
+        font-size: 9px;
+        color: #94a3b8;
+        text-transform: uppercase;
+        letter-spacing: 0.08em;
+    }
+    .verifier-value {
+        margin: 0;
+        font-size: 11px;
+        color: #e2e8f0;
+        word-break: break-word;
+    }
+    .verifier-env {
+        margin: 0;
+        font-size: 10px;
+        color: #a7f3d0;
     }
 
     /* ── Gallery ── */
@@ -1861,20 +3207,6 @@
         font-size: 9px;
         color: #777;
     }
-    .gallery-modal-lists h4 {
-        font-family: "Press Start 2P", monospace;
-        font-size: 8px;
-        color: #9ae600;
-        margin-bottom: 6px;
-    }
-    .gallery-modal-lists ul {
-        list-style: none;
-        padding: 0;
-        margin: 0;
-        display: flex;
-        flex-direction: column;
-        gap: 4px;
-    }
     .gallery-modal-note {
         font-size: 9px;
         color: #4ade80;
@@ -1891,6 +3223,9 @@
         }
         .gallery-modal-grid,
         .gallery-modal-lists {
+            grid-template-columns: 1fr;
+        }
+        .verifier-grid {
             grid-template-columns: 1fr;
         }
     }
@@ -2267,5 +3602,336 @@
     .footer-divider {
         margin: 0 8px;
         opacity: 0.4;
+    }
+
+    /* ── Kale Valley Theme Refresh ── */
+    .farm-root {
+        background:
+            radial-gradient(
+                circle at 16% 12%,
+                rgba(255, 255, 255, 0.82) 0,
+                rgba(255, 255, 255, 0) 30%
+            ),
+            radial-gradient(
+                circle at 82% 16%,
+                rgba(254, 240, 138, 0.55) 0,
+                rgba(254, 240, 138, 0) 32%
+            ),
+            linear-gradient(
+                180deg,
+                #9bd8ff 0%,
+                #e0f6ff 42%,
+                #bfe6a8 69%,
+                #87c967 100%
+            );
+        color: #213b2a;
+        animation: none;
+    }
+    .farm-root::before {
+        content: "";
+        position: fixed;
+        inset: auto -8% 12% -8%;
+        height: 26vh;
+        pointer-events: none;
+        background:
+            radial-gradient(
+                120% 100% at 8% 100%,
+                rgba(106, 168, 79, 0.45) 0,
+                rgba(106, 168, 79, 0) 62%
+            ),
+            radial-gradient(
+                120% 100% at 92% 100%,
+                rgba(85, 155, 62, 0.4) 0,
+                rgba(85, 155, 62, 0) 60%
+            );
+        z-index: 0;
+    }
+    .farm-root::after {
+        content: "";
+        position: fixed;
+        inset: auto 0 0 0;
+        height: 34vh;
+        pointer-events: none;
+        background:
+            repeating-linear-gradient(
+                90deg,
+                rgba(83, 142, 67, 0.14) 0 18px,
+                rgba(121, 177, 87, 0.08) 18px 36px
+            ),
+            linear-gradient(
+                180deg,
+                rgba(138, 198, 101, 0) 0%,
+                rgba(97, 163, 73, 0.38) 38%,
+                rgba(71, 132, 50, 0.52) 100%
+            );
+        z-index: 0;
+    }
+    .particles .particle {
+        background: rgba(45, 118, 45, 0.28);
+    }
+    .farm-content {
+        max-width: 1040px;
+        padding: 82px 24px 120px;
+        gap: 26px;
+    }
+    .farm-header {
+        background: rgba(250, 255, 240, 0.58);
+        border: 1px solid rgba(141, 198, 97, 0.55);
+        border-radius: 22px;
+        padding: 20px 22px;
+        backdrop-filter: blur(8px);
+        box-shadow: 0 12px 36px rgba(64, 122, 55, 0.17);
+    }
+    .title-the {
+        color: #567a56;
+    }
+    .title-farm {
+        color: #2f6f3d;
+        filter: drop-shadow(0 6px 14px rgba(60, 118, 58, 0.23));
+    }
+    .farm-subtitle {
+        color: #365648;
+        font-family: "Avenir Next", "Nunito Sans", "Trebuchet MS", sans-serif;
+        font-size: 11px;
+        font-weight: 700;
+        letter-spacing: 1.6px;
+        text-transform: uppercase;
+    }
+    .farm-tag {
+        color: #195d3b;
+        background: rgba(190, 242, 100, 0.25);
+        border-color: rgba(74, 124, 51, 0.35);
+        font-family: "Avenir Next", "Nunito Sans", "Trebuchet MS", sans-serif;
+        font-size: 11px;
+        font-weight: 700;
+        letter-spacing: 0.2px;
+    }
+    .proof-card,
+    .game-card,
+    .verifier-card,
+    .gallery-card,
+    .concept-card {
+        background: rgba(255, 251, 236, 0.72);
+        border: 1px solid rgba(129, 182, 102, 0.42);
+        box-shadow: 0 12px 30px rgba(86, 138, 63, 0.14);
+        backdrop-filter: blur(10px);
+    }
+    .proof-card,
+    .verifier-card {
+        border-radius: 20px;
+    }
+    .proof-section {
+        width: 100%;
+    }
+    .proof-done-label {
+        color: #166534;
+    }
+    .proof-nudge {
+        color: #355e3b;
+    }
+    .proof-error,
+    .game-error {
+        color: #b91c1c;
+        background: rgba(254, 226, 226, 0.7);
+        border: 1px solid rgba(248, 113, 113, 0.45);
+        border-radius: 10px;
+        padding: 8px 10px;
+    }
+    .proof-btn,
+    .proof-generate,
+    .game-action-btn,
+    .game-copy-btn {
+        font-family: "Avenir Next", "Nunito Sans", "Trebuchet MS", sans-serif;
+        font-weight: 700;
+        letter-spacing: 0.2px;
+    }
+    .proof-btn.primary,
+    .proof-generate,
+    .game-action-btn.primary,
+    .game-copy-btn.primary {
+        background: linear-gradient(135deg, #b9e769, #5cbf74);
+        color: #153624;
+        border-color: rgba(68, 131, 62, 0.45);
+    }
+    .proof-btn,
+    .game-action-btn,
+    .game-copy-btn {
+        background: rgba(249, 255, 235, 0.92);
+        border: 1px solid rgba(124, 168, 90, 0.46);
+        color: #254335;
+    }
+    .proof-btn:hover,
+    .proof-generate:hover,
+    .game-action-btn:hover,
+    .game-copy-btn:hover {
+        transform: translateY(-1px);
+        box-shadow: 0 6px 12px rgba(56, 97, 47, 0.14);
+    }
+    .game-section {
+        margin-top: 8px;
+    }
+    .game-header {
+        background: rgba(254, 255, 241, 0.62);
+        border: 1px solid rgba(134, 182, 91, 0.36);
+        border-radius: 16px;
+        padding: 14px 16px;
+    }
+    .section-label {
+        color: #375f3a;
+    }
+    .game-subtitle {
+        color: #2f4f3a;
+        font-size: 13px;
+    }
+    .game-wallet {
+        color: #22543d;
+        font-family: "Avenir Next", "Nunito Sans", "Trebuchet MS", sans-serif;
+        font-size: 11px;
+        letter-spacing: 0.2px;
+    }
+    .game-grid {
+        grid-template-columns: repeat(auto-fit, minmax(290px, 1fr));
+        gap: 16px;
+    }
+    .game-card {
+        border-radius: 20px;
+    }
+    .game-card::before {
+        background: radial-gradient(
+            circle at top,
+            color-mix(in srgb, var(--accent, #38bdf8) 18%, #ffffff 32%),
+            transparent 66%
+        );
+    }
+    .game-title {
+        color: #254537;
+        font-family: "Avenir Next", "Nunito Sans", "Trebuchet MS", sans-serif;
+        font-size: 18px;
+        font-weight: 800;
+    }
+    .game-summary,
+    .game-goal,
+    .game-progress-top,
+    .game-progress-meta,
+    .game-zk-meta,
+    .game-tip {
+        color: #345b44;
+    }
+    .game-level {
+        background: rgba(199, 242, 182, 0.7);
+        border-color: rgba(97, 158, 74, 0.45);
+        color: #1f5f3a;
+    }
+    .game-zk-rail {
+        background: rgba(238, 252, 220, 0.72);
+        border-color: rgba(112, 172, 83, 0.4);
+    }
+    .game-zk-title {
+        color: #244c33;
+        font-weight: 700;
+    }
+    .game-zk-tag {
+        background: rgba(198, 242, 212, 0.85);
+        border-color: rgba(78, 155, 112, 0.38);
+        color: #176341;
+    }
+    .game-zk-tag--soft {
+        background: rgba(244, 236, 208, 0.8);
+        border-color: rgba(186, 150, 86, 0.34);
+        color: #6d4f28;
+    }
+    .game-surface {
+        background: rgba(247, 255, 234, 0.76);
+        border-color: rgba(122, 176, 95, 0.4);
+    }
+    .tic-cell,
+    .dodge-lane,
+    .pattern-dot,
+    .pattern-pad {
+        background: rgba(255, 255, 255, 0.8);
+    }
+    .game-progress-bar {
+        background: rgba(124, 169, 85, 0.2);
+    }
+    .game-progress-fill {
+        background: linear-gradient(90deg, #8bcf55, #43a564);
+    }
+    .game-proof {
+        background: rgba(248, 255, 237, 0.83);
+        border-color: rgba(125, 177, 92, 0.35);
+    }
+    .game-proof-label {
+        color: #46684a;
+    }
+    .game-proof-value {
+        color: #2a4b37;
+    }
+    .game-proof-note {
+        font-size: 11px;
+    }
+    .game-verifier-payload {
+        background: rgba(248, 255, 234, 0.9);
+        border-color: rgba(124, 171, 82, 0.35);
+    }
+    .game-verifier-payload summary {
+        color: #2e5c3f;
+    }
+    .game-verifier-payload pre {
+        color: #1f3f2f;
+    }
+    .verifier-card {
+        background: rgba(255, 251, 235, 0.76);
+    }
+    .verifier-label {
+        color: #4b6b51;
+    }
+    .verifier-item {
+        background: rgba(248, 255, 233, 0.86);
+        border-color: rgba(131, 181, 90, 0.36);
+    }
+    .verifier-value {
+        color: #234231;
+    }
+    .verifier-copy,
+    .verifier-env {
+        color: #305140;
+    }
+    .verifier-copy code {
+        color: #244f33;
+        background: rgba(190, 242, 100, 0.26);
+        border-color: rgba(118, 165, 78, 0.4);
+    }
+    .gallery-card {
+        border-color: rgba(130, 185, 90, 0.34);
+    }
+    .gallery-title {
+        color: #305440;
+    }
+    .gallery-summary {
+        color: #4a6c52;
+    }
+    .farm-footer {
+        border-top: 1px solid rgba(114, 160, 75, 0.36);
+    }
+    .footer-tech {
+        color: #2d5f3a;
+    }
+    .footer-links,
+    .footer-links a {
+        color: #3d6448;
+    }
+    .footer-links a:hover {
+        color: #2f6d3e;
+    }
+    @media (max-width: 860px) {
+        .farm-content {
+            padding: 76px 16px 106px;
+        }
+        .game-grid {
+            grid-template-columns: 1fr;
+        }
+        .game-proof-actions {
+            grid-template-columns: 1fr;
+        }
     }
 </style>
