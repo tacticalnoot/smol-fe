@@ -1,5 +1,5 @@
 <script lang="ts">
-    import { TIER_CONFIG, truncateHash, type EarnedBadge, type BadgeDef } from "./proof";
+    import { TIER_CONFIG, truncateHash, type EarnedBadge, type BadgeDef } from "./zkTypes";
 
     let { badge, def, locked = false }: {
         badge: EarnedBadge | null;

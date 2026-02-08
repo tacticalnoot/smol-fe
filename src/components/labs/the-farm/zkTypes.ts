@@ -1,9 +1,11 @@
 
 // ============================================================================
 // Shared Types & Constants for ZK Farm System
+// Single source of truth for all Farm types, constants, and helpers.
 // ============================================================================
 
 export const TIER_VERIFIER_CONTRACT_ID = "CDLZFC3SYJYDZT7KQNWZ5N5CBF4XI2O3Y3OSO54C526TBH52F5GM34M2";
+export const STELLAR_NETWORK = "stellar-mainnet" as const;
 
 export interface TierDef {
     name: string;
@@ -40,6 +42,10 @@ export function getTierForBalance(balance: bigint): number {
 
 export function formatKaleBalance(balance: bigint): string {
     return Number(balance / 10_000_000n).toLocaleString();
+}
+
+export function truncateHash(hash: string): string {
+    return `${hash.slice(0, 8)}\u2026${hash.slice(-4)}`;
 }
 
 export interface TierProofInputs {

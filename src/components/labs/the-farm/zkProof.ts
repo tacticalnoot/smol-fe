@@ -2,40 +2,34 @@
  * Real ZK Proof Generation — Browser-side Groth16 proof generation using snarkjs.
  *
  * This module provides the REAL proof generation path for Proof of Farm tier verification.
- * It uses snarkjs to generate Groth16 proofs that can be verified on-chain via Protocol 25.
+ * It uses snarkjs to generate Groth16 proofs that can be verified on-chain via Protocol 25
+ * BN254 host functions (CAP-0074).
  *
  * ## Architecture
- * 1. Browser loads circuit WASM + proving key
+ * 1. Browser loads circuit WASM + proving key from /public/zk/
  * 2. User provides private inputs (balance, salt)
- * 3. snarkjs generates witness → proof
- * 4. Proof is submitted to Soroban verifier contract
+ * 3. snarkjs generates Groth16 witness + proof
+ * 4. Proof is serialized to BN254 uncompressed point format
+ * 5. Proof is submitted to Soroban tier-verifier contract for on-chain pairing check
  *
  * ## Files Required (in /public/zk/)
- * - tier_proof.wasm     — Compiled circuit
- * - tier_proof.zkey     — Proving key
- * - verification_key.json — For local verification debug
+ * - tier_proof.wasm     — Compiled circuit (circom 2.1.0)
+ * - tier_proof.zkey     — Proving key (Groth16 BN254)
+ * - verification_key.json — Verification key (for local verification debug)
  */
 
 import {
     type ProofResult,
     type TierProofInputs,
     type Groth16Proof,
-    TIER_VERIFIER_CONTRACT_ID
+    TIER_VERIFIER_CONTRACT_ID,
 } from "./zkTypes";
 
-// Re-export specific helpers that might be needed, or let consumers import from zkTypes
-// But for compatibility with existing imports, we might not need to re-export everything if we update call sites.
-// Actually, let's keep the logic functions here.
-
 // ============================================================================
-// Poseidon Hash (matches circuit)
+// Poseidon Hash (matches circuit's Poseidon(3) template)
 // ============================================================================
 
-// TODO: Import actual Poseidon implementation
-// For now, this is a placeholder that will be replaced with circomlibjs
 export async function poseidonHash(inputs: bigint[]): Promise<bigint> {
-    // This needs circomlibjs or a compatible Poseidon implementation
-    // The hash must match the circuit's Poseidon(3) template
     // @ts-ignore - circomlibjs lacks TypeScript declarations
     const { buildPoseidon } = await import("circomlibjs");
     const poseidon = await buildPoseidon();
@@ -53,9 +47,9 @@ const PROVING_KEY_PATH = "/zk/tier_proof.zkey";
 /**
  * Generate a Groth16 proof for tier verification.
  *
- * @param addressHash - Hash of user's Stellar address (as bigint string)
- * @param balance - KALE balance in stroops (as bigint string)
- * @param salt - Random salt (as bigint string)
+ * @param addressHash - Hash of user's Stellar address (field element)
+ * @param balance - KALE balance in stroops
+ * @param salt - Random salt (field element)
  * @param tierId - Claimed tier (0-3)
  * @returns Proof and public signals
  */
@@ -65,7 +59,7 @@ export async function generateTierProof(
     salt: bigint,
     tierId: number,
 ): Promise<ProofResult> {
-    // 1. Compute the commitment that the circuit will verify
+    // 1. Compute the Poseidon commitment that the circuit will verify
     const commitment = await poseidonHash([addressHash, balance, salt]);
 
     // 2. Prepare inputs for the circuit
@@ -77,10 +71,10 @@ export async function generateTierProof(
         salt: salt.toString(),
     };
 
-    // 3. Generate the proof
+    // 3. Generate the proof via snarkjs
     console.log("[ZK] Generating Groth16 proof...", { tierId, commitment: commitment.toString() });
 
-    // @ts-ignore - snarkjs lacks some types or is loaded via CDN
+    // @ts-ignore - snarkjs types
     const snarkjs = await import("snarkjs");
 
     const { proof, publicSignals } = await snarkjs.groth16.fullProve(
@@ -98,8 +92,8 @@ export async function generateTierProof(
 }
 
 /**
- * Verify a proof locally (for debugging).
- * In production, verification happens on-chain.
+ * Verify a proof locally using the verification key (for debugging).
+ * In production, verification happens on-chain via the tier-verifier contract.
  */
 export async function verifyProofLocally(
     proof: Groth16Proof,
@@ -108,7 +102,7 @@ export async function verifyProofLocally(
     const vkeyResponse = await fetch("/zk/verification_key.json");
     const vkey = await vkeyResponse.json();
 
-    // @ts-ignore
+    // @ts-ignore - snarkjs types
     const snarkjs = await import("snarkjs");
     return snarkjs.groth16.verify(vkey, publicSignals, proof);
 }
@@ -118,7 +112,7 @@ export async function verifyProofLocally(
 // ============================================================================
 
 /**
- * Generate a cryptographically secure random salt.
+ * Generate a cryptographically secure random salt that fits in BN254 Fr.
  */
 export function generateRandomSalt(): bigint {
     const bytes = crypto.getRandomValues(new Uint8Array(31)); // 248 bits, fits in Fr
@@ -131,6 +125,7 @@ export function generateRandomSalt(): bigint {
 
 /**
  * Hash a Stellar address to a field element for the circuit.
+ * Takes first 31 bytes of SHA-256 to fit in BN254 scalar field.
  */
 export async function hashAddress(stellarAddress: string): Promise<bigint> {
     const encoder = new TextEncoder();
@@ -145,54 +140,94 @@ export async function hashAddress(stellarAddress: string): Promise<bigint> {
     return hash;
 }
 
+// ============================================================================
+// BN254 Point Serialization (Protocol 25 / CAP-0074 format)
+// ============================================================================
+
 /**
- * Convert a Groth16 proof to bytes for Soroban contract submission.
+ * Serialize a bigint to a 32-byte big-endian Uint8Array.
+ */
+function bigintToBytes32(value: bigint): Uint8Array {
+    const bytes = new Uint8Array(32);
+    let v = value;
+    for (let i = 31; i >= 0; i--) {
+        bytes[i] = Number(v & 0xffn);
+        v >>= 8n;
+    }
+    return bytes;
+}
+
+/**
+ * Serialize a G1 point (x, y) to 64 bytes uncompressed BN254 format.
+ * Format: be_encode(X) || be_encode(Y), 32 bytes each.
+ * snarkjs pi_a format: [x, y, "1"] — third element is projective z-coord.
+ */
+export function serializeG1(point: string[]): Uint8Array {
+    const x = BigInt(point[0]);
+    const y = BigInt(point[1]);
+    const result = new Uint8Array(64);
+    result.set(bigintToBytes32(x), 0);
+    result.set(bigintToBytes32(y), 32);
+    return result;
+}
+
+/**
+ * Serialize a G2 point to 128 bytes uncompressed BN254 format.
+ * snarkjs pi_b format: [[x_c1, x_c0], [y_c1, y_c0], ["1","0"]]
+ *
+ * CAP-0074 G2 encoding: be_encode(X_c1) || be_encode(X_c0) || be_encode(Y_c1) || be_encode(Y_c0)
+ */
+export function serializeG2(point: string[][]): Uint8Array {
+    const x_c1 = BigInt(point[0][0]);
+    const x_c0 = BigInt(point[0][1]);
+    const y_c1 = BigInt(point[1][0]);
+    const y_c0 = BigInt(point[1][1]);
+    const result = new Uint8Array(128);
+    result.set(bigintToBytes32(x_c1), 0);
+    result.set(bigintToBytes32(x_c0), 32);
+    result.set(bigintToBytes32(y_c1), 64);
+    result.set(bigintToBytes32(y_c0), 96);
+    return result;
+}
+
+/**
+ * Serialize a full Groth16 proof to separate byte arrays for the Soroban contract.
+ * Returns { pi_a: 64 bytes, pi_b: 128 bytes, pi_c: 64 bytes }.
+ */
+export function serializeProof(proof: Groth16Proof): {
+    pi_a: Uint8Array;
+    pi_b: Uint8Array;
+    pi_c: Uint8Array;
+} {
+    return {
+        pi_a: serializeG1(proof.pi_a),
+        pi_b: serializeG2(proof.pi_b),
+        pi_c: serializeG1(proof.pi_c),
+    };
+}
+
+/**
+ * Legacy: Convert a Groth16 proof to a flat 256-byte buffer.
+ * Kept for compatibility with hashProof().
  */
 export function proofToBytes(proof: Groth16Proof): Uint8Array {
-    // Serialize proof points for contract
-    // Format: [pi_a (2 * 32 bytes), pi_b (2 * 2 * 32 bytes), pi_c (2 * 32 bytes)]
-    const buffer = new ArrayBuffer(256);
-    const view = new DataView(buffer);
-
-    // This is a simplified serialization - actual format depends on curve
-    // In production, use proper BN254 point serialization
-    let offset = 0;
-
-    // pi_a (G1 point: x, y)
-    for (const coord of proof.pi_a.slice(0, 2)) {
-        const bigint = BigInt(coord);
-        for (let i = 31; i >= 0; i--) {
-            view.setUint8(offset++, Number((bigint >> BigInt(i * 8)) & 0xffn));
-        }
-    }
-
-    // pi_b (G2 point: x0, x1, y0, y1)
-    for (const pair of proof.pi_b.slice(0, 2)) {
-        for (const coord of pair) {
-            const bigint = BigInt(coord);
-            for (let i = 31; i >= 0; i--) {
-                view.setUint8(offset++, Number((bigint >> BigInt(i * 8)) & 0xffn));
-            }
-        }
-    }
-
-    // pi_c (G1 point: x, y)
-    for (const coord of proof.pi_c.slice(0, 2)) {
-        const bigint = BigInt(coord);
-        for (let i = 31; i >= 0; i--) {
-            view.setUint8(offset++, Number((bigint >> BigInt(i * 8)) & 0xffn));
-        }
-    }
-
-    return new Uint8Array(buffer);
+    const { pi_a, pi_b, pi_c } = serializeProof(proof);
+    const result = new Uint8Array(256);
+    result.set(pi_a, 0);
+    result.set(pi_b, 64);
+    result.set(pi_c, 192);
+    return result;
 }
 
 // ============================================================================
 // On-Chain Contract Integration
 // ============================================================================
 
+const MAINNET_PASSPHRASE = "Public Global Stellar Network ; September 2015";
+
 /**
  * Check if a farmer has already verified their tier on-chain.
+ * Uses Soroban RPC simulateTransaction to read contract state.
  */
 export async function checkAttestation(farmerAddress: string): Promise<{
     verified: boolean;
@@ -201,66 +236,53 @@ export async function checkAttestation(farmerAddress: string): Promise<{
     commitment?: string;
 }> {
     try {
-        // Dynamic import to avoid load issues
-        const sdk = await import("@stellar/stellar-sdk");
-        // @ts-ignore - Handle different SDK versions for Server (Horizon.Server)
-        const Server = sdk.Server || sdk.Horizon?.Server;
-        const { Contract, Address, scValToNative } = sdk;
+        const { rpc, Address, Contract, TransactionBuilder, scValToNative } =
+            await import("@stellar/stellar-sdk/minimal");
         const { getBestRpcUrl } = await import("../../../utils/rpc");
 
-        const server = new Server(getBestRpcUrl());
-        const contract = new Contract(TIER_VERIFIER_CONTRACT_ID);
+        const server = new rpc.Server(getBestRpcUrl());
+        const contractObj = new Contract(TIER_VERIFIER_CONTRACT_ID);
 
-        // Simulate a call to get_attestation
-        // We use simulateTransaction because we're reading state, not writing
-        const op = contract.call(
+        // Build read-only call to get_attestation
+        const op = contractObj.call(
             "get_attestation",
-            new Address(farmerAddress).toScVal()
+            new Address(farmerAddress).toScVal(),
         );
 
-        const accountResponse = await server.loadAccount(farmerAddress).catch(() => null);
-        let seq = "0";
-        if (accountResponse) {
-            seq = accountResponse.sequence;
-        } else {
-            // New account or not found, implies no attestation anyway? 
-            // well account must exist to sign the attestation tx previously.
+        // We need a source account to build the tx for simulation
+        const accountResponse = await server.getAccount(farmerAddress).catch(() => null);
+        if (!accountResponse) {
             return { verified: false };
         }
 
-        const { TransactionBuilder, Account, TimeoutInfinite } = await import("@stellar/stellar-sdk");
-
-        const source = new Account(farmerAddress, seq);
-        const tx = new TransactionBuilder(source, {
+        const tx = new TransactionBuilder(accountResponse, {
             fee: "100",
-            networkPassphrase: "Public Global Stellar Network ; September 2015", // Mainnet
+            networkPassphrase: MAINNET_PASSPHRASE,
         })
             .addOperation(op)
-            .setTimeout(TimeoutInfinite)
+            .setTimeout(30)
             .build();
 
         const sim = await server.simulateTransaction(tx);
 
-        if (TransactionBuilder.fromXDR(sim.transactionEnvelope, "passphrase" as any) === null) {
-            // Basic validity check fail
-        }
-
-        // Parse result
-        if (sim.results && sim.results[0] && sim.results[0].retval) {
-            const val = sim.results[0].retval;
-
-            const result = scValToNative(val);
+        // Check for successful simulation with result
+        if (
+            rpc.Api.isSimulationSuccess(sim) &&
+            sim.result?.retval
+        ) {
+            const result = scValToNative(sim.result.retval);
             if (!result) return { verified: false };
 
-            // result should be the struct: { farmer, tier, commitment, verified_at }
             if (result.tier !== undefined) {
                 return {
                     verified: true,
                     tier: result.tier,
                     timestamp: Number(result.verified_at),
-                    // commitment is bytes, might be Uint8Array
-                    commitment: result.commitment ?
-                        Array.from(result.commitment).map((b: any) => b.toString(16).padStart(2, '0')).join('') : undefined
+                    commitment: result.commitment
+                        ? Array.from(result.commitment as Uint8Array)
+                              .map((b: number) => b.toString(16).padStart(2, "0"))
+                              .join("")
+                        : undefined,
                 };
             }
         }
@@ -273,53 +295,118 @@ export async function checkAttestation(farmerAddress: string): Promise<{
 }
 
 /**
- * Submit a ZK proof attestation to the mainnet contract.
- * 
- * @param farmerAddress - The farmer's Stellar address
- * @param tierId - The tier being claimed (0-3)
- * @param commitment - The Poseidon commitment (32 bytes)
- * @param proofHash - Hash of the proof for verification
- * @returns Transaction result
+ * Submit a Groth16 ZK proof to the tier-verifier contract for on-chain verification.
+ *
+ * Calls verify_and_attest which performs the full Groth16 pairing check using
+ * Protocol 25 BN254 host functions before storing the attestation.
+ *
+ * Falls back to legacy attest_tier if the contract hasn't been upgraded yet.
  */
 export async function submitProofToContract(
     kit: any, // PasskeyKit instance
     farmerAddress: string,
     tierId: number,
     commitment: Uint8Array,
-    proofHash: Uint8Array,
+    proof: Groth16Proof,
 ): Promise<{ success: boolean; txHash?: string; error?: string }> {
     try {
-        console.log("[ZK] Submitting attestation to mainnet contract...", {
+        console.log("[ZK] Submitting proof to mainnet contract for on-chain verification...", {
             contract: TIER_VERIFIER_CONTRACT_ID,
             farmer: farmerAddress,
             tier: tierId,
         });
 
-        // Import Stellar SDK
-        const { Contract, Address, xdr, nativeToScVal } = await import("@stellar/stellar-sdk");
+        const { Contract, Address, nativeToScVal, xdr } = await import("@stellar/stellar-sdk/minimal");
 
-        // Build the contract call
-        const contract = new Contract(TIER_VERIFIER_CONTRACT_ID);
+        const contractObj = new Contract(TIER_VERIFIER_CONTRACT_ID);
+        const { pi_a, pi_b, pi_c } = serializeProof(proof);
 
-        const tx = contract.call(
-            "attest_tier",
-            nativeToScVal(Address.fromString(farmerAddress), { type: "address" }),
+        // Build the Groth16Proof struct for the contract
+        const proofStruct = xdr.ScVal.scvMap([
+            new xdr.ScMapEntry({
+                key: xdr.ScVal.scvSymbol("pi_a"),
+                val: nativeToScVal(Buffer.from(pi_a), { type: "bytes" }),
+            }),
+            new xdr.ScMapEntry({
+                key: xdr.ScVal.scvSymbol("pi_b"),
+                val: nativeToScVal(Buffer.from(pi_b), { type: "bytes" }),
+            }),
+            new xdr.ScMapEntry({
+                key: xdr.ScVal.scvSymbol("pi_c"),
+                val: nativeToScVal(Buffer.from(pi_c), { type: "bytes" }),
+            }),
+        ]);
+
+        // Call verify_and_attest with the real proof
+        const op = contractObj.call(
+            "verify_and_attest",
+            new Address(farmerAddress).toScVal(),
             nativeToScVal(tierId, { type: "u32" }),
-            nativeToScVal(commitment, { type: "bytes" }),
-            nativeToScVal(proofHash, { type: "bytes" }),
+            nativeToScVal(Buffer.from(commitment), { type: "bytes" }),
+            proofStruct,
         );
 
         // Sign and submit via passkey
-        const result = await kit.send(tx);
+        const result = await kit.send(op);
 
-        console.log("[ZK] Attestation submitted!", result);
+        console.log("[ZK] Proof verified and attestation stored on-chain!", result);
 
         return {
             success: true,
             txHash: result.hash,
         };
     } catch (error: any) {
-        console.error("[ZK] Failed to submit attestation:", error);
+        // If verify_and_attest is not available (pre-upgrade), fall back to legacy
+        if (error.message?.includes("verify_and_attest") || error.message?.includes("not found")) {
+            console.warn("[ZK] verify_and_attest not available, falling back to legacy attest_tier");
+            return submitLegacyAttestation(kit, farmerAddress, tierId, commitment, proof);
+        }
+
+        console.error("[ZK] Failed to submit proof:", error);
+        return {
+            success: false,
+            error: error.message || "Unknown error",
+        };
+    }
+}
+
+/**
+ * Legacy attestation path — stores proof hash only (no on-chain verification).
+ * Used when the contract hasn't been upgraded to Protocol 25 yet.
+ */
+async function submitLegacyAttestation(
+    kit: any,
+    farmerAddress: string,
+    tierId: number,
+    commitment: Uint8Array,
+    proof: Groth16Proof,
+): Promise<{ success: boolean; txHash?: string; error?: string }> {
+    try {
+        const { Contract, Address, nativeToScVal } = await import("@stellar/stellar-sdk/minimal");
+
+        const contractObj = new Contract(TIER_VERIFIER_CONTRACT_ID);
+
+        // Hash the proof for on-chain storage
+        const proofHash = await hashProof(proof);
+
+        const op = contractObj.call(
+            "attest_tier",
+            new Address(farmerAddress).toScVal(),
+            nativeToScVal(tierId, { type: "u32" }),
+            nativeToScVal(Buffer.from(commitment), { type: "bytes" }),
+            nativeToScVal(Buffer.from(proofHash), { type: "bytes" }),
+        );
+
+        const result = await kit.send(op);
+
+        console.log("[ZK] Legacy attestation submitted!", result);
+
+        return {
+            success: true,
+            txHash: result.hash,
+        };
+    } catch (error: any) {
+        console.error("[ZK] Failed to submit legacy attestation:", error);
         return {
             success: false,
             error: error.message || "Unknown error",
@@ -332,10 +419,9 @@ export async function submitProofToContract(
  */
 export async function hashProof(proof: Groth16Proof): Promise<Uint8Array> {
     const proofBytes = proofToBytes(proof);
-    // Create a copy as ArrayBuffer to satisfy crypto.subtle
     const buffer = proofBytes.buffer.slice(
         proofBytes.byteOffset,
-        proofBytes.byteOffset + proofBytes.byteLength
+        proofBytes.byteOffset + proofBytes.byteLength,
     ) as ArrayBuffer;
     const hashBuffer = await crypto.subtle.digest("SHA-256", buffer);
     return new Uint8Array(hashBuffer);

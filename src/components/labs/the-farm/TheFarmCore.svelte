@@ -474,8 +474,6 @@
                 tier: number;
             };
 
-            const proofHash = await zkLogic.hashProof(proofData.proof);
-
             // Helper to convert bigint string to 32-byte Uint8Array
             const toBytes32 = (n: bigint | string) => {
                 let b = BigInt(n);
@@ -494,7 +492,7 @@
                 userState.contractId,
                 proofData.tier,
                 commitmentBytes,
-                proofHash,
+                proofData.proof,
             );
 
             if (result.success && result.txHash) {
@@ -1000,9 +998,9 @@
                     </div>
                     <div class="gallery-grid">
                         {#each galleryProofs as proof}
-                            <article class="gallery-card">
+                            <article class="gallery-card" class:gallery-card--concept={proof.status === "CONCEPT"}>
                                 <div class="gallery-card-top">
-                                    <span class="gallery-status"
+                                    <span class="gallery-status" class:gallery-status--concept={proof.status === "CONCEPT"} class:gallery-status--live={proof.status === "LIVE"}
                                         >{proof.status}</span
                                     >
                                     <span class="gallery-circuit"
@@ -1807,10 +1805,25 @@
         letter-spacing: 1px;
     }
     .gallery-status {
-        background: rgba(154, 230, 0, 0.12);
-        border: 1px solid rgba(154, 230, 0, 0.3);
         border-radius: 999px;
         padding: 2px 8px;
+    }
+    .gallery-status--live {
+        background: rgba(154, 230, 0, 0.12);
+        border: 1px solid rgba(154, 230, 0, 0.3);
+        color: #9ae600;
+    }
+    .gallery-status--concept {
+        background: rgba(150, 150, 150, 0.1);
+        border: 1px dashed rgba(150, 150, 150, 0.3);
+        color: #888;
+    }
+    .gallery-card--concept {
+        opacity: 0.6;
+        border-style: dashed;
+    }
+    .gallery-card--concept:hover {
+        opacity: 0.8;
     }
     .gallery-circuit {
         color: #555;

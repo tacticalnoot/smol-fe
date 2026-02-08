@@ -33,7 +33,7 @@ export type GameProofPacket = {
     commitment: string;
     salt: string;
     createdAt: number;
-    network: "stellar-testnet";
+    network: "stellar-mainnet";
 };
 
 const STORAGE_KEY = "farm:game-proofs";
@@ -45,13 +45,6 @@ function bytesToHex(bytes: Uint8Array): string {
         .join("");
 }
 
-async function hashPayload(payload: unknown): Promise<string> {
-    const encoder = new TextEncoder();
-    const data = encoder.encode(JSON.stringify(payload));
-    const digest = await crypto.subtle.digest("SHA-256", data);
-    return bytesToHex(new Uint8Array(digest));
-}
-
 export async function createGameProof(
     gameId: string,
     title: string,
@@ -61,8 +54,6 @@ export async function createGameProof(
     actions: unknown,
 ): Promise<ZkGameProof> {
     const salt = generateRandomSalt(); // BigInt
-    const saltHex = salt.toString(16);
-
     // Hash actions to a field element (via SHA-256 first)
     // actions is an object { actions: string[], goal: string }
     const encoder = new TextEncoder();
@@ -125,7 +116,7 @@ export function buildGameProofPacket(proof: ZkGameProof): GameProofPacket {
         commitment: proof.commitment,
         salt: proof.salt,
         createdAt: proof.createdAt,
-        network: "stellar-testnet",
+        network: "stellar-mainnet",
     };
 }
 
