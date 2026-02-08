@@ -386,10 +386,11 @@ export async function submitProofToContract(
         const result = await withRetry(
             () => send(signedTx),
             {
-                maxRetries: 5,
-                baseDelayMs: 2000,
+                maxRetries: 8, // Increased from 5
+                baseDelayMs: 3000, // Increased from 2000
+                backoffFactor: 1.5, // Slower backoff
                 onRetry: (attempt, _err, delay) => {
-                    console.log(`[ZK] Relayer retry ${attempt}/5 in ${delay}ms...`);
+                    console.log(`[ZK] Relayer retry ${attempt}/8 in ${delay}ms...`);
                 },
             },
             "ZK-ProofSubmit"
@@ -483,10 +484,11 @@ async function submitLegacyAttestation(
         const result = await withRetry(
             () => send(signedTx),
             {
-                maxRetries: 5,
-                baseDelayMs: 2000,
+                maxRetries: 8,
+                baseDelayMs: 3000,
+                backoffFactor: 1.5,
                 onRetry: (attempt, _err, delay) => {
-                    console.log(`[ZK] Legacy attestation retry ${attempt}/5 in ${delay}ms...`);
+                    console.log(`[ZK] Legacy attestation retry ${attempt}/8 in ${delay}ms...`);
                 },
             },
             "ZK-LegacyAttest"
