@@ -430,26 +430,121 @@ export async function submitProofToContract(
                 .build();
         };
 
+        const collectFailureStrings = (
+            value: unknown,
+            out: Set<string>,
+            seen: Set<unknown>,
+            depth = 0,
+        ): void => {
+            if (value === null || value === undefined || depth > 8) return;
+            if (typeof value === "string") {
+                const text = value.trim();
+                if (!text) return;
+                out.add(text.length > 512 ? `${text.slice(0, 512)}...` : text);
+                return;
+            }
+            if (typeof value !== "object") return;
+            if (seen.has(value)) return;
+            seen.add(value);
+
+            if (Array.isArray(value)) {
+                for (const item of value.slice(0, 40)) {
+                    collectFailureStrings(item, out, seen, depth + 1);
+                }
+                return;
+            }
+
+            for (const [key, child] of Object.entries(
+                value as Record<string, unknown>,
+            )) {
+                if (key === "event" && typeof child === "string") {
+                    // Base64 event payloads are noisy and not human-readable.
+                    continue;
+                }
+                collectFailureStrings(child, out, seen, depth + 1);
+            }
+        };
+
         const extractFailureText = (sim: unknown): string => {
+            const parts = new Set<string>();
+            collectFailureStrings(sim, parts, new Set<unknown>());
+            if (parts.size > 0) {
+                return Array.from(parts).join("\n");
+            }
             try {
                 return JSON.stringify(sim);
             } catch {
                 return String(sim);
             }
         };
-        const summarizeFailure = (sim: unknown): string => {
+
+        const CONTRACT_ERROR_MESSAGES: Record<number, string> = {
+            1: "Super Verifier returned Contract #1 (InvalidProof): proof/public inputs do not match the on-chain verification key.",
+            2: "Super Verifier returned Contract #2 (InvalidTier): tier must be between 0 and 3.",
+            3: "Super Verifier returned Contract #3 (NotAdmin): caller is not admin for this method.",
+            4: "Super Verifier returned Contract #4 (AlreadyInitialized).",
+            5: "Super Verifier returned Contract #5 (NotInitialized): verification key/admin are not initialized on-chain.",
+            6: "Super Verifier returned Contract #6 (InvalidPublicInputs): verifier key IC length does not match expected public input count.",
+        };
+
+        const classifyFailure = (
+            sim: unknown,
+        ): {
+            kind: "g2_curve" | "crypto_invalid_input" | "contract_error" | "unknown";
+            raw: string;
+            contractCode?: number;
+        } => {
             const raw = extractFailureText(sim);
             if (raw.includes("bn254 G2: point not on curve")) {
+                return { kind: "g2_curve", raw };
+            }
+            if (
+                raw.includes("HostError: Error(Crypto, InvalidInput)") ||
+                raw.includes("Error(Crypto, InvalidInput)")
+            ) {
+                return { kind: "crypto_invalid_input", raw };
+            }
+
+            const contractErrorMatch = raw.match(/Error\(Contract,\s*#(\d+)\)/);
+            if (contractErrorMatch) {
+                return {
+                    kind: "contract_error",
+                    raw,
+                    contractCode: Number(contractErrorMatch[1]),
+                };
+            }
+
+            return { kind: "unknown", raw };
+        };
+
+        const summarizeFailure = (sim: unknown): string => {
+            const failure = classifyFailure(sim);
+            if (failure.kind === "g2_curve") {
                 return "bn254 G2 point decode failed on-chain (likely verification-key encoding mismatch).";
             }
-            if (raw.includes("HostError: Error(Crypto, InvalidInput)")) {
+            if (failure.kind === "crypto_invalid_input") {
                 return "on-chain BN254 host validation failed with Crypto.InvalidInput.";
             }
-            return raw.length > 720 ? `${raw.slice(0, 720)}...` : raw;
+            if (
+                failure.kind === "contract_error" &&
+                typeof failure.contractCode === "number"
+            ) {
+                const base =
+                    CONTRACT_ERROR_MESSAGES[failure.contractCode] ||
+                    `Super Verifier returned Contract #${failure.contractCode}.`;
+                if (failure.contractCode === 1) {
+                    return `${base} Regenerate a proof with the current /zk artifacts; if this persists, admin must run update_vkey with the matching verification key.`;
+                }
+                return base;
+            }
+            const normalized = failure.raw.replace(/\s+/g, " ").trim();
+            return normalized.length > 320
+                ? `${normalized.slice(0, 320)}...`
+                : normalized;
         };
 
         const hasG2CurveError = (sim: unknown): boolean =>
-            extractFailureText(sim).includes("bn254 G2: point not on curve");
+            classifyFailure(sim).kind === "g2_curve";
 
         const capProof = serializeProofWithMode(proof, "cap0074");
         const legacyProof = serializeProofWithMode(proof, "legacy");

@@ -617,7 +617,47 @@
                 proof: any;
                 commitment: string;
                 tier: number;
+                publicSignals?: unknown;
             };
+
+            const parseUnsignedSignal = (value: unknown, label: string): bigint => {
+                if (typeof value !== "string" || !/^\d+$/.test(value)) {
+                    throw new Error(`${label} is malformed. Regenerate proof before submission.`);
+                }
+                return BigInt(value);
+            };
+
+            if (
+                !Number.isInteger(proofData.tier) ||
+                proofData.tier < 0 ||
+                proofData.tier > 3
+            ) {
+                throw new Error("Proof tier is out of range. Regenerate proof before submission.");
+            }
+
+            const publicSignals = Array.isArray(proofData.publicSignals)
+                ? proofData.publicSignals
+                : null;
+            if (!publicSignals || publicSignals.length < 2) {
+                throw new Error("Proof public signals are missing. Regenerate proof before submission.");
+            }
+
+            const tierSignal = parseUnsignedSignal(publicSignals[0], "Tier public signal");
+            const commitmentSignal = parseUnsignedSignal(
+                publicSignals[1],
+                "Commitment public signal",
+            );
+            const storedCommitment = parseUnsignedSignal(
+                proofData.commitment,
+                "Stored commitment",
+            );
+
+            if (tierSignal !== BigInt(proofData.tier)) {
+                throw new Error("Proof tier/public-signal mismatch. Regenerate proof before submission.");
+            }
+            if (commitmentSignal !== storedCommitment) {
+                throw new Error("Proof commitment/public-signal mismatch. Regenerate proof before submission.");
+            }
 
             // Helper to convert bigint string to 32-byte Uint8Array
             const toBytes32 = (n: bigint | string) => {
@@ -630,7 +670,7 @@
                 return bytes; // Big-endian
             };
 
-            const commitmentBytes = toBytes32(proofData.commitment);
+            const commitmentBytes = toBytes32(commitmentSignal);
 
             const result = await zkLogic.submitProofToContract(
                 kit,
@@ -660,6 +700,9 @@
             ) {
                 error =
                     "Proof payload is malformed. Regenerate proof; if this repeats, refresh and rebuild proof artifacts.";
+            } else if (message.includes("Contract #1 (InvalidProof)")) {
+                error =
+                    "Super Verifier rejected this proof as InvalidProof. Regenerate a fresh proof; if it still fails, the on-chain verification key does not match the current /zk proving artifacts.";
             } else {
                 error = message;
             }
