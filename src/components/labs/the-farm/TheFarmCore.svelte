@@ -23,6 +23,7 @@
     // Dynamic Logic Modules (Types only)
     import type * as ZkProofModule from "./zkProof";
     import type * as ZkGamesModule from "./zkGames";
+    import { Turnstile } from "svelte-turnstile";
 
     // ── State ──────────────────────────────────────────────────────────────
     let proving = $state(false);
@@ -42,7 +43,9 @@
     let verifyResult = $state<boolean | null>(null);
     let proofData = $state<ProofResult | null>(null);
     let txHash = $state<string | null>(null);
+    let txHash = $state<string | null>(null);
     let onChainVerified = $state<boolean | null>(null);
+    let turnstileToken = $state("");
 
     // Dynamic Modules
     let zkLogic = $state<typeof ZkProofModule | null>(null);
@@ -436,6 +439,7 @@
                 proofData.tier,
                 commitmentBytes,
                 proofData.proof,
+                turnstileToken, // Pass token for failover
             );
 
             if (result.success && result.txHash) {
@@ -644,6 +648,16 @@
         }
     }
 </script>
+
+<!-- Turnstile for Relayer Failover -->
+<div
+    class="fixed bottom-4 right-4 z-50 opacity-0 hover:opacity-100 transition-opacity"
+>
+    <Turnstile
+        siteKey={import.meta.env.PUBLIC_TURNSTILE_SITE_KEY}
+        on:callback={(e) => (turnstileToken = e.detail.token)}
+    />
+</div>
 
 <div class="farm-root" class:farm-mounted={mounted}>
     <!-- ── Background Particles (reduced to 6) ── -->

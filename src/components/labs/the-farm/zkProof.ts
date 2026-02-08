@@ -308,6 +308,7 @@ export async function submitProofToContract(
     tierId: number,
     commitment: Uint8Array,
     proof: Groth16Proof,
+    turnstileToken?: string,
 ): Promise<{ success: boolean; txHash?: string; error?: string }> {
     try {
         console.log("[ZK] Submitting proof to mainnet contract for on-chain verification...", {
@@ -384,7 +385,7 @@ export async function submitProofToContract(
 
         // Send via relayer with retry
         const result = await withRetry(
-            () => send(signedTx),
+            () => send(signedTx, turnstileToken),
             {
                 maxRetries: 5,
                 baseDelayMs: 2000,
@@ -405,7 +406,7 @@ export async function submitProofToContract(
         // If verify_and_attest is not available (pre-upgrade), fall back to legacy
         if (error.message?.includes("verify_and_attest") || error.message?.includes("not found")) {
             console.warn("[ZK] verify_and_attest not available, falling back to legacy attest_tier");
-            return submitLegacyAttestation(kit, farmerAddress, tierId, commitment, proof);
+            return submitLegacyAttestation(kit, farmerAddress, tierId, commitment, proof, turnstileToken);
         }
 
         console.error("[ZK] Failed to submit proof:", error);
@@ -426,6 +427,7 @@ async function submitLegacyAttestation(
     tierId: number,
     commitment: Uint8Array,
     proof: Groth16Proof,
+    turnstileToken?: string,
 ): Promise<{ success: boolean; txHash?: string; error?: string }> {
     try {
         const { Contract, Address, nativeToScVal, TransactionBuilder, rpc, Account, Networks } = await import("@stellar/stellar-sdk/minimal");
@@ -481,7 +483,7 @@ async function submitLegacyAttestation(
 
         // Send via relayer with retry
         const result = await withRetry(
-            () => send(signedTx),
+            () => send(signedTx, turnstileToken),
             {
                 maxRetries: 5,
                 baseDelayMs: 2000,
