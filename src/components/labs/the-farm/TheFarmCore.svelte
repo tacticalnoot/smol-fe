@@ -43,7 +43,7 @@
     let verifyResult = $state<boolean | null>(null);
     let proofData = $state<ProofResult | null>(null);
     let txHash = $state<string | null>(null);
-    let txHash = $state<string | null>(null);
+
     let onChainVerified = $state<boolean | null>(null);
     let turnstileToken = $state("");
 
