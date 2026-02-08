@@ -280,8 +280,8 @@ export async function checkAttestation(farmerAddress: string): Promise<{
                     timestamp: Number(result.verified_at),
                     commitment: result.commitment
                         ? Array.from(result.commitment as Uint8Array)
-                              .map((b: number) => b.toString(16).padStart(2, "0"))
-                              .join("")
+                            .map((b: number) => b.toString(16).padStart(2, "0"))
+                            .join("")
                         : undefined,
                 };
             }
@@ -316,8 +316,13 @@ export async function submitProofToContract(
             tier: tierId,
         });
 
-        const { Contract, Address, nativeToScVal, xdr } = await import("@stellar/stellar-sdk/minimal");
+        const { Contract, Address, nativeToScVal, xdr, TransactionBuilder, rpc } = await import("@stellar/stellar-sdk/minimal");
+        const { send } = await import("../../../utils/passkey-kit");
+        const { getBestRpcUrl } = await import("../../../utils/rpc");
+        const { getSafeRpId } = await import("../../../utils/domains");
+        const { getLatestSequence } = await import("../../../utils/base");
 
+        const server = new rpc.Server(getBestRpcUrl());
         const contractObj = new Contract(TIER_VERIFIER_CONTRACT_ID);
         const { pi_a, pi_b, pi_c } = serializeProof(proof);
 
@@ -346,14 +351,43 @@ export async function submitProofToContract(
             proofStruct,
         );
 
-        // Sign and submit via passkey
-        const result = await kit.send(op);
+        // Build transaction
+        const accountResponse = await server.getAccount(farmerAddress);
+        const tx = new TransactionBuilder(accountResponse, {
+            fee: "100000",
+            networkPassphrase: MAINNET_PASSPHRASE,
+        })
+            .addOperation(op)
+            .setTimeout(60)
+            .build();
+
+        // Simulate to get sorobanData
+        const sim = await server.simulateTransaction(tx);
+        if (!rpc.Api.isSimulationSuccess(sim)) {
+            throw new Error("Simulation failed: " + JSON.stringify(sim));
+        }
+
+        // Prepare transaction with simulation data
+        const preparedTx = rpc.assembleTransaction(tx, sim).build();
+
+        // Sign with PasskeyKit
+        const rpId = getSafeRpId(window.location.hostname);
+        const sequence = await getLatestSequence();
+
+        const signedTx = await kit.sign(preparedTx, {
+            rpId,
+            keyId: kit.wallet?.keyId,
+            expiration: sequence + 60,
+        });
+
+        // Send via relayer
+        const result = await send(signedTx);
 
         console.log("[ZK] Proof verified and attestation stored on-chain!", result);
 
         return {
             success: true,
-            txHash: result.hash,
+            txHash: result.hash || result.transactionHash,
         };
     } catch (error: any) {
         // If verify_and_attest is not available (pre-upgrade), fall back to legacy
@@ -382,8 +416,13 @@ async function submitLegacyAttestation(
     proof: Groth16Proof,
 ): Promise<{ success: boolean; txHash?: string; error?: string }> {
     try {
-        const { Contract, Address, nativeToScVal } = await import("@stellar/stellar-sdk/minimal");
+        const { Contract, Address, nativeToScVal, TransactionBuilder, rpc } = await import("@stellar/stellar-sdk/minimal");
+        const { send } = await import("../../../utils/passkey-kit");
+        const { getBestRpcUrl } = await import("../../../utils/rpc");
+        const { getSafeRpId } = await import("../../../utils/domains");
+        const { getLatestSequence } = await import("../../../utils/base");
 
+        const server = new rpc.Server(getBestRpcUrl());
         const contractObj = new Contract(TIER_VERIFIER_CONTRACT_ID);
 
         // Hash the proof for on-chain storage
@@ -397,13 +436,43 @@ async function submitLegacyAttestation(
             nativeToScVal(Buffer.from(proofHash), { type: "bytes" }),
         );
 
-        const result = await kit.send(op);
+        // Build transaction
+        const accountResponse = await server.getAccount(farmerAddress);
+        const tx = new TransactionBuilder(accountResponse, {
+            fee: "100000",
+            networkPassphrase: MAINNET_PASSPHRASE,
+        })
+            .addOperation(op)
+            .setTimeout(60)
+            .build();
+
+        // Simulate to get sorobanData
+        const sim = await server.simulateTransaction(tx);
+        if (!rpc.Api.isSimulationSuccess(sim)) {
+            throw new Error("Simulation failed: " + JSON.stringify(sim));
+        }
+
+        // Prepare transaction with simulation data
+        const preparedTx = rpc.assembleTransaction(tx, sim).build();
+
+        // Sign with PasskeyKit
+        const rpId = getSafeRpId(window.location.hostname);
+        const sequence = await getLatestSequence();
+
+        const signedTx = await kit.sign(preparedTx, {
+            rpId,
+            keyId: kit.wallet?.keyId,
+            expiration: sequence + 60,
+        });
+
+        // Send via relayer
+        const result = await send(signedTx);
 
         console.log("[ZK] Legacy attestation submitted!", result);
 
         return {
             success: true,
-            txHash: result.hash,
+            txHash: result.hash || result.transactionHash,
         };
     } catch (error: any) {
         console.error("[ZK] Failed to submit legacy attestation:", error);
