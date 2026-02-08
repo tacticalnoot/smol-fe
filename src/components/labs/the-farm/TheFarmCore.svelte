@@ -668,7 +668,7 @@
             {#if isAuth}
                 <div class="farm-tag">
                     <span class="tag-dot"></span>
-                    <span>Wallet Connected</span>
+                    <span>Connected</span>
                 </div>
             {/if}
         </header>
@@ -689,255 +689,108 @@
                 <p class="loading-text">Reading your KALE balance...</p>
             </div>
         {:else}
-            <!-- ── Dreamboard ── -->
-            <div class="dreamboard">
-                <!-- Featured: Proof of Farm -->
-                <section class="featured-section">
-                    <h2 class="section-label">Featured Achievement</h2>
-
-                    {#if showCelebration}
-                        <div class="proof-celebration" aria-live="polite">
-                            <div class="proof-celebration-card">
-                                <span class="proof-celebration-eyebrow"
-                                    >Commitment sealed</span
+            <!-- Proof Section -->
+            <section class="proof-section">
+                <div class="proof-card">
+                    <!-- Tier Display -->
+                    <div class="proof-tier">
+                        <span class="tier-icon">{tierCfg.icon}</span>
+                        <div class="tier-info">
+                            <span
+                                class="tier-name"
+                                style="color:{tierCfg.color}"
+                                >{tierCfg.name}</span
+                            >
+                            {#if balance !== null}
+                                <span class="tier-balance"
+                                    >{formatKaleBalance(balance)} KALE</span
                                 >
-                                <p class="proof-celebration-title">
-                                    Tier commitment generated ✨
-                                </p>
-                                <p class="proof-celebration-body">
-                                    We hashed your tier with a random salt using
-                                    SHA-256. The commitment is stored locally —
-                                    verify it anytime by recomputing the hash
-                                    from your address, balance, and salt.
-                                </p>
-                            </div>
-                            <div class="proof-confetti" aria-hidden="true">
-                                {#each confettiPieces as piece}
-                                    <span
-                                        class="confetti"
-                                        style={`--i:${piece}`}
-                                    ></span>
-                                {/each}
-                            </div>
+                            {/if}
                         </div>
-                    {/if}
+                    </div>
 
                     {#if hasProof}
-                        <FarmBadge
-                            badge={earned["proof-of-farm"]}
-                            def={BADGE_REGISTRY[0]}
-                        />
-                        <div class="proof-tools">
-                            <p class="proof-tools-text">
-                                Verify this ZK proof on-chain. This will submit
-                                your commitment and proof hash to the Stellar
-                                mainnet verifier contract.
-                            </p>
-                            <div class="proof-tools-actions">
+                        <!-- Proof Generated -->
+                        <div class="proof-done">
+                            <p class="proof-done-label">✓ ZK Proof Ready</p>
+                            <div class="proof-actions">
                                 <button
-                                    class="proof-tools-btn primary"
+                                    class="proof-btn primary"
                                     type="button"
                                     onclick={verifyProof}
                                     disabled={verifying || onChainVerified}
                                 >
-                                    {#if verifying}
-                                        Verifying...
-                                    {:else if onChainVerified}
-                                        Verified On-Chain
-                                    {:else}
-                                        Verify On-Chain
-                                    {/if}
+                                    {#if verifying}Verifying...{:else if onChainVerified}Verified
+                                        ✓{:else}Verify On-Chain{/if}
                                 </button>
                                 <button
-                                    class="proof-tools-btn"
+                                    class="proof-btn"
                                     type="button"
                                     onclick={copyProofPacket}
                                 >
-                                    {copied
-                                        ? "Payload copied"
-                                        : "Copy proof payload"}
+                                    {copied ? "Copied" : "Copy"}
                                 </button>
                             </div>
-
-                            {#if verifyResult === true}
-                                <p
-                                    class="proof-tools-verify proof-tools-verify--pass"
+                            {#if onChainVerified && txHash}
+                                <a
+                                    href={`https://stellar.expert/explorer/public/tx/${txHash}`}
+                                    target="_blank"
+                                    rel="noreferrer"
+                                    class="proof-tx"
                                 >
-                                    ✓ Local proof valid
-                                </p>
+                                    TX: {txHash.slice(0, 8)}...{txHash.slice(
+                                        -8,
+                                    )}
+                                </a>
                             {/if}
-
-                            {#if onChainVerified}
-                                <div class="proof-onchain-success">
-                                    <p class="proof-success-title">
-                                        ✅ On-Chain Verified
-                                    </p>
-                                    <a
-                                        href={`https://stellar.expert/explorer/public/tx/${txHash}`}
-                                        target="_blank"
-                                        rel="noreferrer"
-                                        class="proof-tx-link"
-                                    >
-                                        View TX: {txHash?.slice(
-                                            0,
-                                            8,
-                                        )}...{txHash?.slice(-8)}
-                                    </a>
-                                </div>
-                            {:else if error}
-                                <p class="proof-error">{error}</p>
-                            {/if}
-
-                            <p class="proof-tools-meta">
-                                Tier {tierCfg.name} · commitment stored locally ·
-                                on-chain attestation via Soroban contract.
-                            </p>
-                        </div>
-                    {:else if proving}
-                        <div class="proving-card">
-                            <div class="proving-spinner"></div>
-                            <p class="proving-text">
-                                Generating cryptographic commitment...
-                            </p>
-                            <p class="proving-sub">
-                                Computing SHA-256(address || balance || salt)
-                            </p>
-                        </div>
-                    {:else}
-                        <!-- Balance + tier + generate button -->
-                        <div class="proof-panel">
-                            <div class="tier-display">
-                                <span class="tier-icon">{tierCfg.icon}</span>
-                                <span
-                                    class="tier-name"
-                                    style="color:{tierCfg.color}"
-                                    >{tierCfg.name}</span
-                                >
-                            </div>
-
-                            {#if balance !== null}
-                                <div class="balance-row">
-                                    <span class="balance-val"
-                                        >{formatKaleBalance(balance)}</span
-                                    >
-                                    <span class="balance-label">KALE</span>
-                                </div>
-                            {/if}
-
-                            <p class="proof-desc">
-                                Generate a cryptographic commitment of your
-                                farming tier. The commitment hides your balance
-                                behind a salted SHA-256 hash.
-                            </p>
-                            {#if !hasKale}
-                                <div class="proof-nudge">
-                                    <p>
-                                        Need KALE activity to verify this proof.
-                                    </p>
-                                    <a class="proof-nudge-link" href="/kale"
-                                        >Head to the Kale Farm →</a
-                                    >
-                                </div>
-                            {/if}
-
                             {#if error}
                                 <p class="proof-error">{error}</p>
                             {/if}
-
-                            <button
-                                class="generate-btn"
-                                onclick={generateProof}
-                                disabled={balance === null}
-                            >
-                                Generate Proof of Farm
-                            </button>
                         </div>
+                    {:else if proving}
+                        <!-- Generating -->
+                        <div class="proof-loading">
+                            <div class="loading-spinner"></div>
+                            <p>Generating proof...</p>
+                        </div>
+                    {:else}
+                        <!-- Generate Button -->
+                        {#if !hasKale}
+                            <p class="proof-nudge">
+                                Need KALE to generate proof. <a href="/kale"
+                                    >Get KALE →</a
+                                >
+                            </p>
+                        {/if}
+                        {#if error}
+                            <p class="proof-error">{error}</p>
+                        {/if}
+                        <button
+                            class="proof-generate"
+                            type="button"
+                            onclick={generateProof}
+                            disabled={balance === null}
+                        >
+                            Generate ZK Proof
+                        </button>
                     {/if}
-                </section>
+                </div>
+            </section>
 
-                <!-- Commitment Gallery -->
-                <section class="gallery-section">
-                    <div class="gallery-header">
-                        <h2 class="section-label">Commitment Gallery</h2>
-                        <div class="gallery-header-right">
-                            <span class="gallery-subtitle"
-                                >Live commitments & design concepts — click to
-                                open</span
+            <!-- Concept Strip -->
+            <section class="concepts-section">
+                <h2 class="concepts-label">Coming Soon</h2>
+                <div class="concepts-strip">
+                    {#each galleryProofs.filter((p) => p.status === "CONCEPT") as concept}
+                        <div class="concept-card">
+                            <span class="concept-title">{concept.title}</span>
+                            <span class="concept-summary"
+                                >{concept.summary.split(".")[0]}.</span
                             >
-                            <button
-                                class="gallery-cta"
-                                type="button"
-                                onclick={generateProof}
-                                disabled={balance === null ||
-                                    proving ||
-                                    hasProof}
-                            >
-                                {hasProof
-                                    ? "Commitment sealed"
-                                    : "Generate a live commitment"}
-                            </button>
                         </div>
-                    </div>
-                    <div class="gallery-grid">
-                        {#each galleryProofs as proof}
-                            <article
-                                class="gallery-card"
-                                class:gallery-card--concept={proof.status ===
-                                    "CONCEPT"}
-                            >
-                                <div class="gallery-card-top">
-                                    <span
-                                        class="gallery-status"
-                                        class:gallery-status--concept={proof.status ===
-                                            "CONCEPT"}
-                                        class:gallery-status--live={proof.status ===
-                                            "LIVE"}>{proof.status}</span
-                                    >
-                                    <span class="gallery-circuit"
-                                        >{proof.circuit}</span
-                                    >
-                                </div>
-                                <h3 class="gallery-title">{proof.title}</h3>
-                                <p class="gallery-summary">{proof.summary}</p>
-                                <div class="gallery-tags">
-                                    {#each proof.tags as tag}
-                                        <span class="gallery-tag">{tag}</span>
-                                    {/each}
-                                    <span
-                                        class="gallery-tag gallery-tag--status"
-                                    >
-                                        {proof.requiresKale
-                                            ? "Needs KALE"
-                                            : "No KALE needed"}
-                                    </span>
-                                </div>
-                                <div class="gallery-foot">
-                                    <span class="gallery-proof"
-                                        >{proof.proof}</span
-                                    >
-                                    <div class="gallery-actions">
-                                        <button
-                                            class="gallery-open"
-                                            type="button"
-                                            onclick={() => openProof(proof)}
-                                        >
-                                            View details
-                                        </button>
-                                        <a
-                                            class="gallery-link"
-                                            href={proof.file}
-                                            target="_blank"
-                                            rel="noreferrer"
-                                        >
-                                            Open proof file →
-                                        </a>
-                                    </div>
-                                </div>
-                            </article>
-                        {/each}
-                    </div>
-                </section>
-            </div>
+                    {/each}
+                </div>
+            </section>
         {/if}
     </div>
 
@@ -1068,100 +921,6 @@
         </p>
     </footer>
 </div>
-
-{#if activeProof}
-    <div class="gallery-overlay" role="dialog" aria-modal="true">
-        <button
-            class="gallery-backdrop"
-            type="button"
-            onclick={closeProof}
-            aria-label="Close proof details"
-        ></button>
-        <div class="gallery-modal">
-            <div class="gallery-modal-header">
-                <div>
-                    <p class="gallery-modal-label">Proof file</p>
-                    <h3 class="gallery-modal-title">{activeProof.title}</h3>
-                </div>
-                <button
-                    class="gallery-close"
-                    type="button"
-                    onclick={closeProof}
-                    aria-label="Close proof details">✕</button
-                >
-            </div>
-            <p class="gallery-modal-summary">{activeProof.summary}</p>
-            <div class="gallery-modal-grid">
-                <div class="gallery-modal-card">
-                    <span class="gallery-modal-eyebrow">Scheme</span>
-                    <span class="gallery-modal-value"
-                        >{activeProof.circuit}</span
-                    >
-                </div>
-                <div class="gallery-modal-card">
-                    <span class="gallery-modal-eyebrow">Method</span>
-                    <span class="gallery-modal-value">{activeProof.proof}</span>
-                </div>
-                <div class="gallery-modal-card">
-                    <span class="gallery-modal-eyebrow">Status</span>
-                    <span class="gallery-modal-value">{activeProof.status}</span
-                    >
-                </div>
-                <div class="gallery-modal-card">
-                    <span class="gallery-modal-eyebrow">Test</span>
-                    <span class="gallery-modal-value">{activeProof.tested}</span
-                    >
-                </div>
-                <div class="gallery-modal-card">
-                    <span class="gallery-modal-eyebrow">Wallet</span>
-                    <span class="gallery-modal-value">{activeProof.wallet}</span
-                    >
-                </div>
-                <div class="gallery-modal-card">
-                    <span class="gallery-modal-eyebrow">Proof file</span>
-                    <a
-                        class="gallery-modal-link"
-                        href={activeProof.file}
-                        target="_blank"
-                        rel="noreferrer"
-                    >
-                        {activeProof.file}
-                    </a>
-                </div>
-                <div class="gallery-modal-card gallery-modal-requirement">
-                    <span class="gallery-modal-eyebrow">Availability</span>
-                    <span class="gallery-modal-value"
-                        >{activeProof.requirementCopy}</span
-                    >
-                    {#if activeProof.requiresKale && !hasKale}
-                        <a class="gallery-modal-cta" href="/kale"
-                            >Complete Kale Farm task →</a
-                        >
-                    {/if}
-                </div>
-            </div>
-            <div class="gallery-modal-lists">
-                <div>
-                    <h4>Inputs</h4>
-                    <ul>
-                        {#each activeProof.inputs as item}
-                            <li>{item}</li>
-                        {/each}
-                    </ul>
-                </div>
-                <div>
-                    <h4>Outputs</h4>
-                    <ul>
-                        {#each activeProof.outputs as item}
-                            <li>{item}</li>
-                        {/each}
-                    </ul>
-                </div>
-            </div>
-            <p class="gallery-modal-note">{activeProof.note}</p>
-        </div>
-    </div>
-{/if}
 
 <style>
     /* ── Root ── */
@@ -1395,10 +1154,175 @@
         }
         50% {
             opacity: 1;
-        }
     }
 
-    /* ── Loading ── */
+    /* ── Proof Section ── */
+    .proof-section {
+        width: 100%;
+    }
+    .proof-card {
+        background: rgba(13, 13, 15, 0.6);
+        border: 1px solid rgba(255, 255, 255, 0.08);
+        border-radius: 16px;
+        padding: 24px;
+        backdrop-filter: blur(12px);
+    }
+    .proof-tier {
+        display: flex;
+        align-items: center;
+        gap: 16px;
+        margin-bottom: 20px;
+    }
+    .tier-icon {
+        font-size: 48px;
+    }
+    .tier-info {
+        display: flex;
+        flex-direction: column;
+        gap: 4px;
+    }
+    .tier-name {
+        font-family: "Press Start 2P", monospace;
+        font-size: 14px;
+    }
+    .tier-balance {
+        font-family: "Press Start 2P", monospace;
+        font-size: 10px;
+        color: #9ae600;
+        opacity: 0.8;
+    }
+    .proof-done {
+        display: flex;
+        flex-direction: column;
+        gap: 12px;
+    }
+    .proof-done-label {
+        font-family: "Press Start 2P", monospace;
+        font-size: 10px;
+        color: #4ade80;
+    }
+    .proof-actions {
+        display: flex;
+        gap: 8px;
+    }
+    .proof-btn {
+        font-family: "Press Start 2P", monospace;
+        font-size: 8px;
+        padding: 10px 16px;
+        border-radius: 8px;
+        border: 1px solid rgba(255,255,255,0.1);
+        background: rgba(255,255,255,0.05);
+        color: #ccc;
+        cursor: pointer;
+        transition: all 0.2s ease;
+    }
+    .proof-btn:hover {
+        background: rgba(255,255,255,0.1);
+        color: #fff;
+    }
+    .proof-btn.primary {
+        background: linear-gradient(135deg, #9ae600 0%, #7bc400 100%);
+        color: #000;
+        border-color: #9ae600;
+    }
+    .proof-btn.primary:hover {
+        filter: brightness(1.1);
+    }
+    .proof-btn:disabled {
+        opacity: 0.5;
+        cursor: not-allowed;
+    }
+    .proof-tx {
+        font-family: monospace;
+        font-size: 10px;
+        color: #9ae600;
+        text-decoration: underline;
+    }
+    .proof-loading {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        gap: 12px;
+        padding: 20px;
+        color: #888;
+        font-size: 11px;
+    }
+    .proof-generate {
+        width: 100%;
+        font-family: "Press Start 2P", monospace;
+        font-size: 10px;
+        padding: 16px;
+        border-radius: 12px;
+        border: none;
+        background: linear-gradient(135deg, #9ae600 0%, #7bc400 100%);
+        color: #000;
+        cursor: pointer;
+        transition: all 0.2s ease;
+    }
+    .proof-generate:hover {
+        filter: brightness(1.1);
+        transform: translateY(-1px);
+    }
+    .proof-generate:disabled {
+        opacity: 0.5;
+        cursor: not-allowed;
+        transform: none;
+    }
+    .proof-nudge {
+        font-size: 10px;
+        color: #888;
+        text-align: center;
+        margin-bottom: 16px;
+    }
+    .proof-nudge a {
+        color: #9ae600;
+        text-decoration: underline;
+    }
+    .proof-error {
+        font-size: 10px;
+        color: #f87171;
+        text-align: center;
+        margin-bottom: 12px;
+    }
+
+    /* ── Concepts Section ── */
+    .concepts-section {
+        width: 100%;
+        margin-top: 8px;
+    }
+    .concepts-label {
+        font-family: "Press Start 2P", monospace;
+        font-size: 8px;
+        color: #555;
+        margin-bottom: 12px;
+        text-transform: uppercase;
+        letter-spacing: 2px;
+    }
+    .concepts-strip {
+        display: flex;
+        flex-direction: column;
+        gap: 8px;
+    }
+    .concept-card {
+        display: flex;
+        flex-direction: column;
+        gap: 4px;
+        padding: 12px 16px;
+        background: rgba(255,255,255,0.03);
+        border: 1px solid rgba(255,255,255,0.05);
+        border-radius: 8px;
+    }
+    .concept-title {
+        font-family: "Press Start 2P", monospace;
+        font-size: 9px;
+        color: #9ae600;
+    }
+    .concept-summary {
+        font-size: 10px;
+        color: #666;
+        line-height: 1.5;
+    }
+
     .loading-state {
         display: flex;
         flex-direction: column;
