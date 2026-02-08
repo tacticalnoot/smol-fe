@@ -996,7 +996,7 @@
             gameAttestNotes = {
                 ...gameAttestNotes,
                 [game.id]:
-                    "Verifier payload copied. Ready for verify_and_attest.",
+                    "Verifier payload copied. Arcade mode is payload-staging only until game Groth16 artifacts are deployed.",
             };
             setTimeout(() => {
                 if (gamePayloadCopied === game.id) {
@@ -1404,7 +1404,7 @@
             gameAttestNotes = {
                 ...gameAttestNotes,
                 [game.id]:
-                    "Commitment sealed. Payload is ready for verify_and_attest.",
+                    "Commitment sealed. Payload staged; on-chain submit unlocks after game Groth16 circuits and vkey migration.",
             };
             const refreshed = getGameSession(game.id);
             if (refreshed) {
@@ -1447,7 +1447,7 @@
             gameAttestNotes = {
                 ...gameAttestNotes,
                 [current.id]:
-                    "Magic flow complete: run sealed, verifier payload prepared, and payload copied.",
+                    "Magic flow complete: run sealed and payload staged. On-chain game submit is pending Groth16 game circuit deployment.",
             };
             launchCelebration(
                 `${current.title} complete`,
@@ -1490,25 +1490,13 @@
             }
 
             rememberVerifierPayload(game.id, payload);
-
-            if (!userState.contractId || !isAuth) {
-                gameAttestNotes = {
-                    ...gameAttestNotes,
-                    [game.id]:
-                        "Super Verifier payload prepared. Connect wallet to submit transaction.",
-                };
-                return;
-            }
-
-            const kit = await getPasskeyKit();
-            if (!kit) {
-                throw new Error("Wallet kit unavailable.");
-            }
-
+            const walletConnected = !!(userState.contractId && isAuth);
             gameAttestNotes = {
                 ...gameAttestNotes,
                 [game.id]:
-                    "Super Verifier invoke payload prepared for verify_and_attest submission.",
+                    walletConnected
+                        ? "Super Verifier payload staged. This arcade flow does not submit on-chain yet because it has commitments only (no Groth16 pi_a/pi_b/pi_c proof points)."
+                        : "Super Verifier payload staged. Connect wallet for Kale proof actions; arcade on-chain submit is disabled until game Groth16 circuits + vkey are deployed.",
             };
         } catch (e: any) {
             gameError = e.message || "Unable to prepare game attestation";
@@ -1723,8 +1711,9 @@
                     <h2 class="chapter-title">Game Proofs Arcade</h2>
                     <p class="chapter-copy">
                         One-click magic flow seals gameplay transcripts into
-                        proof-ready commitments and stages verifier payloads for
-                        on-chain routing.
+                        proof-ready commitments and stages verifier payloads.
+                        On-chain game submit unlocks once game Groth16 circuits
+                        and matching verifier keys are deployed.
                     </p>
                     <div class="arcade-guide-row">
                         <button
@@ -1738,7 +1727,7 @@
                         </button>
                         <p class="arcade-guide-mini">
                             Start with each card's Magic button. Manual controls
-                            stay available for expert tuning.
+                            stay available for expert tuning and payload inspection.
                         </p>
                     </div>
                 </div>
@@ -1754,7 +1743,8 @@
                         </p>
                         <p>
                             3. The payload is formatted for the live Super Verifier
-                            contract methods on Stellar mainnet.
+                            contract interface, but game mode currently stages
+                            payloads only (no on-chain verify call yet).
                         </p>
                     </div>
                 {/if}
@@ -1763,7 +1753,12 @@
             <h2 class="section-label">ZK Arcade</h2>
             <p class="game-subtitle">
                 Beat real mini-games to forge Poseidon commitments, then route
-                invoke payloads through the live Super Verifier contract.
+                invoke payloads for Super Verifier submission once game Groth16
+                circuits are deployed.
+            </p>
+            <p class="game-subtitle">
+                Live on-chain verification is currently active for Chapter I
+                Kale tier proofs; arcade is payload staging + local verification.
             </p>
             {#if !isAuth}
                 <p class="game-subtitle game-wallet">
@@ -1832,7 +1827,7 @@
                             {#if gameMagicCasting === game.id}
                                 Casting...
                             {:else if game.proof}
-                                Magic: Prep Verifier Payload
+                                Magic: Stage Verifier Payload
                             {:else}
                                 Magic: Auto Seal This Game
                             {/if}
@@ -2100,7 +2095,7 @@
                                 >
                                     {gameAttesting === game.id
                                         ? "Preparing..."
-                                        : "Build invoke payload"}
+                                        : "Stage verifier payload"}
                                 </button>
                             </div>
                             {#if gameAttestNotes[game.id]}
@@ -2165,7 +2160,7 @@
                         </div>
                         <div>
                             <p class="dungeon-stat-label">Verifier rails</p>
-                            <p class="dungeon-stat-value">4 live paths</p>
+                            <p class="dungeon-stat-value">2 live + 2 ops</p>
                         </div>
                         <div>
                             <p class="dungeon-stat-label">Local passes</p>
@@ -2191,10 +2186,10 @@
             <p class="verifier-copy">
                 Live today: deterministic transcript hashing + Poseidon
                 commitment generation + local recompute verification.
-                <code>verify_and_attest</code> and
-                <code>check_attestation</code> are the live rails; governance
-                rails (<code>update_vkey</code>, <code>set_admin</code>) are
-                surfaced as ops paths for circuit lifecycle control.
+                For Chapter I Kale proofs, <code>verify_and_attest</code> and
+                <code>check_attestation</code> are live rails. Arcade currently
+                stages payloads only until game Groth16 proofs and matching
+                on-chain verification keys are deployed.
             </p>
             <div class="verifier-grid">
                 <div class="verifier-item">
@@ -2232,9 +2227,10 @@
                 </div>
             </div>
             <p class="verifier-env">
-                Tier proofs and arcade payloads now both target this same
-                contract. Different methods are surfaced per game for live
-                verification, attestation checks, and governance operations.
+                Tier proofs and arcade payload scaffolding both target this same
+                contract. Live submission is active for Kale tier proofs;
+                arcade submissions are intentionally blocked until game circuits
+                produce real Groth16 proof points that match on-chain vkeys.
             </p>
         </div>
                 </section>
