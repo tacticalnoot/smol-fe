@@ -75,3 +75,24 @@ artifacts/phase-*.json
 DEPLOYER_KEY.md
 deployer-credentials.md
 **/DEPLOYER_KEY.md
+
+# Local verifier/deployment artifacts (generated)
+deployer_secret.txt
+deployed-contract-id.txt
+account_info.json
+balances.txt
+hex_fixtures.txt
+
+deploy_*.log
+init_*.log
+inspect_wasm*.log
+invoke_help.log
+simulation.log
+simulation_*.txt
+upgrade*.log
+upload_*.log
+upload_sim*.json
+
+old_failures*.md
+old_failures*.txt
+contracts/tier-verifier/test_output.txt
