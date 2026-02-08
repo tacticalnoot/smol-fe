@@ -654,9 +654,12 @@
             if (message.includes("rejected both G2 encodings")) {
                 error =
                     "Super Verifier is live but the on-chain verification key encoding looks stale. Admin should run update_vkey with CAP-0074 G2 encoding.";
-            } else if (message.includes("Proof point validation failed")) {
+            } else if (
+                message.includes("Proof payload is malformed") ||
+                message.includes("Proof payload contains non-numeric coordinates")
+            ) {
                 error =
-                    "Generated proof points are malformed for BN254. Regenerate proof; if this repeats, rebuild circuit artifacts.";
+                    "Proof payload is malformed. Regenerate proof; if this repeats, refresh and rebuild proof artifacts.";
             } else {
                 error = message;
             }

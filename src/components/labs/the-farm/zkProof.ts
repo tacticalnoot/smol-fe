@@ -108,30 +108,45 @@ export async function verifyProofLocally(
 }
 
 /**
- * Validate proof points are well-formed BN254 points before on-chain submission.
- * This catches malformed proof artifacts early with clearer feedback than host traps.
+ * Validate proof payload shape before serialization.
+ * Local cryptographic validity is already checked via groth16.verify().
  */
-async function validateProofCurvePoints(proof: Groth16Proof): Promise<void> {
-    // @ts-ignore - snarkjs curve API types are not exported
-    const snarkjs = await import("snarkjs");
-    const curve = await snarkjs.curves.getCurveFromName("bn128");
-    try {
-        const g1a = curve.G1.fromObject(proof.pi_a);
-        const g2b = curve.G2.fromObject(proof.pi_b);
-        const g1c = curve.G1.fromObject(proof.pi_c);
-        const ok =
-            curve.G1.isValid(g1a) &&
-            curve.G2.isValid(g2b) &&
-            curve.G1.isValid(g1c);
-        if (!ok) {
-            throw new Error(
-                "Proof point validation failed (one or more Groth16 points are not on BN254 curve).",
-            );
+function validateProofShape(proof: Groth16Proof): void {
+    const isPoint2 = (p: unknown): p is string[] =>
+        Array.isArray(p) && p.length >= 2 && typeof p[0] === "string" && typeof p[1] === "string";
+    const isPoint2x2 = (p: unknown): p is string[][] =>
+        Array.isArray(p) &&
+        p.length >= 2 &&
+        Array.isArray(p[0]) &&
+        Array.isArray(p[1]) &&
+        p[0].length >= 2 &&
+        p[1].length >= 2 &&
+        typeof p[0][0] === "string" &&
+        typeof p[0][1] === "string" &&
+        typeof p[1][0] === "string" &&
+        typeof p[1][1] === "string";
+
+    if (!proof || !isPoint2(proof.pi_a) || !isPoint2x2(proof.pi_b) || !isPoint2(proof.pi_c)) {
+        throw new Error("Proof payload is malformed. Regenerate the proof and try again.");
+    }
+
+    // Ensure values are parseable as unsigned field elements.
+    const numericLeaves = [
+        proof.pi_a[0],
+        proof.pi_a[1],
+        proof.pi_b[0][0],
+        proof.pi_b[0][1],
+        proof.pi_b[1][0],
+        proof.pi_b[1][1],
+        proof.pi_c[0],
+        proof.pi_c[1],
+    ];
+    for (const value of numericLeaves) {
+        if (!/^\d+$/.test(value)) {
+            throw new Error("Proof payload contains non-numeric coordinates.");
         }
-    } finally {
-        if (typeof curve.terminate === "function") {
-            await curve.terminate();
-        }
+        // Throws on malformed numeric strings.
+        BigInt(value);
     }
 }
 
@@ -365,7 +380,7 @@ export async function submitProofToContract(
             tier: tierId,
         });
         console.log("[ZK] DEBUG: Using Contract ID:", TIER_VERIFIER_CONTRACT_ID);
-        await validateProofCurvePoints(proof);
+        validateProofShape(proof);
 
         const { Contract, Address, nativeToScVal, xdr, TransactionBuilder, rpc, Account, Networks } = await import("@stellar/stellar-sdk/minimal");
         const NULL_ACCOUNT = "GAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAWHF";
