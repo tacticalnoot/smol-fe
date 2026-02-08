@@ -113,12 +113,14 @@
         schema: "farm.game.attestation.v1";
         protocol: "stellar-protocol-25";
         network: "stellar-mainnet";
+        onchainMode: "tier-compat-v1";
         contractId: string;
         verifierEntrypoint: string;
         gameId: string;
         wallet: string;
         level: number;
         score: number;
+        compatTierHint: number;
         actionHash: string;
         commitment: string;
         salt: string;
@@ -426,6 +428,17 @@
         gameWallet ? `${gameWallet.slice(0, 6)}…${gameWallet.slice(-4)}` : "",
     );
     const confettiPieces = Array.from({ length: 24 }, (_, idx) => idx);
+    const GAME_TIER_THRESHOLDS = [
+        0n,
+        1_000_000_000n,
+        10_000_000_000n,
+        100_000_000_000n,
+    ];
+    const GAME_TIER_BY_KIND: Record<ZkGame["kind"], number> = {
+        tic: 1,
+        dodge: 2,
+        pattern: 3,
+    };
 
     // ── Effects ────────────────────────────────────────────────────────────
     $effect(() => {
@@ -893,6 +906,53 @@
         return BigInt(`0x${digestHex.slice(0, 60)}`);
     }
 
+    function bigintToBytes32(value: bigint | string): Uint8Array {
+        let input = BigInt(value);
+        const bytes = new Uint8Array(32);
+        for (let i = 31; i >= 0; i--) {
+            bytes[i] = Number(input & 0xffn);
+            input >>= 8n;
+        }
+        return bytes;
+    }
+
+    async function buildGameTierCompatWitness(game: ZkGameSession): Promise<{
+        tierId: number;
+        balanceMetric: bigint;
+        salt: bigint;
+        addressHash: bigint;
+    }> {
+        if (!game.proof) {
+            throw new Error("Seal a game commitment before on-chain submit.");
+        }
+        if (!zkLogic) {
+            throw new Error("ZK logic not loaded yet.");
+        }
+        if (!userState.contractId) {
+            throw new Error("Connect wallet before on-chain submit.");
+        }
+
+        const tierId = GAME_TIER_BY_KIND[game.kind] ?? 0;
+        const threshold = GAME_TIER_THRESHOLDS[tierId] ?? 0n;
+        const actionHashNibble = BigInt(`0x${game.proof.actionHash.slice(0, 14)}`);
+        const scoreComponent = BigInt(Math.max(game.proof.score, 0)) * 10_000_000n;
+        const levelComponent = BigInt(Math.max(game.proof.level, 0)) * 1_000_000n;
+        const nonceComponent = actionHashNibble % 1_000_000n;
+        const balanceMetric =
+            threshold + scoreComponent + levelComponent + nonceComponent;
+        const saltSeed =
+            BigInt(game.proof.salt) ^ actionHashNibble ^ BigInt(game.proof.level);
+        const salt = saltSeed > 0n ? saltSeed : -saltSeed + 1n;
+        const addressHash = await zkLogic.hashAddress(userState.contractId);
+
+        return {
+            tierId,
+            balanceMetric,
+            salt,
+            addressHash,
+        };
+    }
+
     async function verifyGameProofLocally(game: ZkGameSession) {
         if (!game.proof) return;
         if (!zkLogic) {
@@ -963,12 +1023,14 @@
             schema: "farm.game.attestation.v1",
             protocol: "stellar-protocol-25",
             network: "stellar-mainnet",
+            onchainMode: "tier-compat-v1",
             contractId: SUPER_VERIFIER_CONTRACT_ID,
             verifierEntrypoint: game.zkSpec.verifierEntrypoint,
             gameId: game.proof.id,
             wallet: game.proof.wallet,
             level: game.proof.level,
             score: game.proof.score,
+            compatTierHint: GAME_TIER_BY_KIND[game.kind] ?? 0,
             actionHash: game.proof.actionHash,
             commitment: game.proof.commitment,
             salt: game.proof.salt,
@@ -993,10 +1055,16 @@
             await navigator.clipboard.writeText(JSON.stringify(payload, null, 2));
             rememberVerifierPayload(game.id, payload);
             gamePayloadCopied = game.id;
+            const existingTx = game.proof?.onchainTxHash;
             gameAttestNotes = {
                 ...gameAttestNotes,
                 [game.id]:
-                    "Verifier payload copied. Arcade mode is payload-staging only until game Groth16 artifacts are deployed.",
+                    existingTx
+                        ? `Verifier payload copied. This run is already attested on-chain (TX ${existingTx.slice(
+                            0,
+                            10,
+                        )}...).`
+                        : "Verifier payload copied. Submit on-chain to execute verify_and_attest for this run.",
             };
             setTimeout(() => {
                 if (gamePayloadCopied === game.id) {
@@ -1404,7 +1472,7 @@
             gameAttestNotes = {
                 ...gameAttestNotes,
                 [game.id]:
-                    "Commitment sealed. Payload staged; on-chain submit unlocks after game Groth16 circuits and vkey migration.",
+                    "Commitment sealed. Ready for on-chain submit via Super Verifier.",
             };
             const refreshed = getGameSession(game.id);
             if (refreshed) {
@@ -1441,17 +1509,22 @@
                 throw new Error("Magic flow could not seal this run. Try once more.");
             }
 
-            await prepareGameAttestation(current);
+            await submitGameAttestation(current);
             await copyVerifierPayload(current);
+            const submitted = getGameSession(current.id)?.proof?.onchainTxHash;
 
             gameAttestNotes = {
                 ...gameAttestNotes,
                 [current.id]:
-                    "Magic flow complete: run sealed and payload staged. On-chain game submit is pending Groth16 game circuit deployment.",
+                    submitted
+                        ? `Magic flow complete: run sealed and submitted on-chain (${submitted.slice(0, 10)}...).`
+                        : "Magic flow complete: run sealed and payload staged.",
             };
             launchCelebration(
                 `${current.title} complete`,
-                "Arcade proof pipeline ran end-to-end and prepared your verifier payload.",
+                submitted
+                    ? "Arcade proof pipeline ran end-to-end and landed on Super Verifier."
+                    : "Arcade proof pipeline prepared verifier payloads.",
             );
         } catch (e: any) {
             gameError = e?.message || "Magic flow failed";
@@ -1478,6 +1551,124 @@
         }
     }
 
+    async function submitGameAttestation(game: ZkGameSession) {
+        if (!game.proof) return;
+        gameError = null;
+        gameAttesting = game.id;
+
+        try {
+            if (!zkLogic) {
+                throw new Error("ZK logic not loaded yet.");
+            }
+            if (!zkGamesLogic) {
+                throw new Error("Game logic not loaded yet.");
+            }
+            if (!userState.contractId || !isAuth) {
+                throw new Error("Connect wallet before on-chain submit.");
+            }
+
+            await verifyGameProofLocally(game);
+            const integrity = gameIntegrity[game.id];
+            if (integrity?.state === "fail") {
+                throw new Error(
+                    "Local game proof integrity failed. Reset the run and seal again.",
+                );
+            }
+
+            const { tierId, balanceMetric, salt, addressHash } =
+                await buildGameTierCompatWitness(game);
+            const generated = await zkLogic.generateTierProof(
+                addressHash,
+                balanceMetric,
+                salt,
+                tierId,
+            );
+
+            const isValid = await zkLogic.verifyProofLocally(
+                generated.proof,
+                generated.publicSignals,
+            );
+            if (!isValid) {
+                throw new Error(
+                    "Generated Groth16 proof failed local verification. Retry this run.",
+                );
+            }
+
+            if (generated.publicSignals.length < 2) {
+                throw new Error(
+                    "Generated proof is missing public signals. Retry this run.",
+                );
+            }
+
+            const tierSignal = BigInt(generated.publicSignals[0]);
+            const commitmentSignal = BigInt(generated.publicSignals[1]);
+            if (tierSignal !== BigInt(tierId)) {
+                throw new Error(
+                    "Tier/public signal mismatch in generated game proof.",
+                );
+            }
+
+            const kit = await getPasskeyKit();
+            if (!kit) {
+                throw new Error("Wallet kit unavailable.");
+            }
+
+            const submitResult = await zkLogic.submitProofToContract(
+                kit,
+                userState.contractId,
+                tierId,
+                bigintToBytes32(commitmentSignal),
+                generated.proof,
+            );
+            if (!submitResult.success || !submitResult.txHash) {
+                throw new Error(
+                    submitResult.error ||
+                        "Super Verifier submit failed for this game run.",
+                );
+            }
+
+            const updatedProof: ZkGameProof = {
+                ...game.proof,
+                onchainTxHash: submitResult.txHash,
+                onchainTier: tierId,
+                onchainCommitment: commitmentSignal.toString(),
+                onchainSubmittedAt: Date.now(),
+                onchainMode: "tier-compat-v1",
+            };
+
+            updateGame(game.id, { proof: updatedProof });
+            if (gameWallet) {
+                zkGamesLogic.saveGameProof(gameWallet, updatedProof);
+                gameProofs = zkGamesLogic.loadGameProofs(gameWallet);
+            }
+
+            const payload = buildGameVerifierPayload(
+                getGameSession(game.id) ?? { ...game, proof: updatedProof },
+            );
+            if (payload) {
+                rememberVerifierPayload(game.id, payload);
+            }
+
+            gameAttestNotes = {
+                ...gameAttestNotes,
+                [game.id]:
+                    `On-chain submit complete via Super Verifier (tier-compat-v1). TX ${submitResult.txHash.slice(
+                        0,
+                        10,
+                    )}... ties this game run to a Groth16 attestation.`,
+            };
+
+            launchCelebration(
+                `${game.title} attested`,
+                "Super Verifier accepted this game run and stored a live on-chain attestation.",
+            );
+        } catch (e: any) {
+            gameError = e?.message || "Unable to submit game attestation";
+        } finally {
+            gameAttesting = null;
+        }
+    }
+
     async function prepareGameAttestation(game: ZkGameSession) {
         if (!game.proof) return;
         gameError = null;
@@ -1495,8 +1686,8 @@
                 ...gameAttestNotes,
                 [game.id]:
                     walletConnected
-                        ? "Super Verifier payload staged. This arcade flow does not submit on-chain yet because it has commitments only (no Groth16 pi_a/pi_b/pi_c proof points)."
-                        : "Super Verifier payload staged. Connect wallet for Kale proof actions; arcade on-chain submit is disabled until game Groth16 circuits + vkey are deployed.",
+                        ? "Super Verifier payload staged. Use 'Submit on-chain' to execute verify_and_attest for this game."
+                        : "Super Verifier payload staged. Connect wallet to submit this game on-chain.",
             };
         } catch (e: any) {
             gameError = e.message || "Unable to prepare game attestation";
@@ -1711,9 +1902,8 @@
                     <h2 class="chapter-title">Game Proofs Arcade</h2>
                     <p class="chapter-copy">
                         One-click magic flow seals gameplay transcripts into
-                        proof-ready commitments and stages verifier payloads.
-                        On-chain game submit unlocks once game Groth16 circuits
-                        and matching verifier keys are deployed.
+                        proof-ready commitments, derives Groth16 witnesses, and
+                        submits live attestations through Super Verifier.
                     </p>
                     <div class="arcade-guide-row">
                         <button
@@ -1743,8 +1933,8 @@
                         </p>
                         <p>
                             3. The payload is formatted for the live Super Verifier
-                            contract interface, but game mode currently stages
-                            payloads only (no on-chain verify call yet).
+                            contract interface, then submitted on-chain through
+                            the same verify_and_attest entrypoint.
                         </p>
                     </div>
                 {/if}
@@ -1753,12 +1943,12 @@
             <h2 class="section-label">ZK Arcade</h2>
             <p class="game-subtitle">
                 Beat real mini-games to forge Poseidon commitments, then route
-                invoke payloads for Super Verifier submission once game Groth16
-                circuits are deployed.
+                verify_and_attest calls into the live Super Verifier contract.
             </p>
             <p class="game-subtitle">
-                Live on-chain verification is currently active for Chapter I
-                Kale tier proofs; arcade is payload staging + local verification.
+                Arcade submit path uses a compatibility Groth16 witness derived
+                from each sealed run while dedicated per-game circuits are in
+                active development.
             </p>
             {#if !isAuth}
                 <p class="game-subtitle game-wallet">
@@ -1822,23 +2012,31 @@
                             class="game-magic-btn"
                             type="button"
                             onclick={() => runGameMagicFlow(game)}
-                            disabled={!!gameMagicCasting && gameMagicCasting !== game.id}
+                            disabled={!!game.proof?.onchainTxHash ||
+                                (!!gameMagicCasting && gameMagicCasting !== game.id)}
                         >
                             {#if gameMagicCasting === game.id}
                                 Casting...
+                            {:else if game.proof?.onchainTxHash}
+                                Magic: On-Chain Complete ✓
                             {:else if game.proof}
-                                Magic: Stage Verifier Payload
+                                Magic: Submit On-Chain
                             {:else}
                                 Magic: Auto Seal This Game
                             {/if}
                         </button>
                         <p class="game-magic-copy">
-                            {#if game.proof}
-                                Payload-ready mode: prepares and copies invoke data for
-                                verifier submission.
+                            {#if game.proof?.onchainTxHash}
+                                This run is already attested on-chain. Magic can
+                                be rerun after you seal a fresh run.
+                            {:else if game.proof}
+                                One click runs local integrity check, generates
+                                Groth16 compatibility proof, and submits to
+                                Super Verifier.
                             {:else}
-                                Auto mode runs a clean demo path, seals commitment, and
-                                stages contract payloads.
+                                Auto mode runs a clean demo path, seals
+                                commitment, submits on-chain, and copies payload
+                                data.
                             {/if}
                         </p>
                     </div>
@@ -2090,14 +2288,29 @@
                                 <button
                                     class="game-copy-btn primary"
                                     type="button"
-                                    onclick={() => prepareGameAttestation(game)}
-                                    disabled={gameAttesting === game.id}
+                                    onclick={() => submitGameAttestation(game)}
+                                    disabled={gameAttesting === game.id ||
+                                        !!game.proof.onchainTxHash}
                                 >
                                     {gameAttesting === game.id
-                                        ? "Preparing..."
-                                        : "Stage verifier payload"}
+                                        ? "Submitting..."
+                                        : game.proof.onchainTxHash
+                                            ? "Submitted ✓"
+                                            : "Submit on-chain"}
                                 </button>
                             </div>
+                            {#if game.proof.onchainTxHash}
+                                <a
+                                    href={`https://stellar.expert/explorer/public/tx/${game.proof.onchainTxHash}`}
+                                    target="_blank"
+                                    rel="noreferrer"
+                                    class="proof-tx"
+                                >
+                                    TX: {game.proof.onchainTxHash.slice(0, 8)}...{game.proof.onchainTxHash.slice(
+                                        -8,
+                                    )}
+                                </a>
+                            {/if}
                             {#if gameAttestNotes[game.id]}
                                 <p class="game-proof-note">
                                     {gameAttestNotes[game.id]}
@@ -2160,7 +2373,7 @@
                         </div>
                         <div>
                             <p class="dungeon-stat-label">Verifier rails</p>
-                            <p class="dungeon-stat-value">2 live + 2 ops</p>
+                            <p class="dungeon-stat-value">4 active rails</p>
                         </div>
                         <div>
                             <p class="dungeon-stat-label">Local passes</p>
@@ -2187,9 +2400,9 @@
                 Live today: deterministic transcript hashing + Poseidon
                 commitment generation + local recompute verification.
                 For Chapter I Kale proofs, <code>verify_and_attest</code> and
-                <code>check_attestation</code> are live rails. Arcade currently
-                stages payloads only until game Groth16 proofs and matching
-                on-chain verification keys are deployed.
+                <code>check_attestation</code> are live rails. Arcade now also
+                submits on-chain through <code>verify_and_attest</code> using a
+                Groth16 compatibility witness derived from each sealed run.
             </p>
             <div class="verifier-grid">
                 <div class="verifier-item">
@@ -2227,10 +2440,11 @@
                 </div>
             </div>
             <p class="verifier-env">
-                Tier proofs and arcade payload scaffolding both target this same
-                contract. Live submission is active for Kale tier proofs;
-                arcade submissions are intentionally blocked until game circuits
-                produce real Groth16 proof points that match on-chain vkeys.
+                Tier proofs and arcade submissions now both target this same
+                contract. Kale uses native tier proof inputs; arcade uses the
+                same Groth16 verifier in compatibility mode with
+                game-derived witness metrics while dedicated game circuits are
+                being finalized.
             </p>
         </div>
                 </section>

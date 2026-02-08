@@ -80,6 +80,11 @@ export type ZkGameProof = {
     commitment: string;
     salt: string;
     createdAt: number;
+    onchainTxHash?: string;
+    onchainTier?: number;
+    onchainCommitment?: string;
+    onchainSubmittedAt?: number;
+    onchainMode?: "tier-compat-v1";
 };
 
 // ---------------------------------------------------------------------------
