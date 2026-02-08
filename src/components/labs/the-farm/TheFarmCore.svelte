@@ -1403,128 +1403,150 @@
             {/if}
         </header>
 
-        {#if !isAuth}
-            <!-- ── Landing (not authenticated) ── -->
-            <div class="landing-cta">
-                <p class="landing-line">Harvest your KALE proof tier</p>
-                <p class="landing-line dim">without revealing your balance.</p>
-                <p class="landing-connect">
-                    Connect your wallet to enter the valley
-                </p>
-            </div>
-        {:else if loading && balance === null}
-            <!-- ── Loading balance ── -->
-            <div class="loading-state">
-                <div class="loading-spinner"></div>
-                <p class="loading-text">Reading your KALE balance...</p>
-            </div>
-        {:else}
-            <!-- Proof Section -->
-            <section class="proof-section">
-                <div class="proof-card">
-                    <!-- Tier Display -->
-                    <div class="proof-tier">
-                        <span class="tier-icon">{tierCfg.icon}</span>
-                        <div class="tier-info">
-                            <span
-                                class="tier-name"
-                                style="color:{tierCfg.color}"
-                                >{tierCfg.name}</span
-                            >
-                            {#if balance !== null}
-                                <span class="tier-balance"
-                                    >{formatKaleBalance(balance)} KALE</span
-                                >
-                            {/if}
-                        </div>
+        <div class="chapter-strip">
+            <section class="chapter-panel chapter-kale">
+                <div class="chapter-head">
+                    <p class="chapter-tag">Chapter I</p>
+                    <h2 class="chapter-title">Kale Proof Garden</h2>
+                    <p class="chapter-copy">
+                        Generate and attest your KALE tier proof with a cinematic,
+                        protocol-first verification flow.
+                    </p>
+                </div>
+                <div class="kale-cover" role="img" aria-label="Kale proof chapter cover art">
+                    <div class="kale-cover-copy">
+                        <p class="kale-cover-kicker">Groth16 · BN254 · Poseidon</p>
+                        <p class="kale-cover-title">PROOF OF FARM</p>
+                        <p class="kale-cover-body">
+                            Confidential balance tiering with live Super Verifier attestation.
+                        </p>
                     </div>
+                    <div class="kale-cover-stamp">MAINNET</div>
+                </div>
 
-                    {#if hasProof}
-                        <!-- Proof Generated -->
-                        <div class="proof-done">
-                            <p class="proof-done-label">✓ ZK Proof Ready</p>
-                            <div class="proof-actions">
-                                <button
-                                    class="proof-btn primary"
-                                    type="button"
-                                    onclick={verifyProof}
-                                    disabled={verifying || onChainVerified}
-                                >
-                                    {#if verifying}Verifying...{:else if onChainVerified}Verified
-                                        ✓{:else}Verify On-Chain{/if}
-                                </button>
-                                <button
-                                    class="proof-btn"
-                                    type="button"
-                                    onclick={copyProofPacket}
-                                >
-                                    {copied ? "Copied" : "Copy"}
-                                </button>
+                {#if !isAuth}
+                    <div class="landing-cta">
+                        <p class="landing-line">Harvest your KALE proof tier</p>
+                        <p class="landing-line dim">without revealing your balance.</p>
+                        <p class="landing-connect">
+                            Connect your wallet to enter the valley
+                        </p>
+                    </div>
+                {:else if loading && balance === null}
+                    <div class="loading-state">
+                        <div class="loading-spinner"></div>
+                        <p class="loading-text">Reading your KALE balance...</p>
+                    </div>
+                {:else}
+                    <section class="proof-section">
+                        <div class="proof-card">
+                            <div class="proof-tier">
+                                <span class="tier-icon">{tierCfg.icon}</span>
+                                <div class="tier-info">
+                                    <span
+                                        class="tier-name"
+                                        style="color:{tierCfg.color}"
+                                        >{tierCfg.name}</span
+                                    >
+                                    {#if balance !== null}
+                                        <span class="tier-balance"
+                                            >{formatKaleBalance(balance)} KALE</span
+                                        >
+                                    {/if}
+                                </div>
                             </div>
-                            {#if onChainVerified && txHash}
-                                <a
-                                    href={`https://stellar.expert/explorer/public/tx/${txHash}`}
-                                    target="_blank"
-                                    rel="noreferrer"
-                                    class="proof-tx"
+
+                            {#if hasProof}
+                                <div class="proof-done">
+                                    <p class="proof-done-label">✓ ZK Proof Ready</p>
+                                    <div class="proof-actions">
+                                        <button
+                                            class="proof-btn primary"
+                                            type="button"
+                                            onclick={verifyProof}
+                                            disabled={verifying || onChainVerified}
+                                        >
+                                            {#if verifying}Verifying...{:else if onChainVerified}Verified
+                                                ✓{:else}Verify On-Chain{/if}
+                                        </button>
+                                        <button
+                                            class="proof-btn"
+                                            type="button"
+                                            onclick={copyProofPacket}
+                                        >
+                                            {copied ? "Copied" : "Copy"}
+                                        </button>
+                                    </div>
+                                    {#if onChainVerified && txHash}
+                                        <a
+                                            href={`https://stellar.expert/explorer/public/tx/${txHash}`}
+                                            target="_blank"
+                                            rel="noreferrer"
+                                            class="proof-tx"
+                                        >
+                                            TX: {txHash.slice(0, 8)}...{txHash.slice(
+                                                -8,
+                                            )}
+                                        </a>
+                                    {/if}
+                                    {#if error}
+                                        <p class="proof-error">{error}</p>
+                                    {/if}
+                                </div>
+                            {:else if proving}
+                                <div class="proof-loading">
+                                    <div class="loading-spinner"></div>
+                                    <p>Generating proof...</p>
+                                </div>
+                            {:else}
+                                {#if !hasKale}
+                                    <p class="proof-nudge">
+                                        Need KALE to generate proof. <a href="/kale"
+                                            >Get KALE →</a
+                                        >
+                                    </p>
+                                {/if}
+                                {#if error}
+                                    <p class="proof-error">{error}</p>
+                                {/if}
+                                <button
+                                    class="proof-generate"
+                                    type="button"
+                                    onclick={generateProof}
+                                    disabled={balance === null}
                                 >
-                                    TX: {txHash.slice(0, 8)}...{txHash.slice(
-                                        -8,
-                                    )}
-                                </a>
-                            {/if}
-                            {#if error}
-                                <p class="proof-error">{error}</p>
+                                    Generate ZK Proof
+                                </button>
                             {/if}
                         </div>
-                    {:else if proving}
-                        <!-- Generating -->
-                        <div class="proof-loading">
-                            <div class="loading-spinner"></div>
-                            <p>Generating proof...</p>
+                    </section>
+
+                    <section class="concepts-section">
+                        <h2 class="concepts-label">Coming Soon</h2>
+                        <div class="concepts-strip">
+                            {#each galleryProofs.filter((p) => p.status === "CONCEPT") as concept}
+                                <div class="concept-card">
+                                    <span class="concept-title">{concept.title}</span>
+                                    <span class="concept-summary"
+                                        >{concept.summary.split(".")[0]}.</span
+                                    >
+                                </div>
+                            {/each}
                         </div>
-                    {:else}
-                        <!-- Generate Button -->
-                        {#if !hasKale}
-                            <p class="proof-nudge">
-                                Need KALE to generate proof. <a href="/kale"
-                                    >Get KALE →</a
-                                >
-                            </p>
-                        {/if}
-                        {#if error}
-                            <p class="proof-error">{error}</p>
-                        {/if}
-                        <button
-                            class="proof-generate"
-                            type="button"
-                            onclick={generateProof}
-                            disabled={balance === null}
-                        >
-                            Generate ZK Proof
-                        </button>
-                    {/if}
-                </div>
+                    </section>
+                {/if}
             </section>
 
-            <!-- Concept Strip -->
-            <section class="concepts-section">
-                <h2 class="concepts-label">Coming Soon</h2>
-                <div class="concepts-strip">
-                    {#each galleryProofs.filter((p) => p.status === "CONCEPT") as concept}
-                        <div class="concept-card">
-                            <span class="concept-title">{concept.title}</span>
-                            <span class="concept-summary"
-                                >{concept.summary.split(".")[0]}.</span
-                            >
-                        </div>
-                    {/each}
+            <section class="chapter-panel chapter-games">
+                <div class="chapter-head">
+                    <p class="chapter-tag">Chapter II</p>
+                    <h2 class="chapter-title">Game Proofs Arcade</h2>
+                    <p class="chapter-copy">
+                        Seal gameplay transcripts into proof-ready commitments and stage
+                        verifier payloads for on-chain routing.
+                    </p>
                 </div>
-            </section>
-        {/if}
-    </div>
-
-    <section class="game-section">
+                <section class="game-section">
         <div class="game-header">
             <h2 class="section-label">ZK Arcade</h2>
             <p class="game-subtitle">
@@ -1873,9 +1895,48 @@
                 </article>
             {/each}
         </div>
-    </section>
+                </section>
+            </section>
 
-    <section class="verifier-section">
+            <section class="chapter-panel chapter-dungeon">
+                <div class="chapter-head">
+                    <p class="chapter-tag">Chapter III</p>
+                    <h2 class="chapter-title">ZK Dungeon</h2>
+                    <p class="chapter-copy">
+                        Next-level raid space for multi-stage zero-knowledge campaigns,
+                        with evolving verifier keys and boss-grade attestations.
+                    </p>
+                </div>
+                <div class="dungeon-teaser">
+                    <p class="dungeon-overline">Teaser Realm</p>
+                    <h3 class="dungeon-title">Protocol 25 Raid Gate</h3>
+                    <p class="dungeon-copy">
+                        Enter a cyber-ruin where each floor unlocks only after
+                        deterministic proof checks. Build streaks, preserve privacy,
+                        and clear boss circuits without exposing full strategy logs.
+                    </p>
+                    <div class="dungeon-tags">
+                        <span>Boss Proof Chains</span>
+                        <span>Nullifier Runs</span>
+                        <span>Adaptive VKey Seasons</span>
+                    </div>
+                    <div class="dungeon-stats">
+                        <div>
+                            <p class="dungeon-stat-label">Sealed sessions</p>
+                            <p class="dungeon-stat-value">{sealedGameCount}</p>
+                        </div>
+                        <div>
+                            <p class="dungeon-stat-label">Verifier rails</p>
+                            <p class="dungeon-stat-value">4 live paths</p>
+                        </div>
+                        <div>
+                            <p class="dungeon-stat-label">Local passes</p>
+                            <p class="dungeon-stat-value">{locallyVerifiedGameCount}</p>
+                        </div>
+                    </div>
+                </div>
+
+                <section class="verifier-section">
         <div class="verifier-card">
             <div class="verifier-head">
                 <h2 class="section-label">Verifier Dock</h2>
@@ -1938,7 +1999,9 @@
                 verification, attestation checks, and governance operations.
             </p>
         </div>
-    </section>
+                </section>
+            </section>
+        </div>
 
     <!-- Footer -->
     <footer class="farm-footer">
@@ -1959,6 +2022,7 @@
             >
         </p>
     </footer>
+</div>
 </div>
 
 <style>
@@ -4200,6 +4264,319 @@
             grid-template-columns: 1fr;
         }
         .game-proof-actions {
+            grid-template-columns: 1fr;
+        }
+    }
+
+    /* ── Chapter Menu Revamp ── */
+    .farm-root {
+        --panel-border: rgba(183, 199, 228, 0.26);
+        --panel-surface: rgba(9, 16, 30, 0.82);
+        --panel-shadow: 0 28px 58px rgba(2, 8, 20, 0.52);
+    }
+    .farm-content {
+        max-width: min(1700px, 96vw);
+        margin: 0 auto;
+        padding: 72px 20px 92px;
+    }
+    .farm-header {
+        margin-bottom: 14px;
+    }
+    .chapter-strip {
+        display: grid;
+        grid-auto-flow: column;
+        grid-auto-columns: minmax(360px, 1fr);
+        gap: 18px;
+        align-items: start;
+        overflow-x: auto;
+        overflow-y: hidden;
+        padding: 8px 2px 18px;
+        scroll-snap-type: x mandatory;
+        scrollbar-width: thin;
+        scrollbar-color: rgba(177, 255, 109, 0.55) rgba(7, 14, 26, 0.8);
+    }
+    .chapter-strip::-webkit-scrollbar {
+        height: 10px;
+    }
+    .chapter-strip::-webkit-scrollbar-track {
+        background: rgba(7, 14, 26, 0.8);
+        border-radius: 999px;
+    }
+    .chapter-strip::-webkit-scrollbar-thumb {
+        background: linear-gradient(90deg, #72c765, #9fe55c);
+        border-radius: 999px;
+    }
+    .chapter-panel {
+        position: relative;
+        min-height: clamp(760px, 88vh, 1120px);
+        padding: 18px;
+        border-radius: 20px;
+        border: 1px solid var(--panel-border);
+        background: var(--panel-surface);
+        box-shadow: var(--panel-shadow);
+        display: flex;
+        flex-direction: column;
+        gap: 14px;
+        scroll-snap-align: start;
+        overflow: hidden;
+    }
+    .chapter-panel::before {
+        content: "";
+        position: absolute;
+        inset: 0;
+        pointer-events: none;
+        opacity: 0.36;
+        background:
+            radial-gradient(
+                100% 62% at 100% 0%,
+                rgba(126, 211, 33, 0.14) 0%,
+                rgba(126, 211, 33, 0) 68%
+            ),
+            repeating-linear-gradient(
+                135deg,
+                rgba(255, 255, 255, 0.07) 0 2px,
+                rgba(255, 255, 255, 0) 2px 12px
+            );
+        mix-blend-mode: screen;
+    }
+    .chapter-panel > * {
+        position: relative;
+        z-index: 1;
+    }
+    .chapter-kale {
+        background:
+            radial-gradient(
+                130% 76% at 18% 0%,
+                rgba(121, 255, 85, 0.17),
+                rgba(121, 255, 85, 0)
+            ),
+            rgba(9, 21, 13, 0.9);
+        border-color: rgba(155, 255, 121, 0.34);
+    }
+    .chapter-games {
+        background:
+            radial-gradient(
+                116% 72% at 50% 0%,
+                rgba(92, 201, 255, 0.2),
+                rgba(92, 201, 255, 0)
+            ),
+            rgba(10, 16, 32, 0.92);
+        border-color: rgba(117, 217, 255, 0.34);
+    }
+    .chapter-dungeon {
+        background:
+            radial-gradient(
+                140% 84% at 82% 0%,
+                rgba(255, 120, 84, 0.2),
+                rgba(255, 120, 84, 0)
+            ),
+            rgba(21, 12, 19, 0.92);
+        border-color: rgba(255, 146, 118, 0.36);
+    }
+    .chapter-head {
+        display: grid;
+        gap: 6px;
+    }
+    .chapter-tag {
+        margin: 0;
+        font-family: "Press Start 2P", monospace;
+        font-size: 8px;
+        letter-spacing: 2px;
+        text-transform: uppercase;
+        color: #9ec2ff;
+    }
+    .chapter-title {
+        margin: 0;
+        font-family: "Press Start 2P", monospace;
+        font-size: clamp(16px, 1.8vw, 22px);
+        letter-spacing: 1px;
+        color: #f4f8ff;
+        text-shadow: 0 8px 20px rgba(0, 0, 0, 0.42);
+    }
+    .chapter-copy {
+        margin: 0;
+        font-size: 12px;
+        line-height: 1.6;
+        color: #b7c7e4;
+        max-width: 52ch;
+    }
+    .kale-cover {
+        position: relative;
+        border-radius: 14px;
+        border: 1px solid rgba(158, 255, 129, 0.38);
+        background:
+            linear-gradient(130deg, rgba(14, 38, 17, 0.95), rgba(18, 40, 31, 0.84)),
+            radial-gradient(
+                96% 120% at 4% 0%,
+                rgba(180, 255, 112, 0.42),
+                rgba(180, 255, 112, 0)
+            );
+        min-height: 230px;
+        padding: 18px;
+        box-shadow: inset 0 0 0 1px rgba(226, 255, 203, 0.08);
+        overflow: hidden;
+        display: flex;
+        flex-direction: column;
+        justify-content: space-between;
+    }
+    .kale-cover::before {
+        content: "";
+        position: absolute;
+        inset: 0;
+        opacity: 0.62;
+        background:
+            linear-gradient(
+                140deg,
+                rgba(222, 255, 169, 0.2) 0%,
+                rgba(222, 255, 169, 0) 52%
+            ),
+            url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='180' height='180' viewBox='0 0 180 180'%3E%3Cg fill='none' stroke='%23ddffb2' stroke-opacity='0.25' stroke-width='1'%3E%3Cpath d='M0 24h180M0 60h180M0 96h180M0 132h180M0 168h180'/%3E%3Cpath d='M20 0v180M56 0v180M92 0v180M128 0v180M164 0v180'/%3E%3C/g%3E%3C/svg%3E");
+        background-size: cover;
+        mix-blend-mode: screen;
+    }
+    .kale-cover::after {
+        content: "";
+        position: absolute;
+        inset: 10px;
+        border-radius: 10px;
+        border: 1px dashed rgba(203, 255, 157, 0.28);
+        pointer-events: none;
+    }
+    .kale-cover-copy {
+        position: relative;
+        z-index: 1;
+        max-width: 32ch;
+    }
+    .kale-cover-kicker {
+        margin: 0 0 12px;
+        font-family: "Press Start 2P", monospace;
+        font-size: 8px;
+        letter-spacing: 1px;
+        color: #d7ff9f;
+    }
+    .kale-cover-title {
+        margin: 0;
+        font-family: "Press Start 2P", monospace;
+        font-size: clamp(15px, 1.8vw, 20px);
+        line-height: 1.4;
+        color: #f2ffe8;
+        text-shadow: 0 5px 16px rgba(7, 26, 8, 0.62);
+    }
+    .kale-cover-body {
+        margin: 10px 0 0;
+        font-size: 11px;
+        line-height: 1.6;
+        color: #d8f4be;
+        max-width: 30ch;
+    }
+    .kale-cover-stamp {
+        align-self: flex-start;
+        position: relative;
+        z-index: 1;
+        font-family: "Press Start 2P", monospace;
+        font-size: 8px;
+        color: #0f3008;
+        background: linear-gradient(180deg, #dfff99, #9fdb54);
+        border: 1px solid rgba(11, 34, 8, 0.42);
+        border-radius: 999px;
+        padding: 6px 10px;
+        letter-spacing: 1px;
+    }
+    .chapter-games .game-section,
+    .chapter-dungeon .verifier-section {
+        margin-top: 0;
+    }
+    .chapter-games .game-grid {
+        grid-template-columns: 1fr;
+    }
+    .dungeon-teaser {
+        border-radius: 14px;
+        border: 1px solid rgba(255, 148, 117, 0.42);
+        background:
+            radial-gradient(
+                120% 120% at 100% 0%,
+                rgba(255, 138, 110, 0.18),
+                rgba(255, 138, 110, 0)
+            ),
+            linear-gradient(150deg, rgba(35, 17, 22, 0.95), rgba(22, 15, 30, 0.92));
+        padding: 16px;
+        display: grid;
+        gap: 10px;
+        box-shadow: inset 0 0 0 1px rgba(255, 174, 151, 0.08);
+    }
+    .dungeon-overline {
+        margin: 0;
+        font-family: "Press Start 2P", monospace;
+        font-size: 8px;
+        color: #ffaf92;
+        text-transform: uppercase;
+        letter-spacing: 1px;
+    }
+    .dungeon-title {
+        margin: 0;
+        font-family: "Press Start 2P", monospace;
+        font-size: 13px;
+        color: #ffe2d7;
+        letter-spacing: 1px;
+    }
+    .dungeon-copy {
+        margin: 0;
+        font-size: 12px;
+        line-height: 1.7;
+        color: #f5cfc3;
+    }
+    .dungeon-tags {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 6px;
+    }
+    .dungeon-tags span {
+        font-size: 9px;
+        font-family: "Press Start 2P", monospace;
+        color: #ffe9de;
+        padding: 5px 8px;
+        border-radius: 999px;
+        border: 1px solid rgba(255, 177, 154, 0.42);
+        background: rgba(71, 23, 27, 0.52);
+    }
+    .dungeon-stats {
+        display: grid;
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+        gap: 8px;
+    }
+    .dungeon-stat-label {
+        margin: 0 0 5px;
+        font-size: 9px;
+        color: #e3a493;
+        text-transform: uppercase;
+        letter-spacing: 0.4px;
+    }
+    .dungeon-stat-value {
+        margin: 0;
+        font-family: "Press Start 2P", monospace;
+        font-size: 11px;
+        color: #ffe4d9;
+    }
+    .farm-footer {
+        margin-top: 18px;
+    }
+    @media (max-width: 1280px) {
+        .chapter-strip {
+            grid-auto-columns: minmax(340px, 82vw);
+        }
+    }
+    @media (max-width: 1080px) {
+        .chapter-strip {
+            grid-auto-flow: row;
+            grid-template-columns: 1fr;
+            overflow: visible;
+            padding-bottom: 0;
+        }
+        .chapter-panel {
+            min-width: 0;
+            min-height: auto;
+        }
+        .dungeon-stats {
             grid-template-columns: 1fr;
         }
     }
