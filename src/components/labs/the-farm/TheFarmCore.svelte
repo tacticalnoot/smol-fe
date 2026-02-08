@@ -34,17 +34,24 @@
     let mounted = $state(false);
     let activeProof = $state<GalleryProof | null>(null);
     let showCelebration = $state(false);
+    let celebrationTitle = $state("Protocol spell complete");
+    let celebrationBody = $state(
+        "Proof flow executed. Super Verifier payload is ready.",
+    );
     let gameProofs = $state<Record<string, ZkGameProof>>({});
     let gameError = $state<string | null>(null);
     let gameCopied = $state<string | null>(null);
     let gameForging = $state<string | null>(null);
     let gameAttesting = $state<string | null>(null);
+    let gameMagicCasting = $state<string | null>(null);
+    let showArcadeGuide = $state(true);
     let gamePayloadCopied = $state<string | null>(null);
     let gameAttestNotes = $state<Record<string, string>>({});
     let gameVerifierPayloads = $state<Record<string, string>>({});
     let gameIntegrity = $state<Record<string, GameIntegrityState>>({});
     let gameWallet = $state<string | null>(null);
     let verifying = $state(false);
+    let magicVerifying = $state(false);
     let verifyResult = $state<boolean | null>(null);
     let proofData = $state<ProofResult | null>(null);
     let txHash = $state<string | null>(null);
@@ -540,11 +547,10 @@
 
             saveEarnedBadge(userState.contractId, badge);
             earned = loadAllBadges(userState.contractId);
-            showCelebration = true;
-            playChime();
-            setTimeout(() => {
-                showCelebration = false;
-            }, 2600);
+            launchCelebration(
+                "Proof forged",
+                "Tier commitment is generated and ready for on-chain verification.",
+            );
         } catch (e: any) {
             console.error("[ZK] Proof generation failed:", e);
             error = e.message || "Proof generation failed";
@@ -684,7 +690,10 @@
                 txHash = result.txHash;
                 onChainVerified = true;
                 console.log("[ZK] On-chain verification successful!", txHash);
-                playChime();
+                launchCelebration(
+                    "Super Verifier accepted",
+                    "Your KALE tier proof is now attested on Stellar mainnet.",
+                );
             } else {
                 throw new Error(result.error || "Transaction failed");
             }
@@ -709,6 +718,38 @@
             verifyResult = false;
         } finally {
             verifying = false;
+        }
+    }
+
+    async function runMagicProofFlow() {
+        if (!isAuth || !userState.contractId) {
+            error = "Connect wallet first to run the magic verifier flow.";
+            return;
+        }
+        if (magicVerifying || proving || verifying) return;
+
+        magicVerifying = true;
+        try {
+            if (!earned["proof-of-farm"]?.data?.proof) {
+                await generateProof();
+            }
+
+            if (!earned["proof-of-farm"]?.data?.proof) {
+                throw new Error("Proof could not be generated. Please retry.");
+            }
+
+            if (!onChainVerified) {
+                await verifyProof();
+            } else {
+                launchCelebration(
+                    "Already verified",
+                    "Your wallet already has a live Super Verifier attestation.",
+                );
+            }
+        } catch (e: any) {
+            error = e?.message || "Magic verification flow failed";
+        } finally {
+            magicVerifying = false;
         }
     }
 
@@ -788,6 +829,16 @@
             o.start(ctx.currentTime + i * 0.18);
             o.stop(ctx.currentTime + i * 0.18 + 0.7);
         });
+    }
+
+    function launchCelebration(title: string, body: string) {
+        celebrationTitle = title;
+        celebrationBody = body;
+        showCelebration = true;
+        playChime();
+        setTimeout(() => {
+            showCelebration = false;
+        }, 2400);
     }
 
     function openProof(proof: GalleryProof) {
@@ -1045,6 +1096,58 @@
             score: game.score + scoreDelta,
             status: "complete",
         });
+    }
+
+    function completeRunWithMagic(game: ZkGameSession) {
+        const requirement = getRequirement(game);
+        if (game.kind === "tic") {
+            const moveLog = ["X-0", "O-3", "X-1", "O-4", "X-2"];
+            ticState = {
+                board: ["X", "X", "X", "O", "O", null, null, null, null],
+                turn: "player",
+                finished: true,
+                winner: "player",
+                message: "Magic line executed. Commitment ready.",
+                moveLog,
+            };
+            completeRun(game, moveLog, 24);
+            return;
+        }
+
+        if (game.kind === "dodge") {
+            const hazards = Array.from({ length: requirement }, (_, idx) =>
+                (idx + 1) % 3,
+            );
+            const moveLog = Array.from(
+                { length: requirement },
+                (_, idx) => `step-${idx + 1}:lane-${idx % 3}:hazard-${hazards[idx]}`,
+            );
+            dodgeState = {
+                lane: 1,
+                hazards,
+                step: requirement,
+                status: "cleared",
+                lastHazard: hazards[hazards.length - 1] ?? 0,
+                moveLog,
+            };
+            completeRun(game, moveLog, 18);
+            return;
+        }
+
+        const tones = ["gold", "jade", "violet", "cobalt"];
+        const pattern = Array.from(
+            { length: requirement },
+            (_, idx) => tones[idx % tones.length],
+        );
+        const moveLog = pattern.map((tone, idx) => `beat-${idx + 1}-${tone}`);
+        patternState = {
+            pattern,
+            input: [...pattern],
+            stage: "success",
+            showPreview: false,
+            moveLog,
+        };
+        completeRun(game, moveLog, 22);
     }
 
     function resetGame(game: ZkGameSession) {
@@ -1315,6 +1418,48 @@
         }
     }
 
+    async function runGameMagicFlow(game: ZkGameSession) {
+        if (gameMagicCasting) return;
+        gameError = null;
+        gameMagicCasting = game.id;
+
+        try {
+            let current = getGameSession(game.id) ?? game;
+            if (!current.proof && current.status !== "complete") {
+                startGameRun(current);
+                current = getGameSession(game.id) ?? current;
+                completeRunWithMagic(current);
+                current = getGameSession(game.id) ?? current;
+            }
+
+            if (!current.proof && current.status === "complete") {
+                await forgeGameProof(current);
+                current = getGameSession(game.id) ?? current;
+            }
+
+            if (!current.proof) {
+                throw new Error("Magic flow could not seal this run. Try once more.");
+            }
+
+            await prepareGameAttestation(current);
+            await copyVerifierPayload(current);
+
+            gameAttestNotes = {
+                ...gameAttestNotes,
+                [current.id]:
+                    "Magic flow complete: run sealed, verifier payload prepared, and payload copied.",
+            };
+            launchCelebration(
+                `${current.title} complete`,
+                "Arcade proof pipeline ran end-to-end and prepared your verifier payload.",
+            );
+        } catch (e: any) {
+            gameError = e?.message || "Magic flow failed";
+        } finally {
+            gameMagicCasting = null;
+        }
+    }
+
     async function copyGameProof(game: ZkGameSession) {
         if (!game.proof) return;
         gameCopied = null;
@@ -1403,6 +1548,21 @@
             {/if}
         </header>
 
+        {#if showCelebration}
+            <section class="proof-celebration" aria-live="polite">
+                <div class="proof-celebration-card">
+                    <p class="proof-celebration-eyebrow">Magic button</p>
+                    <h3 class="proof-celebration-title">{celebrationTitle}</h3>
+                    <p class="proof-celebration-body">{celebrationBody}</p>
+                </div>
+                <div class="proof-confetti" aria-hidden="true">
+                    {#each confettiPieces as piece}
+                        <span class="confetti" style={`--i:${piece}`}></span>
+                    {/each}
+                </div>
+            </section>
+        {/if}
+
         <div class="chapter-strip">
             <section class="chapter-panel chapter-kale">
                 <div class="chapter-head">
@@ -1422,6 +1582,26 @@
                         </p>
                     </div>
                     <div class="kale-cover-stamp">MAINNET</div>
+                </div>
+                <div class="kale-magic">
+                    <button
+                        class="kale-magic-btn"
+                        type="button"
+                        onclick={runMagicProofFlow}
+                        disabled={magicVerifying || proving || verifying || !isAuth}
+                    >
+                        {#if magicVerifying}
+                            Casting...
+                        {:else if onChainVerified}
+                            Magic Verify ✓
+                        {:else}
+                            Magic Button: Verify For Me
+                        {/if}
+                    </button>
+                    <p class="kale-magic-copy">
+                        One tap generates your proof (if needed), runs local checks, and
+                        submits to the Super Verifier contract.
+                    </p>
                 </div>
 
                 {#if !isAuth}
@@ -1542,10 +1722,42 @@
                     <p class="chapter-tag">Chapter II</p>
                     <h2 class="chapter-title">Game Proofs Arcade</h2>
                     <p class="chapter-copy">
-                        Seal gameplay transcripts into proof-ready commitments and stage
-                        verifier payloads for on-chain routing.
+                        One-click magic flow seals gameplay transcripts into
+                        proof-ready commitments and stages verifier payloads for
+                        on-chain routing.
                     </p>
+                    <div class="arcade-guide-row">
+                        <button
+                            class="arcade-guide-btn"
+                            type="button"
+                            onclick={() => (showArcadeGuide = !showArcadeGuide)}
+                        >
+                            {showArcadeGuide
+                                ? "Hide quick guide"
+                                : "What did we build?"}
+                        </button>
+                        <p class="arcade-guide-mini">
+                            Start with each card's Magic button. Manual controls
+                            stay available for expert tuning.
+                        </p>
+                    </div>
                 </div>
+                {#if showArcadeGuide}
+                    <div class="arcade-guide-card">
+                        <p>
+                            1. Every game run generates a deterministic transcript and
+                            action hash.
+                        </p>
+                        <p>
+                            2. We seal those values into a Poseidon commitment for proof
+                            packets.
+                        </p>
+                        <p>
+                            3. The payload is formatted for the live Super Verifier
+                            contract methods on Stellar mainnet.
+                        </p>
+                    </div>
+                {/if}
                 <section class="game-section">
         <div class="game-header">
             <h2 class="section-label">ZK Arcade</h2>
@@ -1608,6 +1820,31 @@
                         </p>
                         <p class="game-zk-meta">
                             Verifier entrypoint: {game.zkSpec.verifierEntrypoint}
+                        </p>
+                    </div>
+                    <div class="game-magic">
+                        <button
+                            class="game-magic-btn"
+                            type="button"
+                            onclick={() => runGameMagicFlow(game)}
+                            disabled={!!gameMagicCasting && gameMagicCasting !== game.id}
+                        >
+                            {#if gameMagicCasting === game.id}
+                                Casting...
+                            {:else if game.proof}
+                                Magic: Prep Verifier Payload
+                            {:else}
+                                Magic: Auto Seal This Game
+                            {/if}
+                        </button>
+                        <p class="game-magic-copy">
+                            {#if game.proof}
+                                Payload-ready mode: prepares and copies invoke data for
+                                verifier submission.
+                            {:else}
+                                Auto mode runs a clean demo path, seals commitment, and
+                                stages contract payloads.
+                            {/if}
                         </p>
                     </div>
                     {#if game.kind === "tic"}
@@ -1776,7 +2013,8 @@
                             </span>
                         </div>
                     </div>
-                    <div class="game-actions">
+                    <p class="game-manual-label">Advanced manual controls</p>
+                    <div class="game-actions game-actions--manual">
                         <button
                             class="game-action-btn"
                             type="button"
@@ -4560,12 +4798,319 @@
     .farm-footer {
         margin-top: 18px;
     }
+
+    /* ── 2026 Retro Upgrade ── */
+    .farm-root {
+        --neo-kale: #b8ff7c;
+        --neo-cyan: #78deff;
+        --neo-coral: #ff9b7a;
+        --neo-ink: #ecf2ff;
+        --neo-ink-soft: #b4c4e5;
+        --neo-surface: rgba(7, 14, 28, 0.8);
+        --neo-stroke: rgba(160, 183, 229, 0.28);
+        --neo-shadow: 0 26px 60px rgba(0, 0, 0, 0.52);
+        background:
+            radial-gradient(
+                120% 64% at 8% 0%,
+                rgba(118, 255, 138, 0.16),
+                rgba(118, 255, 138, 0)
+            ),
+            radial-gradient(
+                110% 58% at 88% 10%,
+                rgba(120, 222, 255, 0.18),
+                rgba(120, 222, 255, 0)
+            ),
+            radial-gradient(
+                90% 78% at 58% 100%,
+                rgba(255, 145, 112, 0.12),
+                rgba(255, 145, 112, 0)
+            ),
+            linear-gradient(180deg, #040816 0%, #081428 46%, #071220 100%);
+    }
+    .farm-root::before {
+        opacity: 0.54;
+    }
+    .farm-content {
+        max-width: min(1760px, 97vw);
+        padding: 78px 24px 104px;
+        gap: 28px;
+    }
+    .farm-header {
+        border-radius: 16px;
+        border-color: rgba(173, 255, 135, 0.42);
+        box-shadow:
+            0 18px 44px rgba(0, 0, 0, 0.44),
+            inset 0 0 0 1px rgba(201, 255, 173, 0.12);
+    }
+    .chapter-strip {
+        gap: 22px;
+        grid-auto-columns: minmax(430px, 1fr);
+        padding: 12px 4px 24px;
+    }
+    .chapter-panel {
+        min-height: clamp(780px, 89vh, 1160px);
+        padding: 22px;
+        border-radius: 24px;
+        border: 1px solid var(--neo-stroke);
+        background: var(--neo-surface);
+        box-shadow: var(--neo-shadow);
+    }
+    .chapter-panel::before {
+        opacity: 0.42;
+    }
+    .chapter-panel::after {
+        content: "";
+        position: absolute;
+        inset: 0;
+        pointer-events: none;
+        opacity: 0.16;
+        border-radius: 24px;
+        background:
+            repeating-linear-gradient(
+                0deg,
+                rgba(255, 255, 255, 0.08) 0 1px,
+                rgba(255, 255, 255, 0) 1px 3px
+            ),
+            repeating-linear-gradient(
+                90deg,
+                rgba(255, 255, 255, 0.06) 0 1px,
+                rgba(255, 255, 255, 0) 1px 4px
+            );
+        mix-blend-mode: soft-light;
+    }
+    .chapter-head {
+        gap: 8px;
+    }
+    .chapter-tag {
+        color: #9fc9ff;
+    }
+    .chapter-title {
+        font-size: clamp(18px, 1.95vw, 24px);
+        line-height: 1.3;
+        color: var(--neo-ink);
+    }
+    .chapter-copy {
+        max-width: 58ch;
+        font-size: 12px;
+        line-height: 1.75;
+        color: var(--neo-ink-soft);
+    }
+    .kale-cover {
+        min-height: 264px;
+        border-radius: 18px;
+        border-color: rgba(183, 255, 138, 0.48);
+        background:
+            linear-gradient(130deg, rgba(14, 40, 18, 0.96), rgba(16, 46, 38, 0.84)),
+            radial-gradient(
+                100% 120% at 0% 0%,
+                rgba(198, 255, 131, 0.44),
+                rgba(198, 255, 131, 0)
+            ),
+            radial-gradient(
+                120% 160% at 100% 100%,
+                rgba(110, 245, 255, 0.24),
+                rgba(110, 245, 255, 0)
+            );
+        box-shadow:
+            inset 0 0 0 1px rgba(231, 255, 199, 0.12),
+            0 20px 40px rgba(3, 16, 9, 0.52);
+    }
+    .kale-cover::before {
+        opacity: 0.48;
+    }
+    .kale-cover::after {
+        border-color: rgba(210, 255, 167, 0.32);
+    }
+    .kale-cover-kicker {
+        color: #ddffaf;
+    }
+    .kale-cover-title {
+        font-size: clamp(16px, 2vw, 24px);
+        letter-spacing: 1.2px;
+    }
+    .kale-cover-stamp {
+        box-shadow:
+            0 10px 20px rgba(8, 30, 5, 0.38),
+            inset 0 0 0 1px rgba(255, 255, 255, 0.2);
+    }
+    .kale-magic,
+    .game-magic {
+        display: grid;
+        gap: 8px;
+        margin-top: 2px;
+        padding: 12px;
+        border-radius: 14px;
+        border: 1px solid rgba(168, 190, 239, 0.32);
+        background:
+            linear-gradient(135deg, rgba(8, 17, 34, 0.92), rgba(9, 21, 40, 0.75)),
+            radial-gradient(
+                90% 120% at 100% 0%,
+                rgba(137, 255, 170, 0.14),
+                rgba(137, 255, 170, 0)
+            );
+    }
+    .kale-magic-btn,
+    .game-magic-btn,
+    .arcade-guide-btn {
+        font-family: "Press Start 2P", monospace;
+        font-size: 9px;
+        letter-spacing: 0.6px;
+        text-transform: uppercase;
+        padding: 12px 14px;
+        border-radius: 10px;
+        border: 1px solid rgba(185, 212, 255, 0.44);
+        background:
+            linear-gradient(180deg, rgba(39, 72, 125, 0.92), rgba(24, 46, 87, 0.92)),
+            repeating-linear-gradient(
+                0deg,
+                rgba(255, 255, 255, 0.06) 0 1px,
+                rgba(255, 255, 255, 0) 1px 3px
+            );
+        color: #eff5ff;
+        box-shadow:
+            inset 0 -2px 0 rgba(6, 12, 22, 0.8),
+            0 8px 20px rgba(0, 0, 0, 0.38);
+        transition: transform 0.2s ease, border-color 0.2s ease, box-shadow 0.2s ease;
+    }
+    .kale-magic-btn,
+    .game-magic-btn {
+        background:
+            linear-gradient(180deg, rgba(52, 132, 92, 0.94), rgba(24, 92, 62, 0.94)),
+            repeating-linear-gradient(
+                0deg,
+                rgba(255, 255, 255, 0.06) 0 1px,
+                rgba(255, 255, 255, 0) 1px 3px
+            );
+        border-color: rgba(194, 255, 171, 0.5);
+        box-shadow:
+            inset 0 -2px 0 rgba(6, 22, 9, 0.85),
+            0 10px 24px rgba(5, 28, 9, 0.4),
+            0 0 24px rgba(141, 255, 137, 0.22);
+    }
+    .kale-magic-btn:hover:not(:disabled),
+    .game-magic-btn:hover:not(:disabled),
+    .arcade-guide-btn:hover:not(:disabled) {
+        transform: translateY(-2px);
+        border-color: rgba(218, 241, 255, 0.72);
+        box-shadow:
+            inset 0 -2px 0 rgba(6, 13, 24, 0.86),
+            0 14px 24px rgba(0, 0, 0, 0.46);
+    }
+    .kale-magic-btn:focus-visible,
+    .game-magic-btn:focus-visible,
+    .arcade-guide-btn:focus-visible {
+        outline: 2px solid rgba(203, 245, 255, 0.88);
+        outline-offset: 2px;
+    }
+    .kale-magic-btn:disabled,
+    .game-magic-btn:disabled,
+    .arcade-guide-btn:disabled {
+        opacity: 0.56;
+        cursor: not-allowed;
+        transform: none;
+    }
+    .kale-magic-copy,
+    .game-magic-copy,
+    .arcade-guide-mini {
+        margin: 0;
+        font-size: 11px;
+        line-height: 1.6;
+        color: #c5d5f0;
+    }
+    .arcade-guide-row {
+        margin-top: 6px;
+        display: flex;
+        flex-wrap: wrap;
+        align-items: center;
+        gap: 10px;
+    }
+    .arcade-guide-btn {
+        padding: 10px 12px;
+        background:
+            linear-gradient(180deg, rgba(48, 82, 139, 0.92), rgba(23, 52, 100, 0.92)),
+            repeating-linear-gradient(
+                0deg,
+                rgba(255, 255, 255, 0.06) 0 1px,
+                rgba(255, 255, 255, 0) 1px 3px
+            );
+    }
+    .arcade-guide-card {
+        margin-top: 4px;
+        border-radius: 12px;
+        border: 1px solid rgba(134, 201, 255, 0.36);
+        background:
+            linear-gradient(155deg, rgba(10, 24, 45, 0.88), rgba(9, 14, 34, 0.84)),
+            radial-gradient(
+                140% 200% at 100% 0%,
+                rgba(111, 208, 255, 0.16),
+                rgba(111, 208, 255, 0)
+            );
+        padding: 12px;
+        display: grid;
+        gap: 8px;
+    }
+    .arcade-guide-card p {
+        margin: 0;
+        font-size: 11px;
+        line-height: 1.7;
+        color: #d2e5ff;
+    }
+    .chapter-games .game-card {
+        border-radius: 14px;
+        border-color: rgba(150, 191, 248, 0.42);
+        box-shadow:
+            inset 0 0 0 1px rgba(206, 228, 255, 0.08),
+            0 18px 30px rgba(0, 0, 0, 0.46);
+    }
+    .game-manual-label {
+        margin: 12px 0 8px;
+        font-family: "Press Start 2P", monospace;
+        font-size: 8px;
+        letter-spacing: 1.1px;
+        text-transform: uppercase;
+        color: rgba(171, 188, 221, 0.88);
+    }
+    .game-actions--manual {
+        border-radius: 12px;
+        border: 1px dashed rgba(155, 177, 218, 0.36);
+        background: rgba(10, 19, 37, 0.7);
+        padding: 10px;
+        opacity: 0.78;
+        transition: opacity 0.2s ease, border-color 0.2s ease;
+    }
+    .game-card:hover .game-actions--manual {
+        opacity: 1;
+        border-color: rgba(187, 213, 255, 0.54);
+    }
+    .proof-celebration {
+        border-radius: 20px;
+        border-color: rgba(99, 233, 200, 0.46);
+        box-shadow:
+            inset 0 0 0 1px rgba(179, 255, 236, 0.12),
+            0 24px 48px rgba(5, 22, 28, 0.44);
+    }
+    .proof-celebration-card {
+        max-width: 64ch;
+    }
+    .dungeon-teaser {
+        border-radius: 18px;
+        border-color: rgba(255, 171, 146, 0.5);
+        box-shadow:
+            inset 0 0 0 1px rgba(255, 208, 189, 0.1),
+            0 18px 34px rgba(0, 0, 0, 0.4);
+    }
+    .dungeon-title {
+        font-size: 14px;
+    }
     @media (max-width: 1280px) {
         .chapter-strip {
-            grid-auto-columns: minmax(340px, 82vw);
+            grid-auto-columns: minmax(360px, 84vw);
         }
     }
     @media (max-width: 1080px) {
+        .farm-content {
+            padding: 72px 16px 94px;
+        }
         .chapter-strip {
             grid-auto-flow: row;
             grid-template-columns: 1fr;
@@ -4575,9 +5120,36 @@
         .chapter-panel {
             min-width: 0;
             min-height: auto;
+            padding: 18px;
         }
         .dungeon-stats {
             grid-template-columns: 1fr;
+        }
+    }
+    @media (max-width: 760px) {
+        .chapter-strip {
+            gap: 14px;
+        }
+        .chapter-panel {
+            border-radius: 18px;
+            padding: 14px;
+        }
+        .kale-cover {
+            min-height: 220px;
+            padding: 14px;
+        }
+        .kale-magic-btn,
+        .game-magic-btn,
+        .arcade-guide-btn {
+            width: 100%;
+            font-size: 8px;
+            padding: 11px 10px;
+        }
+        .arcade-guide-row {
+            align-items: stretch;
+        }
+        .game-actions--manual {
+            opacity: 1;
         }
     }
 </style>
