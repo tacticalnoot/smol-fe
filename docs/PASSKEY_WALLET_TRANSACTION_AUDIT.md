@@ -774,7 +774,7 @@ This is a comprehensive utility module that consolidates all Horizon API operati
 - [ ] Distinguish user cancellation from real errors
 - [ ] Always release resources in finally blocks
 - [ ] Don't swallow errors silently
-- [ ] Report critical errors to monitoring system (TODO)
+- [x] Report critical errors to monitoring system (`src/utils/monitoring.ts`, wired via `src/utils/errors.ts` and `src/components/AppInitializer.svelte`)
 
 ### 9.8 MULTI-BATCH OPERATION CHECKLIST
 - [ ] Chunk operations (max 3 per batch)

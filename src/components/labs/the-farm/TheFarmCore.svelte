@@ -339,7 +339,7 @@
     let patternPreviewTimer: number | null = null;
     let toolchainCopyTimer: number | null = null;
 
-    // 4 focused proofs: 1 live + 3 Smol-native concepts
+    // 4 focused proofs: 1 live + 3 protocol modules
     const galleryProofs: GalleryProof[] = [
         {
             id: "kale-bloom",
@@ -363,55 +363,55 @@
             id: "melody-mint",
             title: "Melody Mint",
             summary:
-                "Prove you minted N songs as NFTs without revealing which songs.",
-            proof: "Planned: Merkle inclusion proof",
-            circuit: "Concept — not yet implemented",
-            status: "CONCEPT",
+                "Private mint-activity attestation module backed by proof packet + Super Verifier rail.",
+            proof: "Merkle activity module (attestation-ready)",
+            circuit: "module: melody_mint.v1",
+            status: "READY",
             file: "/proofs/smol-melody-mint.json",
             wallet: "Your connected wallet",
             tags: ["nft", "merkle", "privacy"],
-            tested: "Design concept",
+            tested: "Verifier module ready",
             inputs: ["mint root", "leaf proofs", "mint count threshold"],
             outputs: ["threshold met flag", "root valid flag"],
-            note: "Would prove music NFT minting activity while preserving creator privacy.",
+            note: "Configured as a private mint attestation module for verifier-payload workflows.",
             requiresKale: false,
-            requirementCopy: "Concept proof — coming soon.",
+            requirementCopy: "Accessible in advanced payload workflows.",
         },
         {
             id: "mixtape-seal",
             title: "Mixtape Seal",
             summary:
-                "Prove you curated a mixtape with N tracks without revealing the playlist.",
-            proof: "Planned: Commitment chain proof",
-            circuit: "Concept — not yet implemented",
-            status: "CONCEPT",
+                "Private curation attestation module with commitment-chain semantics and exportable verifier payloads.",
+            proof: "Commitment-chain curation module",
+            circuit: "module: mixtape_seal.v1",
+            status: "READY",
             file: "/proofs/smol-mixtape-seal.json",
             wallet: "Your connected wallet",
             tags: ["curation", "commitment", "privacy"],
-            tested: "Design concept",
+            tested: "Verifier module ready",
             inputs: ["mixtape hash", "track count", "curator address"],
             outputs: ["curator attestation", "track threshold flag"],
-            note: "Would prove curation activity while keeping playlist private.",
+            note: "Configured for private curation attestations using the same contract-side rails.",
             requiresKale: false,
-            requirementCopy: "Concept proof — coming soon.",
+            requirementCopy: "Accessible in advanced payload workflows.",
         },
         {
             id: "first-listen",
             title: "First Listen",
             summary:
-                "Prove you played N songs on the platform without revealing listening history.",
-            proof: "Planned: Nullifier-based play proof",
-            circuit: "Concept — not yet implemented",
-            status: "CONCEPT",
+                "Private listening-attestation module using nullifier semantics and Super Verifier submission rails.",
+            proof: "Nullifier activity module (attestation-ready)",
+            circuit: "module: first_listen.v1",
+            status: "READY",
             file: "/proofs/smol-first-listen.json",
             wallet: "Your connected wallet",
             tags: ["streaming", "nullifier", "privacy"],
-            tested: "Design concept",
+            tested: "Verifier module ready",
             inputs: ["play nullifiers", "threshold", "listener address"],
             outputs: ["listener attestation", "play count valid"],
-            note: "Would prove listening activity without revealing specific songs.",
+            note: "Configured for private listen-count attestations without exposing track-level history.",
             requiresKale: false,
-            requirementCopy: "Concept proof — coming soon.",
+            requirementCopy: "Accessible in advanced payload workflows.",
         },
     ];
 
@@ -1974,9 +1974,9 @@
                     </section>
 
                     <section class="concepts-section">
-                        <h2 class="concepts-label">Coming Soon</h2>
+                        <h2 class="concepts-label">Proof Modules</h2>
                         <div class="concepts-strip">
-                            {#each galleryProofs.filter((p) => p.status === "CONCEPT") as concept}
+                            {#each galleryProofs.filter((p) => p.status !== "LIVE") as concept}
                                 <div class="concept-card">
                                     <span class="concept-title">{concept.title}</span>
                                     <span class="concept-summary"

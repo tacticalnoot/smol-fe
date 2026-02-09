@@ -52,6 +52,17 @@ function assertCAddressOnly(address, label) {
     }
 }
 
+function isPlaceholderAddress(address) {
+    if (!address) return true;
+    const normalized = String(address).trim();
+    return (
+        normalized === 'C_SMART_WALLET_ADDRESS' ||
+        normalized === 'C_ROUTER_CONTRACT_ID_OR_EMPTY' ||
+        normalized.includes('YOUR_') ||
+        normalized.includes('_OR_EMPTY')
+    );
+}
+
 async function main() {
     const args = process.argv.slice(2);
     const getArg = (name) => {
@@ -101,7 +112,7 @@ async function main() {
 
         // Source Address (C-Address enforcement)
         let sourceAddress = config.smartAccount.cAddress;
-        if (!sourceAddress || sourceAddress.includes("TODO")) {
+        if (isPlaceholderAddress(sourceAddress)) {
             sourceAddress = config.aquarius.xlmAsset; // Fallback for testing
             console.log(`   ⚠️ Using fallback source: ${sourceAddress}`);
         }

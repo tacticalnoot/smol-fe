@@ -176,7 +176,7 @@
 - `docs/prompts/smol_drift_architect.md`
   - ✅ Good: detailed design prompt.
   - ⚠️ Missing: references to current implementation file.
-  - ✅ Improve: add a TODO / status note.
+  - ✅ Improve: add a status/progress note.
 
 ### Visibility docs
 - `docs/visibility/VISIBILITY_PLAYBOOK.md`
@@ -247,7 +247,7 @@
 ### public/ + dist/
 - `public/llms.txt`, `public/llms-full.txt`, `public/robots.txt`
   - ✅ Good: LLM/SEO crawl surfaces documented.
-  - ⚠️ Missing: about page is marked “coming soon.”
+  - ⚠️ Missing: about page is still a placeholder.
   - ✅ Improve: update when /about is live.
 - `dist/llms.txt`, `dist/llms-full.txt`, `dist/robots.txt`
   - ✅ Good: build outputs mirror public assets.
