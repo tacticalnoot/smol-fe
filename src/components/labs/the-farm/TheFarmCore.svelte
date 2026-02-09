@@ -73,6 +73,27 @@
         "risc0-zkvm": [],
     });
     let toolchainNotice = $state<string | null>(null);
+    let verificationRails = $state<Record<VerificationRailId, VerificationRailState>>({
+        kale: {
+            status: "idle",
+            message: "Run one-click Kale proof verification.",
+        },
+        arcade: {
+            status: "idle",
+            message: "Run one-click arcade proof verification.",
+        },
+        noir: {
+            status: "idle",
+            message: "Run one-click Noir rail settlement.",
+        },
+        risc0: {
+            status: "idle",
+            message: "Run one-click zkVM rail settlement.",
+        },
+    });
+    let verificationSuiteRunning = $state(false);
+    let coordinationDigest = $state<string | null>(null);
+    let copiedCoordinationSnapshot = $state(false);
     let gameWallet = $state<string | null>(null);
     let verifying = $state(false);
     let oneClickVerifying = $state(false);
@@ -208,6 +229,15 @@
         wallet: string;
         gameId?: string;
         artifactHash?: string;
+    };
+
+    type VerificationRailId = "kale" | "arcade" | "noir" | "risc0";
+
+    type VerificationRailState = {
+        status: "idle" | "running" | "pass" | "fail";
+        message: string;
+        txHash?: string;
+        updatedAt?: number;
     };
 
     type TicTacState = {
@@ -405,6 +435,7 @@
     let toolchainCopyTimer: number | null = null;
     let toolchainTemplateTimer: number | null = null;
     let toolchainJudgeTimer: number | null = null;
+    let coordinationSnapshotTimer: number | null = null;
 
     // 4 focused proofs: 1 live + 3 protocol modules
     const galleryProofs: GalleryProof[] = [
@@ -566,6 +597,10 @@
                 clearTimeout(toolchainJudgeTimer);
                 toolchainJudgeTimer = null;
             }
+            if (coordinationSnapshotTimer) {
+                clearTimeout(coordinationSnapshotTimer);
+                coordinationSnapshotTimer = null;
+            }
             resetPatternTimer();
             stopAmbient();
         };
@@ -627,6 +662,43 @@
             artifacts: toolchainArtifacts,
             submissions: toolchainSubmissions,
         });
+    });
+
+    $effect(() => {
+        if (typeof window === "undefined") return;
+        const digestPayload = {
+            contractId: SUPER_VERIFIER_CONTRACT_ID,
+            entrypoint: SUPER_VERIFIER_ENTRYPOINT,
+            rails: verificationRails,
+            onChainVerified,
+            kaleTxHash: txHash,
+            arcade: zkGames.map((game) => ({
+                id: game.id,
+                onchainTxHash: game.proof?.onchainTxHash ?? null,
+                commitment: game.proof?.onchainCommitment ?? null,
+            })),
+            toolchains: {
+                artifacts: {
+                    noir: (toolchainArtifacts["noir-ultrahonk"] ?? []).map(
+                        (item) => item.artifactHash,
+                    ),
+                    risc0: (toolchainArtifacts["risc0-zkvm"] ?? []).map(
+                        (item) => item.artifactHash,
+                    ),
+                },
+                submissions: {
+                    noir: (toolchainSubmissions["noir-ultrahonk"] ?? []).map(
+                        (item) => item.txHash,
+                    ),
+                    risc0: (toolchainSubmissions["risc0-zkvm"] ?? []).map(
+                        (item) => item.txHash,
+                    ),
+                },
+            },
+        };
+        void (async () => {
+            coordinationDigest = await sha256Hex(stableStringify(digestPayload));
+        })();
     });
 
     // ── REAL ZK Proof Generation ────────────────────────────────────────────
@@ -1632,6 +1704,245 @@
         }
     }
 
+    function setVerificationRailState(
+        rail: VerificationRailId,
+        next: Partial<VerificationRailState>,
+    ) {
+        const current = verificationRails[rail];
+        verificationRails = {
+            ...verificationRails,
+            [rail]: {
+                ...current,
+                ...next,
+                updatedAt: Date.now(),
+            },
+        };
+    }
+
+    function formatRailTime(value?: number): string {
+        if (!value) return "Not run yet";
+        return new Date(value).toLocaleString();
+    }
+
+    async function runKaleOneClickRail(): Promise<boolean> {
+        if (!isAuth || !userState.contractId) {
+            setVerificationRailState("kale", {
+                status: "fail",
+                message: "Connect wallet to verify Kale proof on-chain.",
+            });
+            return false;
+        }
+        const previousTx = txHash;
+        setVerificationRailState("kale", {
+            status: "running",
+            message: "Running Kale one-click verification...",
+        });
+        await runOneClickProofFlow();
+        if (!onChainVerified) {
+            setVerificationRailState("kale", {
+                status: "fail",
+                message:
+                    error ||
+                    "Kale one-click did not complete on-chain verification.",
+            });
+            return false;
+        }
+        if (txHash && txHash !== previousTx) {
+            setVerificationRailState("kale", {
+                status: "pass",
+                message: `Verified on-chain (${shortHash(txHash, 12, 10)}).`,
+                txHash,
+            });
+        } else {
+            setVerificationRailState("kale", {
+                status: "pass",
+                message: "Wallet already has a valid on-chain Kale attestation.",
+                txHash: txHash ?? verificationRails.kale.txHash,
+            });
+        }
+        return true;
+    }
+
+    async function runArcadeOneClickRail(): Promise<boolean> {
+        if (!isAuth || !userState.contractId) {
+            setVerificationRailState("arcade", {
+                status: "fail",
+                message: "Connect wallet to verify arcade proofs on-chain.",
+            });
+            return false;
+        }
+        const target = activeGamePortal ?? pickArcadeOnchainTarget();
+        if (!target) {
+            setVerificationRailState("arcade", {
+                status: "fail",
+                message: "No arcade game session is available.",
+            });
+            return false;
+        }
+        setVerificationRailState("arcade", {
+            status: "running",
+            message: `Running one-click for ${target.title}...`,
+        });
+        const previousTx = target.proof?.onchainTxHash;
+        await runGameOneClickFlow(target);
+        const refreshed = getGameSession(target.id);
+        const nextTx = refreshed?.proof?.onchainTxHash;
+        if (!nextTx) {
+            setVerificationRailState("arcade", {
+                status: "fail",
+                message:
+                    gameError ||
+                    "Arcade one-click did not produce an on-chain attestation.",
+            });
+            return false;
+        }
+        setVerificationRailState("arcade", {
+            status: "pass",
+            message:
+                nextTx !== previousTx
+                    ? `${target.title} verified on-chain (${shortHash(nextTx, 12, 10)}).`
+                    : `${target.title} already has a valid on-chain attestation.`,
+            txHash: nextTx,
+        });
+        return true;
+    }
+
+    async function runTrackOneClickRail(
+        trackId: ToolchainTrackId,
+        railId: VerificationRailId,
+    ): Promise<boolean> {
+        const track = HACKATHON_TOOLCHAIN_TRACKS.find((item) => item.id === trackId);
+        if (!track) {
+            setVerificationRailState(railId, {
+                status: "fail",
+                message: "Toolchain track is missing.",
+            });
+            return false;
+        }
+        if (!isAuth || !userState.contractId) {
+            setVerificationRailState(railId, {
+                status: "fail",
+                message: "Connect wallet to execute track verification on-chain.",
+            });
+            return false;
+        }
+        const beforeHead = toolchainSubmissions[track.id]?.[0]?.txHash;
+        setVerificationRailState(railId, {
+            status: "running",
+            message: `Running ${track.label} one-click settlement...`,
+        });
+        await runToolchainOnchainVerify(track);
+        const afterHead = toolchainSubmissions[track.id]?.[0]?.txHash;
+        const artifactCount = (toolchainArtifacts[track.id] ?? []).length;
+        if (afterHead && afterHead !== beforeHead) {
+            setVerificationRailState(railId, {
+                status: "pass",
+                message:
+                    artifactCount > 0
+                        ? `On-chain verified (${shortHash(afterHead, 12, 10)}) with imported artifact evidence.`
+                        : `On-chain verified (${shortHash(afterHead, 12, 10)}). Import artifact manifest to complete evidence.`,
+                txHash: afterHead,
+            });
+            return true;
+        }
+        if (afterHead) {
+            setVerificationRailState(railId, {
+                status: "pass",
+                message:
+                    artifactCount > 0
+                        ? "Track already has a linked on-chain settlement and artifact evidence."
+                        : "Track already settled on-chain. Import artifact manifest for judge evidence.",
+                txHash: afterHead,
+            });
+            return true;
+        }
+        setVerificationRailState(railId, {
+            status: "fail",
+            message:
+                gameError ||
+                "Track one-click flow did not produce a linked settlement record.",
+        });
+        return false;
+    }
+
+    async function runNoirOneClickRail(): Promise<boolean> {
+        return runTrackOneClickRail("noir-ultrahonk", "noir");
+    }
+
+    async function runRisc0OneClickRail(): Promise<boolean> {
+        return runTrackOneClickRail("risc0-zkvm", "risc0");
+    }
+
+    async function runFullVerificationSuite() {
+        if (verificationSuiteRunning) return;
+        verificationSuiteRunning = true;
+        gameError = null;
+        error = null;
+        const outcomes = [
+            await runKaleOneClickRail(),
+            await runArcadeOneClickRail(),
+            await runNoirOneClickRail(),
+            await runRisc0OneClickRail(),
+        ];
+        const allPassed = outcomes.every(Boolean);
+        if (allPassed) {
+            launchCelebration(
+                "Verification stack synced",
+                "Kale, arcade, Noir, and zkVM rails are all coordinated through live on-chain settlement.",
+            );
+        } else {
+            gameError =
+                gameError ||
+                "One or more rails failed. Open status cards below for details.";
+        }
+        verificationSuiteRunning = false;
+    }
+
+    function buildCoordinationSnapshot(): Record<string, unknown> {
+        return {
+            schema: "farm.verification.mesh.v1",
+            generatedAt: new Date().toISOString(),
+            contractId: SUPER_VERIFIER_CONTRACT_ID,
+            entrypoint: SUPER_VERIFIER_ENTRYPOINT,
+            rails: verificationRails,
+            coordinationDigest,
+            kale: {
+                onChainVerified,
+                txHash,
+            },
+            arcade: zkGames.map((game) => ({
+                id: game.id,
+                title: game.title,
+                txHash: game.proof?.onchainTxHash ?? null,
+                commitment: game.proof?.onchainCommitment ?? null,
+            })),
+            toolchains: {
+                artifacts: toolchainArtifacts,
+                submissions: toolchainSubmissions,
+            },
+        };
+    }
+
+    async function copyCoordinationSnapshot() {
+        try {
+            await navigator.clipboard.writeText(
+                JSON.stringify(buildCoordinationSnapshot(), null, 2),
+            );
+            copiedCoordinationSnapshot = true;
+            toolchainNotice =
+                "Coordination snapshot copied with all one-click rails and settlement links.";
+            if (coordinationSnapshotTimer) {
+                clearTimeout(coordinationSnapshotTimer);
+            }
+            coordinationSnapshotTimer = window.setTimeout(() => {
+                copiedCoordinationSnapshot = false;
+                coordinationSnapshotTimer = null;
+            }, 2000);
+        } catch (e: any) {
+            gameError = e?.message || "Unable to copy coordination snapshot";
+        }
+    }
+
     function selectToolchainTrack(trackId: ToolchainTrackId) {
         activeToolchainTrack = trackId;
     }
@@ -2572,11 +2883,160 @@
                                 : "What did we build?"}
                         </button>
                         <p class="arcade-guide-mini">
-                            Start with each card's One-Click Verify button. Manual controls
-                            stay available for expert tuning and payload inspection.
+                            Start in the One-Click Command Deck, then drill into
+                            per-game cards only when you need manual controls.
                         </p>
                     </div>
                 </div>
+                <section class="verification-deck">
+                    <div class="verification-deck-head">
+                        <p class="verification-deck-kicker">
+                            One-click command deck
+                        </p>
+                        <p class="verification-deck-copy">
+                            Four rails, one contract: run each feature
+                            independently or verify the full stack in sequence.
+                        </p>
+                    </div>
+                    <div class="verification-grid">
+                        <button
+                            class={`verification-rail verification-rail--${verificationRails.kale.status}`}
+                            type="button"
+                            onclick={runKaleOneClickRail}
+                            disabled={verificationSuiteRunning ||
+                                verificationRails.kale.status === "running" ||
+                                oneClickVerifying}
+                        >
+                            <span class="verification-rail-label"
+                                >One-Click Kale Proof</span
+                            >
+                            <span class="verification-rail-status">
+                                {verificationRails.kale.status.toUpperCase()}
+                            </span>
+                            <span class="verification-rail-copy">
+                                {verificationRails.kale.message}
+                            </span>
+                            {#if verificationRails.kale.txHash}
+                                <span class="verification-rail-tx">
+                                    {shortHash(verificationRails.kale.txHash, 14, 10)}
+                                </span>
+                            {/if}
+                        </button>
+                        <button
+                            class={`verification-rail verification-rail--${verificationRails.arcade.status}`}
+                            type="button"
+                            onclick={runArcadeOneClickRail}
+                            disabled={verificationSuiteRunning ||
+                                verificationRails.arcade.status === "running" ||
+                                !!gameOneClickCasting}
+                        >
+                            <span class="verification-rail-label"
+                                >One-Click Arcade Proof</span
+                            >
+                            <span class="verification-rail-status">
+                                {verificationRails.arcade.status.toUpperCase()}
+                            </span>
+                            <span class="verification-rail-copy">
+                                {verificationRails.arcade.message}
+                            </span>
+                            {#if verificationRails.arcade.txHash}
+                                <span class="verification-rail-tx">
+                                    {shortHash(verificationRails.arcade.txHash, 14, 10)}
+                                </span>
+                            {/if}
+                        </button>
+                        <button
+                            class={`verification-rail verification-rail--${verificationRails.noir.status}`}
+                            type="button"
+                            onclick={runNoirOneClickRail}
+                            disabled={verificationSuiteRunning ||
+                                verificationRails.noir.status === "running" ||
+                                toolchainVerifying === "noir-ultrahonk"}
+                        >
+                            <span class="verification-rail-label"
+                                >One-Click Noir Rail</span
+                            >
+                            <span class="verification-rail-status">
+                                {verificationRails.noir.status.toUpperCase()}
+                            </span>
+                            <span class="verification-rail-copy">
+                                {verificationRails.noir.message}
+                            </span>
+                            {#if verificationRails.noir.txHash}
+                                <span class="verification-rail-tx">
+                                    {shortHash(verificationRails.noir.txHash, 14, 10)}
+                                </span>
+                            {/if}
+                        </button>
+                        <button
+                            class={`verification-rail verification-rail--${verificationRails.risc0.status}`}
+                            type="button"
+                            onclick={runRisc0OneClickRail}
+                            disabled={verificationSuiteRunning ||
+                                verificationRails.risc0.status === "running" ||
+                                toolchainVerifying === "risc0-zkvm"}
+                        >
+                            <span class="verification-rail-label"
+                                >One-Click zkVM Rail</span
+                            >
+                            <span class="verification-rail-status">
+                                {verificationRails.risc0.status.toUpperCase()}
+                            </span>
+                            <span class="verification-rail-copy">
+                                {verificationRails.risc0.message}
+                            </span>
+                            {#if verificationRails.risc0.txHash}
+                                <span class="verification-rail-tx">
+                                    {shortHash(verificationRails.risc0.txHash, 14, 10)}
+                                </span>
+                            {/if}
+                        </button>
+                    </div>
+                    <div class="verification-actions">
+                        <button
+                            class="arcade-guide-btn verification-master-btn"
+                            type="button"
+                            onclick={runFullVerificationSuite}
+                            disabled={verificationSuiteRunning}
+                        >
+                            {verificationSuiteRunning
+                                ? "Verifying full stack..."
+                                : "Verify Full Stack"}
+                        </button>
+                        <button
+                            class="arcade-guide-btn toolchain-copy-btn"
+                            type="button"
+                            onclick={copyCoordinationSnapshot}
+                        >
+                            {copiedCoordinationSnapshot
+                                ? "Snapshot copied"
+                                : "Copy coordination snapshot"}
+                        </button>
+                    </div>
+                    <div class="verification-mesh">
+                        <p class="verification-mesh-title">
+                            Cross-coordination digest
+                        </p>
+                        <p class="verification-mesh-value">
+                            {coordinationDigest
+                                ? shortHash(coordinationDigest, 18, 14)
+                                : "computing..."}
+                        </p>
+                        <div class="verification-mesh-meta">
+                            <span>Kale: {formatRailTime(verificationRails.kale.updatedAt)}</span>
+                            <span>
+                                Arcade:
+                                {formatRailTime(verificationRails.arcade.updatedAt)}
+                            </span>
+                            <span>
+                                Noir: {formatRailTime(verificationRails.noir.updatedAt)}
+                            </span>
+                            <span>
+                                zkVM: {formatRailTime(verificationRails.risc0.updatedAt)}
+                            </span>
+                        </div>
+                    </div>
+                </section>
                 {#if showArcadeGuide}
                     <div class="arcade-guide-card">
                         <p>
@@ -6431,6 +6891,150 @@
         line-height: 1.7;
         color: #d2e5ff;
     }
+    .verification-deck {
+        margin-top: 4px;
+        border-radius: 14px;
+        border: 1px solid rgba(132, 218, 255, 0.38);
+        background:
+            linear-gradient(160deg, rgba(9, 20, 42, 0.9), rgba(8, 16, 34, 0.86)),
+            radial-gradient(
+                150% 240% at 100% 0%,
+                rgba(93, 216, 255, 0.2),
+                rgba(93, 216, 255, 0)
+            );
+        padding: 12px;
+        display: grid;
+        gap: 10px;
+        box-shadow: inset 0 0 0 1px rgba(194, 235, 255, 0.08);
+    }
+    .verification-deck-head {
+        display: grid;
+        gap: 4px;
+    }
+    .verification-deck-kicker {
+        margin: 0;
+        font-family: "Press Start 2P", monospace;
+        font-size: 8px;
+        letter-spacing: 1px;
+        text-transform: uppercase;
+        color: #9de8ff;
+    }
+    .verification-deck-copy {
+        margin: 0;
+        font-size: 11px;
+        line-height: 1.6;
+        color: #cbe7ff;
+    }
+    .verification-grid {
+        display: grid;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap: 8px;
+    }
+    .verification-rail {
+        text-align: left;
+        border-radius: 12px;
+        border: 1px solid rgba(163, 190, 230, 0.36);
+        background:
+            linear-gradient(145deg, rgba(12, 26, 54, 0.86), rgba(8, 18, 38, 0.9)),
+            radial-gradient(
+                150% 210% at 100% 0%,
+                rgba(113, 255, 186, 0.14),
+                rgba(113, 255, 186, 0)
+            );
+        color: #eaf5ff;
+        padding: 10px;
+        display: grid;
+        gap: 5px;
+        transition: transform 0.2s ease, border-color 0.2s ease;
+    }
+    .verification-rail:hover:not(:disabled) {
+        transform: translateY(-1px);
+        border-color: rgba(164, 237, 255, 0.72);
+    }
+    .verification-rail:disabled {
+        opacity: 0.62;
+        cursor: not-allowed;
+    }
+    .verification-rail--running {
+        border-color: rgba(251, 191, 36, 0.78);
+    }
+    .verification-rail--pass {
+        border-color: rgba(110, 255, 171, 0.76);
+        box-shadow: 0 0 18px rgba(96, 255, 176, 0.15);
+    }
+    .verification-rail--fail {
+        border-color: rgba(248, 113, 113, 0.78);
+    }
+    .verification-rail-label {
+        font-family: "Press Start 2P", monospace;
+        font-size: 8px;
+        letter-spacing: 0.6px;
+        text-transform: uppercase;
+        color: #f0f9ff;
+    }
+    .verification-rail-status {
+        justify-self: start;
+        padding: 3px 8px;
+        border-radius: 999px;
+        border: 1px solid rgba(125, 211, 252, 0.5);
+        background: rgba(15, 33, 63, 0.76);
+        font-size: 8px;
+        letter-spacing: 0.5px;
+        color: #bfdbfe;
+    }
+    .verification-rail-copy {
+        font-size: 10px;
+        line-height: 1.55;
+        color: #d6e9ff;
+    }
+    .verification-rail-tx {
+        font-family: "JetBrains Mono", "Fira Code", monospace;
+        font-size: 9px;
+        color: #b3ffcf;
+    }
+    .verification-actions {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 8px;
+    }
+    .verification-master-btn {
+        background:
+            linear-gradient(180deg, rgba(63, 153, 96, 0.95), rgba(28, 102, 63, 0.95)),
+            repeating-linear-gradient(
+                0deg,
+                rgba(255, 255, 255, 0.06) 0 1px,
+                rgba(255, 255, 255, 0) 1px 3px
+            );
+        border-color: rgba(170, 255, 188, 0.58);
+    }
+    .verification-mesh {
+        border-radius: 12px;
+        border: 1px dashed rgba(156, 211, 255, 0.46);
+        background: rgba(9, 19, 39, 0.62);
+        padding: 9px 10px;
+        display: grid;
+        gap: 6px;
+    }
+    .verification-mesh-title {
+        margin: 0;
+        font-size: 9px;
+        text-transform: uppercase;
+        letter-spacing: 0.8px;
+        color: #9dd6ff;
+    }
+    .verification-mesh-value {
+        margin: 0;
+        font-family: "JetBrains Mono", "Fira Code", monospace;
+        font-size: 11px;
+        color: #dcf2ff;
+    }
+    .verification-mesh-meta {
+        display: grid;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap: 4px 8px;
+        font-size: 10px;
+        color: #b8d3ef;
+    }
     .chapter-games .game-card {
         border-radius: 14px;
         border-color: rgba(150, 191, 248, 0.42);
@@ -6931,6 +7535,12 @@
             justify-content: stretch;
             gap: 6px;
         }
+        .verification-grid {
+            grid-template-columns: 1fr;
+        }
+        .verification-mesh-meta {
+            grid-template-columns: 1fr;
+        }
         .toolchain-ingest-input {
             min-height: 104px;
         }
@@ -6966,6 +7576,10 @@
         }
         .arcade-guide-row {
             align-items: stretch;
+        }
+        .verification-actions {
+            display: grid;
+            grid-template-columns: 1fr;
         }
         .game-portal-grid {
             grid-template-columns: 1fr;
