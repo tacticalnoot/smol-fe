@@ -21,7 +21,7 @@ export const HACKATHON_TOOLCHAIN_TRACKS: ToolchainTrack[] = [
         id: "noir-ultrahonk",
         label: "Noir UltraHonk Track",
         engine: "Noir + nargo + bb",
-        statusLabel: "Build now",
+        statusLabel: "Evidence-ready rail",
         onchainFlow: "kale",
         onchainButton: "Verify Kale Rail On-Chain",
         summary:
@@ -66,7 +66,7 @@ export const HACKATHON_TOOLCHAIN_TRACKS: ToolchainTrack[] = [
         id: "risc0-zkvm",
         label: "RISC Zero zkVM Track",
         engine: "cargo risczero + zkVM",
-        statusLabel: "Bridge mode",
+        statusLabel: "Evidence-ready bridge",
         onchainFlow: "arcade",
         onchainButton: "Verify Arcade Rail On-Chain",
         summary:

@@ -13,6 +13,51 @@ Both tracks settle into the live Super Verifier contract:
 - Contract ID: `CAU7NET7FXSFBBRMLM6X7CJMVAIHMG7RC4YPCXG6G4YOYG6C3CVGR25M`
 - Main entrypoint: `verify_and_attest`
 
+## What is live now in The Farm UI
+
+- One-click on-chain settlement for both tracks via the same Super Verifier rail.
+- Artifact intake for real tool output manifests (`farm.toolchain.artifact.v1`).
+- Judge-bundle export containing:
+  - imported artifacts,
+  - linked on-chain settlement tx records,
+  - active contract + entrypoint metadata.
+
+### Artifact schema (`farm.toolchain.artifact.v1`)
+
+Noir / UltraHonk:
+
+```json
+{
+  "schema": "farm.toolchain.artifact.v1",
+  "trackId": "noir-ultrahonk",
+  "artifactLabel": "tic-tac-tac-v1-mainnet",
+  "generatedAt": "2026-02-09T00:00:00.000Z",
+  "sourceCommit": "replace-with-git-sha",
+  "sourceRepo": "tacticalnoot/smol-fe",
+  "acirHash": "hex",
+  "vkHash": "hex",
+  "proofHash": "hex",
+  "publicInputsHash": "hex"
+}
+```
+
+RISC Zero zkVM:
+
+```json
+{
+  "schema": "farm.toolchain.artifact.v1",
+  "trackId": "risc0-zkvm",
+  "artifactLabel": "pattern-runner-v1-mainnet",
+  "generatedAt": "2026-02-09T00:00:00.000Z",
+  "sourceCommit": "replace-with-git-sha",
+  "sourceRepo": "tacticalnoot/smol-fe",
+  "imageId": "hex",
+  "journalHash": "hex",
+  "receiptSealHash": "hex",
+  "verifierDigest": "optional-hex"
+}
+```
+
 ## Why this structure
 
 The current Farm page already has a production on-chain path through Super Verifier.

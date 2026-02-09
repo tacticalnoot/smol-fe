@@ -54,10 +54,25 @@
     let activeGamePortalId = $state<string | null>(null);
     let activeToolchainTrack = $state<ToolchainTrackId>("noir-ultrahonk");
     let copiedToolchainTrack = $state<ToolchainTrackId | null>(null);
+    let copiedToolchainTemplate = $state<ToolchainTrackId | null>(null);
+    let copiedToolchainJudgeBundle = $state<ToolchainTrackId | null>(null);
     let gamePayloadCopied = $state<string | null>(null);
     let gameAttestNotes = $state<Record<string, string>>({});
     let gameVerifierPayloads = $state<Record<string, string>>({});
     let gameIntegrity = $state<Record<string, GameIntegrityState>>({});
+    let toolchainDrafts = $state<Record<ToolchainTrackId, string>>({
+        "noir-ultrahonk": "",
+        "risc0-zkvm": "",
+    });
+    let toolchainArtifacts = $state<Record<ToolchainTrackId, ToolchainArtifactRecord[]>>({
+        "noir-ultrahonk": [],
+        "risc0-zkvm": [],
+    });
+    let toolchainSubmissions = $state<Record<ToolchainTrackId, ToolchainSubmissionRecord[]>>({
+        "noir-ultrahonk": [],
+        "risc0-zkvm": [],
+    });
+    let toolchainNotice = $state<string | null>(null);
     let gameWallet = $state<string | null>(null);
     let verifying = $state(false);
     let oneClickVerifying = $state(false);
@@ -144,6 +159,55 @@
         state: "checking" | "pass" | "fail";
         message: string;
         checkedAt: number;
+    };
+
+    type ToolchainArtifactPayloadBase = {
+        schema: "farm.toolchain.artifact.v1";
+        trackId: ToolchainTrackId;
+        artifactLabel: string;
+        generatedAt: string;
+        sourceCommit: string;
+        sourceRepo?: string;
+        notes?: string;
+    };
+
+    type NoirToolchainArtifactPayload = ToolchainArtifactPayloadBase & {
+        trackId: "noir-ultrahonk";
+        acirHash: string;
+        vkHash: string;
+        proofHash: string;
+        publicInputsHash: string;
+    };
+
+    type Risc0ToolchainArtifactPayload = ToolchainArtifactPayloadBase & {
+        trackId: "risc0-zkvm";
+        imageId: string;
+        journalHash: string;
+        receiptSealHash: string;
+        verifierDigest?: string;
+    };
+
+    type ToolchainArtifactPayload =
+        | NoirToolchainArtifactPayload
+        | Risc0ToolchainArtifactPayload;
+
+    type ToolchainArtifactRecord = {
+        id: string;
+        artifactHash: string;
+        importedAt: number;
+        artifact: ToolchainArtifactPayload;
+    };
+
+    type ToolchainSubmissionRecord = {
+        id: string;
+        txHash: string;
+        submittedAt: number;
+        flow: "kale" | "arcade";
+        contractId: string;
+        entrypoint: string;
+        wallet: string;
+        gameId?: string;
+        artifactHash?: string;
     };
 
     type TicTacState = {
@@ -339,6 +403,8 @@
     );
     let patternPreviewTimer: number | null = null;
     let toolchainCopyTimer: number | null = null;
+    let toolchainTemplateTimer: number | null = null;
+    let toolchainJudgeTimer: number | null = null;
 
     // 4 focused proofs: 1 live + 3 protocol modules
     const galleryProofs: GalleryProof[] = [
@@ -448,6 +514,12 @@
             (track) => track.id === activeToolchainTrack,
         ) ?? HACKATHON_TOOLCHAIN_TRACKS[0],
     );
+    let selectedToolchainArtifacts = $derived(
+        toolchainArtifacts[selectedToolchainTrack.id] ?? [],
+    );
+    let selectedToolchainSubmissions = $derived(
+        toolchainSubmissions[selectedToolchainTrack.id] ?? [],
+    );
     const confettiPieces = Array.from({ length: 24 }, (_, idx) => idx);
     const GAME_TIER_THRESHOLDS = [
         0n,
@@ -455,6 +527,7 @@
         10_000_000_000n,
         100_000_000_000n,
     ];
+    const TOOLCHAIN_STORAGE_KEY = "farm:toolchain-evidence:v1";
     const GAME_TIER_BY_KIND: Record<ZkGame["kind"], number> = {
         tic: 1,
         dodge: 2,
@@ -484,6 +557,14 @@
             if (toolchainCopyTimer) {
                 clearTimeout(toolchainCopyTimer);
                 toolchainCopyTimer = null;
+            }
+            if (toolchainTemplateTimer) {
+                clearTimeout(toolchainTemplateTimer);
+                toolchainTemplateTimer = null;
+            }
+            if (toolchainJudgeTimer) {
+                clearTimeout(toolchainJudgeTimer);
+                toolchainJudgeTimer = null;
             }
             resetPatternTimer();
             stopAmbient();
@@ -531,6 +612,21 @@
             ...game,
             proof: loadedProofs[game.id],
         }));
+    });
+
+    $effect(() => {
+        if (typeof window === "undefined" || !gameWallet) return;
+        const loaded = loadToolchainEvidence(gameWallet);
+        toolchainArtifacts = loaded.artifacts;
+        toolchainSubmissions = loaded.submissions;
+    });
+
+    $effect(() => {
+        if (typeof window === "undefined" || !gameWallet) return;
+        saveToolchainEvidence(gameWallet, {
+            artifacts: toolchainArtifacts,
+            submissions: toolchainSubmissions,
+        });
     });
 
     // ── REAL ZK Proof Generation ────────────────────────────────────────────
@@ -1128,6 +1224,414 @@
         }
     }
 
+    function getToolchainStorageKey(wallet: string): string {
+        return `${TOOLCHAIN_STORAGE_KEY}:${wallet}`;
+    }
+
+    function createEmptyToolchainArtifacts(): Record<
+        ToolchainTrackId,
+        ToolchainArtifactRecord[]
+    > {
+        return {
+            "noir-ultrahonk": [],
+            "risc0-zkvm": [],
+        };
+    }
+
+    function createEmptyToolchainSubmissions(): Record<
+        ToolchainTrackId,
+        ToolchainSubmissionRecord[]
+    > {
+        return {
+            "noir-ultrahonk": [],
+            "risc0-zkvm": [],
+        };
+    }
+
+    function loadToolchainEvidence(wallet: string): {
+        artifacts: Record<ToolchainTrackId, ToolchainArtifactRecord[]>;
+        submissions: Record<ToolchainTrackId, ToolchainSubmissionRecord[]>;
+    } {
+        if (typeof window === "undefined") {
+            return {
+                artifacts: createEmptyToolchainArtifacts(),
+                submissions: createEmptyToolchainSubmissions(),
+            };
+        }
+        try {
+            const raw = localStorage.getItem(getToolchainStorageKey(wallet));
+            if (!raw) {
+                return {
+                    artifacts: createEmptyToolchainArtifacts(),
+                    submissions: createEmptyToolchainSubmissions(),
+                };
+            }
+            const parsed = JSON.parse(raw) as {
+                artifacts?: Partial<Record<ToolchainTrackId, ToolchainArtifactRecord[]>>;
+                submissions?: Partial<Record<ToolchainTrackId, ToolchainSubmissionRecord[]>>;
+            };
+            return {
+                artifacts: {
+                    "noir-ultrahonk": Array.isArray(parsed.artifacts?.["noir-ultrahonk"])
+                        ? (parsed.artifacts?.["noir-ultrahonk"] ?? [])
+                        : [],
+                    "risc0-zkvm": Array.isArray(parsed.artifacts?.["risc0-zkvm"])
+                        ? (parsed.artifacts?.["risc0-zkvm"] ?? [])
+                        : [],
+                },
+                submissions: {
+                    "noir-ultrahonk": Array.isArray(
+                        parsed.submissions?.["noir-ultrahonk"],
+                    )
+                        ? (parsed.submissions?.["noir-ultrahonk"] ?? [])
+                        : [],
+                    "risc0-zkvm": Array.isArray(parsed.submissions?.["risc0-zkvm"])
+                        ? (parsed.submissions?.["risc0-zkvm"] ?? [])
+                        : [],
+                },
+            };
+        } catch {
+            return {
+                artifacts: createEmptyToolchainArtifacts(),
+                submissions: createEmptyToolchainSubmissions(),
+            };
+        }
+    }
+
+    function saveToolchainEvidence(
+        wallet: string,
+        payload: {
+            artifacts: Record<ToolchainTrackId, ToolchainArtifactRecord[]>;
+            submissions: Record<ToolchainTrackId, ToolchainSubmissionRecord[]>;
+        },
+    ) {
+        if (typeof window === "undefined") return;
+        localStorage.setItem(getToolchainStorageKey(wallet), JSON.stringify(payload));
+    }
+
+    function stableStringify(value: unknown): string {
+        if (Array.isArray(value)) {
+            return `[${value.map((item) => stableStringify(item)).join(",")}]`;
+        }
+        if (value && typeof value === "object") {
+            const entries = Object.entries(value as Record<string, unknown>).sort(
+                ([a], [b]) => a.localeCompare(b),
+            );
+            return `{${entries
+                .map(
+                    ([key, item]) =>
+                        `${JSON.stringify(key)}:${stableStringify(item)}`,
+                )
+                .join(",")}}`;
+        }
+        return JSON.stringify(value) ?? "null";
+    }
+
+    function ensureRecord(
+        value: unknown,
+        label: string,
+    ): Record<string, unknown> {
+        if (!value || typeof value !== "object" || Array.isArray(value)) {
+            throw new Error(`${label} must be a JSON object.`);
+        }
+        return value as Record<string, unknown>;
+    }
+
+    function readStringField(
+        object: Record<string, unknown>,
+        key: string,
+        label: string,
+    ): string {
+        const value = object[key];
+        if (typeof value !== "string" || !value.trim()) {
+            throw new Error(`${label} is required.`);
+        }
+        return value.trim();
+    }
+
+    function normalizeHex(
+        value: string,
+        label: string,
+        minLength = 32,
+    ): string {
+        const normalized = value.trim().toLowerCase().replace(/^0x/, "");
+        if (!/^[0-9a-f]+$/.test(normalized)) {
+            throw new Error(`${label} must be a hex string.`);
+        }
+        if (normalized.length < minLength) {
+            throw new Error(`${label} is too short.`);
+        }
+        return normalized;
+    }
+
+    function shortHash(value: string, head = 10, tail = 8): string {
+        if (!value || value.length <= head + tail + 3) return value;
+        return `${value.slice(0, head)}...${value.slice(-tail)}`;
+    }
+
+    function setToolchainDraft(trackId: ToolchainTrackId, value: string) {
+        toolchainDrafts = {
+            ...toolchainDrafts,
+            [trackId]: value,
+        };
+    }
+
+    function buildToolchainArtifactTemplate(track: ToolchainTrack): string {
+        const shared = {
+            schema: "farm.toolchain.artifact.v1",
+            trackId: track.id,
+            artifactLabel:
+                track.id === "noir-ultrahonk"
+                    ? "tic-tac-tac-v1-mainnet"
+                    : "pattern-runner-v1-mainnet",
+            generatedAt: new Date().toISOString(),
+            sourceCommit: "replace-with-git-sha",
+            sourceRepo: "tacticalnoot/smol-fe",
+            notes:
+                "Fill this with the exact hashes from your real toolchain run.",
+        };
+        if (track.id === "noir-ultrahonk") {
+            return JSON.stringify(
+                {
+                    ...shared,
+                    acirHash: "replace-with-acir-hash-hex",
+                    vkHash: "replace-with-vkey-hash-hex",
+                    proofHash: "replace-with-proof-hash-hex",
+                    publicInputsHash: "replace-with-public-inputs-hash-hex",
+                },
+                null,
+                2,
+            );
+        }
+        return JSON.stringify(
+            {
+                ...shared,
+                imageId: "replace-with-risc0-image-id-hex",
+                journalHash: "replace-with-receipt-journal-hash-hex",
+                receiptSealHash: "replace-with-receipt-seal-hash-hex",
+                verifierDigest: "optional-verifier-digest-hex",
+            },
+            null,
+            2,
+        );
+    }
+
+    async function copyToolchainArtifactTemplate(track: ToolchainTrack) {
+        try {
+            await navigator.clipboard.writeText(buildToolchainArtifactTemplate(track));
+            copiedToolchainTemplate = track.id;
+            toolchainNotice = "Artifact template copied. Fill it with real hashes from your pipeline.";
+            if (toolchainTemplateTimer) {
+                clearTimeout(toolchainTemplateTimer);
+            }
+            toolchainTemplateTimer = window.setTimeout(() => {
+                if (copiedToolchainTemplate === track.id) {
+                    copiedToolchainTemplate = null;
+                }
+                toolchainTemplateTimer = null;
+            }, 2000);
+        } catch (e: any) {
+            gameError = e?.message || "Unable to copy artifact template";
+        }
+    }
+
+    function parseToolchainArtifactPayload(
+        trackId: ToolchainTrackId,
+        text: string,
+    ): ToolchainArtifactPayload {
+        let parsed: unknown;
+        try {
+            parsed = JSON.parse(text);
+        } catch {
+            throw new Error("Artifact manifest must be valid JSON.");
+        }
+        const object = ensureRecord(parsed, "Artifact manifest");
+        const schema = readStringField(object, "schema", "schema");
+        if (schema !== "farm.toolchain.artifact.v1") {
+            throw new Error("schema must be farm.toolchain.artifact.v1.");
+        }
+        const manifestTrack = readStringField(object, "trackId", "trackId");
+        if (manifestTrack !== trackId) {
+            throw new Error(`Manifest trackId must be ${trackId}.`);
+        }
+
+        const base = {
+            schema: "farm.toolchain.artifact.v1" as const,
+            trackId: manifestTrack as ToolchainTrackId,
+            artifactLabel: readStringField(object, "artifactLabel", "artifactLabel"),
+            generatedAt: readStringField(object, "generatedAt", "generatedAt"),
+            sourceCommit: readStringField(object, "sourceCommit", "sourceCommit"),
+            sourceRepo:
+                typeof object.sourceRepo === "string"
+                    ? object.sourceRepo.trim()
+                    : undefined,
+            notes:
+                typeof object.notes === "string" ? object.notes.trim() : undefined,
+        };
+
+        if (trackId === "noir-ultrahonk") {
+            return {
+                ...base,
+                trackId,
+                acirHash: normalizeHex(
+                    readStringField(object, "acirHash", "acirHash"),
+                    "acirHash",
+                ),
+                vkHash: normalizeHex(
+                    readStringField(object, "vkHash", "vkHash"),
+                    "vkHash",
+                ),
+                proofHash: normalizeHex(
+                    readStringField(object, "proofHash", "proofHash"),
+                    "proofHash",
+                ),
+                publicInputsHash: normalizeHex(
+                    readStringField(
+                        object,
+                        "publicInputsHash",
+                        "publicInputsHash",
+                    ),
+                    "publicInputsHash",
+                ),
+            };
+        }
+        return {
+            ...base,
+            trackId,
+            imageId: normalizeHex(
+                readStringField(object, "imageId", "imageId"),
+                "imageId",
+            ),
+            journalHash: normalizeHex(
+                readStringField(object, "journalHash", "journalHash"),
+                "journalHash",
+            ),
+            receiptSealHash: normalizeHex(
+                readStringField(object, "receiptSealHash", "receiptSealHash"),
+                "receiptSealHash",
+            ),
+            verifierDigest:
+                typeof object.verifierDigest === "string" &&
+                object.verifierDigest.trim()
+                    ? normalizeHex(object.verifierDigest, "verifierDigest")
+                    : undefined,
+        };
+    }
+
+    async function importToolchainArtifact(track: ToolchainTrack) {
+        try {
+            const raw = (toolchainDrafts[track.id] ?? "").trim();
+            if (!raw) {
+                throw new Error(
+                    "Paste a JSON manifest first, then import the artifact.",
+                );
+            }
+            const payload = parseToolchainArtifactPayload(track.id, raw);
+            const artifactHash = await sha256Hex(stableStringify(payload));
+            const existing = toolchainArtifacts[track.id] ?? [];
+            if (existing.some((item) => item.artifactHash === artifactHash)) {
+                toolchainNotice =
+                    "Artifact already imported for this track. No duplicate added.";
+                return;
+            }
+            const record: ToolchainArtifactRecord = {
+                id: `${track.id}:${artifactHash.slice(0, 16)}:${Date.now()}`,
+                artifactHash,
+                importedAt: Date.now(),
+                artifact: payload,
+            };
+            toolchainArtifacts = {
+                ...toolchainArtifacts,
+                [track.id]: [record, ...existing].slice(0, 16),
+            };
+            setToolchainDraft(track.id, "");
+            toolchainNotice = `Artifact imported: ${shortHash(artifactHash, 12, 10)}.`;
+        } catch (e: any) {
+            toolchainNotice = null;
+            gameError = e?.message || "Unable to import toolchain artifact";
+        }
+    }
+
+    function captureToolchainSubmission(
+        track: ToolchainTrack,
+        payload: {
+            txHash: string;
+            flow: "kale" | "arcade";
+            wallet: string;
+            gameId?: string;
+        },
+    ) {
+        const records = toolchainSubmissions[track.id] ?? [];
+        if (records.some((record) => record.txHash === payload.txHash)) {
+            return;
+        }
+        const latestArtifact = (toolchainArtifacts[track.id] ?? [])[0];
+        const next: ToolchainSubmissionRecord = {
+            id: `${track.id}:tx:${payload.txHash.slice(0, 14)}`,
+            txHash: payload.txHash,
+            submittedAt: Date.now(),
+            flow: payload.flow,
+            contractId: SUPER_VERIFIER_CONTRACT_ID,
+            entrypoint: SUPER_VERIFIER_ENTRYPOINT,
+            wallet: payload.wallet,
+            gameId: payload.gameId,
+            artifactHash: latestArtifact?.artifactHash,
+        };
+        toolchainSubmissions = {
+            ...toolchainSubmissions,
+            [track.id]: [next, ...records].slice(0, 20),
+        };
+    }
+
+    function buildToolchainJudgeBundle(track: ToolchainTrack): Record<string, unknown> {
+        const artifacts = toolchainArtifacts[track.id] ?? [];
+        const submissions = toolchainSubmissions[track.id] ?? [];
+        const arcadeTxHashes = zkGames
+            .map((game) => game.proof?.onchainTxHash ?? null)
+            .filter((tx): tx is string => !!tx);
+        return {
+            schema: "farm.toolchain.judge.bundle.v1",
+            generatedAt: new Date().toISOString(),
+            trackId: track.id,
+            trackLabel: track.label,
+            engine: track.engine,
+            contractId: SUPER_VERIFIER_CONTRACT_ID,
+            entrypoint: SUPER_VERIFIER_ENTRYPOINT,
+            activeWallet: userState.contractId ?? gameWallet ?? "not-connected",
+            rails: {
+                kaleLatestTx: txHash ?? null,
+                arcadeTxCount: arcadeTxHashes.length,
+                arcadeLatestTx: arcadeTxHashes[0] ?? null,
+                onChainVerified,
+            },
+            artifactCount: artifacts.length,
+            submissionCount: submissions.length,
+            artifacts,
+            submissions,
+        };
+    }
+
+    async function copyToolchainJudgeBundle(track: ToolchainTrack) {
+        try {
+            const bundle = buildToolchainJudgeBundle(track);
+            await navigator.clipboard.writeText(JSON.stringify(bundle, null, 2));
+            copiedToolchainJudgeBundle = track.id;
+            toolchainNotice =
+                "Judge bundle copied with artifacts and linked on-chain settlement records.";
+            if (toolchainJudgeTimer) {
+                clearTimeout(toolchainJudgeTimer);
+            }
+            toolchainJudgeTimer = window.setTimeout(() => {
+                if (copiedToolchainJudgeBundle === track.id) {
+                    copiedToolchainJudgeBundle = null;
+                }
+                toolchainJudgeTimer = null;
+            }, 2000);
+        } catch (e: any) {
+            gameError = e?.message || "Unable to copy judge bundle";
+        }
+    }
+
     function selectToolchainTrack(trackId: ToolchainTrackId) {
         activeToolchainTrack = trackId;
     }
@@ -1154,12 +1658,24 @@
         toolchainVerifying = track.id;
         try {
             if (track.onchainFlow === "kale") {
+                const previousTx = txHash;
                 await runOneClickProofFlow();
                 if (!onChainVerified) {
                     throw new Error(
                         error ||
                             "Kale verifier rail did not complete on-chain.",
                     );
+                }
+                if (txHash && txHash !== previousTx) {
+                    captureToolchainSubmission(track, {
+                        txHash,
+                        flow: "kale",
+                        wallet: userState.contractId,
+                    });
+                    toolchainNotice = `Kale rail settled on-chain (${shortHash(txHash, 12, 10)}).`;
+                } else {
+                    toolchainNotice =
+                        "Kale rail is already verified on-chain. Generate a fresh proof for a new tx evidence record.";
                 }
                 return;
             }
@@ -1177,8 +1693,20 @@
                         "Arcade verifier rail did not complete on-chain.",
                 );
             }
+            captureToolchainSubmission(track, {
+                txHash: refreshed.proof.onchainTxHash,
+                flow: "arcade",
+                wallet: userState.contractId,
+                gameId: refreshed.id,
+            });
+            toolchainNotice = `${refreshed.title} settled on-chain (${shortHash(
+                refreshed.proof.onchainTxHash,
+                12,
+                10,
+            )}).`;
         } catch (e: any) {
             gameError = e?.message || "Toolchain on-chain verification failed";
+            toolchainNotice = null;
         } finally {
             toolchainVerifying = null;
         }
@@ -1188,6 +1716,8 @@
         try {
             await navigator.clipboard.writeText(formatToolchainRunbook(track));
             copiedToolchainTrack = track.id;
+            toolchainNotice =
+                "Runbook copied. Pair it with artifact + settlement evidence for judging.";
             if (toolchainCopyTimer) {
                 clearTimeout(toolchainCopyTimer);
             }
@@ -2669,6 +3199,121 @@
                                 {/if}
                             </button>
                         </div>
+                        <div class="toolchain-ingest">
+                            <p class="toolchain-ingest-title">
+                                Artifact intake (real tool outputs)
+                            </p>
+                            <p class="toolchain-ingest-copy">
+                                Paste machine-generated manifest JSON from your
+                                selected track. Imported artifacts are hashed and
+                                linked to on-chain settlement records.
+                            </p>
+                            <textarea
+                                class="toolchain-ingest-input"
+                                value={toolchainDrafts[selectedToolchainTrack.id]}
+                                oninput={(event) =>
+                                    setToolchainDraft(
+                                        selectedToolchainTrack.id,
+                                        (event.currentTarget as HTMLTextAreaElement)
+                                            .value,
+                                    )}
+                                placeholder="Paste farm.toolchain.artifact.v1 JSON here"
+                                rows="7"
+                            ></textarea>
+                            <div class="toolchain-actions toolchain-actions--secondary">
+                                <button
+                                    class="arcade-guide-btn toolchain-copy-btn"
+                                    type="button"
+                                    onclick={() =>
+                                        copyToolchainArtifactTemplate(
+                                            selectedToolchainTrack,
+                                        )}
+                                >
+                                    {#if copiedToolchainTemplate === selectedToolchainTrack.id}
+                                        Template copied
+                                    {:else}
+                                        Copy artifact template
+                                    {/if}
+                                </button>
+                                <button
+                                    class="arcade-guide-btn toolchain-copy-btn"
+                                    type="button"
+                                    onclick={() =>
+                                        importToolchainArtifact(
+                                            selectedToolchainTrack,
+                                        )}
+                                >
+                                    Import artifact
+                                </button>
+                                <button
+                                    class="arcade-guide-btn toolchain-copy-btn"
+                                    type="button"
+                                    onclick={() =>
+                                        copyToolchainJudgeBundle(
+                                            selectedToolchainTrack,
+                                        )}
+                                >
+                                    {#if copiedToolchainJudgeBundle === selectedToolchainTrack.id}
+                                        Judge bundle copied
+                                    {:else}
+                                        Copy judge bundle
+                                    {/if}
+                                </button>
+                            </div>
+                            {#if toolchainNotice}
+                                <p class="toolchain-note">{toolchainNotice}</p>
+                            {/if}
+                            {#if selectedToolchainArtifacts.length}
+                                <div class="toolchain-records">
+                                    {#each selectedToolchainArtifacts as artifact}
+                                        <article class="toolchain-record">
+                                            <p class="toolchain-record-title">
+                                                Artifact {shortHash(artifact.artifactHash, 14, 10)}
+                                            </p>
+                                            <p class="toolchain-record-meta">
+                                                {artifact.artifact.artifactLabel}
+                                                · imported {new Date(
+                                                    artifact.importedAt,
+                                                ).toLocaleString()}
+                                            </p>
+                                            <p class="toolchain-record-meta">
+                                                source commit: {artifact.artifact.sourceCommit}
+                                            </p>
+                                        </article>
+                                    {/each}
+                                </div>
+                            {/if}
+                            {#if selectedToolchainSubmissions.length}
+                                <div class="toolchain-submissions">
+                                    {#each selectedToolchainSubmissions as submission}
+                                        <article class="toolchain-record">
+                                            <p class="toolchain-record-title">
+                                                On-chain settlement {shortHash(
+                                                    submission.txHash,
+                                                    14,
+                                                    10,
+                                                )}
+                                            </p>
+                                            <p class="toolchain-record-meta">
+                                                {submission.flow} rail · {new Date(
+                                                    submission.submittedAt,
+                                                ).toLocaleString()}
+                                            </p>
+                                            <p class="toolchain-record-meta">
+                                                {submission.wallet}
+                                            </p>
+                                            <a
+                                                href={`https://stellar.expert/explorer/public/tx/${submission.txHash}`}
+                                                target="_blank"
+                                                rel="noreferrer"
+                                            >
+                                                Open transaction
+                                            </a>
+                                        </article>
+                                    {/each}
+                                </div>
+                            {/if}
+                        </div>
                         <details class="quiet-details toolchain-deep-dive">
                             <summary>
                                 Implementation checklist, references, and runbook
@@ -2776,7 +3421,7 @@
                 <div class="verifier-item">
                     <p class="verifier-label">BN254 Host Ops</p>
                     <p class="verifier-value">
-                        Planned: bn254_add · bn254_mul · bn254_pairing_check
+                        Live: bn254_add · bn254_mul · bn254_pairing_check
                     </p>
                 </div>
                 <div class="verifier-item">
@@ -6027,6 +6672,93 @@
     .toolchain-actions--secondary {
         justify-content: flex-start;
     }
+    .toolchain-ingest {
+        border-radius: 12px;
+        border: 1px solid rgba(255, 175, 149, 0.36);
+        background:
+            linear-gradient(160deg, rgba(39, 16, 24, 0.9), rgba(28, 13, 30, 0.88)),
+            radial-gradient(
+                140% 180% at 100% 0%,
+                rgba(255, 179, 120, 0.14),
+                rgba(255, 179, 120, 0)
+            );
+        padding: 10px;
+        display: grid;
+        gap: 8px;
+    }
+    .toolchain-ingest-title {
+        margin: 0;
+        font-family: "Press Start 2P", monospace;
+        font-size: 8px;
+        letter-spacing: 0.6px;
+        text-transform: uppercase;
+        color: #ffe3d6;
+    }
+    .toolchain-ingest-copy {
+        margin: 0;
+        font-size: 11px;
+        line-height: 1.6;
+        color: #ffd2c2;
+    }
+    .toolchain-ingest-input {
+        width: 100%;
+        min-height: 120px;
+        resize: vertical;
+        border-radius: 10px;
+        border: 1px solid rgba(255, 179, 157, 0.42);
+        background: rgba(15, 9, 21, 0.86);
+        color: #ffece4;
+        padding: 10px;
+        font-family: "JetBrains Mono", "Fira Code", monospace;
+        font-size: 11px;
+        line-height: 1.5;
+    }
+    .toolchain-ingest-input:focus-visible {
+        outline: 2px solid rgba(255, 204, 173, 0.82);
+        outline-offset: 1px;
+    }
+    .toolchain-note {
+        margin: 0;
+        font-size: 10px;
+        line-height: 1.6;
+        color: #ffe4d8;
+    }
+    .toolchain-records,
+    .toolchain-submissions {
+        display: grid;
+        gap: 6px;
+    }
+    .toolchain-record {
+        border: 1px solid rgba(255, 183, 160, 0.34);
+        border-radius: 10px;
+        background: rgba(58, 22, 27, 0.58);
+        padding: 8px 9px;
+        display: grid;
+        gap: 3px;
+    }
+    .toolchain-record-title {
+        margin: 0;
+        font-family: "Press Start 2P", monospace;
+        font-size: 8px;
+        line-height: 1.45;
+        color: #fff1e9;
+    }
+    .toolchain-record-meta {
+        margin: 0;
+        font-size: 10px;
+        line-height: 1.5;
+        color: #ffd3c2;
+        word-break: break-word;
+    }
+    .toolchain-record a {
+        font-size: 9px;
+        color: #ffe9df;
+        text-decoration: underline;
+        text-underline-offset: 2px;
+    }
+    .toolchain-record a:hover {
+        color: #fff7f3;
+    }
     .quiet-details {
         border: 1px solid rgba(156, 179, 232, 0.3);
         border-radius: 12px;
@@ -6199,6 +6931,9 @@
             justify-content: stretch;
             gap: 6px;
         }
+        .toolchain-ingest-input {
+            min-height: 104px;
+        }
         .chapter-copy,
         .game-summary,
         .game-goal,
@@ -6252,6 +6987,15 @@
         }
         .toolchain-column {
             padding: 8px;
+        }
+        .toolchain-actions--secondary {
+            display: grid;
+            grid-template-columns: 1fr;
+            width: 100%;
+        }
+        .toolchain-ingest-input {
+            min-height: 96px;
+            font-size: 10px;
         }
         .quiet-details {
             padding: 7px 8px;
