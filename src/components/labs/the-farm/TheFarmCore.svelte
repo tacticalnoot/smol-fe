@@ -76,19 +76,19 @@
     let verificationRails = $state<Record<VerificationRailId, VerificationRailState>>({
         kale: {
             status: "idle",
-            message: "Run one-click Kale proof verification.",
+            message: "Submit Groth16 tier proof on Stellar mainnet.",
         },
         arcade: {
             status: "idle",
-            message: "Run one-click arcade proof verification.",
+            message: "Seal a game transcript and attest on-chain.",
         },
         noir: {
             status: "idle",
-            message: "Run one-click Noir rail settlement.",
+            message: "Execute Noir lane settlement with artifact linkage.",
         },
         risc0: {
             status: "idle",
-            message: "Run one-click zkVM rail settlement.",
+            message: "Execute zkVM lane settlement with artifact linkage.",
         },
     });
     let verificationSuiteRunning = $state(false);
@@ -254,6 +254,13 @@
         label: string;
         txHash: string;
         updatedAt?: number;
+    };
+
+    type VerificationRubricRow = {
+        id: VerificationRailId;
+        label: string;
+        criterion: string;
+        status: VerificationRailState["status"];
     };
 
     type TicTacState = {
@@ -540,6 +547,12 @@
         noir: "Noir",
         risc0: "zkVM",
     };
+    const VERIFICATION_RUBRIC_CRITERIA: Record<VerificationRailId, string> = {
+        kale: "Groth16 proof verified via Super Verifier on mainnet",
+        arcade: "Gameplay proof routed through verify_and_attest on mainnet",
+        noir: "Noir track settlement linked to reproducible artifact records",
+        risc0: "zkVM track settlement linked to reproducible artifact records",
+    };
 
     // ── Derived ────────────────────────────────────────────────────────────
     let isAuth = $derived(!!userState.contractId);
@@ -581,6 +594,19 @@
                 },
             ];
         }),
+    );
+    let verificationRubricRows = $derived(
+        VERIFICATION_RAIL_ORDER.map(
+            (id): VerificationRubricRow => ({
+                id,
+                label: VERIFICATION_RAIL_LABELS[id],
+                criterion: VERIFICATION_RUBRIC_CRITERIA[id],
+                status: verificationRails[id].status,
+            }),
+        ),
+    );
+    let verificationPassCount = $derived(
+        verificationRubricRows.filter((row) => row.status === "pass").length,
     );
     let superVerifierLabel = $derived(
         `${SUPER_VERIFIER_CONTRACT_ID.slice(0, 8)}...${SUPER_VERIFIER_CONTRACT_ID.slice(-6)}`,
@@ -1789,6 +1815,15 @@
     function formatRailTime(value?: number): string {
         if (!value) return "Not run yet";
         return new Date(value).toLocaleString();
+    }
+
+    function formatRailJudgeStatus(
+        status: VerificationRailState["status"],
+    ): string {
+        if (status === "pass") return "Pass";
+        if (status === "running") return "Running";
+        if (status === "fail") return "Needs review";
+        return "Not run";
     }
 
     async function runKaleOneClickRail(): Promise<boolean> {
@@ -3086,7 +3121,7 @@
                 <section class="verification-deck">
                     <div class="verification-deck-head">
                         <p class="verification-deck-kicker">
-                            Stellarific one-click command deck
+                            Stellar Mainnet Judge Deck
                         </p>
                         <p class="verification-deck-copy">
                             Four rails, one Stellar contract: run each feature
@@ -3107,6 +3142,31 @@
                             <code>{superVerifierLabel}</code>.
                         </p>
                     </div>
+                    <div class="verification-rubric">
+                        <div class="verification-rubric-head">
+                            <p class="verification-rubric-title">
+                                Judge checklist
+                            </p>
+                            <p class="verification-rubric-score">
+                                {verificationPassCount}/4 rails passed
+                            </p>
+                        </div>
+                        {#each verificationRubricRows as row}
+                            <div
+                                class={`verification-rubric-row verification-rubric-row--${row.status}`}
+                            >
+                                <span class="verification-rubric-label">
+                                    {row.label}
+                                </span>
+                                <span class="verification-rubric-criterion">
+                                    {row.criterion}
+                                </span>
+                                <span class="verification-rubric-state">
+                                    {formatRailJudgeStatus(row.status)}
+                                </span>
+                            </div>
+                        {/each}
+                    </div>
                     <div class="verification-grid">
                         <button
                             class={`verification-rail verification-rail--${verificationRails.kale.status}`}
@@ -3117,7 +3177,7 @@
                                 oneClickVerifying}
                         >
                             <span class="verification-rail-label"
-                                >One-Click Kale Proof</span
+                                >Verify Kale Proof</span
                             >
                             <span class="verification-rail-status">
                                 {verificationRails.kale.status.toUpperCase()}
@@ -3140,7 +3200,7 @@
                                 !!gameOneClickCasting}
                         >
                             <span class="verification-rail-label"
-                                >One-Click Arcade Proof (Portal)</span
+                                >Verify Arcade Proof</span
                             >
                             <span class="verification-rail-status">
                                 {verificationRails.arcade.status.toUpperCase()}
@@ -3163,7 +3223,7 @@
                                 toolchainVerifying === "noir-ultrahonk"}
                         >
                             <span class="verification-rail-label"
-                                >One-Click Noir Rail</span
+                                >Verify Noir Lane</span
                             >
                             <span class="verification-rail-status">
                                 {verificationRails.noir.status.toUpperCase()}
@@ -3186,7 +3246,7 @@
                                 toolchainVerifying === "risc0-zkvm"}
                         >
                             <span class="verification-rail-label"
-                                >One-Click zkVM Rail</span
+                                >Verify zkVM Lane</span
                             >
                             <span class="verification-rail-status">
                                 {verificationRails.risc0.status.toUpperCase()}
@@ -3328,17 +3388,17 @@
                 {#if showArcadeGuide}
                     <div class="arcade-guide-card">
                         <p>
-                            1. Every game run generates a deterministic transcript and
-                            action hash.
+                            1. Each run emits a deterministic transcript + action hash
+                            that can be reproduced from session state.
                         </p>
                         <p>
-                            2. We seal those values into a Poseidon commitment for proof
-                            packets.
+                            2. We seal those values into a Poseidon commitment and build
+                            a Groth16-compatible witness for submission.
                         </p>
                         <p>
-                            3. The payload is formatted for the live Super Verifier
-                            contract interface, then submitted on-chain through
-                            the same verify_and_attest entrypoint.
+                            3. We submit through the live Super Verifier
+                            <code>verify_and_attest</code> entrypoint and surface
+                            explorer receipts in this deck.
                         </p>
                     </div>
                 {/if}
@@ -7221,6 +7281,15 @@
         line-height: 1.7;
         color: #d2e5ff;
     }
+    .arcade-guide-card code {
+        font-family: "JetBrains Mono", "Fira Code", monospace;
+        font-size: 10px;
+        color: #9effcb;
+        background: rgba(10, 26, 45, 0.66);
+        border: 1px solid rgba(136, 245, 194, 0.34);
+        border-radius: 6px;
+        padding: 1px 4px;
+    }
     .verification-deck {
         margin-top: 4px;
         border-radius: 14px;
@@ -7290,6 +7359,68 @@
         border-radius: 6px;
         padding: 1px 4px;
         color: #a9ffd6;
+    }
+    .verification-rubric {
+        border-radius: 12px;
+        border: 1px solid rgba(156, 206, 255, 0.38);
+        background: rgba(8, 20, 39, 0.72);
+        padding: 9px 10px;
+        display: grid;
+        gap: 6px;
+    }
+    .verification-rubric-head {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        gap: 8px;
+    }
+    .verification-rubric-title {
+        margin: 0;
+        font-size: 9px;
+        letter-spacing: 0.8px;
+        text-transform: uppercase;
+        color: #acd5ff;
+    }
+    .verification-rubric-score {
+        margin: 0;
+        font-size: 9px;
+        color: #c3f5de;
+    }
+    .verification-rubric-row {
+        border-radius: 10px;
+        border: 1px solid rgba(150, 179, 225, 0.34);
+        background: rgba(10, 24, 46, 0.62);
+        padding: 7px 8px;
+        display: grid;
+        grid-template-columns: minmax(0, 120px) minmax(0, 1fr) auto;
+        gap: 8px;
+        align-items: center;
+    }
+    .verification-rubric-row--pass {
+        border-color: rgba(127, 255, 186, 0.55);
+        background: rgba(7, 35, 26, 0.55);
+    }
+    .verification-rubric-row--running {
+        border-color: rgba(255, 213, 122, 0.58);
+    }
+    .verification-rubric-row--fail {
+        border-color: rgba(252, 147, 147, 0.58);
+    }
+    .verification-rubric-label {
+        font-family: "Press Start 2P", monospace;
+        font-size: 8px;
+        letter-spacing: 0.6px;
+        color: #ddecff;
+    }
+    .verification-rubric-criterion {
+        font-size: 10px;
+        line-height: 1.45;
+        color: #c9e0f8;
+    }
+    .verification-rubric-state {
+        justify-self: end;
+        font-size: 9px;
+        color: #d4fbe9;
     }
     .verification-grid {
         display: grid;
@@ -8005,6 +8136,13 @@
         .verification-grid {
             grid-template-columns: 1fr;
         }
+        .verification-rubric-row {
+            grid-template-columns: minmax(0, 120px) minmax(0, 1fr);
+        }
+        .verification-rubric-state {
+            grid-column: 1 / -1;
+            justify-self: start;
+        }
         .verification-mesh-meta {
             grid-template-columns: 1fr;
         }
@@ -8059,6 +8197,17 @@
         .verification-actions {
             display: grid;
             grid-template-columns: 1fr;
+        }
+        .verification-rubric-head {
+            display: grid;
+            gap: 4px;
+        }
+        .verification-rubric-row {
+            grid-template-columns: 1fr;
+            gap: 5px;
+        }
+        .verification-rubric-state {
+            grid-column: auto;
         }
         .verification-batch-meta {
             display: grid;
