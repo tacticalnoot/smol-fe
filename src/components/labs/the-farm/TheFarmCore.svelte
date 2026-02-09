@@ -94,6 +94,15 @@
     let verificationSuiteRunning = $state(false);
     let coordinationDigest = $state<string | null>(null);
     let copiedCoordinationSnapshot = $state(false);
+    let arcadeBatchRunning = $state(false);
+    let arcadeBatchProgress = $state({
+        total: 0,
+        completed: 0,
+        passed: 0,
+        failed: 0,
+        currentGame: "",
+    });
+    let arcadeBatchSummary = $state<string | null>(null);
     let gameWallet = $state<string | null>(null);
     let verifying = $state(false);
     let oneClickVerifying = $state(false);
@@ -536,6 +545,10 @@
         (toolchainSubmissions["noir-ultrahonk"]?.length ?? 0) +
             (toolchainSubmissions["risc0-zkvm"]?.length ?? 0),
     );
+    let allArcadeGamesOnchain = $derived(
+        zkGames.length > 0 &&
+            zkGames.every((game) => !!game.proof?.onchainTxHash),
+    );
     let superVerifierLabel = $derived(
         `${SUPER_VERIFIER_CONTRACT_ID.slice(0, 8)}...${SUPER_VERIFIER_CONTRACT_ID.slice(-6)}`,
     );
@@ -679,6 +692,12 @@
             rails: verificationRails,
             onChainVerified,
             kaleTxHash: txHash,
+            arcadeBatch: {
+                running: arcadeBatchRunning,
+                summary: arcadeBatchSummary,
+                allOnchain: allArcadeGamesOnchain,
+                progress: arcadeBatchProgress,
+            },
             arcade: zkGames.map((game) => ({
                 id: game.id,
                 onchainTxHash: game.proof?.onchainTxHash ?? null,
@@ -1814,6 +1833,114 @@
         return true;
     }
 
+    async function runArcadeBatchRail(): Promise<boolean> {
+        if (arcadeBatchRunning) return false;
+        if (!isAuth || !userState.contractId) {
+            setVerificationRailState("arcade", {
+                status: "fail",
+                message: "Connect wallet to batch-verify arcade proofs.",
+            });
+            return false;
+        }
+        const targets = [...zkGames];
+        if (!targets.length) {
+            setVerificationRailState("arcade", {
+                status: "fail",
+                message: "No arcade games are available for batch verification.",
+            });
+            return false;
+        }
+
+        arcadeBatchRunning = true;
+        arcadeBatchSummary = null;
+        arcadeBatchProgress = {
+            total: targets.length,
+            completed: 0,
+            passed: 0,
+            failed: 0,
+            currentGame: "",
+        };
+        setVerificationRailState("arcade", {
+            status: "running",
+            message: "Batch verifying every arcade game on-chain...",
+        });
+
+        let passed = 0;
+        let failed = 0;
+        let latestTx: string | undefined;
+        try {
+            for (const target of targets) {
+                arcadeBatchProgress = {
+                    ...arcadeBatchProgress,
+                    currentGame: target.title,
+                };
+
+                const alreadyTx = getGameSession(target.id)?.proof?.onchainTxHash;
+                if (alreadyTx) {
+                    passed += 1;
+                    latestTx = alreadyTx;
+                    arcadeBatchProgress = {
+                        ...arcadeBatchProgress,
+                        completed: arcadeBatchProgress.completed + 1,
+                        passed,
+                        failed,
+                    };
+                    continue;
+                }
+
+                try {
+                    await runGameOneClickFlow(target);
+                } catch (e: any) {
+                    gameError = e?.message || "Arcade one-click flow threw unexpectedly.";
+                }
+
+                const refreshed = getGameSession(target.id);
+                const tx = refreshed?.proof?.onchainTxHash;
+                if (tx) {
+                    passed += 1;
+                    latestTx = tx;
+                } else {
+                    failed += 1;
+                }
+
+                arcadeBatchProgress = {
+                    ...arcadeBatchProgress,
+                    completed: arcadeBatchProgress.completed + 1,
+                    passed,
+                    failed,
+                };
+            }
+
+            const allPassed = failed === 0;
+            arcadeBatchSummary = allPassed
+                ? `Arcade batch complete: ${passed}/${targets.length} games verified on-chain.`
+                : `Arcade batch complete with gaps: ${passed}/${targets.length} verified, ${failed} failed.`;
+
+            setVerificationRailState("arcade", {
+                status: allPassed ? "pass" : "fail",
+                message: arcadeBatchSummary,
+                txHash: latestTx,
+            });
+            return allPassed;
+        } catch (e: any) {
+            const message =
+                e?.message || "Arcade batch verification was interrupted.";
+            arcadeBatchSummary = message;
+            setVerificationRailState("arcade", {
+                status: "fail",
+                message,
+                txHash: latestTx,
+            });
+            return false;
+        } finally {
+            arcadeBatchRunning = false;
+            arcadeBatchProgress = {
+                ...arcadeBatchProgress,
+                currentGame: "",
+            };
+        }
+    }
+
     async function runTrackOneClickRail(
         trackId: ToolchainTrackId,
         railId: VerificationRailId,
@@ -1885,24 +2012,27 @@
         verificationSuiteRunning = true;
         gameError = null;
         error = null;
-        const outcomes = [
-            await runKaleOneClickRail(),
-            await runArcadeOneClickRail(),
-            await runNoirOneClickRail(),
-            await runRisc0OneClickRail(),
-        ];
-        const allPassed = outcomes.every(Boolean);
-        if (allPassed) {
-            launchCelebration(
-                "Verification stack synced",
-                "Kale, arcade, Noir, and zkVM rails are all coordinated through live on-chain settlement.",
-            );
-        } else {
-            gameError =
-                gameError ||
-                "One or more rails failed. Open status cards below for details.";
+        try {
+            const outcomes = [
+                await runKaleOneClickRail(),
+                await runArcadeBatchRail(),
+                await runNoirOneClickRail(),
+                await runRisc0OneClickRail(),
+            ];
+            const allPassed = outcomes.every(Boolean);
+            if (allPassed) {
+                launchCelebration(
+                    "Verification stack synced",
+                    "Kale, arcade, Noir, and zkVM rails are all coordinated through live on-chain settlement.",
+                );
+            } else {
+                gameError =
+                    gameError ||
+                    "One or more rails failed. Open status cards below for details.";
+            }
+        } finally {
+            verificationSuiteRunning = false;
         }
-        verificationSuiteRunning = false;
     }
 
     function buildCoordinationSnapshot(): Record<string, unknown> {
@@ -1913,6 +2043,12 @@
             entrypoint: SUPER_VERIFIER_ENTRYPOINT,
             rails: verificationRails,
             coordinationDigest,
+            arcadeBatch: {
+                running: arcadeBatchRunning,
+                summary: arcadeBatchSummary,
+                allOnchain: allArcadeGamesOnchain,
+                progress: arcadeBatchProgress,
+            },
             kale: {
                 onChainVerified,
                 txHash,
@@ -2914,7 +3050,8 @@
                         <p class="verification-deck-copy">
                             Four rails, one Stellar contract: run each feature
                             independently or verify the full stack in sequence
-                            with shared coordination state.
+                            with shared coordination state. Batch mode can
+                            clear every arcade game in one run.
                         </p>
                     </div>
                     <div class="verification-grid">
@@ -2950,7 +3087,7 @@
                                 !!gameOneClickCasting}
                         >
                             <span class="verification-rail-label"
-                                >One-Click Arcade Proof</span
+                                >One-Click Arcade Proof (Portal)</span
                             >
                             <span class="verification-rail-status">
                                 {verificationRails.arcade.status.toUpperCase()}
@@ -3013,10 +3150,22 @@
                     </div>
                     <div class="verification-actions">
                         <button
+                            class="arcade-guide-btn verification-batch-btn"
+                            type="button"
+                            onclick={runArcadeBatchRail}
+                            disabled={verificationSuiteRunning || arcadeBatchRunning}
+                        >
+                            {arcadeBatchRunning
+                                ? `Batching ${arcadeBatchProgress.completed}/${arcadeBatchProgress.total}...`
+                                : allArcadeGamesOnchain
+                                  ? "Arcade Batch Already Verified"
+                                  : "Verify All Arcade Games"}
+                        </button>
+                        <button
                             class="arcade-guide-btn verification-master-btn"
                             type="button"
                             onclick={runFullVerificationSuite}
-                            disabled={verificationSuiteRunning}
+                            disabled={verificationSuiteRunning || arcadeBatchRunning}
                         >
                             {verificationSuiteRunning
                                 ? "Verifying full stack..."
@@ -3032,6 +3181,37 @@
                                 : "Copy coordination snapshot"}
                         </button>
                     </div>
+                    {#if arcadeBatchRunning || arcadeBatchSummary}
+                        <div class="verification-batch-status">
+                            <p class="verification-batch-title">
+                                Arcade batch status
+                            </p>
+                            <p class="verification-batch-copy">
+                                {arcadeBatchRunning
+                                    ? `Running ${arcadeBatchProgress.currentGame || "next game"} (${arcadeBatchProgress.completed}/${arcadeBatchProgress.total})`
+                                    : arcadeBatchSummary}
+                            </p>
+                            <div class="verification-batch-meter">
+                                <span
+                                    style={`width:${
+                                        arcadeBatchProgress.total > 0
+                                            ? Math.min(
+                                                  (arcadeBatchProgress.completed /
+                                                      arcadeBatchProgress.total) *
+                                                      100,
+                                                  100,
+                                              )
+                                            : 0
+                                    }%`}
+                                ></span>
+                            </div>
+                            <div class="verification-batch-meta">
+                                <span>Passed: {arcadeBatchProgress.passed}</span>
+                                <span>Failed: {arcadeBatchProgress.failed}</span>
+                                <span>Total: {arcadeBatchProgress.total}</span>
+                            </div>
+                        </div>
+                    {/if}
                     <div class="verification-mesh">
                         <p class="verification-mesh-title">
                             Cross-coordination digest
@@ -7068,6 +7248,58 @@
             );
         border-color: rgba(170, 255, 188, 0.58);
     }
+    .verification-batch-btn {
+        background:
+            linear-gradient(180deg, rgba(56, 122, 189, 0.95), rgba(24, 72, 132, 0.95)),
+            repeating-linear-gradient(
+                0deg,
+                rgba(255, 255, 255, 0.06) 0 1px,
+                rgba(255, 255, 255, 0) 1px 3px
+            );
+        border-color: rgba(165, 210, 255, 0.6);
+    }
+    .verification-batch-status {
+        border-radius: 12px;
+        border: 1px solid rgba(149, 207, 255, 0.42);
+        background: rgba(9, 24, 49, 0.66);
+        padding: 9px 10px;
+        display: grid;
+        gap: 6px;
+    }
+    .verification-batch-title {
+        margin: 0;
+        font-size: 9px;
+        text-transform: uppercase;
+        letter-spacing: 0.8px;
+        color: #a8e6ff;
+    }
+    .verification-batch-copy {
+        margin: 0;
+        font-size: 10px;
+        line-height: 1.55;
+        color: #d5ebff;
+    }
+    .verification-batch-meter {
+        height: 8px;
+        border-radius: 999px;
+        border: 1px solid rgba(151, 205, 255, 0.38);
+        background: rgba(8, 18, 36, 0.86);
+        overflow: hidden;
+    }
+    .verification-batch-meter span {
+        display: block;
+        height: 100%;
+        border-radius: 999px;
+        background: linear-gradient(90deg, #67d3ff, #81ffb3);
+        box-shadow: 0 0 10px rgba(124, 255, 178, 0.3);
+    }
+    .verification-batch-meta {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 8px;
+        font-size: 9px;
+        color: #b9d5ef;
+    }
     .verification-mesh {
         border-radius: 12px;
         border: 1px dashed rgba(156, 211, 255, 0.46);
@@ -7602,6 +7834,9 @@
         .verification-mesh-meta {
             grid-template-columns: 1fr;
         }
+        .verification-batch-meta {
+            gap: 6px;
+        }
         .toolchain-ingest-input {
             min-height: 104px;
         }
@@ -7642,6 +7877,10 @@
             align-items: stretch;
         }
         .verification-actions {
+            display: grid;
+            grid-template-columns: 1fr;
+        }
+        .verification-batch-meta {
             display: grid;
             grid-template-columns: 1fr;
         }
