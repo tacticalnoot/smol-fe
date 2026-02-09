@@ -1782,7 +1782,7 @@
             await navigator.clipboard.writeText(JSON.stringify(bundle, null, 2));
             copiedToolchainJudgeBundle = track.id;
             toolchainNotice =
-                "Judge bundle copied with artifacts and linked on-chain settlement records.";
+                "Proctor bundle copied with artifacts and linked on-chain settlement records.";
             if (toolchainJudgeTimer) {
                 clearTimeout(toolchainJudgeTimer);
             }
@@ -1793,7 +1793,7 @@
                 toolchainJudgeTimer = null;
             }, 2000);
         } catch (e: any) {
-            gameError = e?.message || "Unable to copy judge bundle";
+            gameError = e?.message || "Unable to copy proctor bundle";
         }
     }
 
@@ -2061,7 +2061,7 @@
                 message:
                     artifactCount > 0
                         ? "Track already has a linked on-chain settlement and artifact evidence."
-                        : "Track already settled on-chain. Import artifact manifest for judge evidence.",
+                        : "Track already settled on-chain. Import artifact manifest for proctor evidence.",
                 txHash: afterHead,
             });
             return true;
@@ -3121,7 +3121,7 @@
                 <section class="verification-deck">
                     <div class="verification-deck-head">
                         <p class="verification-deck-kicker">
-                            Stellar Mainnet Judge Deck
+                            Stellar Mainnet Proctor Deck
                         </p>
                         <p class="verification-deck-copy">
                             Four rails, one Stellar contract: run each feature
@@ -3145,7 +3145,7 @@
                     <div class="verification-rubric">
                         <div class="verification-rubric-head">
                             <p class="verification-rubric-title">
-                                Judge checklist
+                                Proctor checklist
                             </p>
                             <p class="verification-rubric-score">
                                 {verificationPassCount}/4 rails passed
@@ -4062,9 +4062,9 @@
                                         )}
                                 >
                                     {#if copiedToolchainJudgeBundle === selectedToolchainTrack.id}
-                                        Judge bundle copied
+                                        Proctor bundle copied
                                     {:else}
-                                        Copy judge bundle
+                                        Copy proctor bundle
                                     {/if}
                                 </button>
                             </div>
@@ -4145,7 +4145,7 @@
                                         </ul>
                                     </div>
                                     <div class="toolchain-column">
-                                        <p class="toolchain-column-title">Judge signals</p>
+                                        <p class="toolchain-column-title">Proctor signals</p>
                                         <ul>
                                             {#each selectedToolchainTrack.judgeSignals as step}
                                                 <li>{step}</li>
