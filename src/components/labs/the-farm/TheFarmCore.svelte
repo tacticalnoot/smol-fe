@@ -2510,9 +2510,35 @@
             return;
         }
 
+        const settleArcadeRail = async (): Promise<{
+            txHash: string;
+            gameId: string;
+            title: string;
+        }> => {
+            const target = pickArcadeOnchainTarget();
+            if (!target) {
+                throw new Error("No arcade game session is available.");
+            }
+
+            await runGameOneClickFlow(target);
+            const refreshed = getGameSession(target.id);
+            if (!refreshed?.proof?.onchainTxHash) {
+                throw new Error(
+                    gameError ||
+                        "Arcade verifier rail did not complete on-chain.",
+                );
+            }
+            return {
+                txHash: refreshed.proof.onchainTxHash,
+                gameId: refreshed.id,
+                title: refreshed.title,
+            };
+        };
+
         toolchainVerifying = track.id;
         try {
-            if (track.onchainFlow === "kale") {
+            const canUseKaleRail = !!earned["proof-of-farm"]?.data?.proof || hasKale;
+            if (track.onchainFlow === "kale" && canUseKaleRail) {
                 if (!earned["proof-of-farm"]?.data?.proof) {
                     await generateProof();
                 }
@@ -2542,31 +2568,27 @@
                         : `Kale rail confirmed on-chain (${shortHash(txHash, 12, 10)}).`;
                 return;
             }
-
-            const target = pickArcadeOnchainTarget();
-            if (!target) {
-                throw new Error("No arcade game session is available.");
+            const fallbackToArcade =
+                track.onchainFlow === "kale" && !canUseKaleRail;
+            if (fallbackToArcade) {
+                toolchainNotice =
+                    "No KALE balance detected for tier-proof generation. Running arcade settlement fallback for this track.";
             }
 
-            await runGameOneClickFlow(target);
-            const refreshed = getGameSession(target.id);
-            if (!refreshed?.proof?.onchainTxHash) {
-                throw new Error(
-                    gameError ||
-                        "Arcade verifier rail did not complete on-chain.",
-                );
-            }
+            const arcadeSettlement = await settleArcadeRail();
             captureToolchainSubmission(track, {
-                txHash: refreshed.proof.onchainTxHash,
+                txHash: arcadeSettlement.txHash,
                 flow: "arcade",
                 wallet: userState.contractId,
-                gameId: refreshed.id,
+                gameId: arcadeSettlement.gameId,
             });
-            toolchainNotice = `${refreshed.title} settled on-chain (${shortHash(
-                refreshed.proof.onchainTxHash,
-                12,
-                10,
-            )}).`;
+            toolchainNotice = fallbackToArcade
+                ? `${track.label} settled via arcade fallback (${shortHash(arcadeSettlement.txHash, 12, 10)}).`
+                : `${arcadeSettlement.title} settled on-chain (${shortHash(
+                      arcadeSettlement.txHash,
+                      12,
+                      10,
+                  )}).`;
         } catch (e: any) {
             gameError = e?.message || "Toolchain on-chain verification failed";
             toolchainNotice = null;
@@ -3307,8 +3329,8 @@
                     <p class="chapter-tag">Chapter I</p>
                     <h2 class="chapter-title">Kale Proof Garden</h2>
                     <p class="chapter-copy">
-                        Generate and attest your KALE tier proof with a cinematic,
-                        protocol-first verification flow.
+                        Moonlit farm vibes with production ZK: generate a private
+                        KALE tier proof and attest it on Stellar mainnet in one click.
                     </p>
                 </div>
                 <div class="kale-cover" role="img" aria-label="Kale proof chapter cover art">
@@ -3316,8 +3338,17 @@
                         <p class="kale-cover-kicker">Groth16 · BN254 · Poseidon</p>
                         <p class="kale-cover-title">PROOF OF FARM</p>
                         <p class="kale-cover-body">
-                            Confidential balance tiering with live Super Verifier attestation.
+                            Stardew-style cover, real Protocol 25 host ops, and live
+                            Super Verifier receipts.
                         </p>
+                    </div>
+                    <div class="kale-cover-scene" aria-hidden="true">
+                        <span class="kale-moon"></span>
+                        <span class="kale-hill kale-hill--far"></span>
+                        <span class="kale-hill kale-hill--near"></span>
+                        <span class="kale-sprout kale-sprout--one"></span>
+                        <span class="kale-sprout kale-sprout--two"></span>
+                        <span class="kale-sprout kale-sprout--three"></span>
                     </div>
                     <div class="kale-cover-stamp">MAINNET</div>
                 </div>
@@ -3490,13 +3521,42 @@
                             Stellar Mainnet Proctor Deck
                         </p>
                         <p class="verification-deck-copy">
-                            Four rails, one Stellar contract: run each feature
-                            independently or verify the full stack in sequence
-                            with shared coordination state. Batch mode can
-                            clear every arcade game in one run. No mock
-                            verification path is used.
+                            One command deck controls the full proof suite.
+                            Launch the full stack instantly, then open deep
+                            diagnostics only when you need lane-level controls.
                         </p>
                     </div>
+                    <div class="verification-primary">
+                        <button
+                            class="arcade-guide-btn verification-master-btn verification-master-btn--hero"
+                            type="button"
+                            onclick={runFullVerificationSuite}
+                            disabled={verificationSuiteRunning || arcadeBatchRunning}
+                        >
+                            {verificationSuiteRunning
+                                ? "Verifying full stack..."
+                                : "Launch Full Proof Suite"}
+                        </button>
+                        <p class="verification-primary-copy">
+                            This runs Kale, Arcade, Noir, and zkVM rails in sequence
+                            against live mainnet infrastructure and shared
+                            coordination state.
+                        </p>
+                        <div class="verification-primary-meta">
+                            <span>{verificationPassCount}/4 rails online</span>
+                            <span>{verificationRailEvidence.length} live receipts</span>
+                            <span>
+                                {allArcadeGamesOnchain
+                                    ? "Arcade portals fully attested"
+                                    : `${gameOnchainCount}/${zkGames.length} portals attested`}
+                            </span>
+                        </div>
+                    </div>
+                    <details class="quiet-details verification-deep-dive">
+                        <summary>
+                            Open rail diagnostics, per-lane controls, and live receipts
+                        </summary>
+                        <div class="quiet-details-body verification-deep-dive-body">
                     <div class="verification-authenticity">
                         <p class="verification-authenticity-title">
                             Real on-chain mode
@@ -3511,7 +3571,7 @@
                     <div class="verification-rubric">
                         <div class="verification-rubric-head">
                             <p class="verification-rubric-title">
-                                Proctor checklist
+                                Proctor status board
                             </p>
                             <p class="verification-rubric-score">
                                 {verificationPassCount}/4 rails passed
@@ -3641,16 +3701,6 @@
                                   : "Verify All Arcade Games"}
                         </button>
                         <button
-                            class="arcade-guide-btn verification-master-btn"
-                            type="button"
-                            onclick={runFullVerificationSuite}
-                            disabled={verificationSuiteRunning || arcadeBatchRunning}
-                        >
-                            {verificationSuiteRunning
-                                ? "Verifying full stack..."
-                                : "Verify Full Stack"}
-                        </button>
-                        <button
                             class="arcade-guide-btn toolchain-copy-btn"
                             type="button"
                             onclick={copyCoordinationSnapshot}
@@ -3750,19 +3800,22 @@
                             </span>
                         </div>
                     </div>
+                        </div>
+                    </details>
                 </section>
                 {#if showArcadeGuide}
                     <div class="arcade-guide-card">
                         <p>
-                            1. Each run emits a deterministic transcript + action hash
-                            that can be reproduced from session state.
+                            Each game run emits a deterministic transcript and action
+                            hash that can be replayed from session state.
                         </p>
                         <p>
-                            2. We seal those values into a Poseidon commitment and build
-                            a Groth16-compatible witness for submission.
+                            We seal that data into Poseidon commitments, derive
+                            Groth16-compatible witness data, and prepare
+                            contract-ready payloads.
                         </p>
                         <p>
-                            3. We submit through the live Super Verifier
+                            Final settlement goes through the live Super Verifier
                             <code>verify_and_attest</code> entrypoint and surface
                             explorer receipts in this deck.
                         </p>
@@ -4278,9 +4331,9 @@
                     <p class="chapter-tag">Chapter III</p>
                     <h2 class="chapter-title">ZK Dungeon Proving Grounds</h2>
                     <p class="chapter-copy">
-                        Open a dedicated chapter page that proves cross-chapter
-                        execution and tracks official Stellar ZK Gaming hackathon
-                        submission requirements.
+                        Launch a dedicated chapter page for the hackathon main event:
+                        prove cross-chapter execution, track official requirements, and
+                        package clean proctor evidence.
                     </p>
                 </div>
                 <button
@@ -4293,8 +4346,8 @@
                         <h3 class="dungeon-title">Protocol 25 Raid Gate</h3>
                         <p class="dungeon-copy">
                             Chapter III opens into a focused proving room with
-                            compliance controls, proof receipts, and the proctor
-                            verifier dock.
+                            compliance controls, proof receipts, and the verifier
+                            dock in one mission flow.
                         </p>
                         <div class="dungeon-tags">
                             <span>Official Rules Matrix</span>
@@ -4319,26 +4372,26 @@
                                 <p class="dungeon-stat-value">4 active rails</p>
                             </div>
                         </div>
-                        <p class="chapter-three-launch-note">Open Chapter III</p>
+                        <p class="chapter-three-launch-note">Enter Chapter III</p>
                     </div>
                 </button>
                 <div class="chapter-three-inline">
                     <article class="chapter-three-inline-card">
                         <p class="chapter-three-inline-title">
-                            Verifier Dock moved
+                            Dedicated verifier wing
                         </p>
                         <p class="chapter-three-inline-copy">
-                            Contract and host-operation details now live in a
-                            separate section inside Chapter III.
+                            Contract internals and Protocol 25 host-operation
+                            evidence live in this chapter, out of the main game flow.
                         </p>
                     </article>
                     <article class="chapter-three-inline-card">
                         <p class="chapter-three-inline-title">
-                            Rules-driven submission
+                            Hackathon-ready story mode
                         </p>
                         <p class="chapter-three-inline-copy">
-                            Includes tracking for Game Studio integration,
-                            testnet game-hub calls, repo, and demo video.
+                            Track Game Studio setup, testnet game-hub lifecycle,
+                            open-source repo, and the final demo in one place.
                         </p>
                     </article>
                 </div>
@@ -4918,7 +4971,7 @@ bun run publish my-game --build</code></pre>
                         </div>
                         <details class="quiet-details toolchain-deep-dive">
                             <summary>
-                                Implementation checklist, references, and runbook
+                                Implementation playbook, references, and runbook
                             </summary>
                             <div class="quiet-details-body">
                                 <div class="toolchain-grid">
@@ -7662,7 +7715,7 @@ bun run publish my-game --build</code></pre>
     }
     .kale-cover-copy {
         position: relative;
-        z-index: 1;
+        z-index: 4;
         max-width: 32ch;
     }
     .kale-cover-kicker {
@@ -7721,6 +7774,30 @@ bun run publish my-game --build</code></pre>
         display: grid;
         gap: 10px;
         box-shadow: inset 0 0 0 1px rgba(255, 174, 151, 0.08);
+        position: relative;
+        overflow: hidden;
+    }
+    .dungeon-teaser::before {
+        content: "";
+        position: absolute;
+        inset: 0;
+        pointer-events: none;
+        opacity: 0.28;
+        background:
+            radial-gradient(
+                110% 84% at 100% 0%,
+                rgba(255, 178, 120, 0.3),
+                rgba(255, 178, 120, 0)
+            ),
+            repeating-linear-gradient(
+                90deg,
+                rgba(255, 255, 255, 0.08) 0 1px,
+                rgba(255, 255, 255, 0) 1px 6px
+            );
+    }
+    .dungeon-teaser > * {
+        position: relative;
+        z-index: 1;
     }
     .dungeon-overline {
         margin: 0;
@@ -8284,6 +8361,14 @@ bun run publish my-game --build</code></pre>
         border: 1px solid var(--neo-stroke);
         background: var(--neo-surface);
         box-shadow: var(--neo-shadow);
+        transition: transform 0.22s ease, border-color 0.22s ease, box-shadow 0.22s ease;
+    }
+    .chapter-panel:hover {
+        transform: translateY(-3px);
+        border-color: rgba(186, 214, 255, 0.44);
+        box-shadow:
+            0 36px 68px rgba(0, 0, 0, 0.56),
+            inset 0 0 0 1px rgba(189, 236, 255, 0.08);
     }
     .chapter-panel::before {
         opacity: 0.42;
@@ -8359,9 +8444,86 @@ bun run publish my-game --build</code></pre>
         letter-spacing: 1.2px;
     }
     .kale-cover-stamp {
+        position: relative;
+        z-index: 4;
         box-shadow:
             0 10px 20px rgba(8, 30, 5, 0.38),
             inset 0 0 0 1px rgba(255, 255, 255, 0.2);
+    }
+    .kale-cover-scene {
+        position: absolute;
+        inset: auto 0 0 0;
+        height: 58%;
+        pointer-events: none;
+        z-index: 2;
+        overflow: hidden;
+    }
+    .kale-moon {
+        position: absolute;
+        top: 10%;
+        right: 12%;
+        width: 54px;
+        height: 54px;
+        border-radius: 50%;
+        background:
+            radial-gradient(circle at 34% 30%, #f8ffe3 0 28%, #e2ffd1 30% 52%, #b7ffd7 56% 100%);
+        box-shadow:
+            0 0 26px rgba(212, 255, 170, 0.42),
+            0 0 56px rgba(110, 245, 255, 0.2);
+        opacity: 0.86;
+    }
+    .kale-hill {
+        position: absolute;
+        left: -10%;
+        right: -10%;
+        border-radius: 48% 52% 0 0;
+    }
+    .kale-hill--far {
+        bottom: 26%;
+        height: 44%;
+        background: linear-gradient(180deg, rgba(74, 138, 97, 0.66), rgba(36, 82, 57, 0.74));
+    }
+    .kale-hill--near {
+        bottom: 0;
+        height: 58%;
+        background: linear-gradient(180deg, rgba(64, 150, 75, 0.84), rgba(28, 86, 46, 0.96));
+        box-shadow: inset 0 14px 24px rgba(210, 255, 171, 0.1);
+    }
+    .kale-sprout {
+        position: absolute;
+        bottom: 8%;
+        width: 16px;
+        height: 34px;
+        border-radius: 8px;
+        background: linear-gradient(180deg, rgba(177, 255, 140, 0.9), rgba(70, 182, 86, 0.86));
+        box-shadow: 0 0 8px rgba(158, 255, 141, 0.34);
+    }
+    .kale-sprout::before,
+    .kale-sprout::after {
+        content: "";
+        position: absolute;
+        top: -11px;
+        width: 14px;
+        height: 16px;
+        border-radius: 70% 30% 70% 30%;
+        background: linear-gradient(180deg, rgba(201, 255, 162, 0.96), rgba(91, 203, 104, 0.88));
+    }
+    .kale-sprout::before {
+        left: -10px;
+        transform: rotate(-24deg);
+    }
+    .kale-sprout::after {
+        right: -10px;
+        transform: scaleX(-1) rotate(-24deg);
+    }
+    .kale-sprout--one {
+        left: 16%;
+    }
+    .kale-sprout--two {
+        left: 30%;
+    }
+    .kale-sprout--three {
+        left: 46%;
     }
     .kale-magic,
     .game-magic {
@@ -8527,6 +8689,60 @@ bun run publish my-game --build</code></pre>
         font-size: 11px;
         line-height: 1.6;
         color: #cbe7ff;
+    }
+    .verification-primary {
+        border-radius: 12px;
+        border: 1px solid rgba(121, 255, 191, 0.42);
+        background:
+            linear-gradient(140deg, rgba(10, 39, 38, 0.9), rgba(9, 24, 41, 0.84)),
+            radial-gradient(
+                180% 220% at 100% 0%,
+                rgba(111, 255, 196, 0.18),
+                rgba(111, 255, 196, 0)
+            );
+        padding: 10px;
+        display: grid;
+        gap: 8px;
+    }
+    .verification-master-btn--hero {
+        width: 100%;
+        justify-self: stretch;
+        font-size: 10px;
+        letter-spacing: 0.75px;
+        padding: 13px 12px;
+        box-shadow:
+            inset 0 -2px 0 rgba(6, 23, 10, 0.86),
+            0 12px 24px rgba(8, 36, 14, 0.44),
+            0 0 24px rgba(125, 255, 178, 0.22);
+    }
+    .verification-primary-copy {
+        margin: 0;
+        font-size: 10px;
+        line-height: 1.7;
+        color: #d9fff0;
+    }
+    .verification-primary-meta {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 6px;
+    }
+    .verification-primary-meta span {
+        font-size: 9px;
+        border-radius: 999px;
+        border: 1px solid rgba(131, 246, 205, 0.4);
+        background: rgba(6, 34, 31, 0.6);
+        color: #c9ffe8;
+        padding: 4px 8px;
+    }
+    .verification-deep-dive {
+        margin: 0;
+    }
+    .verification-deep-dive summary {
+        color: #b7d9ff;
+    }
+    .verification-deep-dive-body {
+        display: grid;
+        gap: 10px;
     }
     .verification-authenticity {
         border-radius: 12px;
@@ -8697,6 +8913,7 @@ bun run publish my-game --build</code></pre>
         display: flex;
         flex-wrap: wrap;
         gap: 8px;
+        align-items: center;
     }
     .verification-master-btn {
         background:
@@ -9240,7 +9457,8 @@ bun run publish my-game --build</code></pre>
     }
     .kale-magic-btn,
     .game-magic-btn,
-    .toolchain-actions .arcade-guide-btn {
+    .toolchain-actions .arcade-guide-btn,
+    .verification-master-btn--hero {
         position: relative;
         overflow: hidden;
         font-size: clamp(10px, 0.72vw, 12px);
@@ -9250,7 +9468,8 @@ bun run publish my-game --build</code></pre>
     }
     .kale-magic-btn::after,
     .game-magic-btn::after,
-    .toolchain-actions .arcade-guide-btn::after {
+    .toolchain-actions .arcade-guide-btn::after,
+    .verification-master-btn--hero::after {
         content: "";
         position: absolute;
         top: 0;
@@ -9269,7 +9488,8 @@ bun run publish my-game --build</code></pre>
     }
     .kale-magic-btn:hover:not(:disabled),
     .game-magic-btn:hover:not(:disabled),
-    .toolchain-actions .arcade-guide-btn:hover:not(:disabled) {
+    .toolchain-actions .arcade-guide-btn:hover:not(:disabled),
+    .verification-master-btn--hero:hover:not(:disabled) {
         transform: translateY(-3px) scale(1.01);
     }
     .game-card {
@@ -9359,6 +9579,11 @@ bun run publish my-game --build</code></pre>
         .verification-grid {
             grid-template-columns: 1fr;
         }
+        .verification-primary-meta {
+            display: grid;
+            grid-template-columns: 1fr;
+            gap: 6px;
+        }
         .verification-rubric-row {
             grid-template-columns: minmax(0, 120px) minmax(0, 1fr);
         }
@@ -9407,12 +9632,24 @@ bun run publish my-game --build</code></pre>
             min-height: 220px;
             padding: 14px;
         }
+        .kale-moon {
+            width: 42px;
+            height: 42px;
+            right: 10%;
+        }
+        .kale-sprout {
+            height: 28px;
+        }
         .kale-magic-btn,
         .game-magic-btn,
         .arcade-guide-btn {
             width: 100%;
             font-size: 8px;
             padding: 11px 10px;
+        }
+        .verification-master-btn--hero {
+            font-size: 9px;
+            min-height: 50px;
         }
         .arcade-guide-row {
             align-items: stretch;

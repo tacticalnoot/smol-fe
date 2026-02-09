@@ -261,6 +261,20 @@
             <p class="text-white/40 text-xs font-mono mt-2 break-all">
                 {lockedArtistAddress || "Unavailable address"}
             </p>
+            {#if lockedArtistAddress}
+                <div class="mt-3 flex flex-col items-center gap-1">
+                    <div class="p-1.5 bg-white/90 rounded-md">
+                        <img
+                            src={`https://chart.googleapis.com/chart?cht=qr&chs=80x80&chl=${encodeURIComponent(`stellar:${lockedArtistAddress}`)}&choe=UTF-8`}
+                            alt="Tip QR"
+                            class="w-[80px] h-[80px]"
+                        />
+                    </div>
+                    <p class="text-[8px] text-white/25 tracking-wide">
+                        scan with any Stellar wallet
+                    </p>
+                </div>
+            {/if}
         </div>
 
         {#if !userState.contractId}
