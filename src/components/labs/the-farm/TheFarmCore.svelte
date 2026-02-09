@@ -271,6 +271,7 @@
 
     type ChapterThreeComplianceInputs = {
         gameStudioForkUrl: string;
+        gameStudioInstallEvidenceUrl: string;
         testnetComponentUrl: string;
         gameHubStartTxUrl: string;
         gameHubEndTxUrl: string;
@@ -661,6 +662,8 @@
     let chapterThreeComplianceRows = $derived(
         (() => {
             const gameStudioFork = chapterThreeComplianceInputs.gameStudioForkUrl.trim();
+            const gameStudioInstall =
+                chapterThreeComplianceInputs.gameStudioInstallEvidenceUrl.trim();
             const testnetComponent =
                 chapterThreeComplianceInputs.testnetComponentUrl.trim();
             const gameHubStart = chapterThreeComplianceInputs.gameHubStartTxUrl.trim();
@@ -668,6 +671,16 @@
             const openSourceRepo =
                 chapterThreeComplianceInputs.openSourceRepoUrl.trim();
             const demoVideo = chapterThreeComplianceInputs.demoVideoUrl.trim();
+            const gameStudioForkReady =
+                looksLikeUrl(gameStudioFork) && /github\.com/i.test(gameStudioFork);
+            const gameStudioInstallReady = looksLikeUrl(gameStudioInstall);
+            const testnetEvidenceReady =
+                looksLikeUrl(testnetComponent) &&
+                looksLikeUrl(gameHubStart) &&
+                looksLikeUrl(gameHubEnd) &&
+                /testnet/i.test(testnetComponent) &&
+                /testnet/i.test(gameHubStart) &&
+                /testnet/i.test(gameHubEnd);
             const zkMechanicReady =
                 verificationPassCount > 0 || sealedGameCount > 0 || gameOnchainCount > 0;
 
@@ -676,12 +689,21 @@
                     id: "fork-game-studio",
                     title: "Fork + integrate Stellar Game Studio",
                     requirement:
-                        "Required by hackathon rules as the project base.",
-                    status: gameStudioFork ? "pass" : "pending",
-                    evidence: gameStudioFork || STELLAR_GAME_STUDIO_REPO_URL,
-                    actionHint: gameStudioFork
-                        ? "Fork evidence linked."
-                        : "Add your fork URL to lock this requirement.",
+                        "Required by hackathon rules: fork Game Studio and complete setup (bun run setup).",
+                    status:
+                        gameStudioForkReady && gameStudioInstallReady
+                            ? "pass"
+                            : "pending",
+                    evidence:
+                        gameStudioForkReady && gameStudioInstallReady
+                            ? `Fork: ${gameStudioFork}`
+                            : STELLAR_GAME_STUDIO_REPO_URL,
+                    actionHint:
+                        gameStudioForkReady && gameStudioInstallReady
+                            ? "Fork + install evidence captured."
+                            : !gameStudioForkReady
+                              ? "Add your forked GitHub repo URL first."
+                              : "Add setup evidence URL (CLI log, CI run, or preview proving bun run setup).",
                 },
                 {
                     id: "zk-mechanic",
@@ -702,14 +724,14 @@
                     requirement:
                         "Need Stellar Testnet deployment and start_game()/end_game() calls against game hub.",
                     status:
-                        testnetComponent && gameHubStart && gameHubEnd
+                        testnetEvidenceReady
                             ? "pass"
                             : "pending",
                     evidence: `Game hub: ${GAME_HUB_CONTRACT_ID}`,
                     actionHint:
-                        testnetComponent && gameHubStart && gameHubEnd
+                        testnetEvidenceReady
                             ? "Testnet + start/end evidence linked."
-                            : "Add testnet contract + start_game tx + end_game tx links.",
+                            : "Add testnet URLs for component, start_game tx, and end_game tx.",
                 },
                 {
                     id: "frontend",
@@ -753,6 +775,11 @@
     );
     let chapterThreeCompliancePassCount = $derived(
         chapterThreeComplianceRows.filter((item) => item.status === "pass").length,
+    );
+    let chapterThreeTopPriorityReady = $derived(
+        chapterThreeComplianceRows.find(
+            (item) => item.id === "fork-game-studio",
+        )?.status === "pass",
     );
     let superVerifierLabel = $derived(
         `${SUPER_VERIFIER_CONTRACT_ID.slice(0, 8)}...${SUPER_VERIFIER_CONTRACT_ID.slice(-6)}`,
@@ -1628,6 +1655,7 @@
     function createDefaultChapterThreeComplianceInputs(): ChapterThreeComplianceInputs {
         return {
             gameStudioForkUrl: "",
+            gameStudioInstallEvidenceUrl: "",
             testnetComponentUrl: "",
             gameHubStartTxUrl: "",
             gameHubEndTxUrl: "",
@@ -1654,6 +1682,10 @@
                     typeof parsed.gameStudioForkUrl === "string"
                         ? parsed.gameStudioForkUrl
                         : defaults.gameStudioForkUrl,
+                gameStudioInstallEvidenceUrl:
+                    typeof parsed.gameStudioInstallEvidenceUrl === "string"
+                        ? parsed.gameStudioInstallEvidenceUrl
+                        : defaults.gameStudioInstallEvidenceUrl,
                 testnetComponentUrl:
                     typeof parsed.testnetComponentUrl === "string"
                         ? parsed.testnetComponentUrl
@@ -4312,6 +4344,22 @@
                                 requirements tracked
                             </p>
                         </div>
+                        <div
+                            class={`chapter-three-priority chapter-three-priority--${
+                                chapterThreeTopPriorityReady
+                                    ? "ready"
+                                    : "pending"
+                            }`}
+                        >
+                            <p class="chapter-three-priority-title">
+                                Top priority: Game Studio fork + install proof
+                            </p>
+                            <p class="chapter-three-priority-copy">
+                                {chapterThreeTopPriorityReady
+                                    ? "Ready. Fork URL and setup evidence are captured."
+                                    : "Pending. Add your forked Game Studio URL and setup evidence to unlock this requirement."}
+                            </p>
+                        </div>
                         <p class="chapter-three-compliance-copy">
                             Source:
                             <a
@@ -4394,6 +4442,21 @@
                                             ).value,
                                         )}
                                     placeholder="https://github.com/your-org/Stellar-Game-Studio"
+                                />
+                            </label>
+                            <label class="chapter-three-input">
+                                <span>Game Studio setup evidence URL</span>
+                                <input
+                                    type="url"
+                                    value={chapterThreeComplianceInputs.gameStudioInstallEvidenceUrl}
+                                    oninput={(event) =>
+                                        setChapterThreeComplianceField(
+                                            "gameStudioInstallEvidenceUrl",
+                                            (
+                                                event.currentTarget as HTMLInputElement
+                                            ).value,
+                                        )}
+                                    placeholder="https://github.com/.../actions/runs/... or deployment log URL"
                                 />
                             </label>
                             <label class="chapter-three-input">
@@ -7697,6 +7760,34 @@
     }
     .chapter-three-compliance-copy a {
         color: #ffd6c4;
+    }
+    .chapter-three-priority {
+        border-radius: 12px;
+        border: 1px solid rgba(255, 171, 146, 0.44);
+        background: rgba(51, 22, 25, 0.58);
+        padding: 8px 10px;
+        display: grid;
+        gap: 4px;
+    }
+    .chapter-three-priority--ready {
+        border-color: rgba(130, 255, 187, 0.5);
+        background: rgba(17, 46, 31, 0.6);
+    }
+    .chapter-three-priority-title {
+        margin: 0;
+        font-size: 9px;
+        text-transform: uppercase;
+        letter-spacing: 0.6px;
+        color: #ffd4c6;
+    }
+    .chapter-three-priority--ready .chapter-three-priority-title {
+        color: #c2ffe1;
+    }
+    .chapter-three-priority-copy {
+        margin: 0;
+        font-size: 10px;
+        line-height: 1.55;
+        color: #ffd7ca;
     }
     .chapter-three-link-row {
         display: flex;
