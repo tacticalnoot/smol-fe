@@ -51,6 +51,7 @@
     let gameAttesting = $state<string | null>(null);
     let gameOneClickCasting = $state<string | null>(null);
     let showArcadeGuide = $state(false);
+    let activeGamePortalId = $state<string | null>(null);
     let activeToolchainTrack = $state<ToolchainTrackId>("noir-ultrahonk");
     let copiedToolchainTrack = $state<ToolchainTrackId | null>(null);
     let gamePayloadCopied = $state<string | null>(null);
@@ -436,6 +437,11 @@
     );
     let gameWalletLabel = $derived(
         gameWallet ? `${gameWallet.slice(0, 6)}…${gameWallet.slice(-4)}` : "",
+    );
+    let activeGamePortal = $derived(
+        activeGamePortalId
+            ? zkGames.find((game) => game.id === activeGamePortalId) ?? null
+            : null,
     );
     let selectedToolchainTrack = $derived(
         HACKATHON_TOOLCHAIN_TRACKS.find(
@@ -879,6 +885,33 @@
 
     function closeProof() {
         activeProof = null;
+    }
+
+    function openGamePortal(gameId: string) {
+        activeGamePortalId = gameId;
+        gameError = null;
+    }
+
+    function closeGamePortal() {
+        activeGamePortalId = null;
+    }
+
+    function cycleGamePortal(direction: 1 | -1) {
+        if (!zkGames.length) return;
+        if (!activeGamePortalId) {
+            activeGamePortalId = zkGames[0].id;
+            return;
+        }
+        const currentIndex = zkGames.findIndex(
+            (game) => game.id === activeGamePortalId,
+        );
+        if (currentIndex < 0) {
+            activeGamePortalId = zkGames[0].id;
+            return;
+        }
+        const nextIndex =
+            (currentIndex + direction + zkGames.length) % zkGames.length;
+        activeGamePortalId = zkGames[nextIndex].id;
     }
 
     function getRequirement(game: ZkGameSession): number {
@@ -2032,29 +2065,99 @@
                     </div>
                 {/if}
                 <section class="game-section">
-        <div class="game-header">
-            <h2 class="section-label">ZK Arcade</h2>
-            <p class="game-subtitle">
-                Beat real mini-games to forge Poseidon commitments, then route
-                verify_and_attest calls into the live Super Verifier contract.
-            </p>
-            <p class="game-subtitle">
-                Arcade submit path uses a compatibility Groth16 witness derived
-                from each sealed run while dedicated per-game circuits are in
-                active development.
-            </p>
-            {#if !isAuth}
-                <p class="game-subtitle game-wallet">
-                    Guest wallet active: {gameWalletLabel} (no Kale Farm login needed).
-                </p>
-            {/if}
-        </div>
-        {#if gameError}
-            <p class="game-error">{gameError}</p>
-        {/if}
-        <div class="game-grid">
-            {#each zkGames as game}
-                <article class="game-card" style={`--accent:${game.color}`}>
+                    <div class="game-header">
+                        <h2 class="section-label">ZK Arcade</h2>
+                        <p class="game-subtitle">
+                            Beat real mini-games to forge Poseidon commitments,
+                            then route verify_and_attest calls into the live
+                            Super Verifier contract.
+                        </p>
+                        <p class="game-subtitle">
+                            Arcade submit path uses a compatibility Groth16
+                            witness derived from each sealed run while dedicated
+                            per-game circuits are in active development.
+                        </p>
+                        {#if !isAuth}
+                            <p class="game-subtitle game-wallet">
+                                Guest wallet active: {gameWalletLabel} (no Kale
+                                Farm login needed).
+                            </p>
+                        {/if}
+                    </div>
+                    {#if gameError}
+                        <p class="game-error">{gameError}</p>
+                    {/if}
+                    <div class="game-portal-grid">
+                        {#each zkGames as game}
+                            <button
+                                class={`game-portal-tile ${
+                                    activeGamePortalId === game.id
+                                        ? "game-portal-tile--active"
+                                        : ""
+                                }`}
+                                type="button"
+                                onclick={() => openGamePortal(game.id)}
+                            >
+                                <span class="game-portal-chip">
+                                    {game.proof?.onchainTxHash
+                                        ? "On-chain verified"
+                                        : "Enter portal"}
+                                </span>
+                                <span class="game-portal-title">{game.title}</span>
+                                <span class="game-portal-summary">{game.summary}</span>
+                                <span class="game-portal-meta">
+                                    Level {game.level} · {game.status === "complete"
+                                        ? "Ready to seal"
+                                        : game.status}
+                                </span>
+                            </button>
+                        {/each}
+                    </div>
+                    <div class="game-portal-stage">
+                        <div class="game-portal-stage-head">
+                            <div>
+                                <p class="game-portal-label">Active portal</p>
+                                <p class="game-portal-name">
+                                    {activeGamePortal
+                                        ? activeGamePortal.title
+                                        : "No game portal open"}
+                                </p>
+                            </div>
+                            <div class="game-portal-nav">
+                                <button
+                                    class="game-portal-nav-btn"
+                                    type="button"
+                                    onclick={() => cycleGamePortal(-1)}
+                                    disabled={!zkGames.length}
+                                >
+                                    Prev
+                                </button>
+                                <button
+                                    class="game-portal-nav-btn"
+                                    type="button"
+                                    onclick={() => cycleGamePortal(1)}
+                                    disabled={!zkGames.length}
+                                >
+                                    Next
+                                </button>
+                                <button
+                                    class="game-portal-nav-btn game-portal-nav-btn--ghost"
+                                    type="button"
+                                    onclick={closeGamePortal}
+                                    disabled={!activeGamePortal}
+                                >
+                                    Exit
+                                </button>
+                            </div>
+                        </div>
+                        <div class="game-grid game-grid--portal">
+                            {#if activeGamePortal}
+                                {#each zkGames as game}
+                                    {#if game.id === activeGamePortal.id}
+                                        <article
+                                            class="game-card"
+                                            style={`--accent:${game.color}`}
+                                        >
                     <div class="game-card-top">
                         <div>
                             <h3 class="game-title">{game.title}</h3>
@@ -2451,8 +2554,15 @@
                         </div>
                     </details>
                 </article>
-            {/each}
-        </div>
+                                    {/if}
+                                {/each}
+                            {:else}
+                                <div class="game-portal-empty">
+                                    Select a game portal to open full controls.
+                                </div>
+                            {/if}
+                        </div>
+                    </div>
                 </section>
             </section>
 
@@ -3194,6 +3304,172 @@
         display: grid;
         grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
         gap: 14px;
+    }
+    .game-portal-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+        gap: 10px;
+    }
+    .game-portal-tile {
+        position: relative;
+        overflow: hidden;
+        display: grid;
+        gap: 6px;
+        text-align: left;
+        border-radius: 12px;
+        border: 1px solid rgba(148, 163, 184, 0.3);
+        background:
+            linear-gradient(160deg, rgba(10, 18, 34, 0.9), rgba(8, 14, 28, 0.9)),
+            radial-gradient(
+                120% 140% at 100% 0%,
+                rgba(56, 189, 248, 0.16),
+                rgba(56, 189, 248, 0)
+            );
+        color: #e2e8f0;
+        padding: 10px;
+        transition:
+            transform 0.2s ease,
+            border-color 0.2s ease,
+            box-shadow 0.2s ease;
+    }
+    .game-portal-tile::after {
+        content: "";
+        position: absolute;
+        inset: 0;
+        pointer-events: none;
+        opacity: 0.32;
+        background:
+            repeating-linear-gradient(
+                0deg,
+                rgba(255, 255, 255, 0.06) 0 1px,
+                rgba(255, 255, 255, 0) 1px 3px
+            ),
+            repeating-linear-gradient(
+                90deg,
+                rgba(255, 255, 255, 0.04) 0 1px,
+                rgba(255, 255, 255, 0) 1px 4px
+            );
+    }
+    .game-portal-tile:hover {
+        transform: translateY(-1px);
+        border-color: rgba(94, 234, 212, 0.52);
+        box-shadow: 0 10px 20px rgba(2, 6, 23, 0.45);
+    }
+    .game-portal-tile--active {
+        border-color: rgba(167, 243, 208, 0.78);
+        box-shadow:
+            inset 0 0 0 1px rgba(204, 251, 241, 0.28),
+            0 12px 24px rgba(5, 20, 28, 0.5),
+            0 0 18px rgba(45, 212, 191, 0.22);
+    }
+    .game-portal-chip {
+        justify-self: start;
+        padding: 3px 8px;
+        border-radius: 999px;
+        border: 1px solid rgba(125, 211, 252, 0.4);
+        background: rgba(8, 47, 73, 0.36);
+        color: #bae6fd;
+        font-size: 8px;
+        letter-spacing: 0.5px;
+        text-transform: uppercase;
+    }
+    .game-portal-title {
+        font-family: "Press Start 2P", monospace;
+        font-size: 9px;
+        line-height: 1.45;
+        color: #f8fafc;
+        text-transform: uppercase;
+        letter-spacing: 0.4px;
+    }
+    .game-portal-summary {
+        font-size: 11px;
+        line-height: 1.45;
+        color: #cbd5e1;
+    }
+    .game-portal-meta {
+        font-size: 10px;
+        color: #94a3b8;
+    }
+    .game-portal-stage {
+        border-radius: 14px;
+        border: 1px solid rgba(148, 163, 184, 0.24);
+        background:
+            linear-gradient(160deg, rgba(7, 14, 30, 0.9), rgba(5, 12, 24, 0.9)),
+            radial-gradient(
+                120% 160% at 100% 0%,
+                rgba(94, 234, 212, 0.1),
+                rgba(94, 234, 212, 0)
+            );
+        padding: 12px;
+        display: grid;
+        gap: 10px;
+    }
+    .game-portal-stage-head {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 10px;
+        flex-wrap: wrap;
+    }
+    .game-portal-label {
+        margin: 0;
+        font-size: 9px;
+        text-transform: uppercase;
+        letter-spacing: 0.7px;
+        color: #7dd3fc;
+    }
+    .game-portal-name {
+        margin: 4px 0 0;
+        font-family: "Press Start 2P", monospace;
+        font-size: 9px;
+        color: #f8fafc;
+    }
+    .game-portal-nav {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 6px;
+    }
+    .game-portal-nav-btn {
+        border-radius: 8px;
+        border: 1px solid rgba(148, 163, 184, 0.4);
+        background: rgba(15, 23, 42, 0.72);
+        color: #dbeafe;
+        font-family: "Press Start 2P", monospace;
+        font-size: 8px;
+        letter-spacing: 0.5px;
+        text-transform: uppercase;
+        padding: 8px 10px;
+        transition:
+            transform 0.2s ease,
+            border-color 0.2s ease;
+    }
+    .game-portal-nav-btn:hover:not(:disabled) {
+        transform: translateY(-1px);
+        border-color: rgba(125, 211, 252, 0.68);
+    }
+    .game-portal-nav-btn:disabled {
+        opacity: 0.52;
+        cursor: not-allowed;
+    }
+    .game-portal-nav-btn--ghost {
+        border-style: dashed;
+        color: #94a3b8;
+    }
+    .game-grid--portal {
+        grid-template-columns: minmax(0, 1fr);
+    }
+    .game-grid--portal .game-card {
+        width: min(100%, 760px);
+    }
+    .game-portal-empty {
+        border-radius: 12px;
+        border: 1px dashed rgba(148, 163, 184, 0.38);
+        background: rgba(15, 23, 42, 0.42);
+        padding: 14px;
+        font-size: 11px;
+        line-height: 1.6;
+        color: #cbd5e1;
+        text-align: center;
     }
     .game-card {
         background: rgba(11, 18, 26, 0.92);
@@ -4946,6 +5222,13 @@
         .farm-header {
             padding: 18px 14px;
         }
+        .game-portal-grid {
+            grid-template-columns: repeat(2, minmax(0, 1fr));
+        }
+        .game-portal-stage-head {
+            align-items: flex-start;
+            flex-direction: column;
+        }
         .game-grid {
             grid-template-columns: 1fr;
         }
@@ -5948,6 +6231,18 @@
         }
         .arcade-guide-row {
             align-items: stretch;
+        }
+        .game-portal-grid {
+            grid-template-columns: 1fr;
+        }
+        .game-portal-nav {
+            width: 100%;
+        }
+        .game-portal-nav-btn {
+            flex: 1;
+        }
+        .game-grid--portal .game-card {
+            width: 100%;
         }
         .game-actions--manual {
             opacity: 1;
