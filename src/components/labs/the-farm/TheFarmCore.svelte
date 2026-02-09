@@ -2176,7 +2176,18 @@
     }
 
     async function runToolchainOnchainVerify(track: ToolchainTrack) {
-        if (toolchainVerifying || gameAttesting || oneClickVerifying) return;
+        if (
+            toolchainVerifying ||
+            gameAttesting ||
+            oneClickVerifying ||
+            gameOneClickCasting
+        ) {
+            const message =
+                "Another verification is in flight. Wait for it to finish, then retry.";
+            gameError = message;
+            toolchainNotice = message;
+            return;
+        }
         if (!isAuth || !userState.contractId) {
             const message =
                 "Connect wallet first to execute on-chain verification.";
@@ -2188,25 +2199,33 @@
         toolchainVerifying = track.id;
         try {
             if (track.onchainFlow === "kale") {
+                if (!earned["proof-of-farm"]?.data?.proof) {
+                    await generateProof();
+                }
+                if (!earned["proof-of-farm"]?.data?.proof) {
+                    throw new Error(
+                        "Kale proof could not be generated for toolchain verification.",
+                    );
+                }
+
                 const previousTx = txHash;
-                await runOneClickProofFlow();
-                if (!onChainVerified) {
+                // Force a real settlement tx so toolchain lanes always carry concrete on-chain evidence.
+                await verifyProof();
+                if (!onChainVerified || !txHash) {
                     throw new Error(
                         error ||
                             "Kale verifier rail did not complete on-chain.",
                     );
                 }
-                if (txHash && txHash !== previousTx) {
-                    captureToolchainSubmission(track, {
-                        txHash,
-                        flow: "kale",
-                        wallet: userState.contractId,
-                    });
-                    toolchainNotice = `Kale rail settled on-chain (${shortHash(txHash, 12, 10)}).`;
-                } else {
-                    toolchainNotice =
-                        "Kale rail is already verified on-chain. Generate a fresh proof for a new tx evidence record.";
-                }
+                captureToolchainSubmission(track, {
+                    txHash,
+                    flow: "kale",
+                    wallet: userState.contractId,
+                });
+                toolchainNotice =
+                    txHash !== previousTx
+                        ? `Kale rail settled on-chain (${shortHash(txHash, 12, 10)}).`
+                        : `Kale rail confirmed on-chain (${shortHash(txHash, 12, 10)}).`;
                 return;
             }
 
