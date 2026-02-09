@@ -525,9 +525,16 @@
         SUPER_VERIFIER_CONTRACT_ID.length > 0,
     );
     let sealedGameCount = $derived(zkGames.filter((game) => !!game.proof).length);
+    let gameOnchainCount = $derived(
+        zkGames.filter((game) => !!game.proof?.onchainTxHash).length,
+    );
     let locallyVerifiedGameCount = $derived(
         Object.values(gameIntegrity).filter((item) => item.state === "pass")
             .length,
+    );
+    let toolchainSettlementCount = $derived(
+        (toolchainSubmissions["noir-ultrahonk"]?.length ?? 0) +
+            (toolchainSubmissions["risc0-zkvm"]?.length ?? 0),
     );
     let superVerifierLabel = $derived(
         `${SUPER_VERIFIER_CONTRACT_ID.slice(0, 8)}...${SUPER_VERIFIER_CONTRACT_ID.slice(-6)}`,
@@ -2684,8 +2691,18 @@
                 <span class="title-farm">FARM</span>
             </h1>
             <p class="farm-subtitle">
-                Kale Valley Proof Garden on Stellar
+                Kale Valley Proof Garden on Stellar mainnet
             </p>
+            <div class="stellarific-strip">
+                <span class="stellarific-badge">Stellar Hackathon Mode</span>
+                <div class="stellarific-chips">
+                    <span>Soroban Public Network</span>
+                    <span>Protocol 25 BN254 live</span>
+                    <span>Super Verifier: {superVerifierLabel}</span>
+                    <span>Game attestations: {gameOnchainCount}</span>
+                    <span>Toolchain settlements: {toolchainSettlementCount}</span>
+                </div>
+            </div>
             {#if isAuth}
                 <div class="farm-tag">
                     <span class="tag-dot"></span>
@@ -2870,7 +2887,8 @@
                     <p class="chapter-copy">
                         One-click verify flow seals gameplay transcripts into
                         proof-ready commitments, derives Groth16 witnesses, and
-                        submits live attestations through Super Verifier.
+                        submits live attestations through Super Verifier on
+                        Stellar mainnet.
                     </p>
                     <div class="arcade-guide-row">
                         <button
@@ -2891,11 +2909,12 @@
                 <section class="verification-deck">
                     <div class="verification-deck-head">
                         <p class="verification-deck-kicker">
-                            One-click command deck
+                            Stellarific one-click command deck
                         </p>
                         <p class="verification-deck-copy">
-                            Four rails, one contract: run each feature
-                            independently or verify the full stack in sequence.
+                            Four rails, one Stellar contract: run each feature
+                            independently or verify the full stack in sequence
+                            with shared coordination state.
                         </p>
                     </div>
                     <div class="verification-grid">
@@ -3907,7 +3926,8 @@
     <!-- Footer -->
     <footer class="farm-footer">
         <p class="footer-tech">
-            Built on Stellar Protocol 25 · Groth16 · BN254 · Poseidon
+            Built for the Stellar Hackathon · Soroban Mainnet · Protocol 25 ·
+            Groth16 · BN254 · Poseidon
         </p>
         <p class="footer-links">
             <a
@@ -6678,6 +6698,47 @@
             0 18px 44px rgba(0, 0, 0, 0.44),
             inset 0 0 0 1px rgba(201, 255, 173, 0.12);
     }
+    .stellarific-strip {
+        margin-top: 8px;
+        border-radius: 12px;
+        border: 1px solid rgba(150, 225, 255, 0.4);
+        background:
+            linear-gradient(155deg, rgba(8, 24, 48, 0.86), rgba(8, 18, 36, 0.82)),
+            radial-gradient(
+                130% 180% at 100% 0%,
+                rgba(121, 233, 255, 0.2),
+                rgba(121, 233, 255, 0)
+            );
+        padding: 10px;
+        display: grid;
+        gap: 8px;
+    }
+    .stellarific-badge {
+        justify-self: start;
+        font-family: "Press Start 2P", monospace;
+        font-size: 8px;
+        letter-spacing: 0.8px;
+        text-transform: uppercase;
+        border-radius: 999px;
+        border: 1px solid rgba(182, 255, 210, 0.52);
+        background: rgba(16, 64, 42, 0.58);
+        color: #cdffe3;
+        padding: 4px 9px;
+    }
+    .stellarific-chips {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 6px;
+    }
+    .stellarific-chips span {
+        font-size: 9px;
+        line-height: 1.45;
+        border-radius: 999px;
+        border: 1px solid rgba(152, 201, 255, 0.36);
+        background: rgba(10, 29, 54, 0.62);
+        color: #d2e8ff;
+        padding: 4px 8px;
+    }
     .chapter-strip {
         gap: 22px;
         grid-auto-columns: minmax(430px, 1fr);
@@ -7544,6 +7605,9 @@
         .toolchain-ingest-input {
             min-height: 104px;
         }
+        .stellarific-chips span {
+            font-size: 10px;
+        }
         .chapter-copy,
         .game-summary,
         .game-goal,
@@ -7580,6 +7644,14 @@
         .verification-actions {
             display: grid;
             grid-template-columns: 1fr;
+        }
+        .stellarific-strip {
+            padding: 9px;
+        }
+        .stellarific-chips {
+            display: grid;
+            grid-template-columns: 1fr;
+            gap: 5px;
         }
         .game-portal-grid {
             grid-template-columns: 1fr;
