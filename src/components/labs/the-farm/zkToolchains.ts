@@ -133,7 +133,7 @@ export function formatToolchainRunbook(track: ToolchainTrack): string {
         lines.push(`${idx + 1}. ${step}`),
     );
     lines.push("");
-    lines.push("Judge signals:");
+    lines.push("Proctor signals:");
     track.judgeSignals.forEach((step, idx) => lines.push(`${idx + 1}. ${step}`));
     lines.push("");
     lines.push("References:");

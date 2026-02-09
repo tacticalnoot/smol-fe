@@ -30,6 +30,7 @@
         type ToolchainTrack,
         type ToolchainTrackId,
     } from "./zkToolchains";
+    const DEFAULT_OPEN_SOURCE_REPO_URL = "https://github.com/tacticalnoot/smol-fe";
 
     // ── State ──────────────────────────────────────────────────────────────
     let proving = $state(false);
@@ -73,6 +74,11 @@
         "risc0-zkvm": [],
     });
     let toolchainNotice = $state<string | null>(null);
+    let chapterThreeOpen = $state(false);
+    let chapterThreeComplianceInputs = $state<ChapterThreeComplianceInputs>(
+        createDefaultChapterThreeComplianceInputs(),
+    );
+    let chapterThreePageElement: HTMLElement | null = null;
     let verificationRails = $state<Record<VerificationRailId, VerificationRailState>>({
         kale: {
             status: "idle",
@@ -261,6 +267,24 @@
         label: string;
         criterion: string;
         status: VerificationRailState["status"];
+    };
+
+    type ChapterThreeComplianceInputs = {
+        gameStudioForkUrl: string;
+        testnetComponentUrl: string;
+        gameHubStartTxUrl: string;
+        gameHubEndTxUrl: string;
+        openSourceRepoUrl: string;
+        demoVideoUrl: string;
+    };
+
+    type ChapterThreeComplianceRow = {
+        id: string;
+        title: string;
+        requirement: string;
+        status: "pass" | "pending";
+        evidence?: string;
+        actionHint?: string;
     };
 
     type TicTacState = {
@@ -553,6 +577,14 @@
         noir: "Noir track settlement linked to reproducible artifact records",
         risc0: "zkVM track settlement linked to reproducible artifact records",
     };
+    const HACKATHON_RULES_URL =
+        "https://dorahacks.io/hackathon/stellar-hacks-zk-gaming/detail";
+    const STELLAR_GAME_STUDIO_URL =
+        "https://jamesbachini.github.io/Stellar-Game-Studio/";
+    const STELLAR_GAME_STUDIO_REPO_URL =
+        "https://github.com/jamesbachini/Stellar-Game-Studio";
+    const GAME_HUB_CONTRACT_ID =
+        "CB4VZAT2U3UC6XFK3N23SKRF2NDCMP3QHJYMCHHFMZO7MRQO6DQ2EMYG";
 
     // ── Derived ────────────────────────────────────────────────────────────
     let isAuth = $derived(!!userState.contractId);
@@ -608,6 +640,120 @@
     let verificationPassCount = $derived(
         verificationRubricRows.filter((row) => row.status === "pass").length,
     );
+    let chapterThreeEvidenceLinks = $derived(
+        [
+            ...verificationRailEvidence.map((item) => ({
+                label: `${item.label} rail`,
+                txHash: item.txHash,
+                updatedAt: item.updatedAt,
+            })),
+            ...zkGames
+                .filter((game) => !!game.proof?.onchainTxHash)
+                .map((game) => ({
+                    label: game.title,
+                    txHash: game.proof?.onchainTxHash ?? "",
+                    updatedAt: game.proof?.onchainSubmittedAt,
+                })),
+        ]
+            .filter((item) => !!item.txHash)
+            .slice(0, 12),
+    );
+    let chapterThreeComplianceRows = $derived(
+        (() => {
+            const gameStudioFork = chapterThreeComplianceInputs.gameStudioForkUrl.trim();
+            const testnetComponent =
+                chapterThreeComplianceInputs.testnetComponentUrl.trim();
+            const gameHubStart = chapterThreeComplianceInputs.gameHubStartTxUrl.trim();
+            const gameHubEnd = chapterThreeComplianceInputs.gameHubEndTxUrl.trim();
+            const openSourceRepo =
+                chapterThreeComplianceInputs.openSourceRepoUrl.trim();
+            const demoVideo = chapterThreeComplianceInputs.demoVideoUrl.trim();
+            const zkMechanicReady =
+                verificationPassCount > 0 || sealedGameCount > 0 || gameOnchainCount > 0;
+
+            const rows: ChapterThreeComplianceRow[] = [
+                {
+                    id: "fork-game-studio",
+                    title: "Fork + integrate Stellar Game Studio",
+                    requirement:
+                        "Required by hackathon rules as the project base.",
+                    status: gameStudioFork ? "pass" : "pending",
+                    evidence: gameStudioFork || STELLAR_GAME_STUDIO_REPO_URL,
+                    actionHint: gameStudioFork
+                        ? "Fork evidence linked."
+                        : "Add your fork URL to lock this requirement.",
+                },
+                {
+                    id: "zk-mechanic",
+                    title: "ZK mechanic is core gameplay",
+                    requirement:
+                        "ZK must drive a meaningful mechanic, not a slide/demo extra.",
+                    status: zkMechanicReady ? "pass" : "pending",
+                    evidence: zkMechanicReady
+                        ? `${gameOnchainCount} game attestations and ${verificationPassCount}/4 rails passed`
+                        : "Run one-click rails to produce evidence.",
+                    actionHint: zkMechanicReady
+                        ? "Gameplay + attestation evidence detected."
+                        : "Run Kale/Arcade/Noir/zkVM rails.",
+                },
+                {
+                    id: "testnet-onchain-component",
+                    title: "Testnet component + game hub calls",
+                    requirement:
+                        "Need Stellar Testnet deployment and start_game()/end_game() calls against game hub.",
+                    status:
+                        testnetComponent && gameHubStart && gameHubEnd
+                            ? "pass"
+                            : "pending",
+                    evidence: `Game hub: ${GAME_HUB_CONTRACT_ID}`,
+                    actionHint:
+                        testnetComponent && gameHubStart && gameHubEnd
+                            ? "Testnet + start/end evidence linked."
+                            : "Add testnet contract + start_game tx + end_game tx links.",
+                },
+                {
+                    id: "frontend",
+                    title: "Functional front end",
+                    requirement:
+                        "Proctors should be able to play and see how ZK + on-chain logic connect.",
+                    status: mounted ? "pass" : "pending",
+                    evidence: mounted
+                        ? "The Farm interactive UI is live."
+                        : "UI has not initialized yet.",
+                    actionHint: mounted
+                        ? "Front-end requirement satisfied."
+                        : "Wait for app initialization.",
+                },
+                {
+                    id: "open-source-repo",
+                    title: "Public open-source repository",
+                    requirement:
+                        "Submission must include full public source and clear README.",
+                    status: openSourceRepo ? "pass" : "pending",
+                    evidence: openSourceRepo || DEFAULT_OPEN_SOURCE_REPO_URL,
+                    actionHint: openSourceRepo
+                        ? "Repository link captured."
+                        : "Add repository URL.",
+                },
+                {
+                    id: "video-demo",
+                    title: "2-3 minute video demo",
+                    requirement:
+                        "Must show gameplay and explain ZK implementation.",
+                    status: demoVideo ? "pass" : "pending",
+                    evidence: demoVideo || "No demo link yet.",
+                    actionHint: demoVideo
+                        ? "Demo link captured."
+                        : "Add your demo URL before submission.",
+                },
+            ];
+
+            return rows;
+        })(),
+    );
+    let chapterThreeCompliancePassCount = $derived(
+        chapterThreeComplianceRows.filter((item) => item.status === "pass").length,
+    );
     let superVerifierLabel = $derived(
         `${SUPER_VERIFIER_CONTRACT_ID.slice(0, 8)}...${SUPER_VERIFIER_CONTRACT_ID.slice(-6)}`,
     );
@@ -638,6 +784,7 @@
         100_000_000_000n,
     ];
     const TOOLCHAIN_STORAGE_KEY = "farm:toolchain-evidence:v1";
+    const CHAPTER_THREE_STORAGE_KEY = "farm:chapter-three-compliance:v1";
     const GAME_TIER_BY_KIND: Record<ZkGame["kind"], number> = {
         tic: 1,
         dodge: 2,
@@ -741,6 +888,18 @@
             artifacts: toolchainArtifacts,
             submissions: toolchainSubmissions,
         });
+    });
+
+    $effect(() => {
+        if (typeof window === "undefined") return;
+        const wallet = gameWallet ?? userState.contractId ?? null;
+        chapterThreeComplianceInputs = loadChapterThreeCompliance(wallet);
+    });
+
+    $effect(() => {
+        if (typeof window === "undefined") return;
+        const wallet = gameWallet ?? userState.contractId ?? null;
+        saveChapterThreeCompliance(wallet, chapterThreeComplianceInputs);
     });
 
     $effect(() => {
@@ -1466,6 +1625,101 @@
         localStorage.setItem(getToolchainStorageKey(wallet), JSON.stringify(payload));
     }
 
+    function createDefaultChapterThreeComplianceInputs(): ChapterThreeComplianceInputs {
+        return {
+            gameStudioForkUrl: "",
+            testnetComponentUrl: "",
+            gameHubStartTxUrl: "",
+            gameHubEndTxUrl: "",
+            openSourceRepoUrl: DEFAULT_OPEN_SOURCE_REPO_URL,
+            demoVideoUrl: "",
+        };
+    }
+
+    function getChapterThreeStorageKey(wallet: string | null): string {
+        return `${CHAPTER_THREE_STORAGE_KEY}:${wallet ?? "guest"}`;
+    }
+
+    function loadChapterThreeCompliance(
+        wallet: string | null,
+    ): ChapterThreeComplianceInputs {
+        const defaults = createDefaultChapterThreeComplianceInputs();
+        if (typeof window === "undefined") return defaults;
+        try {
+            const raw = localStorage.getItem(getChapterThreeStorageKey(wallet));
+            if (!raw) return defaults;
+            const parsed = JSON.parse(raw) as Partial<ChapterThreeComplianceInputs>;
+            return {
+                gameStudioForkUrl:
+                    typeof parsed.gameStudioForkUrl === "string"
+                        ? parsed.gameStudioForkUrl
+                        : defaults.gameStudioForkUrl,
+                testnetComponentUrl:
+                    typeof parsed.testnetComponentUrl === "string"
+                        ? parsed.testnetComponentUrl
+                        : defaults.testnetComponentUrl,
+                gameHubStartTxUrl:
+                    typeof parsed.gameHubStartTxUrl === "string"
+                        ? parsed.gameHubStartTxUrl
+                        : defaults.gameHubStartTxUrl,
+                gameHubEndTxUrl:
+                    typeof parsed.gameHubEndTxUrl === "string"
+                        ? parsed.gameHubEndTxUrl
+                        : defaults.gameHubEndTxUrl,
+                openSourceRepoUrl:
+                    typeof parsed.openSourceRepoUrl === "string"
+                        ? parsed.openSourceRepoUrl
+                        : defaults.openSourceRepoUrl,
+                demoVideoUrl:
+                    typeof parsed.demoVideoUrl === "string"
+                        ? parsed.demoVideoUrl
+                        : defaults.demoVideoUrl,
+            };
+        } catch {
+            return defaults;
+        }
+    }
+
+    function saveChapterThreeCompliance(
+        wallet: string | null,
+        payload: ChapterThreeComplianceInputs,
+    ) {
+        if (typeof window === "undefined") return;
+        localStorage.setItem(
+            getChapterThreeStorageKey(wallet),
+            JSON.stringify(payload),
+        );
+    }
+
+    function setChapterThreeComplianceField(
+        field: keyof ChapterThreeComplianceInputs,
+        value: string,
+    ) {
+        chapterThreeComplianceInputs = {
+            ...chapterThreeComplianceInputs,
+            [field]: value,
+        };
+    }
+
+    function openChapterThreeExperience() {
+        chapterThreeOpen = true;
+        if (typeof window === "undefined") return;
+        window.requestAnimationFrame(() => {
+            chapterThreePageElement?.scrollIntoView({
+                behavior: "smooth",
+                block: "start",
+            });
+        });
+    }
+
+    function closeChapterThreeExperience() {
+        chapterThreeOpen = false;
+        if (typeof window === "undefined") return;
+        window.requestAnimationFrame(() => {
+            window.scrollTo({ top: 0, behavior: "smooth" });
+        });
+    }
+
     function stableStringify(value: unknown): string {
         if (Array.isArray(value)) {
             return `[${value.map((item) => stableStringify(item)).join(",")}]`;
@@ -1532,6 +1786,10 @@
 
     function buildContractExplorerUrl(contractId: string): string {
         return `https://stellar.expert/explorer/public/contract/${contractId}`;
+    }
+
+    function looksLikeUrl(value: string): boolean {
+        return /^https?:\/\//i.test(value.trim());
     }
 
     function setToolchainDraft(trackId: ToolchainTrackId, value: string) {
@@ -2266,7 +2524,7 @@
             await navigator.clipboard.writeText(formatToolchainRunbook(track));
             copiedToolchainTrack = track.id;
             toolchainNotice =
-                "Runbook copied. Pair it with artifact + settlement evidence for judging.";
+                "Runbook copied. Pair it with artifact + settlement evidence for proctor review.";
             if (toolchainCopyTimer) {
                 clearTimeout(toolchainCopyTimer);
             }
@@ -2957,8 +3215,14 @@
             </section>
         {/if}
 
-        <div class="chapter-strip">
-            <section class="chapter-panel chapter-kale">
+        <div
+            class="chapter-strip"
+            class:chapter-strip--chapter-three-open={chapterThreeOpen}
+        >
+            <section
+                class="chapter-panel chapter-kale"
+                class:chapter-panel--hidden={chapterThreeOpen}
+            >
                 <div class="chapter-head">
                     <p class="chapter-tag">Chapter I</p>
                     <h2 class="chapter-title">Kale Proof Garden</h2>
@@ -3111,7 +3375,10 @@
                 {/if}
             </section>
 
-            <section class="chapter-panel chapter-games">
+            <section
+                class="chapter-panel chapter-games"
+                class:chapter-panel--hidden={chapterThreeOpen}
+            >
                 <div class="chapter-head">
                     <p class="chapter-tag">Chapter II</p>
                     <h2 class="chapter-title">Game Proofs Arcade</h2>
@@ -3923,45 +4190,333 @@
                 </section>
             </section>
 
-            <section class="chapter-panel chapter-dungeon">
+            <section
+                class="chapter-panel chapter-dungeon"
+                class:chapter-dungeon--expanded={chapterThreeOpen}
+            >
                 <div class="chapter-head">
                     <p class="chapter-tag">Chapter III</p>
-                    <h2 class="chapter-title">ZK Dungeon</h2>
+                    <h2 class="chapter-title">ZK Dungeon Proving Grounds</h2>
                     <p class="chapter-copy">
-                        Next-level raid space for multi-stage zero-knowledge campaigns,
-                        with evolving verifier keys and boss-grade attestations.
+                        Open a dedicated chapter page that proves cross-chapter
+                        execution and tracks official Stellar ZK Gaming hackathon
+                        submission requirements.
                     </p>
                 </div>
-                <div class="dungeon-teaser">
-                    <p class="dungeon-overline">Teaser Realm</p>
-                    <h3 class="dungeon-title">Protocol 25 Raid Gate</h3>
-                    <p class="dungeon-copy">
-                        Enter a cyber-ruin where each floor unlocks only after
-                        deterministic proof checks. Build streaks, preserve privacy,
-                        and clear boss circuits without exposing full strategy logs.
-                    </p>
-                    <div class="dungeon-tags">
-                        <span>Boss Proof Chains</span>
-                        <span>Nullifier Runs</span>
-                        <span>Adaptive VKey Seasons</span>
+                <button
+                    class="chapter-three-launch"
+                    type="button"
+                    onclick={openChapterThreeExperience}
+                >
+                    <div class="dungeon-teaser">
+                        <p class="dungeon-overline">Available Chapter Card</p>
+                        <h3 class="dungeon-title">Protocol 25 Raid Gate</h3>
+                        <p class="dungeon-copy">
+                            Chapter III opens into a focused proving room with
+                            compliance controls, proof receipts, and the proctor
+                            verifier dock.
+                        </p>
+                        <div class="dungeon-tags">
+                            <span>Official Rules Matrix</span>
+                            <span>Cross-Chapter Evidence</span>
+                            <span>Noir + zkVM Lanes</span>
+                        </div>
+                        <div class="dungeon-stats">
+                            <div>
+                                <p class="dungeon-stat-label">Compliance</p>
+                                <p class="dungeon-stat-value">
+                                    {chapterThreeCompliancePassCount}/{chapterThreeComplianceRows.length}
+                                </p>
+                            </div>
+                            <div>
+                                <p class="dungeon-stat-label">Proof receipts</p>
+                                <p class="dungeon-stat-value">
+                                    {chapterThreeEvidenceLinks.length}
+                                </p>
+                            </div>
+                            <div>
+                                <p class="dungeon-stat-label">Verifier rails</p>
+                                <p class="dungeon-stat-value">4 active rails</p>
+                            </div>
+                        </div>
+                        <p class="chapter-three-launch-note">Open Chapter III</p>
                     </div>
-                    <div class="dungeon-stats">
-                        <div>
-                            <p class="dungeon-stat-label">Sealed sessions</p>
-                            <p class="dungeon-stat-value">{sealedGameCount}</p>
-                        </div>
-                        <div>
-                            <p class="dungeon-stat-label">Verifier rails</p>
-                            <p class="dungeon-stat-value">4 active rails</p>
-                        </div>
-                        <div>
-                            <p class="dungeon-stat-label">Local passes</p>
-                            <p class="dungeon-stat-value">{locallyVerifiedGameCount}</p>
-                        </div>
-                    </div>
+                </button>
+                <div class="chapter-three-inline">
+                    <article class="chapter-three-inline-card">
+                        <p class="chapter-three-inline-title">
+                            Verifier Dock moved
+                        </p>
+                        <p class="chapter-three-inline-copy">
+                            Contract and host-operation details now live in a
+                            separate section inside Chapter III.
+                        </p>
+                    </article>
+                    <article class="chapter-three-inline-card">
+                        <p class="chapter-three-inline-title">
+                            Rules-driven submission
+                        </p>
+                        <p class="chapter-three-inline-copy">
+                            Includes tracking for Game Studio integration,
+                            testnet game-hub calls, repo, and demo video.
+                        </p>
+                    </article>
+                </div>
+                <div class="chapter-three-actions">
+                    <button
+                        class="arcade-guide-btn chapter-three-open-btn"
+                        type="button"
+                        onclick={openChapterThreeExperience}
+                    >
+                        {chapterThreeOpen
+                            ? "Chapter III is open below"
+                            : "Open Chapter III Experience"}
+                    </button>
+                    <a
+                        class="chapter-three-rules-link"
+                        href={HACKATHON_RULES_URL}
+                        target="_blank"
+                        rel="noreferrer"
+                    >
+                        Official rules
+                    </a>
                 </div>
 
-                <section class="toolchain-section">
+                {#if chapterThreeOpen}
+                    <section class="chapter-three-page-header">
+                        <div>
+                            <p class="chapter-three-page-kicker">
+                                Dedicated Chapter View
+                            </p>
+                            <p class="chapter-three-page-copy">
+                                Submission window: February 9, 2026 to February 23,
+                                2026. Requirement source is linked below.
+                            </p>
+                        </div>
+                        <button
+                            class="arcade-guide-btn chapter-three-close-btn"
+                            type="button"
+                            onclick={closeChapterThreeExperience}
+                        >
+                            Collapse Chapter III
+                        </button>
+                    </section>
+
+                    <section class="chapter-three-compliance">
+                        <div class="chapter-three-compliance-head">
+                            <p class="chapter-three-compliance-kicker">
+                                Official Rules Matrix
+                            </p>
+                            <p class="chapter-three-compliance-score">
+                                {chapterThreeCompliancePassCount}/{chapterThreeComplianceRows.length}
+                                requirements tracked
+                            </p>
+                        </div>
+                        <p class="chapter-three-compliance-copy">
+                            Source:
+                            <a
+                                href={HACKATHON_RULES_URL}
+                                target="_blank"
+                                rel="noreferrer"
+                            >
+                                Stellar Hacks ZK Gaming · DoraHacks
+                            </a>
+                        </p>
+                        <div class="chapter-three-link-row">
+                            <a
+                                href={STELLAR_GAME_STUDIO_URL}
+                                target="_blank"
+                                rel="noreferrer"
+                            >
+                                Stellar Game Studio docs
+                            </a>
+                            <a
+                                href={STELLAR_GAME_STUDIO_REPO_URL}
+                                target="_blank"
+                                rel="noreferrer"
+                            >
+                                Stellar Game Studio repo
+                            </a>
+                        </div>
+                        <div class="chapter-three-rules">
+                            {#each chapterThreeComplianceRows as rule}
+                                <article
+                                    class={`chapter-three-rule chapter-three-rule--${rule.status}`}
+                                >
+                                    <div class="chapter-three-rule-main">
+                                        <p class="chapter-three-rule-title">
+                                            {rule.title}
+                                        </p>
+                                        <p class="chapter-three-rule-requirement">
+                                            {rule.requirement}
+                                        </p>
+                                        {#if rule.evidence}
+                                            {#if looksLikeUrl(rule.evidence)}
+                                                <a
+                                                    class="chapter-three-rule-evidence-link"
+                                                    href={rule.evidence}
+                                                    target="_blank"
+                                                    rel="noreferrer"
+                                                >
+                                                    {rule.evidence}
+                                                </a>
+                                            {:else}
+                                                <p class="chapter-three-rule-evidence">
+                                                    {rule.evidence}
+                                                </p>
+                                            {/if}
+                                        {/if}
+                                        {#if rule.actionHint}
+                                            <p class="chapter-three-rule-hint">
+                                                {rule.actionHint}
+                                            </p>
+                                        {/if}
+                                    </div>
+                                    <span class="chapter-three-rule-state">
+                                        {rule.status === "pass"
+                                            ? "PASS"
+                                            : "PENDING"}
+                                    </span>
+                                </article>
+                            {/each}
+                        </div>
+                        <div class="chapter-three-input-grid">
+                            <label class="chapter-three-input">
+                                <span>Game Studio fork URL</span>
+                                <input
+                                    type="url"
+                                    value={chapterThreeComplianceInputs.gameStudioForkUrl}
+                                    oninput={(event) =>
+                                        setChapterThreeComplianceField(
+                                            "gameStudioForkUrl",
+                                            (
+                                                event.currentTarget as HTMLInputElement
+                                            ).value,
+                                        )}
+                                    placeholder="https://github.com/your-org/Stellar-Game-Studio"
+                                />
+                            </label>
+                            <label class="chapter-three-input">
+                                <span>Testnet component URL</span>
+                                <input
+                                    type="url"
+                                    value={chapterThreeComplianceInputs.testnetComponentUrl}
+                                    oninput={(event) =>
+                                        setChapterThreeComplianceField(
+                                            "testnetComponentUrl",
+                                            (
+                                                event.currentTarget as HTMLInputElement
+                                            ).value,
+                                        )}
+                                    placeholder="https://stellar.expert/explorer/testnet/contract/..."
+                                />
+                            </label>
+                            <label class="chapter-three-input">
+                                <span>Game hub start_game tx URL</span>
+                                <input
+                                    type="url"
+                                    value={chapterThreeComplianceInputs.gameHubStartTxUrl}
+                                    oninput={(event) =>
+                                        setChapterThreeComplianceField(
+                                            "gameHubStartTxUrl",
+                                            (
+                                                event.currentTarget as HTMLInputElement
+                                            ).value,
+                                        )}
+                                    placeholder="https://stellar.expert/explorer/testnet/tx/..."
+                                />
+                            </label>
+                            <label class="chapter-three-input">
+                                <span>Game hub end_game tx URL</span>
+                                <input
+                                    type="url"
+                                    value={chapterThreeComplianceInputs.gameHubEndTxUrl}
+                                    oninput={(event) =>
+                                        setChapterThreeComplianceField(
+                                            "gameHubEndTxUrl",
+                                            (
+                                                event.currentTarget as HTMLInputElement
+                                            ).value,
+                                        )}
+                                    placeholder="https://stellar.expert/explorer/testnet/tx/..."
+                                />
+                            </label>
+                            <label class="chapter-three-input">
+                                <span>Open-source repository URL</span>
+                                <input
+                                    type="url"
+                                    value={chapterThreeComplianceInputs.openSourceRepoUrl}
+                                    oninput={(event) =>
+                                        setChapterThreeComplianceField(
+                                            "openSourceRepoUrl",
+                                            (
+                                                event.currentTarget as HTMLInputElement
+                                            ).value,
+                                        )}
+                                    placeholder="https://github.com/your-org/your-repo"
+                                />
+                            </label>
+                            <label class="chapter-three-input">
+                                <span>2-3 minute demo URL</span>
+                                <input
+                                    type="url"
+                                    value={chapterThreeComplianceInputs.demoVideoUrl}
+                                    oninput={(event) =>
+                                        setChapterThreeComplianceField(
+                                            "demoVideoUrl",
+                                            (
+                                                event.currentTarget as HTMLInputElement
+                                            ).value,
+                                        )}
+                                    placeholder="https://youtube.com/watch?v=..."
+                                />
+                            </label>
+                        </div>
+                        <p class="chapter-three-hub-id">
+                            Required game hub contract:
+                            <code>{GAME_HUB_CONTRACT_ID}</code>
+                        </p>
+                    </section>
+
+                    <section class="chapter-three-proof-ledger">
+                        <div class="chapter-three-compliance-head">
+                            <p class="chapter-three-compliance-kicker">
+                                Cross-Chapter Proof Ledger
+                            </p>
+                            <p class="chapter-three-compliance-score">
+                                {chapterThreeEvidenceLinks.length} receipts
+                            </p>
+                        </div>
+                        {#if chapterThreeEvidenceLinks.length}
+                            <div class="chapter-three-ledger-list">
+                                {#each chapterThreeEvidenceLinks as entry}
+                                    <div class="chapter-three-ledger-row">
+                                        <p class="chapter-three-ledger-label">
+                                            {entry.label}
+                                        </p>
+                                        <a
+                                            class="chapter-three-ledger-link"
+                                            href={buildTxExplorerUrl(entry.txHash)}
+                                            target="_blank"
+                                            rel="noreferrer"
+                                        >
+                                            TX {shortHash(entry.txHash, 14, 10)}
+                                        </a>
+                                        <span class="chapter-three-ledger-time">
+                                            {formatRailTime(entry.updatedAt)}
+                                        </span>
+                                    </div>
+                                {/each}
+                            </div>
+                        {:else}
+                            <p class="chapter-three-ledger-empty">
+                                No receipts yet. Run one-click rails to populate this
+                                ledger.
+                            </p>
+                        {/if}
+                    </section>
+
+                    <section class="toolchain-section">
                     <div class="toolchain-head">
                         <p class="toolchain-kicker">Hackathon Tracks</p>
                         <h3 class="toolchain-title">
@@ -4205,7 +4760,7 @@
                 <section class="verifier-section">
         <div class="verifier-card">
             <div class="verifier-head">
-                <h2 class="section-label">Verifier Dock</h2>
+                <h2 class="section-label">Proctor Verifier Dock</h2>
                 <span
                     class={`verifier-status ${hasSuperVerifierContract
                         ? "verifier-status--ready"
@@ -4268,6 +4823,7 @@
             </p>
         </div>
                 </section>
+                {/if}
             </section>
         </div>
 
@@ -6999,6 +7555,287 @@
         font-size: 11px;
         color: #ffe4d9;
     }
+    .chapter-strip--chapter-three-open {
+        grid-auto-columns: 1fr;
+    }
+    .chapter-panel--hidden {
+        display: none;
+    }
+    .chapter-dungeon--expanded {
+        min-height: auto;
+        gap: 12px;
+    }
+    .chapter-three-launch {
+        border: 0;
+        background: transparent;
+        padding: 0;
+        text-align: left;
+        cursor: pointer;
+        border-radius: 14px;
+    }
+    .chapter-three-launch:focus-visible {
+        outline: 2px solid rgba(255, 199, 176, 0.82);
+        outline-offset: 2px;
+    }
+    .chapter-three-launch-note {
+        margin: 0;
+        font-family: "Press Start 2P", monospace;
+        font-size: 8px;
+        letter-spacing: 0.8px;
+        text-transform: uppercase;
+        color: #ffd5c8;
+    }
+    .chapter-three-inline {
+        display: grid;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap: 8px;
+    }
+    .chapter-three-inline-card {
+        border-radius: 12px;
+        border: 1px solid rgba(255, 164, 142, 0.34);
+        background: rgba(26, 14, 26, 0.66);
+        padding: 9px 10px;
+        display: grid;
+        gap: 5px;
+    }
+    .chapter-three-inline-title {
+        margin: 0;
+        font-size: 9px;
+        text-transform: uppercase;
+        letter-spacing: 0.6px;
+        color: #ffc9b7;
+    }
+    .chapter-three-inline-copy {
+        margin: 0;
+        font-size: 10px;
+        line-height: 1.6;
+        color: #f4cfc3;
+    }
+    .chapter-three-actions {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 8px;
+        align-items: center;
+    }
+    .chapter-three-open-btn {
+        background:
+            linear-gradient(180deg, rgba(156, 88, 64, 0.94), rgba(101, 49, 41, 0.94)),
+            repeating-linear-gradient(
+                0deg,
+                rgba(255, 255, 255, 0.05) 0 1px,
+                rgba(255, 255, 255, 0) 1px 3px
+            );
+        border-color: rgba(255, 196, 168, 0.56);
+    }
+    .chapter-three-rules-link {
+        font-size: 10px;
+        color: #ffd9cb;
+        text-decoration: underline;
+        text-underline-offset: 2px;
+    }
+    .chapter-three-page-header {
+        border-radius: 14px;
+        border: 1px solid rgba(255, 167, 136, 0.38);
+        background: rgba(37, 17, 27, 0.74);
+        padding: 10px 11px;
+        display: flex;
+        flex-wrap: wrap;
+        justify-content: space-between;
+        gap: 10px;
+    }
+    .chapter-three-page-kicker {
+        margin: 0;
+        font-family: "Press Start 2P", monospace;
+        font-size: 8px;
+        letter-spacing: 0.7px;
+        text-transform: uppercase;
+        color: #ffc9b2;
+    }
+    .chapter-three-page-copy {
+        margin: 6px 0 0;
+        font-size: 10px;
+        line-height: 1.6;
+        color: #ffd9ce;
+    }
+    .chapter-three-close-btn {
+        align-self: start;
+    }
+    .chapter-three-compliance,
+    .chapter-three-proof-ledger {
+        border-radius: 14px;
+        border: 1px solid rgba(255, 163, 136, 0.36);
+        background: rgba(28, 15, 29, 0.72);
+        padding: 12px;
+        display: grid;
+        gap: 10px;
+    }
+    .chapter-three-compliance-head {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        gap: 8px;
+        flex-wrap: wrap;
+    }
+    .chapter-three-compliance-kicker {
+        margin: 0;
+        font-family: "Press Start 2P", monospace;
+        font-size: 8px;
+        text-transform: uppercase;
+        letter-spacing: 0.8px;
+        color: #ffc8b8;
+    }
+    .chapter-three-compliance-score {
+        margin: 0;
+        font-size: 10px;
+        color: #ffe3d9;
+    }
+    .chapter-three-compliance-copy {
+        margin: 0;
+        font-size: 10px;
+        line-height: 1.6;
+        color: #f8d7ca;
+    }
+    .chapter-three-compliance-copy a {
+        color: #ffd6c4;
+    }
+    .chapter-three-link-row {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 8px 12px;
+    }
+    .chapter-three-link-row a {
+        font-size: 10px;
+        color: #ffd7c8;
+        text-decoration: underline;
+        text-underline-offset: 2px;
+    }
+    .chapter-three-rules {
+        display: grid;
+        gap: 7px;
+    }
+    .chapter-three-rule {
+        border-radius: 12px;
+        border: 1px solid rgba(255, 181, 157, 0.32);
+        background: rgba(35, 18, 35, 0.7);
+        padding: 8px 9px;
+        display: grid;
+        grid-template-columns: minmax(0, 1fr) auto;
+        gap: 8px;
+        align-items: start;
+    }
+    .chapter-three-rule--pass {
+        border-color: rgba(134, 255, 189, 0.42);
+        background: rgba(15, 44, 34, 0.62);
+    }
+    .chapter-three-rule-main {
+        display: grid;
+        gap: 3px;
+    }
+    .chapter-three-rule-title {
+        margin: 0;
+        font-size: 10px;
+        color: #ffe7df;
+    }
+    .chapter-three-rule-requirement {
+        margin: 0;
+        font-size: 10px;
+        line-height: 1.5;
+        color: #f7d2c5;
+    }
+    .chapter-three-rule-evidence,
+    .chapter-three-rule-hint {
+        margin: 0;
+        font-size: 9px;
+        color: #f6c4b4;
+    }
+    .chapter-three-rule-evidence-link {
+        font-size: 9px;
+        color: #ffe0d3;
+        text-decoration: underline;
+        text-underline-offset: 2px;
+        word-break: break-all;
+    }
+    .chapter-three-rule-state {
+        justify-self: end;
+        font-size: 9px;
+        font-family: "Press Start 2P", monospace;
+        color: #ffd9cb;
+    }
+    .chapter-three-input-grid {
+        display: grid;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap: 8px;
+    }
+    .chapter-three-input {
+        display: grid;
+        gap: 4px;
+    }
+    .chapter-three-input span {
+        font-size: 9px;
+        color: #ffc6b4;
+        text-transform: uppercase;
+        letter-spacing: 0.5px;
+    }
+    .chapter-three-input input {
+        width: 100%;
+        border-radius: 9px;
+        border: 1px solid rgba(255, 172, 150, 0.34);
+        background: rgba(17, 9, 22, 0.86);
+        color: #ffe9e1;
+        padding: 8px 9px;
+        font-size: 10px;
+    }
+    .chapter-three-input input:focus-visible {
+        outline: 2px solid rgba(255, 207, 188, 0.7);
+        outline-offset: 1px;
+    }
+    .chapter-three-hub-id {
+        margin: 0;
+        font-size: 10px;
+        color: #ffd3c3;
+    }
+    .chapter-three-hub-id code {
+        font-family: "JetBrains Mono", "Fira Code", monospace;
+        font-size: 9px;
+        word-break: break-all;
+    }
+    .chapter-three-ledger-list {
+        display: grid;
+        gap: 6px;
+    }
+    .chapter-three-ledger-row {
+        border-radius: 10px;
+        border: 1px solid rgba(255, 177, 153, 0.3);
+        background: rgba(34, 16, 34, 0.66);
+        padding: 7px 8px;
+        display: grid;
+        grid-template-columns: minmax(0, 120px) minmax(0, 1fr) auto;
+        gap: 8px;
+        align-items: center;
+    }
+    .chapter-three-ledger-label {
+        margin: 0;
+        font-size: 9px;
+        color: #ffc3b0;
+    }
+    .chapter-three-ledger-link {
+        font-family: "JetBrains Mono", "Fira Code", monospace;
+        font-size: 9px;
+        color: #b9ffd9;
+        text-decoration: none;
+    }
+    .chapter-three-ledger-link:hover {
+        text-decoration: underline;
+    }
+    .chapter-three-ledger-time {
+        font-size: 9px;
+        color: #d8b7ae;
+    }
+    .chapter-three-ledger-empty {
+        margin: 0;
+        font-size: 10px;
+        color: #f3cfc3;
+    }
     .farm-footer {
         margin-top: 18px;
     }
@@ -8152,6 +8989,22 @@
             justify-content: stretch;
             gap: 6px;
         }
+        .chapter-three-inline {
+            grid-template-columns: 1fr;
+        }
+        .chapter-three-actions {
+            display: grid;
+            grid-template-columns: 1fr;
+        }
+        .chapter-three-input-grid {
+            grid-template-columns: 1fr;
+        }
+        .chapter-three-ledger-row {
+            grid-template-columns: minmax(0, 110px) minmax(0, 1fr);
+        }
+        .chapter-three-ledger-time {
+            grid-column: 1 / -1;
+        }
         .verification-grid {
             grid-template-columns: 1fr;
         }
@@ -8216,6 +9069,27 @@
         .verification-actions {
             display: grid;
             grid-template-columns: 1fr;
+        }
+        .chapter-three-page-header {
+            display: grid;
+            gap: 8px;
+        }
+        .chapter-three-compliance-head {
+            display: grid;
+            gap: 5px;
+        }
+        .chapter-three-rule {
+            grid-template-columns: 1fr;
+        }
+        .chapter-three-rule-state {
+            justify-self: start;
+        }
+        .chapter-three-ledger-row {
+            grid-template-columns: 1fr;
+            gap: 4px;
+        }
+        .chapter-three-ledger-time {
+            grid-column: auto;
         }
         .verification-rubric-head {
             display: grid;
