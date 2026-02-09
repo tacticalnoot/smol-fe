@@ -58,6 +58,7 @@
     let copiedToolchainTemplate = $state<ToolchainTrackId | null>(null);
     let copiedToolchainJudgeBundle = $state<ToolchainTrackId | null>(null);
     let copiedGameStudioPipeline = $state(false);
+    let copiedSubmissionPack = $state(false);
     let gamePayloadCopied = $state<string | null>(null);
     let gameAttestNotes = $state<Record<string, string>>({});
     let gameVerifierPayloads = $state<Record<string, string>>({});
@@ -83,19 +84,19 @@
     let verificationRails = $state<Record<VerificationRailId, VerificationRailState>>({
         kale: {
             status: "idle",
-            message: "Submit Groth16 tier proof on Stellar mainnet.",
+            message: "Validate private tier proof and issue secure receipt.",
         },
         arcade: {
             status: "idle",
-            message: "Seal a game transcript and attest on-chain.",
+            message: "Seal a game transcript and publish proof receipt.",
         },
         noir: {
             status: "idle",
-            message: "Execute Noir lane settlement with artifact linkage.",
+            message: "Settle Noir lane with artifact linkage.",
         },
         risc0: {
             status: "idle",
-            message: "Execute zkVM lane settlement with artifact linkage.",
+            message: "Settle zkVM lane with artifact linkage.",
         },
     });
     let verificationSuiteRunning = $state(false);
@@ -113,6 +114,9 @@
     let gameWallet = $state<string | null>(null);
     let verifying = $state(false);
     let oneClickVerifying = $state(false);
+    let seamlessModeRunning = $state(false);
+    let seamlessStage = $state("Ready for one-tap execution.");
+    let seamlessError = $state<string | null>(null);
     let toolchainVerifying = $state<ToolchainTrackId | null>(null);
     let verifyResult = $state<boolean | null>(null);
     let proofData = $state<ProofResult | null>(null);
@@ -268,6 +272,11 @@
         label: string;
         criterion: string;
         status: VerificationRailState["status"];
+    };
+
+    type VerificationSuiteOptions = {
+        stageCallback?: (message: string) => void;
+        silentCelebration?: boolean;
     };
 
     type ChapterThreeComplianceInputs = {
@@ -486,6 +495,7 @@
     let toolchainJudgeTimer: number | null = null;
     let coordinationSnapshotTimer: number | null = null;
     let gameStudioPipelineTimer: number | null = null;
+    let submissionPackTimer: number | null = null;
 
     // 4 focused proofs: 1 live + 3 protocol modules
     const galleryProofs: GalleryProof[] = [
@@ -493,17 +503,17 @@
             id: "kale-bloom",
             title: "Kale Bloom",
             summary:
-                "Prove your KALE tier via Groth16 on BN254. On-chain verification via Protocol 25.",
+                "Prove your KALE tier via Groth16 on BN254 with a Protocol 25 receipt flow.",
             proof: "Groth16 ZK-SNARK on BN254 curve",
             circuit: "tier_proof.circom",
             status: "LIVE",
             file: "/proofs/smol-proof-of-farm.json",
             wallet: "Your connected wallet",
-            tags: ["zk", "groth16", "on-chain"],
+            tags: ["zk", "groth16", "mainnet"],
             tested: "Verified on Stellar mainnet",
             inputs: ["address hash", "balance", "salt", "tier threshold"],
             outputs: ["commitment", "tier valid flag"],
-            note: "Generate above, then verify on-chain via the tier-verifier contract.",
+            note: "Generate above, then publish a live receipt through Super Verifier.",
             requiresKale: true,
             requirementCopy: "Requires KALE balance to generate proof.",
         },
@@ -575,8 +585,8 @@
         risc0: "zkVM",
     };
     const VERIFICATION_RUBRIC_CRITERIA: Record<VerificationRailId, string> = {
-        kale: "Groth16 proof verified via Super Verifier on mainnet",
-        arcade: "Gameplay proof routed through verify_and_attest on mainnet",
+        kale: "Groth16 tier proof certified through Super Verifier receipts",
+        arcade: "Gameplay commitments certified through verify_and_attest",
         noir: "Noir track settlement linked to reproducible artifact records",
         risc0: "zkVM track settlement linked to reproducible artifact records",
     };
@@ -739,7 +749,7 @@
                     id: "frontend",
                     title: "Functional front end",
                     requirement:
-                        "Proctors should be able to play and see how ZK + on-chain logic connect.",
+                        "Proctors should be able to play and see how ZK mechanics connect to live receipts.",
                     status: mounted ? "pass" : "pending",
                     evidence: mounted
                         ? "The Farm interactive UI is live."
@@ -800,6 +810,9 @@
     );
     let chapterThreeMainEventReady = $derived(
         chapterThreeCompliancePassCount === chapterThreeComplianceRows.length,
+    );
+    let chapterThreePendingCount = $derived(
+        chapterThreeComplianceRows.filter((item) => item.status !== "pass").length,
     );
     let superVerifierLabel = $derived(
         `${SUPER_VERIFIER_CONTRACT_ID.slice(0, 8)}...${SUPER_VERIFIER_CONTRACT_ID.slice(-6)}`,
@@ -877,6 +890,10 @@
             if (gameStudioPipelineTimer) {
                 clearTimeout(gameStudioPipelineTimer);
                 gameStudioPipelineTimer = null;
+            }
+            if (submissionPackTimer) {
+                clearTimeout(submissionPackTimer);
+                submissionPackTimer = null;
             }
             resetPatternTimer();
             stopAmbient();
@@ -1050,7 +1067,7 @@
             earned = loadAllBadges(userState.contractId);
             launchCelebration(
                 "Proof forged",
-                "Tier commitment is generated and ready for on-chain verification.",
+                "Tier commitment is generated and ready for secure verification.",
             );
         } catch (e: any) {
             console.error("[ZK] Proof generation failed:", e);
@@ -1081,7 +1098,8 @@
 
     // ── REAL On-Chain Verification ──────────────────────────────────────────
     async function verifyProof() {
-        if (!userState.contractId) return;
+        const walletAddress = userState.contractId;
+        if (!walletAddress) return;
         const badge = earned["proof-of-farm"];
         if (!badge?.data?.proof) {
             error = "No real ZK proof found. Generate a new proof first.";
@@ -1098,8 +1116,9 @@
             console.log("[ZK] Starting on-chain verification...");
 
             // 1. Verify locally first (fast check)
-            if (!zkLogic) throw new Error("ZK Logic not loaded");
-            const isValid = await zkLogic.verifyProofLocally(
+            const zk = zkLogic;
+            if (!zk) throw new Error("ZK Logic not loaded");
+            const isValid = await zk.verifyProofLocally(
                 badge.data.proof as any,
                 badge.data.publicSignals as string[],
             );
@@ -1179,12 +1198,17 @@
 
             const commitmentBytes = toBytes32(commitmentSignal);
 
-            const result = await zkLogic.submitProofToContract(
-                kit,
-                userState.contractId,
-                proofData.tier,
-                commitmentBytes,
-                proofData.proof,
+            const result = await withTransientRetry(
+                "Kale receipt publish",
+                () =>
+                    zk.submitProofToContract(
+                        kit,
+                        walletAddress,
+                        proofData.tier,
+                        commitmentBytes,
+                        proofData.proof,
+                    ),
+                3,
             );
 
             if (result.success && result.txHash) {
@@ -1192,8 +1216,8 @@
                 onChainVerified = true;
                 console.log("[ZK] On-chain verification successful!", txHash);
                 launchCelebration(
-                    "Super Verifier accepted",
-                    "Your KALE tier proof is now attested on Stellar mainnet.",
+                    "Proof certified",
+                    "Your KALE tier proof is now locked as a secure receipt.",
                 );
             } else {
                 throw new Error(result.error || "Transaction failed");
@@ -1224,7 +1248,7 @@
 
     async function runOneClickProofFlow() {
         if (!isAuth || !userState.contractId) {
-            error = "Connect wallet first to run one-click on-chain verification.";
+            error = "Connect wallet first to run one-click verification.";
             return;
         }
         if (oneClickVerifying || proving || verifying) return;
@@ -1243,12 +1267,12 @@
                 await verifyProof();
             } else {
                 launchCelebration(
-                    "Already verified",
-                    "Your wallet already has a live Super Verifier attestation.",
+                    "Already certified",
+                    "Your wallet already has a live verification receipt.",
                 );
             }
         } catch (e: any) {
-            error = e?.message || "One-click on-chain verification failed";
+            error = e?.message || "One-click verification failed";
         } finally {
             oneClickVerifying = false;
         }
@@ -1438,13 +1462,13 @@
         addressHash: bigint;
     }> {
         if (!game.proof) {
-            throw new Error("Seal a game commitment before on-chain submit.");
+            throw new Error("Seal a game commitment before publishing a receipt.");
         }
         if (!zkLogic) {
             throw new Error("ZK logic not loaded yet.");
         }
         if (!userState.contractId) {
-            throw new Error("Connect wallet before on-chain submit.");
+            throw new Error("Connect wallet before publishing a receipt.");
         }
 
         const tierId = GAME_TIER_BY_KIND[game.kind] ?? 0;
@@ -1575,11 +1599,11 @@
                 ...gameAttestNotes,
                 [game.id]:
                     existingTx
-                        ? `Verifier payload copied. This run is already attested on-chain (TX ${existingTx.slice(
+                        ? `Verifier payload copied. This run already has a live receipt (${existingTx.slice(
                             0,
                             10,
                         )}...).`
-                        : "Verifier payload copied. Submit on-chain to execute verify_and_attest for this run.",
+                        : "Verifier payload copied. Publish receipt to execute verify_and_attest for this run.",
             };
             setTimeout(() => {
                 if (gamePayloadCopied === game.id) {
@@ -1848,6 +1872,56 @@
         return /^https?:\/\//i.test(value.trim());
     }
 
+    function extractErrorMessage(errorValue: unknown): string {
+        if (typeof errorValue === "string") return errorValue;
+        if (
+            errorValue &&
+            typeof errorValue === "object" &&
+            "message" in errorValue
+        ) {
+            const candidate = (errorValue as { message?: unknown }).message;
+            if (typeof candidate === "string" && candidate.trim()) {
+                return candidate;
+            }
+        }
+        return "Unknown execution error";
+    }
+
+    function isLikelyTransientFailure(message: string): boolean {
+        return /timeout|network|temporar|429|503|gateway|startledger|fetch|rate limit|busy|retry/i.test(
+            message,
+        );
+    }
+
+    function sleep(ms: number): Promise<void> {
+        return new Promise((resolve) => {
+            window.setTimeout(resolve, ms);
+        });
+    }
+
+    async function withTransientRetry<T>(
+        label: string,
+        run: () => Promise<T>,
+        attempts = 2,
+    ): Promise<T> {
+        let lastError: unknown = null;
+        for (let attempt = 1; attempt <= attempts; attempt += 1) {
+            try {
+                return await run();
+            } catch (errorValue: unknown) {
+                lastError = errorValue;
+                const message = extractErrorMessage(errorValue);
+                if (attempt >= attempts || !isLikelyTransientFailure(message)) {
+                    throw errorValue;
+                }
+                const waitMs = 700 * attempt;
+                seamlessStage = `${label}: reconnecting (${attempt}/${attempts - 1})...`;
+                await sleep(waitMs);
+            }
+        }
+        throw lastError ?? new Error(`${label} failed unexpectedly`);
+    }
+
     function setToolchainDraft(trackId: ToolchainTrackId, value: string) {
         toolchainDrafts = {
             ...toolchainDrafts,
@@ -2069,7 +2143,7 @@
             .map((game) => game.proof?.onchainTxHash ?? null)
             .filter((tx): tx is string => !!tx);
         return {
-            schema: "farm.toolchain.judge.bundle.v1",
+            schema: "farm.toolchain.proctor.bundle.v1",
             generatedAt: new Date().toISOString(),
             trackId: track.id,
             trackLabel: track.label,
@@ -2096,7 +2170,7 @@
             await navigator.clipboard.writeText(JSON.stringify(bundle, null, 2));
             copiedToolchainJudgeBundle = track.id;
             toolchainNotice =
-                "Proctor bundle copied with artifacts and linked on-chain settlement records.";
+                "Proctor bundle copied with artifacts and linked settlement records.";
             if (toolchainJudgeTimer) {
                 clearTimeout(toolchainJudgeTimer);
             }
@@ -2140,18 +2214,47 @@
         return "Not run";
     }
 
+    async function runRailWithRecovery(
+        label: string,
+        execute: () => Promise<boolean>,
+        stageCallback?: (message: string) => void,
+    ): Promise<boolean> {
+        const attempts = 3;
+        for (let attempt = 1; attempt <= attempts; attempt += 1) {
+            stageCallback?.(`${label}: running`);
+            const passed = await execute();
+            if (passed) return true;
+
+            const context = [
+                error ?? "",
+                gameError ?? "",
+                verificationRails.kale.message,
+                verificationRails.arcade.message,
+                verificationRails.noir.message,
+                verificationRails.risc0.message,
+            ].join(" ");
+            if (attempt >= attempts || !isLikelyTransientFailure(context)) {
+                return false;
+            }
+
+            stageCallback?.(`${label}: recovering network path...`);
+            await sleep(900 * attempt);
+        }
+        return false;
+    }
+
     async function runKaleOneClickRail(): Promise<boolean> {
         if (!isAuth || !userState.contractId) {
             setVerificationRailState("kale", {
                 status: "fail",
-                message: "Connect wallet to verify Kale proof on-chain.",
+                message: "Connect wallet to certify Kale proof.",
             });
             return false;
         }
         const previousTx = txHash;
         setVerificationRailState("kale", {
             status: "running",
-            message: "Running Kale one-click verification...",
+            message: "Running Kale certification...",
         });
         await runOneClickProofFlow();
         if (!onChainVerified) {
@@ -2159,20 +2262,20 @@
                 status: "fail",
                 message:
                     error ||
-                    "Kale one-click did not complete on-chain verification.",
+                    "Kale one-click did not complete certification.",
             });
             return false;
         }
         if (txHash && txHash !== previousTx) {
             setVerificationRailState("kale", {
                 status: "pass",
-                message: `Verified on-chain (${shortHash(txHash, 12, 10)}).`,
+                message: `Receipt confirmed (${shortHash(txHash, 12, 10)}).`,
                 txHash,
             });
         } else {
             setVerificationRailState("kale", {
                 status: "pass",
-                message: "Wallet already has a valid on-chain Kale attestation.",
+                message: "Wallet already has a valid Kale receipt.",
                 txHash: txHash ?? verificationRails.kale.txHash,
             });
         }
@@ -2183,11 +2286,22 @@
         if (!isAuth || !userState.contractId) {
             setVerificationRailState("arcade", {
                 status: "fail",
-                message: "Connect wallet to verify arcade proofs on-chain.",
+                message: "Connect wallet to certify arcade proofs.",
             });
             return false;
         }
-        const target = activeGamePortal ?? pickArcadeOnchainTarget();
+        const latestReceipt = getLatestArcadeReceipt();
+        if (allArcadeGamesOnchain && latestReceipt) {
+            setVerificationRailState("arcade", {
+                status: "pass",
+                message:
+                    `Arcade portals already certified (${shortHash(latestReceipt.txHash, 12, 10)}).`,
+                txHash: latestReceipt.txHash,
+            });
+            return true;
+        }
+
+        const target = pickArcadeOnchainTarget(activeGamePortalId);
         if (!target) {
             setVerificationRailState("arcade", {
                 status: "fail",
@@ -2197,18 +2311,18 @@
         }
         setVerificationRailState("arcade", {
             status: "running",
-            message: `Running one-click for ${target.title}...`,
+            message: `Running one-click flow for ${target.title}...`,
         });
         const previousTx = target.proof?.onchainTxHash;
-        await runGameOneClickFlow(target);
+        const flowPassed = await runGameOneClickFlow(target);
         const refreshed = getGameSession(target.id);
         const nextTx = refreshed?.proof?.onchainTxHash;
-        if (!nextTx) {
+        if (!flowPassed || !nextTx) {
             setVerificationRailState("arcade", {
                 status: "fail",
                 message:
                     gameError ||
-                    "Arcade one-click did not produce an on-chain attestation.",
+                    "Arcade one-click did not produce a valid receipt.",
             });
             return false;
         }
@@ -2216,8 +2330,8 @@
             status: "pass",
             message:
                 nextTx !== previousTx
-                    ? `${target.title} verified on-chain (${shortHash(nextTx, 12, 10)}).`
-                    : `${target.title} already has a valid on-chain attestation.`,
+                    ? `${target.title} certified (${shortHash(nextTx, 12, 10)}).`
+                    : `${target.title} already has a valid receipt.`,
             txHash: nextTx,
         });
         return true;
@@ -2228,7 +2342,7 @@
         if (!isAuth || !userState.contractId) {
             setVerificationRailState("arcade", {
                 status: "fail",
-                message: "Connect wallet to batch-verify arcade proofs.",
+                message: "Connect wallet to batch certify arcade proofs.",
             });
             return false;
         }
@@ -2252,7 +2366,7 @@
         };
         setVerificationRailState("arcade", {
             status: "running",
-            message: "Batch verifying every arcade game on-chain...",
+            message: "Batch certifying every arcade game...",
         });
 
         let passed = 0;
@@ -2279,7 +2393,11 @@
                 }
 
                 try {
-                    await runGameOneClickFlow(target);
+                    const lanePassed = await runGameOneClickFlow(target);
+                    if (!lanePassed && !gameError) {
+                        gameError =
+                            `${target.title} did not complete one-click certification.`;
+                    }
                 } catch (e: any) {
                     gameError = e?.message || "Arcade one-click flow threw unexpectedly.";
                 }
@@ -2303,8 +2421,8 @@
 
             const allPassed = failed === 0;
             arcadeBatchSummary = allPassed
-                ? `Arcade batch complete: ${passed}/${targets.length} games verified on-chain.`
-                : `Arcade batch complete with gaps: ${passed}/${targets.length} verified, ${failed} failed.`;
+                ? `Arcade batch complete: ${passed}/${targets.length} games certified.`
+                : `Arcade batch complete with gaps: ${passed}/${targets.length} certified, ${failed} failed.`;
 
             setVerificationRailState("arcade", {
                 status: allPassed ? "pass" : "fail",
@@ -2346,7 +2464,7 @@
         if (!isAuth || !userState.contractId) {
             setVerificationRailState(railId, {
                 status: "fail",
-                message: "Connect wallet to execute track verification on-chain.",
+                message: "Connect wallet to execute track certification.",
             });
             return false;
         }
@@ -2363,8 +2481,8 @@
                 status: "pass",
                 message:
                     artifactCount > 0
-                        ? `On-chain verified (${shortHash(afterHead, 12, 10)}) with imported artifact evidence.`
-                        : `On-chain verified (${shortHash(afterHead, 12, 10)}). Import artifact manifest to complete evidence.`,
+                        ? `Certified (${shortHash(afterHead, 12, 10)}) with imported artifact evidence.`
+                        : `Certified (${shortHash(afterHead, 12, 10)}). Import artifact manifest to complete evidence.`,
                 txHash: afterHead,
             });
             return true;
@@ -2374,8 +2492,8 @@
                 status: "pass",
                 message:
                     artifactCount > 0
-                        ? "Track already has a linked on-chain settlement and artifact evidence."
-                        : "Track already settled on-chain. Import artifact manifest for proctor evidence.",
+                        ? "Track already has a linked settlement and artifact evidence."
+                        : "Track already settled. Import artifact manifest for proctor evidence.",
                 txHash: afterHead,
             });
             return true;
@@ -2397,31 +2515,100 @@
         return runTrackOneClickRail("risc0-zkvm", "risc0");
     }
 
-    async function runFullVerificationSuite() {
-        if (verificationSuiteRunning) return;
+    async function runFullVerificationSuite(
+        options: VerificationSuiteOptions = {},
+    ): Promise<boolean> {
+        if (verificationSuiteRunning) return false;
         verificationSuiteRunning = true;
         gameError = null;
         error = null;
         try {
             const outcomes = [
-                await runKaleOneClickRail(),
-                await runArcadeBatchRail(),
-                await runNoirOneClickRail(),
-                await runRisc0OneClickRail(),
+                await runRailWithRecovery(
+                    "Kale lane",
+                    runKaleOneClickRail,
+                    options.stageCallback,
+                ),
+                await runRailWithRecovery(
+                    "Arcade lane",
+                    runArcadeBatchRail,
+                    options.stageCallback,
+                ),
+                await runRailWithRecovery(
+                    "Noir lane",
+                    runNoirOneClickRail,
+                    options.stageCallback,
+                ),
+                await runRailWithRecovery(
+                    "zkVM lane",
+                    runRisc0OneClickRail,
+                    options.stageCallback,
+                ),
             ];
             const allPassed = outcomes.every(Boolean);
             if (allPassed) {
-                launchCelebration(
-                    "Verification stack synced",
-                    "Kale, arcade, Noir, and zkVM rails are all coordinated through live on-chain settlement.",
-                );
+                if (!options.silentCelebration) {
+                    launchCelebration(
+                        "Verification stack synced",
+                        "Kale, arcade, Noir, and zkVM rails are coordinated through live settlement.",
+                    );
+                }
             } else {
                 gameError =
                     gameError ||
                     "One or more rails failed. Open status cards below for details.";
             }
+            return allPassed;
         } finally {
             verificationSuiteRunning = false;
+        }
+    }
+
+    async function runSeamlessFarmFlow() {
+        if (seamlessModeRunning) return;
+        if (!isAuth || !userState.contractId) {
+            const message =
+                "Connect wallet first to run the one-tap verification flow.";
+            gameError = message;
+            seamlessError = message;
+            return;
+        }
+
+        seamlessModeRunning = true;
+        seamlessError = null;
+        seamlessStage = "Calibrating your private verification session...";
+        try {
+            const allPassed = await runFullVerificationSuite({
+                silentCelebration: true,
+                stageCallback: (message) => {
+                    seamlessStage = message;
+                },
+            });
+            if (!allPassed) {
+                throw new Error(
+                    gameError ||
+                        "One or more verification lanes still need attention.",
+                );
+            }
+
+            seamlessStage = "Compiling hackathon-ready submission pack...";
+            const copiedPack = await copyHackathonSubmissionPack();
+            seamlessStage = copiedPack
+                ? "Farm autopilot complete. Receipts and pack are ready."
+                : "Farm autopilot complete. Open Chapter III to copy the pack manually.";
+            launchCelebration(
+                "Autopilot complete",
+                copiedPack
+                    ? "Verification rails are synced, and your submission pack is ready."
+                    : "Verification rails are synced. Copy the submission pack from Chapter III.",
+            );
+        } catch (errorValue: unknown) {
+            seamlessError =
+                extractErrorMessage(errorValue) ||
+                "One-tap verification flow failed.";
+            gameError = seamlessError;
+        } finally {
+            seamlessModeRunning = false;
         }
     }
 
@@ -2456,6 +2643,62 @@
         };
     }
 
+    function buildHackathonSubmissionPack(): Record<string, unknown> {
+        const pending = chapterThreeComplianceRows
+            .filter((item) => item.status !== "pass")
+            .map((item) => ({
+                id: item.id,
+                title: item.title,
+                action: item.actionHint || item.requirement,
+            }));
+        return {
+            schema: "farm.hackathon.submission.v1",
+            generatedAt: new Date().toISOString(),
+            project: "The Farm",
+            rulesUrl: HACKATHON_RULES_URL,
+            submissionWindow: {
+                startsOn: "2026-02-09",
+                endsOn: "2026-02-23",
+            },
+            identity: {
+                wallet: userState.contractId ?? gameWallet ?? null,
+            },
+            verifier: {
+                contractId: SUPER_VERIFIER_CONTRACT_ID,
+                entrypoint: SUPER_VERIFIER_ENTRYPOINT,
+            },
+            progress: {
+                railsPassed: verificationPassCount,
+                railsTotal: VERIFICATION_RAIL_ORDER.length,
+                gamesSealed: sealedGameCount,
+                gamesVerified: gameOnchainCount,
+                chapterThreePassed: chapterThreeCompliancePassCount,
+                chapterThreeTotal: chapterThreeComplianceRows.length,
+            },
+            chapterThree: {
+                inputs: chapterThreeComplianceInputs,
+                checks: chapterThreeComplianceRows,
+                pending,
+            },
+            receipts: chapterThreeEvidenceLinks.map((entry) => ({
+                label: entry.label,
+                hash: entry.txHash,
+                explorer: buildTxExplorerUrl(entry.txHash),
+                updatedAt: entry.updatedAt ?? null,
+            })),
+            toolchains: {
+                artifacts: {
+                    noir: toolchainArtifacts["noir-ultrahonk"]?.length ?? 0,
+                    risc0: toolchainArtifacts["risc0-zkvm"]?.length ?? 0,
+                },
+                settlements: {
+                    noir: toolchainSubmissions["noir-ultrahonk"]?.length ?? 0,
+                    risc0: toolchainSubmissions["risc0-zkvm"]?.length ?? 0,
+                },
+            },
+        };
+    }
+
     async function copyCoordinationSnapshot() {
         try {
             await navigator.clipboard.writeText(
@@ -2476,17 +2719,59 @@
         }
     }
 
+    async function copyHackathonSubmissionPack(): Promise<boolean> {
+        try {
+            await navigator.clipboard.writeText(
+                JSON.stringify(buildHackathonSubmissionPack(), null, 2),
+            );
+            copiedSubmissionPack = true;
+            toolchainNotice =
+                "Hackathon submission pack copied with requirement checks and live receipts.";
+            if (submissionPackTimer) {
+                clearTimeout(submissionPackTimer);
+            }
+            submissionPackTimer = window.setTimeout(() => {
+                copiedSubmissionPack = false;
+                submissionPackTimer = null;
+            }, 2200);
+            return true;
+        } catch (errorValue: unknown) {
+            gameError =
+                extractErrorMessage(errorValue) ||
+                "Unable to copy hackathon submission pack";
+            return false;
+        }
+    }
+
     function selectToolchainTrack(trackId: ToolchainTrackId) {
         activeToolchainTrack = trackId;
     }
 
-    function pickArcadeOnchainTarget(): ZkGameSession | null {
+    function pickArcadeOnchainTarget(preferredGameId?: string | null): ZkGameSession | null {
         if (!zkGames.length) return null;
-        return (
-            zkGames.find((game) => !game.proof?.onchainTxHash) ??
-            zkGames[0] ??
-            null
-        );
+        if (preferredGameId) {
+            const preferred = zkGames.find((game) =>
+                game.id === preferredGameId && !game.proof?.onchainTxHash);
+            if (preferred) return preferred;
+        }
+        return zkGames.find((game) => !game.proof?.onchainTxHash) ?? null;
+    }
+
+    function getLatestArcadeReceipt():
+        | { txHash: string; title: string; submittedAt?: number }
+        | null {
+        const receipts = zkGames
+            .filter((game) => !!game.proof?.onchainTxHash)
+            .map((game) => ({
+                txHash: game.proof?.onchainTxHash ?? "",
+                title: game.title,
+                submittedAt: game.proof?.onchainSubmittedAt,
+            }))
+            .filter((item) => !!item.txHash);
+
+        if (!receipts.length) return null;
+        receipts.sort((a, b) => (b.submittedAt ?? 0) - (a.submittedAt ?? 0));
+        return receipts[0];
     }
 
     async function runToolchainOnchainVerify(track: ToolchainTrack) {
@@ -2504,7 +2789,7 @@
         }
         if (!isAuth || !userState.contractId) {
             const message =
-                "Connect wallet first to execute on-chain verification.";
+                "Connect wallet first to execute lane certification.";
             error = message;
             gameError = message;
             return;
@@ -2514,24 +2799,35 @@
             txHash: string;
             gameId: string;
             title: string;
+            reused: boolean;
         }> => {
-            const target = pickArcadeOnchainTarget();
+            const target = pickArcadeOnchainTarget(activeGamePortalId);
             if (!target) {
-                throw new Error("No arcade game session is available.");
+                const latestReceipt = getLatestArcadeReceipt();
+                if (!latestReceipt) {
+                    throw new Error("No arcade game session is available.");
+                }
+                return {
+                    txHash: latestReceipt.txHash,
+                    gameId: "existing-receipt",
+                    title: latestReceipt.title,
+                    reused: true,
+                };
             }
 
-            await runGameOneClickFlow(target);
+            const passed = await runGameOneClickFlow(target);
             const refreshed = getGameSession(target.id);
-            if (!refreshed?.proof?.onchainTxHash) {
+            if (!passed || !refreshed?.proof?.onchainTxHash) {
                 throw new Error(
                     gameError ||
-                        "Arcade verifier rail did not complete on-chain.",
+                        "Arcade verifier rail did not complete certification.",
                 );
             }
             return {
                 txHash: refreshed.proof.onchainTxHash,
                 gameId: refreshed.id,
                 title: refreshed.title,
+                reused: !!target.proof?.onchainTxHash,
             };
         };
 
@@ -2539,6 +2835,17 @@
         try {
             const canUseKaleRail = !!earned["proof-of-farm"]?.data?.proof || hasKale;
             if (track.onchainFlow === "kale" && canUseKaleRail) {
+                const existingReceipt = onChainVerified && txHash ? txHash : null;
+                if (existingReceipt) {
+                    captureToolchainSubmission(track, {
+                        txHash: existingReceipt,
+                        flow: "kale",
+                        wallet: userState.contractId,
+                    });
+                    toolchainNotice = `Kale rail already certified (${shortHash(existingReceipt, 12, 10)}).`;
+                    return;
+                }
+
                 if (!earned["proof-of-farm"]?.data?.proof) {
                     await generateProof();
                 }
@@ -2549,12 +2856,11 @@
                 }
 
                 const previousTx = txHash;
-                // Force a real settlement tx so toolchain lanes always carry concrete on-chain evidence.
                 await verifyProof();
                 if (!onChainVerified || !txHash) {
                     throw new Error(
                         error ||
-                            "Kale verifier rail did not complete on-chain.",
+                            "Kale verifier rail did not complete certification.",
                     );
                 }
                 captureToolchainSubmission(track, {
@@ -2564,8 +2870,8 @@
                 });
                 toolchainNotice =
                     txHash !== previousTx
-                        ? `Kale rail settled on-chain (${shortHash(txHash, 12, 10)}).`
-                        : `Kale rail confirmed on-chain (${shortHash(txHash, 12, 10)}).`;
+                        ? `Kale rail settled (${shortHash(txHash, 12, 10)}).`
+                        : `Kale rail confirmed (${shortHash(txHash, 12, 10)}).`;
                 return;
             }
             const fallbackToArcade =
@@ -2580,17 +2886,22 @@
                 txHash: arcadeSettlement.txHash,
                 flow: "arcade",
                 wallet: userState.contractId,
-                gameId: arcadeSettlement.gameId,
+                gameId:
+                    arcadeSettlement.gameId === "existing-receipt"
+                        ? undefined
+                        : arcadeSettlement.gameId,
             });
             toolchainNotice = fallbackToArcade
                 ? `${track.label} settled via arcade fallback (${shortHash(arcadeSettlement.txHash, 12, 10)}).`
-                : `${arcadeSettlement.title} settled on-chain (${shortHash(
+                : arcadeSettlement.reused
+                  ? `${arcadeSettlement.title} already has a live receipt (${shortHash(arcadeSettlement.txHash, 12, 10)}).`
+                  : `${arcadeSettlement.title} settled (${shortHash(
                       arcadeSettlement.txHash,
                       12,
                       10,
                   )}).`;
         } catch (e: any) {
-            gameError = e?.message || "Toolchain on-chain verification failed";
+            gameError = e?.message || "Toolchain lane verification failed";
             toolchainNotice = null;
         } finally {
             toolchainVerifying = null;
@@ -3037,7 +3348,7 @@
             gameAttestNotes = {
                 ...gameAttestNotes,
                 [game.id]:
-                    "Commitment sealed. Ready for on-chain submit via Super Verifier.",
+                    "Commitment sealed. Ready to publish a secure receipt.",
             };
             const refreshed = getGameSession(game.id);
             if (refreshed) {
@@ -3051,13 +3362,26 @@
         }
     }
 
-    async function runGameOneClickFlow(game: ZkGameSession) {
-        if (gameOneClickCasting) return;
+    async function runGameOneClickFlow(game: ZkGameSession): Promise<boolean> {
+        if (gameOneClickCasting) return false;
         gameError = null;
         gameOneClickCasting = game.id;
 
         try {
             let current = getGameSession(game.id) ?? game;
+            if (current.proof?.onchainTxHash) {
+                const existingPayload = buildGameVerifierPayload(current);
+                if (existingPayload) {
+                    rememberVerifierPayload(current.id, existingPayload);
+                }
+                gameAttestNotes = {
+                    ...gameAttestNotes,
+                    [current.id]:
+                        `One-click flow reused existing receipt (${current.proof.onchainTxHash.slice(0, 10)}...).`,
+                };
+                return true;
+            }
+
             if (!current.proof && current.status !== "complete") {
                 startGameRun(current);
                 current = getGameSession(game.id) ?? current;
@@ -3075,24 +3399,30 @@
             }
 
             await submitGameAttestation(current);
-            await copyVerifierPayload(current);
+            current = getGameSession(game.id) ?? current;
+            const payload = buildGameVerifierPayload(current);
+            if (payload) {
+                rememberVerifierPayload(current.id, payload);
+            }
             const submitted = getGameSession(current.id)?.proof?.onchainTxHash;
 
             gameAttestNotes = {
                 ...gameAttestNotes,
                 [current.id]:
                     submitted
-                        ? `One-click flow complete: run sealed and submitted on-chain (${submitted.slice(0, 10)}...).`
+                        ? `One-click flow complete: run sealed and certified (${submitted.slice(0, 10)}...).`
                         : "One-click flow complete: run sealed and payload staged.",
             };
             launchCelebration(
                 `${current.title} complete`,
                 submitted
-                    ? "Arcade proof pipeline ran end-to-end and landed on Super Verifier."
+                    ? "Arcade proof pipeline ran end-to-end and produced a live receipt."
                     : "Arcade proof pipeline prepared verifier payloads.",
             );
+            return !!submitted;
         } catch (e: any) {
             gameError = e?.message || "One-click flow failed";
+            return false;
         } finally {
             gameOneClickCasting = null;
         }
@@ -3118,18 +3448,28 @@
 
     async function submitGameAttestation(game: ZkGameSession) {
         if (!game.proof) return;
+        if (game.proof.onchainTxHash) {
+            gameAttestNotes = {
+                ...gameAttestNotes,
+                [game.id]:
+                    `Receipt already active (${game.proof.onchainTxHash.slice(0, 10)}...).`,
+            };
+            return;
+        }
         gameError = null;
         gameAttesting = game.id;
 
         try {
-            if (!zkLogic) {
+            const zk = zkLogic;
+            if (!zk) {
                 throw new Error("ZK logic not loaded yet.");
             }
             if (!zkGamesLogic) {
                 throw new Error("Game logic not loaded yet.");
             }
-            if (!userState.contractId || !isAuth) {
-                throw new Error("Connect wallet before on-chain submit.");
+            const walletAddress = userState.contractId;
+            if (!walletAddress || !isAuth) {
+                throw new Error("Connect wallet before publishing a receipt.");
             }
 
             await verifyGameProofLocally(game);
@@ -3142,14 +3482,14 @@
 
             const { tierId, balanceMetric, salt, addressHash } =
                 await buildGameTierCompatWitness(game);
-            const generated = await zkLogic.generateTierProof(
+            const generated = await zk.generateTierProof(
                 addressHash,
                 balanceMetric,
                 salt,
                 tierId,
             );
 
-            const isValid = await zkLogic.verifyProofLocally(
+            const isValid = await zk.verifyProofLocally(
                 generated.proof,
                 generated.publicSignals,
             );
@@ -3178,12 +3518,17 @@
                 throw new Error("Wallet kit unavailable.");
             }
 
-            const submitResult = await zkLogic.submitProofToContract(
-                kit,
-                userState.contractId,
-                tierId,
-                bigintToBytes32(commitmentSignal),
-                generated.proof,
+            const submitResult = await withTransientRetry(
+                `${game.title} receipt publish`,
+                () =>
+                    zk.submitProofToContract(
+                        kit,
+                        walletAddress,
+                        tierId,
+                        bigintToBytes32(commitmentSignal),
+                        generated.proof,
+                    ),
+                3,
             );
             if (!submitResult.success || !submitResult.txHash) {
                 throw new Error(
@@ -3217,7 +3562,7 @@
             gameAttestNotes = {
                 ...gameAttestNotes,
                 [game.id]:
-                    `On-chain submit complete via Super Verifier (tier-compat-v1). TX ${submitResult.txHash.slice(
+                    `Secure receipt published via Super Verifier (tier-compat-v1). Receipt ${submitResult.txHash.slice(
                         0,
                         10,
                     )}... ties this game run to a Groth16 attestation.`,
@@ -3225,7 +3570,7 @@
 
             launchCelebration(
                 `${game.title} attested`,
-                "Super Verifier accepted this game run and stored a live on-chain attestation.",
+                "Super Verifier accepted this game run and stored a live receipt.",
             );
         } catch (e: any) {
             gameError = e?.message || "Unable to submit game attestation";
@@ -3251,8 +3596,8 @@
                 ...gameAttestNotes,
                 [game.id]:
                     walletConnected
-                        ? "Super Verifier payload staged. Use 'Submit on-chain' to execute verify_and_attest for this game."
-                        : "Super Verifier payload staged. Connect wallet to submit this game on-chain.",
+                        ? "Super Verifier payload staged. Use 'Publish receipt' to execute verify_and_attest for this game."
+                        : "Super Verifier payload staged. Connect wallet to publish this game receipt.",
             };
         } catch (e: any) {
             gameError = e.message || "Unable to prepare game attestation";
@@ -3282,16 +3627,16 @@
                 <span class="title-farm">FARM</span>
             </h1>
             <p class="farm-subtitle">
-                Kale Valley Proof Garden on Stellar mainnet
+                Kale Valley Proof Garden with invisible-grade verification
             </p>
             <div class="stellarific-strip">
                 <span class="stellarific-badge">Stellar Hackathon Mode</span>
                 <div class="stellarific-chips">
-                    <span>Soroban Public Network</span>
-                    <span>Protocol 25 BN254 live</span>
-                    <span>Super Verifier: {superVerifierLabel}</span>
-                    <span>Game attestations: {gameOnchainCount}</span>
-                    <span>Toolchain settlements: {toolchainSettlementCount}</span>
+                    <span>Quiet Stellar backend</span>
+                    <span>Protocol 25 proof fabric</span>
+                    <span>Verification engine: {superVerifierLabel}</span>
+                    <span>Certified runs: {gameOnchainCount}</span>
+                    <span>Lane settlements: {toolchainSettlementCount}</span>
                 </div>
             </div>
             {#if isAuth}
@@ -3305,7 +3650,7 @@
         {#if showCelebration}
             <section class="proof-celebration" aria-live="polite">
                 <div class="proof-celebration-card">
-                    <p class="proof-celebration-eyebrow">One-click verify</p>
+                    <p class="proof-celebration-eyebrow">One-tap flow</p>
                     <h3 class="proof-celebration-title">{celebrationTitle}</h3>
                     <p class="proof-celebration-body">{celebrationBody}</p>
                 </div>
@@ -3330,7 +3675,7 @@
                     <h2 class="chapter-title">Kale Proof Garden</h2>
                     <p class="chapter-copy">
                         Moonlit farm vibes with production ZK: generate a private
-                        KALE tier proof and attest it on Stellar mainnet in one click.
+                        KALE tier proof and secure it with one tap.
                     </p>
                 </div>
                 <div class="kale-cover" role="img" aria-label="Kale proof chapter cover art">
@@ -3350,7 +3695,7 @@
                         <span class="kale-sprout kale-sprout--two"></span>
                         <span class="kale-sprout kale-sprout--three"></span>
                     </div>
-                    <div class="kale-cover-stamp">MAINNET</div>
+                    <div class="kale-cover-stamp">LIVE FABRIC</div>
                 </div>
                 <div class="kale-magic">
                     <button
@@ -3362,14 +3707,14 @@
                         {#if oneClickVerifying}
                             Verifying...
                         {:else if onChainVerified}
-                            On-Chain Verified ✓
+                            Certified ✓
                         {:else}
-                            One-Click On-Chain Verify
+                            One-Tap Secure Receipt
                         {/if}
                     </button>
                     <p class="kale-magic-copy">
                         One tap generates your proof (if needed), runs local checks, and
-                        submits to the Super Verifier contract.
+                        publishes a tamper-proof receipt in the background.
                     </p>
                 </div>
 
@@ -3415,8 +3760,8 @@
                                             onclick={verifyProof}
                                             disabled={verifying || onChainVerified}
                                         >
-                                            {#if verifying}Verifying...{:else if onChainVerified}Verified
-                                                ✓{:else}Verify On-Chain{/if}
+                                            {#if verifying}Verifying...{:else if onChainVerified}Certified
+                                                ✓{:else}Secure Receipt{/if}
                                         </button>
                                         <button
                                             class="proof-btn"
@@ -3433,7 +3778,7 @@
                                             rel="noreferrer"
                                             class="proof-tx"
                                         >
-                                            TX: {txHash.slice(0, 8)}...{txHash.slice(
+                                            Receipt: {txHash.slice(0, 8)}...{txHash.slice(
                                                 -8,
                                             )}
                                         </a>
@@ -3496,8 +3841,7 @@
                     <p class="chapter-copy">
                         One-click verify flow seals gameplay transcripts into
                         proof-ready commitments, derives Groth16 witnesses, and
-                        submits live attestations through Super Verifier on
-                        Stellar mainnet.
+                        publishes live receipts through the Super Verifier fabric.
                     </p>
                     <div class="arcade-guide-row">
                         <button
@@ -3530,17 +3874,18 @@
                         <button
                             class="arcade-guide-btn verification-master-btn verification-master-btn--hero"
                             type="button"
-                            onclick={runFullVerificationSuite}
-                            disabled={verificationSuiteRunning || arcadeBatchRunning}
+                            onclick={runSeamlessFarmFlow}
+                            disabled={verificationSuiteRunning ||
+                                arcadeBatchRunning ||
+                                seamlessModeRunning}
                         >
-                            {verificationSuiteRunning
-                                ? "Verifying full stack..."
-                                : "Launch Full Proof Suite"}
+                            {seamlessModeRunning
+                                ? "Running one-tap autopilot..."
+                                : "One-Tap Verify + Submission Pack"}
                         </button>
                         <p class="verification-primary-copy">
-                            This runs Kale, Arcade, Noir, and zkVM rails in sequence
-                            against live mainnet infrastructure and shared
-                            coordination state.
+                            One tap runs Kale, Arcade, Noir, and zkVM rails in
+                            sequence, then prepares a hackathon-ready submission pack.
                         </p>
                         <div class="verification-primary-meta">
                             <span>{verificationPassCount}/4 rails online</span>
@@ -3551,6 +3896,27 @@
                                     : `${gameOnchainCount}/${zkGames.length} portals attested`}
                             </span>
                         </div>
+                        <div class="verification-primary-actions">
+                            <button
+                                class="arcade-guide-btn verification-pack-btn"
+                                type="button"
+                                onclick={copyHackathonSubmissionPack}
+                            >
+                                {copiedSubmissionPack
+                                    ? "Submission pack copied"
+                                    : "Copy submission pack"}
+                            </button>
+                            <span class="verification-primary-stage">
+                                {seamlessModeRunning
+                                    ? seamlessStage
+                                    : chapterThreePendingCount > 0
+                                      ? `${chapterThreePendingCount} chapter checks still pending`
+                                      : "All chapter checks currently online"}
+                            </span>
+                        </div>
+                        {#if seamlessError}
+                            <p class="verification-primary-error">{seamlessError}</p>
+                        {/if}
                     </div>
                     <details class="quiet-details verification-deep-dive">
                         <summary>
@@ -3559,11 +3925,11 @@
                         <div class="quiet-details-body verification-deep-dive-body">
                     <div class="verification-authenticity">
                         <p class="verification-authenticity-title">
-                            Real on-chain mode
+                            Live receipt mode
                         </p>
                         <p class="verification-authenticity-copy">
                             Success states are sourced from live mainnet
-                            settlement through
+                            settlement receipts through
                             <code>{SUPER_VERIFIER_ENTRYPOINT}</code> on
                             <code>{superVerifierLabel}</code>.
                         </p>
@@ -3713,7 +4079,7 @@
                     {#if verificationRailEvidence.length > 0}
                         <div class="verification-evidence">
                             <p class="verification-evidence-title">
-                                Live Stellar receipts
+                                Live receipts
                             </p>
                             {#each verificationRailEvidence as record}
                                 <div class="verification-evidence-row">
@@ -3726,7 +4092,7 @@
                                         target="_blank"
                                         rel="noreferrer"
                                     >
-                                        TX {shortHash(record.txHash, 12, 10)}
+                                        Receipt {shortHash(record.txHash, 12, 10)}
                                     </a>
                                     <span class="verification-evidence-time">
                                         {formatRailTime(record.updatedAt)}
@@ -3741,7 +4107,7 @@
                                 target="_blank"
                                 rel="noreferrer"
                             >
-                                Contract: {superVerifierLabel} (
+                                Engine: {superVerifierLabel} (
                                 {SUPER_VERIFIER_ENTRYPOINT})
                             </a>
                         </div>
@@ -3827,7 +4193,7 @@
                         <p class="game-subtitle">
                             Beat real mini-games to forge Poseidon commitments,
                             then route verify_and_attest calls into the live
-                            Super Verifier contract.
+                            Super Verifier engine.
                         </p>
                         <p class="game-subtitle">
                             Arcade submit path uses a compatibility Groth16
@@ -3857,7 +4223,7 @@
                             >
                                 <span class="game-portal-chip">
                                     {game.proof?.onchainTxHash
-                                        ? "On-chain verified"
+                                        ? "Certified"
                                         : "Enter portal"}
                                 </span>
                                 <span class="game-portal-title">{game.title}</span>
@@ -3978,27 +4344,26 @@
                             {#if gameOneClickCasting === game.id}
                                 Verifying...
                             {:else if game.proof?.onchainTxHash}
-                                On-Chain Verified ✓
+                                Certified ✓
                             {:else if game.proof}
-                                One-Click: Submit On-Chain
+                                One-Click: Publish Receipt
                             {:else}
-                                One-Click: Auto Seal + Verify
+                                One-Click: Auto Run + Verify
                             {/if}
                         </button>
                         <p class="game-magic-copy">
                             {#if game.proof?.onchainTxHash}
-                                This run is already attested on-chain. Re-run
-                                one-click verify after sealing a fresh run.
+                                This run already has a live receipt. Re-run
+                                one-click after sealing a fresh run.
                             {:else if !isAuth}
-                                Connect wallet to run one-click on-chain
-                                verification.
+                                Connect wallet to run one-click certification.
                             {:else if game.proof}
                                 One click runs local integrity check, generates
-                                Groth16 compatibility proof, and submits to
+                                Groth16 compatibility proof, and publishes to
                                 Super Verifier.
                             {:else}
                                 Auto mode runs a clean demo path, seals
-                                commitment, submits on-chain, and copies payload
+                                commitment, publishes a receipt, and copies payload
                                 data.
                             {/if}
                         </p>
@@ -4261,8 +4626,8 @@
                                             {gameAttesting === game.id
                                                 ? "Submitting..."
                                                 : game.proof.onchainTxHash
-                                                    ? "Submitted ✓"
-                                                    : "Submit on-chain"}
+                                                    ? "Published ✓"
+                                                    : "Publish receipt"}
                                         </button>
                                     </div>
                                     {#if game.proof.onchainTxHash}
@@ -4272,7 +4637,7 @@
                                             rel="noreferrer"
                                             class="proof-tx"
                                         >
-                                            TX: {game.proof.onchainTxHash.slice(0, 8)}...{game.proof.onchainTxHash.slice(
+                                            Receipt: {game.proof.onchainTxHash.slice(0, 8)}...{game.proof.onchainTxHash.slice(
                                                 -8,
                                             )}
                                         </a>
@@ -4405,6 +4770,15 @@
                             ? "Chapter III is open below"
                             : "Open Chapter III Experience"}
                     </button>
+                    <button
+                        class="arcade-guide-btn chapter-three-pack-btn"
+                        type="button"
+                        onclick={copyHackathonSubmissionPack}
+                    >
+                        {copiedSubmissionPack
+                            ? "Submission pack copied"
+                            : "Copy submission pack"}
+                    </button>
                     <a
                         class="chapter-three-rules-link"
                         href={HACKATHON_RULES_URL}
@@ -4463,7 +4837,7 @@
                         </div>
                         <p class="chapter-three-compliance-copy">
                             Chapter III is the pre-show arena for the hackathon main
-                            event: stand up Game Studio, sync your on-chain game-hub
+                            event: stand up Game Studio, sync your game-hub
                             lifecycle, then present real proof receipts and a clean demo
                             story.
                         </p>
@@ -4773,7 +5147,7 @@ bun run publish my-game --build</code></pre>
                                             target="_blank"
                                             rel="noreferrer"
                                         >
-                                            TX {shortHash(entry.txHash, 14, 10)}
+                                            Receipt {shortHash(entry.txHash, 14, 10)}
                                         </a>
                                         <span class="chapter-three-ledger-time">
                                             {formatRailTime(entry.updatedAt)}
@@ -4848,7 +5222,7 @@ bun run publish my-game --build</code></pre>
                                     !isAuth}
                             >
                                 {#if toolchainVerifying === selectedToolchainTrack.id}
-                                    Verifying on-chain...
+                                    Verifying lane...
                                 {:else}
                                     {selectedToolchainTrack.onchainButton}
                                 {/if}
@@ -4861,7 +5235,7 @@ bun run publish my-game --build</code></pre>
                             <p class="toolchain-ingest-copy">
                                 Paste machine-generated manifest JSON from your
                                 selected track. Imported artifacts are hashed and
-                                linked to on-chain settlement records.
+                                linked to settlement records.
                             </p>
                             <textarea
                                 class="toolchain-ingest-input"
@@ -4943,7 +5317,7 @@ bun run publish my-game --build</code></pre>
                                     {#each selectedToolchainSubmissions as submission}
                                         <article class="toolchain-record">
                                             <p class="toolchain-record-title">
-                                                On-chain settlement {shortHash(
+                                                Settlement receipt {shortHash(
                                                     submission.txHash,
                                                     14,
                                                     10,
@@ -5030,72 +5404,77 @@ bun run publish my-game --build</code></pre>
                     </article>
                 </section>
 
-                <section class="verifier-section">
-        <div class="verifier-card">
-            <div class="verifier-head">
-                <h2 class="section-label">Proctor Verifier Dock</h2>
-                <span
-                    class={`verifier-status ${hasSuperVerifierContract
-                        ? "verifier-status--ready"
-                        : "verifier-status--pending"}`}
-                >
-                    {hasSuperVerifierContract
-                        ? "Super Verifier live"
-                        : "Verifier pending"}
-                </span>
-            </div>
-            <p class="verifier-copy">
-                Live today: deterministic transcript hashing + Poseidon
-                commitment generation + local recompute verification.
-                For Chapter I Kale proofs, <code>verify_and_attest</code> and
-                <code>check_attestation</code> are live rails. Arcade now also
-                submits on-chain through <code>verify_and_attest</code> using a
-                Groth16 compatibility witness derived from each sealed run.
-            </p>
-            <div class="verifier-grid">
-                <div class="verifier-item">
-                    <p class="verifier-label">Sealed Game Commitments</p>
-                    <p class="verifier-value">{sealedGameCount}</p>
-                </div>
-                <div class="verifier-item">
-                    <p class="verifier-label">Local Verifications Passed</p>
-                    <p class="verifier-value">{locallyVerifiedGameCount}</p>
-                </div>
-                <div class="verifier-item">
-                    <p class="verifier-label">Entrypoint</p>
-                    <p class="verifier-value">{SUPER_VERIFIER_ENTRYPOINT}</p>
-                </div>
-                <div class="verifier-item">
-                    <p class="verifier-label">Super Verifier Contract</p>
-                    <p class="verifier-value">{superVerifierLabel}</p>
-                </div>
-                <div class="verifier-item">
-                    <p class="verifier-label">Commitment Stack</p>
-                    <p class="verifier-value">Poseidon Fr over 6 inputs</p>
-                </div>
-                <div class="verifier-item">
-                    <p class="verifier-label">BN254 Host Ops</p>
-                    <p class="verifier-value">
-                        Live: bn254_add · bn254_mul · bn254_pairing_check
-                    </p>
-                </div>
-                <div class="verifier-item">
-                    <p class="verifier-label">Super Verifier Methods</p>
-                    <p class="verifier-value">
-                        verify_and_attest · check_attestation · update_vkey ·
-                        set_admin
-                    </p>
-                </div>
-            </div>
-            <p class="verifier-env">
-                Tier proofs and arcade submissions now both target this same
-                contract. Kale uses native tier proof inputs; arcade uses the
-                same Groth16 verifier in compatibility mode with
-                game-derived witness metrics while dedicated game circuits are
-                being finalized.
-            </p>
-        </div>
-                </section>
+                    <details class="quiet-details verifier-shell">
+                        <summary>Technical verifier dock (for proctors)</summary>
+                        <div class="quiet-details-body">
+                            <section class="verifier-section">
+                                <div class="verifier-card">
+                                    <div class="verifier-head">
+                                        <h2 class="section-label">Proctor Verifier Dock</h2>
+                                        <span
+                                            class={`verifier-status ${hasSuperVerifierContract
+                                                ? "verifier-status--ready"
+                                                : "verifier-status--pending"}`}
+                                        >
+                                            {hasSuperVerifierContract
+                                                ? "Super Verifier live"
+                                                : "Verifier pending"}
+                                        </span>
+                                    </div>
+                                    <p class="verifier-copy">
+                                        Live today: deterministic transcript hashing + Poseidon
+                                        commitment generation + local recompute verification.
+                                        For Chapter I Kale proofs, <code>verify_and_attest</code> and
+                                        <code>check_attestation</code> are live rails. Arcade now also
+                                        submits through <code>verify_and_attest</code> using a
+                                        Groth16 compatibility witness derived from each sealed run.
+                                    </p>
+                                    <div class="verifier-grid">
+                                        <div class="verifier-item">
+                                            <p class="verifier-label">Sealed Game Commitments</p>
+                                            <p class="verifier-value">{sealedGameCount}</p>
+                                        </div>
+                                        <div class="verifier-item">
+                                            <p class="verifier-label">Local Verifications Passed</p>
+                                            <p class="verifier-value">{locallyVerifiedGameCount}</p>
+                                        </div>
+                                        <div class="verifier-item">
+                                            <p class="verifier-label">Entrypoint</p>
+                                            <p class="verifier-value">{SUPER_VERIFIER_ENTRYPOINT}</p>
+                                        </div>
+                                        <div class="verifier-item">
+                                            <p class="verifier-label">Super Verifier Contract</p>
+                                            <p class="verifier-value">{superVerifierLabel}</p>
+                                        </div>
+                                        <div class="verifier-item">
+                                            <p class="verifier-label">Commitment Stack</p>
+                                            <p class="verifier-value">Poseidon Fr over 6 inputs</p>
+                                        </div>
+                                        <div class="verifier-item">
+                                            <p class="verifier-label">BN254 Host Ops</p>
+                                            <p class="verifier-value">
+                                                Live: bn254_add · bn254_mul · bn254_pairing_check
+                                            </p>
+                                        </div>
+                                        <div class="verifier-item">
+                                            <p class="verifier-label">Super Verifier Methods</p>
+                                            <p class="verifier-value">
+                                                verify_and_attest · check_attestation · update_vkey ·
+                                                set_admin
+                                            </p>
+                                        </div>
+                                    </div>
+                                    <p class="verifier-env">
+                                        Tier proofs and arcade submissions now both target this same
+                                        contract. Kale uses native tier proof inputs; arcade uses the
+                                        same Groth16 verifier in compatibility mode with
+                                        game-derived witness metrics while dedicated game circuits are
+                                        being finalized.
+                                    </p>
+                                </div>
+                            </section>
+                        </div>
+                    </details>
                 {/if}
             </section>
         </div>
@@ -6214,6 +6593,12 @@ bun run publish my-game --build</code></pre>
 
     .verifier-section {
         margin-top: 10px;
+    }
+    .verifier-shell {
+        margin-top: 10px;
+    }
+    .verifier-shell summary {
+        color: #d7ebff;
     }
     .verifier-card {
         background: rgba(9, 15, 28, 0.88);
@@ -7924,6 +8309,16 @@ bun run publish my-game --build</code></pre>
             );
         border-color: rgba(255, 196, 168, 0.56);
     }
+    .chapter-three-pack-btn {
+        background:
+            linear-gradient(180deg, rgba(84, 112, 172, 0.94), rgba(43, 68, 124, 0.94)),
+            repeating-linear-gradient(
+                0deg,
+                rgba(255, 255, 255, 0.05) 0 1px,
+                rgba(255, 255, 255, 0) 1px 3px
+            );
+        border-color: rgba(174, 208, 255, 0.56);
+    }
     .chapter-three-rules-link {
         font-size: 10px;
         color: #ffd9cb;
@@ -8733,6 +9128,33 @@ bun run publish my-game --build</code></pre>
         background: rgba(6, 34, 31, 0.6);
         color: #c9ffe8;
         padding: 4px 8px;
+    }
+    .verification-primary-actions {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 8px;
+        align-items: center;
+    }
+    .verification-pack-btn {
+        background:
+            linear-gradient(180deg, rgba(67, 125, 196, 0.94), rgba(33, 79, 141, 0.94)),
+            repeating-linear-gradient(
+                0deg,
+                rgba(255, 255, 255, 0.06) 0 1px,
+                rgba(255, 255, 255, 0) 1px 3px
+            );
+        border-color: rgba(168, 220, 255, 0.58);
+    }
+    .verification-primary-stage {
+        font-size: 10px;
+        color: #cefff0;
+        line-height: 1.55;
+    }
+    .verification-primary-error {
+        margin: 0;
+        font-size: 10px;
+        color: #ffbfad;
+        line-height: 1.6;
     }
     .verification-deep-dive {
         margin: 0;
@@ -9584,6 +10006,11 @@ bun run publish my-game --build</code></pre>
             grid-template-columns: 1fr;
             gap: 6px;
         }
+        .verification-primary-actions {
+            display: grid;
+            grid-template-columns: 1fr;
+            gap: 6px;
+        }
         .verification-rubric-row {
             grid-template-columns: minmax(0, 120px) minmax(0, 1fr);
         }
@@ -9650,6 +10077,9 @@ bun run publish my-game --build</code></pre>
         .verification-master-btn--hero {
             font-size: 9px;
             min-height: 50px;
+        }
+        .verification-primary-stage {
+            font-size: 10px;
         }
         .arcade-guide-row {
             align-items: stretch;

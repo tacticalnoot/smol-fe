@@ -23,7 +23,7 @@ export const HACKATHON_TOOLCHAIN_TRACKS: ToolchainTrack[] = [
         engine: "Noir + nargo + bb",
         statusLabel: "Evidence-ready rail",
         onchainFlow: "kale",
-        onchainButton: "Verify Kale Rail On-Chain",
+        onchainButton: "Verify Kale Rail Receipt",
         summary:
             "Build dedicated game circuits in Noir, compile with nargo, and verify with a Soroban UltraHonk verifier contract while keeping Super Verifier for canonical attestations.",
         stellarPath:
@@ -68,7 +68,7 @@ export const HACKATHON_TOOLCHAIN_TRACKS: ToolchainTrack[] = [
         engine: "cargo risczero + zkVM",
         statusLabel: "Evidence-ready bridge",
         onchainFlow: "arcade",
-        onchainButton: "Verify Arcade Rail On-Chain",
+        onchainButton: "Verify Arcade Rail Receipt",
         summary:
             "Prove full game logic inside zkVM guest programs, verify receipts against image IDs, then bridge verified outputs into Stellar attestations.",
         stellarPath:
