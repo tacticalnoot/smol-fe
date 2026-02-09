@@ -57,6 +57,7 @@
     let copiedToolchainTrack = $state<ToolchainTrackId | null>(null);
     let copiedToolchainTemplate = $state<ToolchainTrackId | null>(null);
     let copiedToolchainJudgeBundle = $state<ToolchainTrackId | null>(null);
+    let copiedGameStudioPipeline = $state(false);
     let gamePayloadCopied = $state<string | null>(null);
     let gameAttestNotes = $state<Record<string, string>>({});
     let gameVerifierPayloads = $state<Record<string, string>>({});
@@ -484,6 +485,7 @@
     let toolchainTemplateTimer: number | null = null;
     let toolchainJudgeTimer: number | null = null;
     let coordinationSnapshotTimer: number | null = null;
+    let gameStudioPipelineTimer: number | null = null;
 
     // 4 focused proofs: 1 live + 3 protocol modules
     const galleryProofs: GalleryProof[] = [
@@ -781,6 +783,24 @@
             (item) => item.id === "fork-game-studio",
         )?.status === "pass",
     );
+    let chapterThreeStageStudioReady = $derived(
+        chapterThreeComplianceRows.find(
+            (item) => item.id === "fork-game-studio",
+        )?.status === "pass",
+    );
+    let chapterThreeStageArenaReady = $derived(
+        chapterThreeComplianceRows.find(
+            (item) => item.id === "testnet-onchain-component",
+        )?.status === "pass",
+    );
+    let chapterThreeStageShowcaseReady = $derived(
+        chapterThreeEvidenceLinks.length > 0 &&
+            chapterThreeComplianceRows.find((item) => item.id === "video-demo")
+                ?.status === "pass",
+    );
+    let chapterThreeMainEventReady = $derived(
+        chapterThreeCompliancePassCount === chapterThreeComplianceRows.length,
+    );
     let superVerifierLabel = $derived(
         `${SUPER_VERIFIER_CONTRACT_ID.slice(0, 8)}...${SUPER_VERIFIER_CONTRACT_ID.slice(-6)}`,
     );
@@ -853,6 +873,10 @@
             if (coordinationSnapshotTimer) {
                 clearTimeout(coordinationSnapshotTimer);
                 coordinationSnapshotTimer = null;
+            }
+            if (gameStudioPipelineTimer) {
+                clearTimeout(gameStudioPipelineTimer);
+                gameStudioPipelineTimer = null;
             }
             resetPatternTimer();
             stopAmbient();
@@ -2568,6 +2592,30 @@
             }, 2000);
         } catch (e: any) {
             gameError = e?.message || "Unable to copy toolchain runbook";
+        }
+    }
+
+    async function copyGameStudioPipeline() {
+        try {
+            const pipeline = [
+                "bun run setup",
+                "bun run create my-game",
+                "bun run dev:game my-game",
+                "bun run build my-game",
+                "bun run deploy my-game",
+                "bun run publish my-game --build",
+            ].join("\n");
+            await navigator.clipboard.writeText(pipeline);
+            copiedGameStudioPipeline = true;
+            if (gameStudioPipelineTimer) {
+                clearTimeout(gameStudioPipelineTimer);
+            }
+            gameStudioPipelineTimer = window.setTimeout(() => {
+                copiedGameStudioPipeline = false;
+                gameStudioPipelineTimer = null;
+            }, 2000);
+        } catch (e: any) {
+            gameError = e?.message || "Unable to copy Game Studio pipeline";
         }
     }
 
@@ -4337,11 +4385,11 @@
                     <section class="chapter-three-compliance">
                         <div class="chapter-three-compliance-head">
                             <p class="chapter-three-compliance-kicker">
-                                Official Rules Matrix
+                                Main Event Director
                             </p>
                             <p class="chapter-three-compliance-score">
                                 {chapterThreeCompliancePassCount}/{chapterThreeComplianceRows.length}
-                                requirements tracked
+                                launch objectives online
                             </p>
                         </div>
                         <div
@@ -4361,15 +4409,92 @@
                             </p>
                         </div>
                         <p class="chapter-three-compliance-copy">
-                            Source:
-                            <a
-                                href={HACKATHON_RULES_URL}
-                                target="_blank"
-                                rel="noreferrer"
-                            >
-                                Stellar Hacks ZK Gaming · DoraHacks
-                            </a>
+                            Chapter III is the pre-show arena for the hackathon main
+                            event: stand up Game Studio, sync your on-chain game-hub
+                            lifecycle, then present real proof receipts and a clean demo
+                            story.
                         </p>
+                        <div class="chapter-three-launch-sequence">
+                            <article
+                                class={`chapter-three-launch-step ${
+                                    chapterThreeStageStudioReady
+                                        ? "chapter-three-launch-step--ready"
+                                        : ""
+                                }`}
+                            >
+                                <p class="chapter-three-launch-step-tag">Stage 1</p>
+                                <p class="chapter-three-launch-step-title">
+                                    Studio Genesis
+                                </p>
+                                <p class="chapter-three-launch-step-copy">
+                                    Fork Game Studio, run the setup flow, and create
+                                    your game scaffold.
+                                </p>
+                                <span class="chapter-three-launch-step-state">
+                                    {chapterThreeStageStudioReady
+                                        ? "ONLINE"
+                                        : "LOCKED"}
+                                </span>
+                            </article>
+                            <article
+                                class={`chapter-three-launch-step ${
+                                    chapterThreeStageArenaReady
+                                        ? "chapter-three-launch-step--ready"
+                                        : ""
+                                }`}
+                            >
+                                <p class="chapter-three-launch-step-tag">Stage 2</p>
+                                <p class="chapter-three-launch-step-title">
+                                    Arena Sync
+                                </p>
+                                <p class="chapter-three-launch-step-copy">
+                                    Wire `start_game` + `end_game` lifecycle on
+                                    testnet and link evidence receipts.
+                                </p>
+                                <span class="chapter-three-launch-step-state">
+                                    {chapterThreeStageArenaReady
+                                        ? "ONLINE"
+                                        : "LOCKED"}
+                                </span>
+                            </article>
+                            <article
+                                class={`chapter-three-launch-step ${
+                                    chapterThreeStageShowcaseReady
+                                        ? "chapter-three-launch-step--ready"
+                                        : ""
+                                }`}
+                            >
+                                <p class="chapter-three-launch-step-tag">Stage 3</p>
+                                <p class="chapter-three-launch-step-title">
+                                    Proof Showcase
+                                </p>
+                                <p class="chapter-three-launch-step-copy">
+                                    Complete one-click rails and attach your final
+                                    2-3 minute walkthrough demo.
+                                </p>
+                                <span class="chapter-three-launch-step-state">
+                                    {chapterThreeStageShowcaseReady
+                                        ? "ONLINE"
+                                        : "LOCKED"}
+                                </span>
+                            </article>
+                        </div>
+                        <div
+                            class={`chapter-three-main-event ${
+                                chapterThreeMainEventReady
+                                    ? "chapter-three-main-event--ready"
+                                    : ""
+                            }`}
+                        >
+                            <p class="chapter-three-main-event-title">
+                                Main event status
+                            </p>
+                            <p class="chapter-three-main-event-copy">
+                                {chapterThreeMainEventReady
+                                    ? "Launch-ready. Every tracked requirement is complete."
+                                    : "In progress. Complete all three stages to unlock launch-ready state."}
+                            </p>
+                        </div>
                         <div class="chapter-three-link-row">
                             <a
                                 href={STELLAR_GAME_STUDIO_URL}
@@ -4385,160 +4510,192 @@
                             >
                                 Stellar Game Studio repo
                             </a>
+                            <a
+                                href={HACKATHON_RULES_URL}
+                                target="_blank"
+                                rel="noreferrer"
+                            >
+                                Official hackathon rules
+                            </a>
                         </div>
-                        <div class="chapter-three-rules">
-                            {#each chapterThreeComplianceRows as rule}
-                                <article
-                                    class={`chapter-three-rule chapter-three-rule--${rule.status}`}
-                                >
-                                    <div class="chapter-three-rule-main">
-                                        <p class="chapter-three-rule-title">
-                                            {rule.title}
-                                        </p>
-                                        <p class="chapter-three-rule-requirement">
-                                            {rule.requirement}
-                                        </p>
-                                        {#if rule.evidence}
-                                            {#if looksLikeUrl(rule.evidence)}
-                                                <a
-                                                    class="chapter-three-rule-evidence-link"
-                                                    href={rule.evidence}
-                                                    target="_blank"
-                                                    rel="noreferrer"
-                                                >
-                                                    {rule.evidence}
-                                                </a>
-                                            {:else}
-                                                <p class="chapter-three-rule-evidence">
-                                                    {rule.evidence}
+                        <div class="chapter-three-pipeline">
+                            <p class="chapter-three-pipeline-title">
+                                Game Studio launch pipeline
+                            </p>
+                            <pre class="chapter-three-pipeline-code"><code>bun run setup
+bun run create my-game
+bun run dev:game my-game
+bun run build my-game
+bun run deploy my-game
+bun run publish my-game --build</code></pre>
+                            <button
+                                class="arcade-guide-btn chapter-three-pipeline-btn"
+                                type="button"
+                                onclick={copyGameStudioPipeline}
+                            >
+                                {copiedGameStudioPipeline
+                                    ? "Pipeline copied"
+                                    : "Copy pipeline commands"}
+                            </button>
+                        </div>
+                        <details class="quiet-details chapter-three-ops">
+                            <summary>Submission ops (requirements + evidence)</summary>
+                            <div class="quiet-details-body">
+                                <div class="chapter-three-rules">
+                                    {#each chapterThreeComplianceRows as rule}
+                                        <article
+                                            class={`chapter-three-rule chapter-three-rule--${rule.status}`}
+                                        >
+                                            <div class="chapter-three-rule-main">
+                                                <p class="chapter-three-rule-title">
+                                                    {rule.title}
                                                 </p>
-                                            {/if}
-                                        {/if}
-                                        {#if rule.actionHint}
-                                            <p class="chapter-three-rule-hint">
-                                                {rule.actionHint}
-                                            </p>
-                                        {/if}
-                                    </div>
-                                    <span class="chapter-three-rule-state">
-                                        {rule.status === "pass"
-                                            ? "PASS"
-                                            : "PENDING"}
-                                    </span>
-                                </article>
-                            {/each}
-                        </div>
-                        <div class="chapter-three-input-grid">
-                            <label class="chapter-three-input">
-                                <span>Game Studio fork URL</span>
-                                <input
-                                    type="url"
-                                    value={chapterThreeComplianceInputs.gameStudioForkUrl}
-                                    oninput={(event) =>
-                                        setChapterThreeComplianceField(
-                                            "gameStudioForkUrl",
-                                            (
-                                                event.currentTarget as HTMLInputElement
-                                            ).value,
-                                        )}
-                                    placeholder="https://github.com/your-org/Stellar-Game-Studio"
-                                />
-                            </label>
-                            <label class="chapter-three-input">
-                                <span>Game Studio setup evidence URL</span>
-                                <input
-                                    type="url"
-                                    value={chapterThreeComplianceInputs.gameStudioInstallEvidenceUrl}
-                                    oninput={(event) =>
-                                        setChapterThreeComplianceField(
-                                            "gameStudioInstallEvidenceUrl",
-                                            (
-                                                event.currentTarget as HTMLInputElement
-                                            ).value,
-                                        )}
-                                    placeholder="https://github.com/.../actions/runs/... or deployment log URL"
-                                />
-                            </label>
-                            <label class="chapter-three-input">
-                                <span>Testnet component URL</span>
-                                <input
-                                    type="url"
-                                    value={chapterThreeComplianceInputs.testnetComponentUrl}
-                                    oninput={(event) =>
-                                        setChapterThreeComplianceField(
-                                            "testnetComponentUrl",
-                                            (
-                                                event.currentTarget as HTMLInputElement
-                                            ).value,
-                                        )}
-                                    placeholder="https://stellar.expert/explorer/testnet/contract/..."
-                                />
-                            </label>
-                            <label class="chapter-three-input">
-                                <span>Game hub start_game tx URL</span>
-                                <input
-                                    type="url"
-                                    value={chapterThreeComplianceInputs.gameHubStartTxUrl}
-                                    oninput={(event) =>
-                                        setChapterThreeComplianceField(
-                                            "gameHubStartTxUrl",
-                                            (
-                                                event.currentTarget as HTMLInputElement
-                                            ).value,
-                                        )}
-                                    placeholder="https://stellar.expert/explorer/testnet/tx/..."
-                                />
-                            </label>
-                            <label class="chapter-three-input">
-                                <span>Game hub end_game tx URL</span>
-                                <input
-                                    type="url"
-                                    value={chapterThreeComplianceInputs.gameHubEndTxUrl}
-                                    oninput={(event) =>
-                                        setChapterThreeComplianceField(
-                                            "gameHubEndTxUrl",
-                                            (
-                                                event.currentTarget as HTMLInputElement
-                                            ).value,
-                                        )}
-                                    placeholder="https://stellar.expert/explorer/testnet/tx/..."
-                                />
-                            </label>
-                            <label class="chapter-three-input">
-                                <span>Open-source repository URL</span>
-                                <input
-                                    type="url"
-                                    value={chapterThreeComplianceInputs.openSourceRepoUrl}
-                                    oninput={(event) =>
-                                        setChapterThreeComplianceField(
-                                            "openSourceRepoUrl",
-                                            (
-                                                event.currentTarget as HTMLInputElement
-                                            ).value,
-                                        )}
-                                    placeholder="https://github.com/your-org/your-repo"
-                                />
-                            </label>
-                            <label class="chapter-three-input">
-                                <span>2-3 minute demo URL</span>
-                                <input
-                                    type="url"
-                                    value={chapterThreeComplianceInputs.demoVideoUrl}
-                                    oninput={(event) =>
-                                        setChapterThreeComplianceField(
-                                            "demoVideoUrl",
-                                            (
-                                                event.currentTarget as HTMLInputElement
-                                            ).value,
-                                        )}
-                                    placeholder="https://youtube.com/watch?v=..."
-                                />
-                            </label>
-                        </div>
-                        <p class="chapter-three-hub-id">
-                            Required game hub contract:
-                            <code>{GAME_HUB_CONTRACT_ID}</code>
-                        </p>
+                                                <p class="chapter-three-rule-requirement">
+                                                    {rule.requirement}
+                                                </p>
+                                                {#if rule.evidence}
+                                                    {#if looksLikeUrl(rule.evidence)}
+                                                        <a
+                                                            class="chapter-three-rule-evidence-link"
+                                                            href={rule.evidence}
+                                                            target="_blank"
+                                                            rel="noreferrer"
+                                                        >
+                                                            {rule.evidence}
+                                                        </a>
+                                                    {:else}
+                                                        <p class="chapter-three-rule-evidence">
+                                                            {rule.evidence}
+                                                        </p>
+                                                    {/if}
+                                                {/if}
+                                                {#if rule.actionHint}
+                                                    <p class="chapter-three-rule-hint">
+                                                        {rule.actionHint}
+                                                    </p>
+                                                {/if}
+                                            </div>
+                                            <span class="chapter-three-rule-state">
+                                                {rule.status === "pass"
+                                                    ? "PASS"
+                                                    : "PENDING"}
+                                            </span>
+                                        </article>
+                                    {/each}
+                                </div>
+                                <div class="chapter-three-input-grid">
+                                    <label class="chapter-three-input">
+                                        <span>Game Studio fork URL</span>
+                                        <input
+                                            type="url"
+                                            value={chapterThreeComplianceInputs.gameStudioForkUrl}
+                                            oninput={(event) =>
+                                                setChapterThreeComplianceField(
+                                                    "gameStudioForkUrl",
+                                                    (
+                                                        event.currentTarget as HTMLInputElement
+                                                    ).value,
+                                                )}
+                                            placeholder="https://github.com/your-org/Stellar-Game-Studio"
+                                        />
+                                    </label>
+                                    <label class="chapter-three-input">
+                                        <span>Game Studio setup evidence URL</span>
+                                        <input
+                                            type="url"
+                                            value={chapterThreeComplianceInputs.gameStudioInstallEvidenceUrl}
+                                            oninput={(event) =>
+                                                setChapterThreeComplianceField(
+                                                    "gameStudioInstallEvidenceUrl",
+                                                    (
+                                                        event.currentTarget as HTMLInputElement
+                                                    ).value,
+                                                )}
+                                            placeholder="https://github.com/.../actions/runs/... or deployment log URL"
+                                        />
+                                    </label>
+                                    <label class="chapter-three-input">
+                                        <span>Testnet component URL</span>
+                                        <input
+                                            type="url"
+                                            value={chapterThreeComplianceInputs.testnetComponentUrl}
+                                            oninput={(event) =>
+                                                setChapterThreeComplianceField(
+                                                    "testnetComponentUrl",
+                                                    (
+                                                        event.currentTarget as HTMLInputElement
+                                                    ).value,
+                                                )}
+                                            placeholder="https://stellar.expert/explorer/testnet/contract/..."
+                                        />
+                                    </label>
+                                    <label class="chapter-three-input">
+                                        <span>Game hub start_game tx URL</span>
+                                        <input
+                                            type="url"
+                                            value={chapterThreeComplianceInputs.gameHubStartTxUrl}
+                                            oninput={(event) =>
+                                                setChapterThreeComplianceField(
+                                                    "gameHubStartTxUrl",
+                                                    (
+                                                        event.currentTarget as HTMLInputElement
+                                                    ).value,
+                                                )}
+                                            placeholder="https://stellar.expert/explorer/testnet/tx/..."
+                                        />
+                                    </label>
+                                    <label class="chapter-three-input">
+                                        <span>Game hub end_game tx URL</span>
+                                        <input
+                                            type="url"
+                                            value={chapterThreeComplianceInputs.gameHubEndTxUrl}
+                                            oninput={(event) =>
+                                                setChapterThreeComplianceField(
+                                                    "gameHubEndTxUrl",
+                                                    (
+                                                        event.currentTarget as HTMLInputElement
+                                                    ).value,
+                                                )}
+                                            placeholder="https://stellar.expert/explorer/testnet/tx/..."
+                                        />
+                                    </label>
+                                    <label class="chapter-three-input">
+                                        <span>Open-source repository URL</span>
+                                        <input
+                                            type="url"
+                                            value={chapterThreeComplianceInputs.openSourceRepoUrl}
+                                            oninput={(event) =>
+                                                setChapterThreeComplianceField(
+                                                    "openSourceRepoUrl",
+                                                    (
+                                                        event.currentTarget as HTMLInputElement
+                                                    ).value,
+                                                )}
+                                            placeholder="https://github.com/your-org/your-repo"
+                                        />
+                                    </label>
+                                    <label class="chapter-three-input">
+                                        <span>2-3 minute demo URL</span>
+                                        <input
+                                            type="url"
+                                            value={chapterThreeComplianceInputs.demoVideoUrl}
+                                            oninput={(event) =>
+                                                setChapterThreeComplianceField(
+                                                    "demoVideoUrl",
+                                                    (
+                                                        event.currentTarget as HTMLInputElement
+                                                    ).value,
+                                                )}
+                                            placeholder="https://youtube.com/watch?v=..."
+                                        />
+                                    </label>
+                                </div>
+                                <p class="chapter-three-hub-id">
+                                    Required game hub contract:
+                                    <code>{GAME_HUB_CONTRACT_ID}</code>
+                                </p>
+                            </div>
+                        </details>
                     </section>
 
                     <section class="chapter-three-proof-ledger">
@@ -7800,6 +7957,106 @@
         text-decoration: underline;
         text-underline-offset: 2px;
     }
+    .chapter-three-launch-sequence {
+        display: grid;
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+        gap: 8px;
+    }
+    .chapter-three-launch-step {
+        border-radius: 12px;
+        border: 1px solid rgba(255, 177, 152, 0.34);
+        background: rgba(47, 20, 30, 0.62);
+        padding: 8px 9px;
+        display: grid;
+        gap: 4px;
+    }
+    .chapter-three-launch-step--ready {
+        border-color: rgba(136, 255, 192, 0.44);
+        background: rgba(17, 48, 34, 0.62);
+    }
+    .chapter-three-launch-step-tag {
+        margin: 0;
+        font-size: 8px;
+        letter-spacing: 0.6px;
+        text-transform: uppercase;
+        color: #ffc8b6;
+    }
+    .chapter-three-launch-step-title {
+        margin: 0;
+        font-size: 10px;
+        color: #ffe9e0;
+    }
+    .chapter-three-launch-step-copy {
+        margin: 0;
+        font-size: 9px;
+        line-height: 1.5;
+        color: #f6d0c5;
+    }
+    .chapter-three-launch-step-state {
+        justify-self: start;
+        margin-top: 2px;
+        font-size: 8px;
+        font-family: "Press Start 2P", monospace;
+        color: #ffe1d6;
+    }
+    .chapter-three-main-event {
+        border-radius: 12px;
+        border: 1px solid rgba(255, 178, 151, 0.34);
+        background: rgba(42, 19, 34, 0.64);
+        padding: 8px 10px;
+        display: grid;
+        gap: 4px;
+    }
+    .chapter-three-main-event--ready {
+        border-color: rgba(126, 255, 183, 0.44);
+        background: rgba(16, 49, 35, 0.64);
+    }
+    .chapter-three-main-event-title {
+        margin: 0;
+        font-size: 9px;
+        text-transform: uppercase;
+        letter-spacing: 0.6px;
+        color: #ffd8ca;
+    }
+    .chapter-three-main-event-copy {
+        margin: 0;
+        font-size: 10px;
+        line-height: 1.55;
+        color: #f9d7cc;
+    }
+    .chapter-three-pipeline {
+        border-radius: 12px;
+        border: 1px solid rgba(255, 176, 150, 0.34);
+        background: rgba(31, 14, 33, 0.72);
+        padding: 9px 10px;
+        display: grid;
+        gap: 7px;
+    }
+    .chapter-three-pipeline-title {
+        margin: 0;
+        font-size: 9px;
+        text-transform: uppercase;
+        letter-spacing: 0.6px;
+        color: #ffd3c3;
+    }
+    .chapter-three-pipeline-code {
+        margin: 0;
+        border-radius: 9px;
+        border: 1px solid rgba(255, 171, 142, 0.3);
+        background: rgba(14, 7, 19, 0.86);
+        color: #ffe5dc;
+        padding: 8px 9px;
+        font-family: "JetBrains Mono", "Fira Code", monospace;
+        font-size: 10px;
+        line-height: 1.55;
+        overflow: auto;
+    }
+    .chapter-three-pipeline-btn {
+        justify-self: start;
+    }
+    .chapter-three-ops {
+        margin-top: 2px;
+    }
     .chapter-three-rules {
         display: grid;
         gap: 7px;
@@ -9083,6 +9340,9 @@
         .chapter-three-inline {
             grid-template-columns: 1fr;
         }
+        .chapter-three-launch-sequence {
+            grid-template-columns: 1fr;
+        }
         .chapter-three-actions {
             display: grid;
             grid-template-columns: 1fr;
@@ -9167,6 +9427,9 @@
         }
         .chapter-three-compliance-head {
             display: grid;
+            gap: 5px;
+        }
+        .chapter-three-launch-step {
             gap: 5px;
         }
         .chapter-three-rule {
