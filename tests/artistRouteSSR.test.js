@@ -1,7 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { spawn } from "node:child_process";
-import { once } from "node:events";
 
 const PORT = 4321;
 const BASE_URL = `http://localhost:${PORT}`;
@@ -9,7 +8,7 @@ const ADDRESS = "CBNORBI4DCE7LIC42FWMCIWQRULWAUGF2MH2Z7X2RNTFAYNXIACJ33IM";
 const READY_TIMEOUT_MS = 15000;
 const SHUTDOWN_TIMEOUT_MS = 3000;
 
-function waitForReady(process) {
+function waitForReady(serverProcess) {
   return new Promise((resolve, reject) => {
     const timeout = setTimeout(() => {
       cleanup();
@@ -31,14 +30,14 @@ function waitForReady(process) {
 
     const cleanup = () => {
       clearTimeout(timeout);
-      process.stdout?.off("data", onData);
-      process.stderr?.off("data", onData);
-      process.off("exit", onExit);
+      serverProcess.stdout?.off("data", onData);
+      serverProcess.stderr?.off("data", onData);
+      serverProcess.off("exit", onExit);
     };
 
-    process.stdout?.on("data", onData);
-    process.stderr?.on("data", onData);
-    process.on("exit", onExit);
+    serverProcess.stdout?.on("data", onData);
+    serverProcess.stderr?.on("data", onData);
+    serverProcess.on("exit", onExit);
   });
 }
 
@@ -48,7 +47,35 @@ async function fetchArtist(path) {
   return { response, body };
 }
 
-test("artist route SSR renders shell with and without query params", async (t) => {
+function stopServer(serverProcess) {
+  return new Promise((resolve) => {
+    if (serverProcess.exitCode !== null) {
+      resolve();
+      return;
+    }
+
+    const onExit = () => {
+      clearTimeout(timeout);
+      resolve();
+    };
+
+    const timeout = setTimeout(() => {
+      serverProcess.off("exit", onExit);
+      if (serverProcess.exitCode === null) {
+        serverProcess.kill("SIGKILL");
+      }
+      resolve();
+    }, SHUTDOWN_TIMEOUT_MS);
+
+    serverProcess.once("exit", onExit);
+    serverProcess.kill("SIGTERM");
+  });
+}
+
+test(
+  "artist route SSR renders shell with and without query params",
+  { timeout: 120000 },
+  async () => {
   const server = spawn(
     process.execPath,
     [
@@ -68,39 +95,31 @@ test("artist route SSR renders shell with and without query params", async (t) =
     },
   );
 
-  await waitForReady(server);
+  try {
+    await waitForReady(server);
 
-  t.after(async () => {
-    server.kill("SIGTERM");
-    const exitPromise = once(server, "exit");
-    await Promise.race([
-      exitPromise,
-      new Promise((resolve) => setTimeout(resolve, SHUTDOWN_TIMEOUT_MS)),
-    ]);
-    if (server.exitCode === null) {
-      server.kill("SIGKILL");
-      await once(server, "exit");
+    const cases = [
+      `/artist/${ADDRESS}`,
+      `/artist/${ADDRESS}?shuffle=true&seed=1767826109542`,
+    ];
+
+    for (const path of cases) {
+      const { response, body } = await fetchArtist(path);
+
+      assert.equal(
+        response.status,
+        200,
+        `Expected 200 response for ${path}, got ${response.status}`,
+      );
+
+      assert.match(
+        body,
+        /data-astro-source-file="[^"]*\/src\/pages\/artist\/\[address\]\.astro"/,
+        `Expected SSR shell marker in response for ${path}`,
+      );
     }
-  });
-
-  const cases = [
-    `/artist/${ADDRESS}`,
-    `/artist/${ADDRESS}?shuffle=true&seed=1767826109542`,
-  ];
-
-  for (const path of cases) {
-    const { response, body } = await fetchArtist(path);
-
-    assert.equal(
-      response.status,
-      200,
-      `Expected 200 response for ${path}, got ${response.status}`,
-    );
-
-    assert.match(
-      body,
-      /data-astro-source-file="[^"]*\/src\/pages\/artist\/\[address\]\.astro"/,
-      `Expected SSR shell marker in response for ${path}`,
-    );
+  } finally {
+    await stopServer(server);
   }
-});
+  },
+);

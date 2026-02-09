@@ -37,6 +37,14 @@ This is the primary map for the Smol Frontend. Every document is categorized by 
 - [Repro Matrix](REPRO_MATRIX.md) — Environment-specific reproduction steps.
 - [Performance](PERFORMANCE.md) — Speed optimizations and bottlenecks.
 
+## 🧰 Deep Dives & Working Notes
+- [Audio and Player State](AUDIO_AND_PLAYER_STATE.md) — Runtime behavior and player-state details.
+- [Integration Reference](INTEGRATION_REFERENCE.md) — Cross-system integration contract notes.
+- [Diff Surface Map](DIFF_SURFACE_MAP.md) — Change-surface tracking for risky areas.
+- [Hypotheses and Fix Plan](HYPOTHESES_AND_FIX_PLAN.md) — Investigation log and mitigation plan.
+- [Diagrams README](diagrams/README.md) — Diagram conventions and usage.
+- [Drift Architect Prompt](prompts/smol_drift_architect.md) — Prompt template used for drift architecture work.
+
 ## 🧪 Labs & Specs
 - [Kale Forest Swapper](labs-swapper-kale-forest-spec.md) — Spec for the liquidity lab.
 - [Research: C-Addresses](../SMOL_LABS/RESEARCH_XLM_C_ADDRESSES.md) — Investigation into Stellar asset addresses.
@@ -45,6 +53,8 @@ This is the primary map for the Smol Frontend. Every document is categorized by 
 - [Core Product Audit](CORE_PRODUCT_AUDIT.md) — Comprehensive product status review.
 - [Baseline Audit](visibility/BASELINE_AUDIT.md) — SEO and visibility initial state.
 - [Visibility V2 Audit](visibility/V2_AUDIT.md) — Current state of web presence.
+- [Visibility V2 Backlog](visibility/V2_BACKLOG.md) — Prioritized follow-up work.
+- [Visibility V2 Playbook](visibility/V2_PLAYBOOK.md) — V2 operating guidance.
 - [Visibility Playbook](visibility/VISIBILITY_PLAYBOOK.md) — Guidelines for maintaining visibility.
 
 ## 🗄️ Archive & Artifacts
