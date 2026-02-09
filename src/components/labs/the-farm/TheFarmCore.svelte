@@ -249,6 +249,13 @@
         updatedAt?: number;
     };
 
+    type VerificationRailEvidence = {
+        id: VerificationRailId;
+        label: string;
+        txHash: string;
+        updatedAt?: number;
+    };
+
     type TicTacState = {
         board: ("X" | "O" | null)[];
         turn: "player" | "ai";
@@ -521,6 +528,18 @@
             requirementCopy: "Accessible in advanced payload workflows.",
         },
     ];
+    const VERIFICATION_RAIL_ORDER: VerificationRailId[] = [
+        "kale",
+        "arcade",
+        "noir",
+        "risc0",
+    ];
+    const VERIFICATION_RAIL_LABELS: Record<VerificationRailId, string> = {
+        kale: "Kale",
+        arcade: "Arcade",
+        noir: "Noir",
+        risc0: "zkVM",
+    };
 
     // ── Derived ────────────────────────────────────────────────────────────
     let isAuth = $derived(!!userState.contractId);
@@ -548,6 +567,20 @@
     let allArcadeGamesOnchain = $derived(
         zkGames.length > 0 &&
             zkGames.every((game) => !!game.proof?.onchainTxHash),
+    );
+    let verificationRailEvidence = $derived(
+        VERIFICATION_RAIL_ORDER.flatMap((id): VerificationRailEvidence[] => {
+            const rail = verificationRails[id];
+            if (!rail.txHash) return [];
+            return [
+                {
+                    id,
+                    label: VERIFICATION_RAIL_LABELS[id],
+                    txHash: rail.txHash,
+                    updatedAt: rail.updatedAt,
+                },
+            ];
+        }),
     );
     let superVerifierLabel = $derived(
         `${SUPER_VERIFIER_CONTRACT_ID.slice(0, 8)}...${SUPER_VERIFIER_CONTRACT_ID.slice(-6)}`,
@@ -1465,6 +1498,14 @@
     function shortHash(value: string, head = 10, tail = 8): string {
         if (!value || value.length <= head + tail + 3) return value;
         return `${value.slice(0, head)}...${value.slice(-tail)}`;
+    }
+
+    function buildTxExplorerUrl(hash: string): string {
+        return `https://stellar.expert/explorer/public/tx/${hash}`;
+    }
+
+    function buildContractExplorerUrl(contractId: string): string {
+        return `https://stellar.expert/explorer/public/contract/${contractId}`;
     }
 
     function setToolchainDraft(trackId: ToolchainTrackId, value: string) {
@@ -3051,7 +3092,19 @@
                             Four rails, one Stellar contract: run each feature
                             independently or verify the full stack in sequence
                             with shared coordination state. Batch mode can
-                            clear every arcade game in one run.
+                            clear every arcade game in one run. No mock
+                            verification path is used.
+                        </p>
+                    </div>
+                    <div class="verification-authenticity">
+                        <p class="verification-authenticity-title">
+                            Real on-chain mode
+                        </p>
+                        <p class="verification-authenticity-copy">
+                            Success states are sourced from live mainnet
+                            settlement through
+                            <code>{SUPER_VERIFIER_ENTRYPOINT}</code> on
+                            <code>{superVerifierLabel}</code>.
                         </p>
                     </div>
                     <div class="verification-grid">
@@ -3181,6 +3234,42 @@
                                 : "Copy coordination snapshot"}
                         </button>
                     </div>
+                    {#if verificationRailEvidence.length > 0}
+                        <div class="verification-evidence">
+                            <p class="verification-evidence-title">
+                                Live Stellar receipts
+                            </p>
+                            {#each verificationRailEvidence as record}
+                                <div class="verification-evidence-row">
+                                    <span class="verification-evidence-rail">
+                                        {record.label}
+                                    </span>
+                                    <a
+                                        class="verification-evidence-link"
+                                        href={buildTxExplorerUrl(record.txHash)}
+                                        target="_blank"
+                                        rel="noreferrer"
+                                    >
+                                        TX {shortHash(record.txHash, 12, 10)}
+                                    </a>
+                                    <span class="verification-evidence-time">
+                                        {formatRailTime(record.updatedAt)}
+                                    </span>
+                                </div>
+                            {/each}
+                            <a
+                                class="verification-evidence-contract"
+                                href={buildContractExplorerUrl(
+                                    SUPER_VERIFIER_CONTRACT_ID,
+                                )}
+                                target="_blank"
+                                rel="noreferrer"
+                            >
+                                Contract: {superVerifierLabel} (
+                                {SUPER_VERIFIER_ENTRYPOINT})
+                            </a>
+                        </div>
+                    {/if}
                     {#if arcadeBatchRunning || arcadeBatchSummary}
                         <div class="verification-batch-status">
                             <p class="verification-batch-title">
@@ -7166,6 +7255,42 @@
         line-height: 1.6;
         color: #cbe7ff;
     }
+    .verification-authenticity {
+        border-radius: 12px;
+        border: 1px solid rgba(118, 243, 186, 0.44);
+        background:
+            linear-gradient(145deg, rgba(8, 30, 35, 0.86), rgba(7, 25, 31, 0.84)),
+            radial-gradient(
+                140% 220% at 100% 0%,
+                rgba(67, 255, 179, 0.18),
+                rgba(67, 255, 179, 0)
+            );
+        padding: 8px 10px;
+        display: grid;
+        gap: 4px;
+    }
+    .verification-authenticity-title {
+        margin: 0;
+        font-size: 9px;
+        text-transform: uppercase;
+        letter-spacing: 0.9px;
+        color: #97fbd0;
+    }
+    .verification-authenticity-copy {
+        margin: 0;
+        font-size: 10px;
+        line-height: 1.6;
+        color: #d8fff1;
+    }
+    .verification-authenticity-copy code {
+        font-family: "JetBrains Mono", "Fira Code", monospace;
+        font-size: 9px;
+        background: rgba(6, 23, 24, 0.72);
+        border: 1px solid rgba(115, 233, 176, 0.34);
+        border-radius: 6px;
+        padding: 1px 4px;
+        color: #a9ffd6;
+    }
     .verification-grid {
         display: grid;
         grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -7299,6 +7424,55 @@
         gap: 8px;
         font-size: 9px;
         color: #b9d5ef;
+    }
+    .verification-evidence {
+        border-radius: 12px;
+        border: 1px solid rgba(154, 196, 255, 0.4);
+        background: rgba(8, 17, 33, 0.7);
+        padding: 9px 10px;
+        display: grid;
+        gap: 6px;
+    }
+    .verification-evidence-title {
+        margin: 0;
+        font-size: 9px;
+        text-transform: uppercase;
+        letter-spacing: 0.8px;
+        color: #add2ff;
+    }
+    .verification-evidence-row {
+        display: grid;
+        grid-template-columns: 64px minmax(0, 1fr) auto;
+        gap: 8px;
+        align-items: center;
+    }
+    .verification-evidence-rail {
+        font-size: 9px;
+        color: #9ec2e6;
+    }
+    .verification-evidence-link {
+        justify-self: start;
+        font-family: "JetBrains Mono", "Fira Code", monospace;
+        font-size: 9px;
+        color: #9effcf;
+        text-decoration: none;
+    }
+    .verification-evidence-link:hover {
+        text-decoration: underline;
+    }
+    .verification-evidence-time {
+        font-size: 9px;
+        color: #99aec8;
+    }
+    .verification-evidence-contract {
+        justify-self: start;
+        margin-top: 2px;
+        font-size: 9px;
+        color: #abd6ff;
+        text-decoration: none;
+    }
+    .verification-evidence-contract:hover {
+        text-decoration: underline;
     }
     .verification-mesh {
         border-radius: 12px;
@@ -7834,6 +8008,12 @@
         .verification-mesh-meta {
             grid-template-columns: 1fr;
         }
+        .verification-evidence-row {
+            grid-template-columns: 56px minmax(0, 1fr);
+        }
+        .verification-evidence-time {
+            grid-column: 1 / -1;
+        }
         .verification-batch-meta {
             gap: 6px;
         }
@@ -7883,6 +8063,14 @@
         .verification-batch-meta {
             display: grid;
             grid-template-columns: 1fr;
+        }
+        .verification-evidence-row {
+            grid-template-columns: 1fr;
+            gap: 3px;
+        }
+        .verification-evidence-link,
+        .verification-evidence-time {
+            justify-self: start;
         }
         .stellarific-strip {
             padding: 9px;
