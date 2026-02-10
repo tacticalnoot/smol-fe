@@ -291,7 +291,7 @@ export async function attemptDoor(
 export function getProofTypeForFloor(floor: number): string {
     if (floor === 3 || floor === 7) return "Circom";
     if (floor === 10) return "RISC Zero";
-    return "Noir";
+    return "Groth16";
 }
 
 /** Generate a random session ID (u32) */

@@ -2,53 +2,34 @@
 
 *Last updated: 2026-02-10*
 
-## PR0: Tech Inventory + Plan (this PR)
-- **What**: Documentation only. INVENTORY.md, ROADMAP.md, JUDGE_FLOW.md, STATE.md.
-- **Risk**: None. Docs only.
+## PR0: Tech Inventory + Plan
+- **What**: Documentation. INVENTORY.md, ROADMAP.md, JUDGE_FLOW.md, STATE.md.
+- **Status**: Done.
 
-## PR1: "Play Here Now" — Game Route + Shell
-- **What**: Create `/labs/the-farm/play` route with ZkDungeonGame.svelte. Game shell with lobby screen, wallet connect (passkey default), and placeholder floor UI. Wire dungeon-room portal CTA to this route.
-- **Outcome**: User clicks "Play Now" → sees game lobby inside smol-fe. No external tabs.
-- **Risk**: Low. New route + new components. Does not touch TheFarmCore.
+## PR1: Game Route + Shell
+- **What**: ZkDungeonGame.svelte with title screen, lobby, floor UI. Game route at `/labs/the-farm/dungeon-room`.
+- **Status**: Done.
 
-## PR2: AAA Game Studio Redesign
-- **What**: Redesign `/labs/the-farm/zkdungeon` and `/labs/the-farm/dungeon-room` as premium Chapter 3 landing pages. Hero section, key art canvas, "PLAY NOW" CTA, secondary links (How It Works, On-Chain Log).
-- **Outcome**: Portal pages look like a real game studio flagship launch.
-- **Risk**: Low. Replaces existing portal pages with better versions.
+## PR2: Portal Consolidation
+- **What**: Consolidated `/labs/the-farm/dungeon-room` as canonical game page. `/play` and `/zkdungeon` redirect to it.
+- **Status**: Done.
 
-## PR3: Game Loop MVP
-- **What**: 10-floor dungeon with 4-door choices per floor. Lobby create/join with lobby codes. Co-op gates at floors 1 & 5. Every attempt submits a real Stellar testnet transaction. Live "Run Log" panel with tx hash links. Sound cues and door animations.
-- **Outcome**: Two players can play the full game loop with real on-chain transactions.
-- **ZK Status**: Transactions are real. Proof generation labeled "wiring in next PR" if ZK not ready.
-- **Risk**: Medium. Requires testnet contract deployment and lobby state management.
+## PR3: Game Loop + Hub Contracts
+- **What**: 10-floor dungeon with 4 doors per floor. Real `start_game()` / `end_game()` calls on Stellar testnet hub. Lobby codes, co-op gates at floors 1 & 5, run log panel.
+- **Status**: Done.
 
-## PR4: Real Noir ZK End-to-End
-- **What**: Noir `door_proof` circuit compiled and integrated. WebWorker for browser-side proving. Every door attempt includes a real Noir proof verified on-chain. Wrong choices verify with `is_correct=0`.
-- **Outcome**: Real ZK proofs on every floor. Proof type shown in run log.
-- **Risk**: High. Noir toolchain integration, verifier contract deployment, proof worker.
+## PR4: Real Groth16 ZK Proofs
+- **What**: Every door attempt generates a real Groth16 proof via snarkjs using the tier_proof Circom circuit. Poseidon commitment binding, local verification, ZK badge in run log.
+- **Status**: Done.
 
-## PR5: Circom Floor
-- **What**: One floor (e.g., floor 3 or 7) uses a Circom Groth16 proof instead of Noir. Reuses existing snarkjs infrastructure. Dedicated verifier or adapted tier-verifier.
-- **Outcome**: "Circom Gate" labeled in UI. Proof type visible in run log.
-- **Risk**: Medium. Circuit design + verifier adaptation.
+## PR5: Dedicated Circom Floor Circuit
+- **What**: Dedicated Circom circuit for door proofs on floors 3 & 7. Requires circom compiler.
+- **Status**: Next.
 
 ## PR6: RISC Zero Boss Floor
-- **What**: Floor 10 boss uses RISC Zero zkVM proof. Minimal guest program. Dedicated verifier contract.
-- **Outcome**: "RISC Zero Boss Gate" labeled in UI.
-- **Risk**: High. RISC Zero toolchain setup + verifier contract.
+- **What**: Floor 10 boss uses RISC Zero zkVM proof. Dedicated verifier contract.
+- **Status**: Not started.
 
 ## PR7: On-Chain Evidence Dashboard
-- **What**: `/labs/the-farm/run/:lobbyId` page showing full run timeline. Events, tx links, start_game/end_game hub calls, proof types per floor.
-- **Outcome**: Judge can see the entire run's on-chain evidence at a glance.
-- **Risk**: Low. Read-only page pulling events from Stellar.
-
-## Dependency Graph
-
-```
-PR0 (docs) ──→ PR1 (play route) ──→ PR3 (game loop) ──→ PR4 (Noir ZK)
-                    │                                        │
-                    └──→ PR2 (portal redesign)               ├──→ PR5 (Circom)
-                                                             └──→ PR6 (RISC Zero)
-                                                                      │
-                                                                      └──→ PR7 (dashboard)
-```
+- **What**: Full run timeline page with events, tx links, proof types per floor.
+- **Status**: Not started.

@@ -5,10 +5,8 @@
         callStartGame,
         callEndGame,
         attemptDoor as submitDoorAttempt,
-        getProofTypeForFloor,
         generateSessionId,
         txExplorerUrl,
-        contractExplorerUrl,
     } from "./dungeonService";
 
     // ── Game State ──────────────────────────────────────────────────────
@@ -33,7 +31,6 @@
     let runLog = $state<RunLogEntry[]>([]);
     let gateWaiting = $state<boolean>(false);
     let fullscreen = $state<boolean>(false);
-    let audioEnabled = $state<boolean>(false);
     let showHowItWorks = $state<boolean>(false);
     let floorTransition = $state<boolean>(false);
     let sessionId = $state<number>(0);
@@ -57,15 +54,15 @@
 
     // Floor lore for atmosphere
     const FLOOR_LORE: Record<number, { name: string; desc: string; proofType: string }> = {
-        1: { name: "Threshold of Binding", desc: "Co-op gate. Both seekers must prove entry.", proofType: "Noir" },
-        2: { name: "Hall of Echoes", desc: "Rune doors whisper half-truths.", proofType: "Noir" },
+        1: { name: "Threshold of Binding", desc: "Co-op gate. Both seekers must prove entry.", proofType: "Groth16" },
+        2: { name: "Hall of Echoes", desc: "Rune doors whisper half-truths.", proofType: "Groth16" },
         3: { name: "Cipher Chamber", desc: "The Circom gate demands algebraic proof.", proofType: "Circom" },
-        4: { name: "Phantom Corridor", desc: "Shadows shift. Trust your commitment.", proofType: "Noir" },
-        5: { name: "Warden's Gate", desc: "Co-op gate. Seekers must synchronize.", proofType: "Noir" },
-        6: { name: "Vault of Secrets", desc: "Private inputs guard the path.", proofType: "Noir" },
-        7: { name: "Merkle Depths", desc: "Hash trees grow deep here.", proofType: "Noir" },
-        8: { name: "Nonce Forge", desc: "Each attempt brands a new seal.", proofType: "Noir" },
-        9: { name: "Verifier's Sanctum", desc: "The final proof before the boss.", proofType: "Noir" },
+        4: { name: "Phantom Corridor", desc: "Shadows shift. Trust your commitment.", proofType: "Groth16" },
+        5: { name: "Warden's Gate", desc: "Co-op gate. Seekers must synchronize.", proofType: "Groth16" },
+        6: { name: "Vault of Secrets", desc: "Private inputs guard the path.", proofType: "Groth16" },
+        7: { name: "Merkle Depths", desc: "Hash trees grow deep here.", proofType: "Circom" },
+        8: { name: "Nonce Forge", desc: "Each attempt brands a new seal.", proofType: "Groth16" },
+        9: { name: "Verifier's Sanctum", desc: "The final proof before the boss.", proofType: "Groth16" },
         10: { name: "Zero Knowledge Throne", desc: "RISC Zero boss. Prove everything. Reveal nothing.", proofType: "RISC Zero" },
     };
 
@@ -95,8 +92,6 @@
         lobbyRole = "host";
         playerName = walletLabel || "Seeker-1";
         opponentName = "";
-        // In full implementation: call create_lobby() on contract
-        // For now: transition to lobby waiting state
         phase = "lobby";
     }
 
@@ -106,7 +101,6 @@
         lobbyRole = "guest";
         playerName = walletLabel || "Seeker-2";
         opponentName = "Seeker-1";
-        // In full implementation: call join_lobby() on contract
         phase = "lobby";
     }
 
@@ -321,12 +315,9 @@
                 </div>
             {:else}
                 <button class="dg-btn dg-btn-primary" onclick={connectWallet}>
-                    START WITH PASSKEY
+                    CONNECT WALLET
                 </button>
-                <p class="dg-hint">Recommended — zero friction, one tap</p>
-                <button class="dg-btn dg-btn-ghost" onclick={connectWallet}>
-                    OTHER WALLETS
-                </button>
+                <p class="dg-hint">Passkey smart account — zero friction, one tap</p>
             {/if}
         </div>
 
@@ -369,7 +360,7 @@
     </div>
 
     <div class="dg-title-footer">
-        <a href="/labs/the-farm" class="dg-footer-link">THE FARM DASHBOARD</a>
+        <a href="/labs/the-farm" class="dg-footer-link">DASHBOARD</a>
         <span class="dg-footer-sep">|</span>
         <button class="dg-footer-link" onclick={toggleFullscreen}>FULLSCREEN</button>
     </div>
@@ -475,9 +466,9 @@
                 {#if state === "proving"}
                     <span class="dg-door-status">PROVING...</span>
                 {:else if state === "correct"}
-                    <span class="dg-door-status dg-door-correct">OPENED</span>
+                    <span class="dg-door-status dg-status-correct">OPENED</span>
                 {:else if state === "wrong"}
-                    <span class="dg-door-status dg-door-wrong">SEALED</span>
+                    <span class="dg-door-status dg-status-wrong">SEALED</span>
                 {/if}
                 <div class="dg-door-glow" style="--door-color: {DOOR_COLORS[i]}"></div>
             </button>
@@ -496,9 +487,9 @@
             {#each runLog.toReversed() as entry}
             <div class="dg-log-entry dg-log-{entry.result}">
                 {#if entry.floor === 0}
-                    <span class="dg-log-text">start_game() called on hub</span>
+                    <span class="dg-log-text">Game registered on hub</span>
                 {:else if entry.door === -1}
-                    <span class="dg-log-text">end_game() called on hub</span>
+                    <span class="dg-log-text">Game finalized on hub</span>
                 {:else}
                     <span class="dg-log-floor">F{entry.floor}</span>
                     <span class="dg-log-door">D{entry.door + 1}</span>
@@ -549,9 +540,9 @@
         <div class="dg-victory-log-summary">
             <p class="dg-victory-log-title">PROOF TYPES USED</p>
             <div class="dg-proof-types">
-                <span class="dg-proof-badge dg-proof-noir">Noir</span>
-                <span class="dg-proof-badge dg-proof-circom">Circom</span>
-                <span class="dg-proof-badge dg-proof-risc0">RISC Zero</span>
+                {#each [...new Set(runLog.filter(e => e.door >= 0).map(e => e.proofType))] as pt}
+                    <span class="dg-proof-badge {pt === 'Circom' ? 'dg-proof-circom' : pt === 'RISC Zero' ? 'dg-proof-risc0' : 'dg-proof-groth16'}">{pt}</span>
+                {/each}
             </div>
         </div>
 
@@ -559,10 +550,10 @@
         <div class="dg-victory-hub-txs">
             <p class="dg-victory-log-title">HUB TRANSACTIONS</p>
             {#if hubStartTx}
-                <a class="dg-hub-tx-link" href={txExplorerUrl(hubStartTx)} target="_blank" rel="noreferrer">start_game() → {hubStartTx.slice(0, 12)}...</a>
+                <a class="dg-hub-tx-link" href={txExplorerUrl(hubStartTx)} target="_blank" rel="noreferrer">Game Start → {hubStartTx.slice(0, 12)}...</a>
             {/if}
             {#if hubEndTx}
-                <a class="dg-hub-tx-link" href={txExplorerUrl(hubEndTx)} target="_blank" rel="noreferrer">end_game() → {hubEndTx.slice(0, 12)}...</a>
+                <a class="dg-hub-tx-link" href={txExplorerUrl(hubEndTx)} target="_blank" rel="noreferrer">Game End → {hubEndTx.slice(0, 12)}...</a>
             {/if}
         </div>
         {/if}
@@ -1165,12 +1156,12 @@
         border-radius: 4px;
     }
 
-    .dg-door-correct {
+    .dg-status-correct {
         color: var(--dg-correct);
         background: rgba(74,222,128,0.1);
     }
 
-    .dg-door-wrong {
+    .dg-status-wrong {
         color: var(--dg-wrong);
         background: rgba(248,113,113,0.1);
     }
@@ -1344,11 +1335,6 @@
         min-width: 60px;
     }
 
-    .dg-log-attempt {
-        color: var(--dg-text-dim);
-        min-width: 30px;
-    }
-
     .dg-log-text {
         color: var(--dg-accent);
     }
@@ -1470,7 +1456,7 @@
         border: 1px solid var(--dg-border);
     }
 
-    .dg-proof-noir {
+    .dg-proof-groth16 {
         color: var(--dg-accent);
         border-color: rgba(74,208,255,0.3);
     }

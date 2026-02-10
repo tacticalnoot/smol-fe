@@ -87,7 +87,7 @@ function encodeDoorData(floor: number, door: number, nonce: number): bigint {
     return BigInt(floor) * 1_000_000n + BigInt(door) * 10_000n + BigInt(nonce);
 }
 
-/** Map floor to proof type label */
+/** Map floor to proof type label — matches game lore */
 function proofTypeForFloor(floor: number): string {
     if (floor === 3 || floor === 7) return "Circom";
     if (floor === 10) return "RISC Zero";
