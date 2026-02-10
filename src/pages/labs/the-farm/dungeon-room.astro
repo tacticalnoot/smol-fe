@@ -1,6 +1,10 @@
 ---
 // Visual constants for the portal canvas.
 const GRID_COLOR = "rgba(120, 180, 255, 0.25)";
+// Where to launch the actual dungeon client (open in new tab). Override via PUBLIC_ZK_DUNGEON_URL.
+const GAME_TARGET =
+  import.meta.env.PUBLIC_ZK_DUNGEON_URL ??
+  "https://tacticalnoot.github.io/Stellar-Game-Studio-1/the-farm-frontend/";
 ---
 
 <!doctype html>
@@ -99,12 +103,18 @@ const GRID_COLOR = "rgba(120, 180, 255, 0.25)";
           Pointer-lock, rune doors, proof-first traversal. This portal drops you into the live
           testnet build; every attempt is notarized, every gate listens.
         </p>
-        <a class="cta" href="/labs/the-farm" id="launch-btn">Open the dungeon</a>
-        <p class="sub">If the frame stalls, the button opens it in a new tab.</p>
+        <button class="cta" id="launch-btn" type="button">Open the dungeon</button>
+        <p class="sub">Opens the live client in a new tab so the portal stays here.</p>
       </div>
     </div>
 
     <script type="module">
+      const GAME_TARGET = ${JSON.stringify(GAME_TARGET)};
+      const launchBtn = document.getElementById("launch-btn");
+      launchBtn?.addEventListener("click", () => {
+        window.open(GAME_TARGET, "_blank", "noopener,noreferrer");
+      });
+
       const GRID_COLOR = "rgba(120, 180, 255, 0.25)";
       const canvas = document.getElementById("portal");
       const ctx = canvas.getContext("2d");
