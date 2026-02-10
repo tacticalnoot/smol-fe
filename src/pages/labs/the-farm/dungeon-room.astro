@@ -104,87 +104,86 @@ const GRID_COLOR = "rgba(120, 180, 255, 0.25)";
     </div>
 
     <script>
-      (() => {
-        const canvas = document.getElementById("portal");
-        const ctx = canvas.getContext("2d");
-        const DPR = Math.min(window.devicePixelRatio || 1, 1.75);
-        let w, h, t = 0;
+      const GRID_COLOR = ${JSON.stringify(GRID_COLOR)};
+    </script>
+    <script type="module">
+      const canvas = document.getElementById("portal");
+      const ctx = canvas.getContext("2d");
+      const DPR = Math.min(window.devicePixelRatio || 1, 1.75);
+      let w, h, t = 0;
 
-        const resize = () => {
-          w = canvas.width = innerWidth * DPR;
-          h = canvas.height = innerHeight * DPR;
-        };
-        resize();
-        window.addEventListener("resize", resize);
+      const resize = () => {
+        w = canvas.width = innerWidth * DPR;
+        h = canvas.height = innerHeight * DPR;
+      };
+      resize();
+      window.addEventListener("resize", resize);
 
-        const stars = Array.from({ length: 120 }, () => ({
-          x: Math.random(),
-          y: Math.random(),
-          z: Math.random(),
-          s: 0.6 + Math.random() * 1.4,
-        }));
+      const stars = Array.from({ length: 120 }, () => ({
+        x: Math.random(),
+        y: Math.random(),
+        z: Math.random(),
+        s: 0.6 + Math.random() * 1.4,
+      }));
 
-        const gridColor = ${JSON.stringify(GRID_COLOR)};
+      function draw() {
+        t += 0.003;
+        ctx.clearRect(0, 0, w, h);
 
-        function draw() {
-          t += 0.003;
-          ctx.clearRect(0, 0, w, h);
+        // gradient background
+        const g = ctx.createRadialGradient(w * 0.5, h * 0.3, w * 0.05, w * 0.5, h * 0.5, w * 0.9);
+        g.addColorStop(0, "rgba(84,144,255,0.32)");
+        g.addColorStop(1, "rgba(5,7,13,0.2)");
+        ctx.fillStyle = g;
+        ctx.fillRect(0, 0, w, h);
 
-          // gradient background
-          const g = ctx.createRadialGradient(w * 0.5, h * 0.3, w * 0.05, w * 0.5, h * 0.5, w * 0.9);
-          g.addColorStop(0, "rgba(84,144,255,0.32)");
-          g.addColorStop(1, "rgba(5,7,13,0.2)");
-          ctx.fillStyle = g;
-          ctx.fillRect(0, 0, w, h);
-
-          // grid horizon
-          ctx.save();
-          ctx.translate(w * 0.5, h * 0.75);
-          ctx.strokeStyle = gridColor;
-          ctx.lineWidth = 1 * DPR;
-          for (let i = -20; i <= 20; i++) {
-            ctx.beginPath();
-            ctx.moveTo(i * 40, 0);
-            ctx.lineTo(i * 40, -h * 0.8);
-            ctx.stroke();
-          }
-          for (let j = 0; j < 25; j++) {
-            const y = -j * 32;
-            ctx.beginPath();
-            ctx.moveTo(-w, y);
-            ctx.lineTo(w, y);
-            ctx.stroke();
-          }
-          ctx.restore();
-
-          // pulse ring
-          ctx.save();
-          ctx.translate(w * 0.5, h * 0.5);
-          const r = (Math.sin(t * 2) * 0.5 + 0.5) * 90 + 120;
-          const ring = ctx.createRadialGradient(0, 0, r * 0.5, 0, 0, r);
-          ring.addColorStop(0, "rgba(82,255,201,0.18)");
-          ring.addColorStop(1, "rgba(82,255,201,0)");
-          ctx.fillStyle = ring;
+        // grid horizon
+        ctx.save();
+        ctx.translate(w * 0.5, h * 0.75);
+        ctx.strokeStyle = GRID_COLOR;
+        ctx.lineWidth = 1 * DPR;
+        for (let i = -20; i <= 20; i++) {
           ctx.beginPath();
-          ctx.arc(0, 0, r, 0, Math.PI * 2);
-          ctx.fill();
-          ctx.restore();
-
-          // stars
-          ctx.fillStyle = "rgba(255,255,255,0.8)";
-          for (const s of stars) {
-            s.z -= 0.004;
-            if (s.z < 0.01) s.z = 1;
-            const x = (s.x - 0.5) * w * 0.8 / s.z + w * 0.5;
-            const y = (s.y - 0.5) * h * 0.6 / s.z + h * 0.35;
-            const size = (1.2 - s.z) * s.s * DPR;
-            ctx.fillRect(x, y, size, size);
-          }
-
-          requestAnimationFrame(draw);
+          ctx.moveTo(i * 40, 0);
+          ctx.lineTo(i * 40, -h * 0.8);
+          ctx.stroke();
         }
+        for (let j = 0; j < 25; j++) {
+          const y = -j * 32;
+          ctx.beginPath();
+          ctx.moveTo(-w, y);
+          ctx.lineTo(w, y);
+          ctx.stroke();
+        }
+        ctx.restore();
+
+        // pulse ring
+        ctx.save();
+        ctx.translate(w * 0.5, h * 0.5);
+        const r = (Math.sin(t * 2) * 0.5 + 0.5) * 90 + 120;
+        const ring = ctx.createRadialGradient(0, 0, r * 0.5, 0, 0, r);
+        ring.addColorStop(0, "rgba(82,255,201,0.18)");
+        ring.addColorStop(1, "rgba(82,255,201,0)");
+        ctx.fillStyle = ring;
+        ctx.beginPath();
+        ctx.arc(0, 0, r, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.restore();
+
+        // stars
+        ctx.fillStyle = "rgba(255,255,255,0.8)";
+        for (const s of stars) {
+          s.z -= 0.004;
+          if (s.z < 0.01) s.z = 1;
+          const x = ((s.x - 0.5) * w * 0.8) / s.z + w * 0.5;
+          const y = ((s.y - 0.5) * h * 0.6) / s.z + h * 0.35;
+          const size = (1.2 - s.z) * s.s * DPR;
+          ctx.fillRect(x, y, size, size);
+        }
+
         requestAnimationFrame(draw);
-      })();
+      }
+      requestAnimationFrame(draw);
     </script>
   </body>
 </html>
