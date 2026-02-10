@@ -1,4 +1,5 @@
 /// <reference types="astro/client" />
+/// <reference path="./types/qrcode.d.ts" />
 
 interface ImportMetaEnv {
   readonly PUBLIC_API_URL: string;

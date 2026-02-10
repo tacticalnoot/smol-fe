@@ -605,6 +605,78 @@
         "CA34IFEOQADUHTDIMJGTQ2I7O34QYHL4FFXFOJYTUSPVRMJQCS3UAY6N";
     const GAME_HUB_CONTRACT_ID =
         "CB4VZAT2U3UC6XFK3N23SKRF2NDCMP3QHJYMCHHFMZO7MRQO6DQ2EMYG";
+    const FLOOR_LORE = [
+        {
+            id: 1,
+            title: "Customs Gate",
+            stack: "circom",
+            coOp: false,
+            real: "Border declaration sealed without exposing cargo",
+        },
+        {
+            id: 2,
+            title: "Freight Scales",
+            stack: "circom",
+            coOp: false,
+            real: "Weigh-station ticket that proves compliance",
+        },
+        {
+            id: 3,
+            title: "Vault Ledger",
+            stack: "circom",
+            coOp: false,
+            real: "Timestamped notary entry for a document hash",
+        },
+        {
+            id: 4,
+            title: "Mirror of Intent",
+            stack: "noir",
+            coOp: false,
+            real: "Witness oath recorded without revealing the secret",
+        },
+        {
+            id: 5,
+            title: "Twin Locks",
+            stack: "noir",
+            coOp: true,
+            real: "Dual-control keys for a high-stakes launch",
+        },
+        {
+            id: 6,
+            title: "Labyrinth Map",
+            stack: "noir",
+            coOp: false,
+            real: "Signed flight plan validated without sharing route",
+        },
+        {
+            id: 7,
+            title: "Resonance Choir",
+            stack: "noir",
+            coOp: false,
+            real: "Biometric liveness proven without sharing the sample",
+        },
+        {
+            id: 8,
+            title: "Blackbox Furnace",
+            stack: "risc0",
+            coOp: false,
+            real: "Tamper-proof ML score verified with a sealed receipt",
+        },
+        {
+            id: 9,
+            title: "Time Dilation Test",
+            stack: "risc0",
+            coOp: false,
+            real: "Flight recorder attests to a vehicle path for claims",
+        },
+        {
+            id: 10,
+            title: "Stellar Confluence",
+            stack: "mixed",
+            coOp: true,
+            real: "Compliance bundle tying KYC, audit, and compute receipts",
+        },
+    ];
 
     // ── Derived ────────────────────────────────────────────────────────────
     let isAuth = $derived(!!userState.contractId);
@@ -4014,24 +4086,42 @@
                                     View testnet build
                                 </a>
                             </div>
-                            <div class="dungeon-meta">
-                                <span>Contract: {shortHash(ZK_DUNGEON_CONTRACT_ID, 12, 10)}</span>
-                                <span>Network: testnet</span>
-                                <span>Hub: {shortHash(GAME_HUB_CONTRACT_ID, 10, 8)}</span>
-                            </div>
-                        </div>
-                        <div class="dungeon-hero-right" aria-hidden="true">
-                            <div class="dungeon-orb orb-a"></div>
-                            <div class="dungeon-orb orb-b"></div>
-                            <div class="dungeon-grid"></div>
-                            <div class="dungeon-portal">10 FLOORS</div>
-                        </div>
+                    <div class="dungeon-meta">
+                        <span>Contract: {shortHash(ZK_DUNGEON_CONTRACT_ID, 12, 10)}</span>
+                        <span>Network: testnet</span>
+                        <span>Hub: {shortHash(GAME_HUB_CONTRACT_ID, 10, 8)}</span>
                     </div>
-                    <div class="verification-primary-actions">
-                        <button
-                            class="arcade-guide-btn verification-pack-btn"
-                            type="button"
-                            onclick={copyHackathonSubmissionPack}
+                </div>
+                <div class="dungeon-hero-right" aria-hidden="true">
+                    <div class="dungeon-orb orb-a"></div>
+                    <div class="dungeon-orb orb-b"></div>
+                    <div class="dungeon-grid"></div>
+                    <div class="dungeon-portal">10 FLOORS</div>
+                </div>
+            </div>
+            <div class="floor-lore">
+                <p class="floor-lore-kicker">Ten floors, ten real-world seals</p>
+                <div class="floor-lore-grid">
+                    {#each FLOOR_LORE as floor}
+                        <div class="floor-lore-card">
+                            <div class="floor-lore-head">
+                                <span class="floor-lore-id">F{floor.id}</span>
+                                <span class={`floor-lore-pill floor-lore-pill--${floor.stack}`}>
+                                    {floor.stack}
+                                    {floor.coOp ? " · co-op" : ""}
+                                </span>
+                            </div>
+                            <p class="floor-lore-title">{floor.title}</p>
+                            <p class="floor-lore-copy">{floor.real}</p>
+                        </div>
+                    {/each}
+                </div>
+            </div>
+            <div class="verification-primary-actions">
+                <button
+                    class="arcade-guide-btn verification-pack-btn"
+                    type="button"
+                    onclick={copyHackathonSubmissionPack}
                             >
                                 {copiedSubmissionPack
                                     ? "Submission pack copied"
@@ -9396,6 +9486,81 @@ bun run publish my-game --build</code></pre>
         border-radius: 10px;
         border: 1px solid rgba(255, 199, 154, 0.35);
         background: rgba(44, 16, 18, 0.55);
+    }
+    .floor-lore {
+        border-radius: 14px;
+        border: 1px solid rgba(255, 255, 255, 0.06);
+        background: rgba(7, 12, 20, 0.8);
+        padding: 12px;
+        display: grid;
+        gap: 10px;
+    }
+    .floor-lore-kicker {
+        margin: 0;
+        font-size: 11px;
+        letter-spacing: 1px;
+        text-transform: uppercase;
+        color: #ffd5b1;
+    }
+    .floor-lore-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+        gap: 8px;
+    }
+    .floor-lore-card {
+        padding: 10px;
+        border-radius: 12px;
+        border: 1px solid rgba(255, 255, 255, 0.06);
+        background: rgba(255, 255, 255, 0.03);
+        display: grid;
+        gap: 6px;
+    }
+    .floor-lore-head {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        gap: 6px;
+        font-size: 11px;
+        color: #d8e7ff;
+    }
+    .floor-lore-id {
+        font-weight: 700;
+        letter-spacing: 1px;
+    }
+    .floor-lore-pill {
+        padding: 4px 8px;
+        border-radius: 999px;
+        font-size: 10px;
+        letter-spacing: 0.4px;
+        border: 1px solid rgba(255, 255, 255, 0.12);
+    }
+    .floor-lore-pill--circom {
+        border-color: rgba(255, 191, 140, 0.4);
+        color: #ffd5b1;
+    }
+    .floor-lore-pill--noir {
+        border-color: rgba(140, 196, 255, 0.4);
+        color: #d8e7ff;
+    }
+    .floor-lore-pill--risc0 {
+        border-color: rgba(107, 255, 198, 0.4);
+        color: #c8ffe9;
+    }
+    .floor-lore-pill--mixed {
+        border-color: rgba(255, 255, 255, 0.2);
+        color: #eaeaea;
+    }
+    .floor-lore-title {
+        margin: 0;
+        font-size: 13px;
+        letter-spacing: 0.6px;
+        color: #f3f8ff;
+    }
+    .floor-lore-copy {
+        margin: 0;
+        font-size: 11px;
+        color: #c3d5f2;
+        line-height: 1.45;
     }
     .dungeon-hero-right {
         position: relative;
