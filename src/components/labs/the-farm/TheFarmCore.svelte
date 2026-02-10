@@ -4077,6 +4077,9 @@
                                 <button class="arcade-guide-btn ghost" type="button" onclick={copyDungeonRepo}>
                                     {copiedDungeonRepo ? "Repo copied" : "Repo (fork)"}
                                 </button>
+                                <a class="arcade-guide-btn ghost" href="/zkdungeon">
+                                    Launch cinematic /zkdungeon
+                                </a>
                                 <a
                                     class="arcade-guide-btn primary-link"
                                     href={ZK_DUNGEON_REPO_URL}
