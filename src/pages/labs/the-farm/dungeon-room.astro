@@ -1,4 +1,5 @@
 ---
+// Visual constants for the portal canvas.
 const GRID_COLOR = "rgba(120, 180, 255, 0.25)";
 ---
 
@@ -103,10 +104,8 @@ const GRID_COLOR = "rgba(120, 180, 255, 0.25)";
       </div>
     </div>
 
-    <script>
-      const GRID_COLOR = ${JSON.stringify(GRID_COLOR)};
-    </script>
     <script type="module">
+      const GRID_COLOR = "rgba(120, 180, 255, 0.25)";
       const canvas = document.getElementById("portal");
       const ctx = canvas.getContext("2d");
       const DPR = Math.min(window.devicePixelRatio || 1, 1.75);
