@@ -1,5 +1,5 @@
 ---
-// Minimal shell that immediately launches the live dungeon client.
+// Fullscreen embed that drops straight into the dungeon client.
 const TARGET =
   import.meta.env.PUBLIC_ZK_DUNGEON_URL ??
   "https://smol-fe-7jl.pages.dev/labs/the-farm";
@@ -11,7 +11,6 @@ const TARGET =
     <meta charset="utf-8" />
     <title>ZK Dungeon | The Farm</title>
     <meta name="description" content="Jump straight into the live ZK Dungeon client." />
-    <meta http-equiv="refresh" content={`0; url=${TARGET}`} />
     <style>
       :root {
         color-scheme: dark;
@@ -25,7 +24,18 @@ const TARGET =
         min-height: 100vh;
         font-family: "Inter", system-ui, -apple-system, sans-serif;
       }
+      .frame {
+        width: 100vw;
+        height: 100vh;
+        border: none;
+      }
       .fallback {
+        position: absolute;
+        inset: 0;
+        display: grid;
+        place-items: center;
+        background: #05070d;
+        color: #e8f0ff;
         text-align: center;
         padding: 24px;
       }
@@ -41,17 +51,15 @@ const TARGET =
         font-weight: 700;
         letter-spacing: 0.4px;
       }
-      iframe {
-        width: 100vw;
-        height: 100vh;
-        border: none;
-      }
     </style>
   </head>
   <body>
+    <iframe class="frame" src={TARGET} allowfullscreen></iframe>
     <div class="fallback">
-      <h1>Launching ZK Dungeon…</h1>
-      <a class="cta" href={TARGET}>Enter the Dungeon</a>
+      <div>
+        <h1>Launching ZK Dungeon…</h1>
+        <a class="cta" href={TARGET}>Open in a new tab</a>
+      </div>
     </div>
   </body>
 </html>

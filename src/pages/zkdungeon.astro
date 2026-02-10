@@ -8,7 +8,6 @@ const TARGET = "/labs/the-farm/zkdungeon";
     <meta charset="utf-8" />
     <title>ZK Dungeon | Redirect</title>
     <meta name="description" content="Redirecting to the live ZK Dungeon client." />
-    <meta http-equiv="refresh" content={`0; url=${TARGET}`} />
     <style>
       :root {
         color-scheme: dark;
@@ -22,7 +21,18 @@ const TARGET = "/labs/the-farm/zkdungeon";
         min-height: 100vh;
         font-family: "Inter", system-ui, -apple-system, sans-serif;
       }
+      .frame {
+        width: 100vw;
+        height: 100vh;
+        border: none;
+      }
       .fallback {
+        position: absolute;
+        inset: 0;
+        display: grid;
+        place-items: center;
+        background: #05070d;
+        color: #e8f0ff;
         text-align: center;
         padding: 24px;
       }
@@ -41,9 +51,12 @@ const TARGET = "/labs/the-farm/zkdungeon";
     </style>
   </head>
   <body>
+    <iframe class="frame" src={TARGET} allowfullscreen></iframe>
     <div class="fallback">
-      <h1>Launching ZK Dungeon…</h1>
-      <a class="cta" href={TARGET}>Enter the Dungeon</a>
+      <div>
+        <h1>Launching ZK Dungeon…</h1>
+        <a class="cta" href={TARGET}>Enter the Dungeon</a>
+      </div>
     </div>
   </body>
 </html>
