@@ -3783,8 +3783,7 @@
                     <p class="chapter-tag">Chapter I</p>
                     <h2 class="chapter-title">Kale Proof Garden</h2>
                     <p class="chapter-copy">
-                        Moonlit farm vibes with production ZK: generate a private
-                        KALE tier proof and secure it with one tap.
+                        Generate a private KALE tier proof and secure it with one tap.
                     </p>
                 </div>
                 <div class="kale-cover" role="img" aria-label="Kale proof chapter cover art">
@@ -3792,8 +3791,7 @@
                         <p class="kale-cover-kicker">Groth16 · BN254 · Poseidon</p>
                         <p class="kale-cover-title">PROOF OF FARM</p>
                         <p class="kale-cover-body">
-                            Stardew-style cover, real Protocol 25 host ops, and live
-                            Super Verifier receipts.
+                            Real Protocol 25 host ops with live verifier receipts.
                         </p>
                     </div>
                     <div class="kale-cover-scene" aria-hidden="true">
@@ -3822,17 +3820,16 @@
                         {/if}
                     </button>
                     <p class="kale-magic-copy">
-                        One tap generates your proof (if needed), runs local checks, and
-                        publishes a tamper-proof receipt in the background.
+                        Generates proof, verifies locally, and publishes a receipt.
                     </p>
                 </div>
 
                 {#if !isAuth}
                     <div class="landing-cta">
-                        <p class="landing-line">Harvest your KALE proof tier</p>
+                        <p class="landing-line">Prove your KALE tier</p>
                         <p class="landing-line dim">without revealing your balance.</p>
                         <p class="landing-connect">
-                            Connect your wallet to enter the valley
+                            Connect your wallet to begin
                         </p>
                     </div>
                 {:else if loading && balance === null}
@@ -4004,9 +4001,7 @@
                     <p class="chapter-tag">Chapter II</p>
                     <h2 class="chapter-title">Game Proofs Arcade</h2>
                     <p class="chapter-copy">
-                        One-click verify flow seals gameplay transcripts into
-                        proof-ready commitments, derives Groth16 witnesses, and
-                        publishes live receipts through the Super Verifier fabric.
+                        Play games, generate proofs, and publish verifier receipts.
                     </p>
                     <div class="arcade-guide-row">
                         <button
@@ -4019,8 +4014,7 @@
                                 : "What did we build?"}
                         </button>
                         <p class="arcade-guide-mini">
-                            Start in the One-Click Command Deck, then drill into
-                            per-game cards only when you need manual controls.
+                            Use the command deck, or open individual games for manual control.
                         </p>
                     </div>
                 </div>
@@ -4030,9 +4024,7 @@
                             Stellar Mainnet Proctor Deck
                         </p>
                         <p class="verification-deck-copy">
-                            One command deck controls the full proof suite.
-                            Launch the full stack instantly, then open deep
-                            diagnostics only when you need lane-level controls.
+                            One-click launcher with advanced options below.
                         </p>
                     </div>
                     <div class="verification-primary">
@@ -4049,8 +4041,7 @@
                                 : "One-Tap Verify + Submission Pack"}
                         </button>
                         <p class="verification-primary-copy">
-                            One tap runs Kale, Arcade, Noir, and zkVM rails in
-                            sequence, then prepares a hackathon-ready submission pack.
+                            Runs all verification rails and prepares a submission pack.
                         </p>
                     <div class="verification-primary-meta">
                         <span>{verificationPassCount}/4 rails online</span>
@@ -4066,9 +4057,7 @@
                             <p class="dungeon-kicker">New · Testnet</p>
                             <h3 class="dungeon-title">ZK Dungeon Alpha</h3>
                             <p class="dungeon-copy">
-                                Two-player race through 10 rune doors. Every pick ships a ZK
-                                proof to the hub. Gates on floors 1 & 5 force sync. Testnet only,
-                                isolated from main login.
+                                Two-player race through 10 rune doors with real ZK proofs. Testnet.
                             </p>
                             <div class="dungeon-actions">
                                 <button class="arcade-guide-btn" type="button" onclick={copyDungeonContract}>
@@ -4077,8 +4066,8 @@
                                 <button class="arcade-guide-btn ghost" type="button" onclick={copyDungeonRepo}>
                                     {copiedDungeonRepo ? "Repo copied" : "Repo (fork)"}
                                 </button>
-                                <a class="arcade-guide-btn ghost" href="/zkdungeon">
-                                    Launch cinematic /zkdungeon
+                                <a class="arcade-guide-btn ghost" href="/labs/the-farm/dungeon-room">
+                                    Play ZK Dungeon
                                 </a>
                                 <a
                                     class="arcade-guide-btn primary-link"
@@ -4396,18 +4385,11 @@
                 {#if showArcadeGuide}
                     <div class="arcade-guide-card">
                         <p>
-                            Each game run emits a deterministic transcript and action
-                            hash that can be replayed from session state.
+                            Each game run produces a transcript sealed into a Poseidon commitment.
                         </p>
                         <p>
-                            We seal that data into Poseidon commitments, derive
-                            Groth16-compatible witness data, and prepare
-                            contract-ready payloads.
-                        </p>
-                        <p>
-                            Final settlement goes through the live Super Verifier
-                            <code>verify_and_attest</code> entrypoint and surface
-                            explorer receipts in this deck.
+                            Proofs are submitted on-chain via the Super Verifier contract
+                            and receipts appear in this deck.
                         </p>
                     </div>
                 {/if}
@@ -4415,19 +4397,11 @@
                     <div class="game-header">
                         <h2 class="section-label">ZK Arcade</h2>
                         <p class="game-subtitle">
-                            Beat real mini-games to forge Poseidon commitments,
-                            then route verify_and_attest calls into the live
-                            Super Verifier engine.
-                        </p>
-                        <p class="game-subtitle">
-                            Arcade submit path uses a compatibility Groth16
-                            witness derived from each sealed run while dedicated
-                            per-game circuits are in active development.
+                            Play mini-games to generate ZK proofs and publish on-chain receipts.
                         </p>
                         {#if !isAuth}
                             <p class="game-subtitle game-wallet">
-                                Guest wallet active: {gameWalletLabel} (no Kale
-                                Farm login needed).
+                                Guest wallet: {gameWalletLabel}
                             </p>
                         {/if}
                     </div>
@@ -4577,18 +4551,13 @@
                         </button>
                         <p class="game-magic-copy">
                             {#if game.proof?.onchainTxHash}
-                                This run already has a live receipt. Re-run
-                                one-click after sealing a fresh run.
+                                Receipt published. Seal a fresh run to re-submit.
                             {:else if !isAuth}
-                                Connect wallet to run one-click certification.
+                                Connect wallet to run verification.
                             {:else if game.proof}
-                                One click runs local integrity check, generates
-                                Groth16 compatibility proof, and publishes to
-                                Super Verifier.
+                                Verify and publish proof receipt on-chain.
                             {:else}
-                                Auto mode runs a clean demo path, seals
-                                commitment, publishes a receipt, and copies payload
-                                data.
+                                Auto-play, generate proof, and publish receipt.
                             {/if}
                         </p>
                     </div>
@@ -4920,9 +4889,7 @@
                     <p class="chapter-tag">Chapter III</p>
                     <h2 class="chapter-title">ZK Dungeon Proving Grounds</h2>
                     <p class="chapter-copy">
-                        Launch a dedicated chapter page for the hackathon main event:
-                        prove cross-chapter execution, track official requirements, and
-                        package clean proctor evidence.
+                        Track hackathon requirements, gather proof receipts, and package your submission.
                     </p>
                 </div>
                 <button
@@ -4934,9 +4901,7 @@
                         <p class="dungeon-overline">Available Chapter Card</p>
                         <h3 class="dungeon-title">Protocol 25 Raid Gate</h3>
                         <p class="dungeon-copy">
-                            Chapter III opens into a focused proving room with
-                            compliance controls, proof receipts, and the verifier
-                            dock in one mission flow.
+                            Compliance tracker with proof receipts and verifier controls.
                         </p>
                         <div class="dungeon-tags">
                             <span>Official Rules Matrix</span>
@@ -4970,8 +4935,7 @@
                             Dedicated verifier wing
                         </p>
                         <p class="chapter-three-inline-copy">
-                            Contract internals and Protocol 25 host-operation
-                            evidence live in this chapter, out of the main game flow.
+                            Protocol 25 host-operation evidence and contract details.
                         </p>
                     </article>
                     <article class="chapter-three-inline-card">
@@ -4979,8 +4943,7 @@
                             Hackathon-ready story mode
                         </p>
                         <p class="chapter-three-inline-copy">
-                            Track Game Studio setup, testnet game-hub lifecycle,
-                            open-source repo, and the final demo in one place.
+                            Game Studio setup, testnet lifecycle, repo, and demo — all in one place.
                         </p>
                     </article>
                 </div>
@@ -5020,8 +4983,7 @@
                                 Dedicated Chapter View
                             </p>
                             <p class="chapter-three-page-copy">
-                                Submission window: February 9, 2026 to February 23,
-                                2026. Requirement source is linked below.
+                                Deadline: Feb 9 – 23, 2026
                             </p>
                         </div>
                         <button
@@ -5055,15 +5017,12 @@
                             </p>
                             <p class="chapter-three-priority-copy">
                                 {chapterThreeTopPriorityReady
-                                    ? "Ready. Fork URL and setup evidence are captured."
-                                    : "Pending. Add your forked Game Studio URL and setup evidence to unlock this requirement."}
+                                    ? "Ready. Fork URL and setup evidence captured."
+                                    : "Add Game Studio fork URL and setup evidence."}
                             </p>
                         </div>
                         <p class="chapter-three-compliance-copy">
-                            Chapter III is the pre-show arena for the hackathon main
-                            event: stand up Game Studio, sync your game-hub
-                            lifecycle, then present real proof receipts and a clean demo
-                            story.
+                            Set up Game Studio, link game-hub lifecycle, and gather proof receipts.
                         </p>
                         <div class="chapter-three-launch-sequence">
                             <article
@@ -5078,8 +5037,7 @@
                                     Studio Genesis
                                 </p>
                                 <p class="chapter-three-launch-step-copy">
-                                    Fork Game Studio, run the setup flow, and create
-                                    your game scaffold.
+                                    Fork Game Studio and complete setup.
                                 </p>
                                 <span class="chapter-three-launch-step-state">
                                     {chapterThreeStageStudioReady
@@ -5099,8 +5057,7 @@
                                     Arena Sync
                                 </p>
                                 <p class="chapter-three-launch-step-copy">
-                                    Wire `start_game` + `end_game` lifecycle on
-                                    testnet and link evidence receipts.
+                                    Deploy on testnet and link evidence receipts.
                                 </p>
                                 <span class="chapter-three-launch-step-state">
                                     {chapterThreeStageArenaReady
@@ -5120,8 +5077,7 @@
                                     Proof Showcase
                                 </p>
                                 <p class="chapter-three-launch-step-copy">
-                                    Complete one-click rails and attach your final
-                                    2-3 minute walkthrough demo.
+                                    Complete verification and add demo video.
                                 </p>
                                 <span class="chapter-three-launch-step-state">
                                     {chapterThreeStageShowcaseReady
@@ -5394,9 +5350,7 @@ bun run publish my-game --build</code></pre>
                             Noir + zkVM implementation lanes
                         </h3>
                         <p class="toolchain-copy">
-                            Real integration plans only. Each lane is mapped to
-                            a concrete Stellar delivery path and a Super Verifier
-                            settlement strategy.
+                            Each track maps to a Stellar delivery path.
                         </p>
                     </div>
                     <div class="toolchain-tabs">
@@ -5457,9 +5411,7 @@ bun run publish my-game --build</code></pre>
                                 Artifact intake (real tool outputs)
                             </p>
                             <p class="toolchain-ingest-copy">
-                                Paste machine-generated manifest JSON from your
-                                selected track. Imported artifacts are hashed and
-                                linked to settlement records.
+                                Paste artifact JSON to import and link records.
                             </p>
                             <textarea
                                 class="toolchain-ingest-input"
@@ -5646,12 +5598,8 @@ bun run publish my-game --build</code></pre>
                                         </span>
                                     </div>
                                     <p class="verifier-copy">
-                                        Live today: deterministic transcript hashing + Poseidon
-                                        commitment generation + local recompute verification.
-                                        For Chapter I Kale proofs, <code>verify_and_attest</code> and
-                                        <code>check_attestation</code> are live rails. Arcade now also
-                                        submits through <code>verify_and_attest</code> using a
-                                        Groth16 compatibility witness derived from each sealed run.
+                                        Poseidon commitments, local verification, and on-chain
+                                        <code>verify_and_attest</code> receipts for both Kale and Arcade proofs.
                                     </p>
                                     <div class="verifier-grid">
                                         <div class="verifier-item">
@@ -5689,11 +5637,7 @@ bun run publish my-game --build</code></pre>
                                         </div>
                                     </div>
                                     <p class="verifier-env">
-                                        Tier proofs and arcade submissions now both target this same
-                                        contract. Kale uses native tier proof inputs; arcade uses the
-                                        same Groth16 verifier in compatibility mode with
-                                        game-derived witness metrics while dedicated game circuits are
-                                        being finalized.
+                                        Both tier proofs and arcade submissions use the same verifier contract.
                                     </p>
                                 </div>
                             </section>

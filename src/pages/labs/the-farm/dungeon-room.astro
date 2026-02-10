@@ -1,198 +1,26 @@
 ---
-// Visual constants for the portal canvas.
-const GRID_COLOR = "rgba(120, 180, 255, 0.25)";
-// Where to launch the actual dungeon client (open in new tab). Override via PUBLIC_ZK_DUNGEON_URL.
-const GAME_TARGET =
-  import.meta.env.PUBLIC_ZK_DUNGEON_URL ??
-  "/labs/the-farm";
+import Layout from "../../../layouts/Layout.astro";
+import ZkDungeonGame from "../../../components/labs/the-farm/dungeon/ZkDungeonGame.svelte";
 ---
 
-<!doctype html>
-<html lang="en">
-  <head>
-    <meta charset="utf-8" />
-    <title>ZK Dungeon Portal</title>
-    <meta name="description" content="Fullscreen portal into the ZK Dungeon run." />
-    <style>
-      :root {
-        color-scheme: dark;
-      }
-      * {
-        box-sizing: border-box;
-      }
-      body {
-        margin: 0;
-        background: radial-gradient(circle at 50% 20%, #0e1424, #05070d 60%, #03040a);
-        color: #e8f0ff;
-        font-family: "Inter", system-ui, -apple-system, sans-serif;
-        overflow: hidden;
-      }
-      canvas {
-        position: fixed;
-        inset: 0;
-        width: 100vw;
-        height: 100vh;
-        z-index: 0;
-      }
-      .hud {
-        position: fixed;
-        inset: 0;
-        display: grid;
-        place-items: center;
-        pointer-events: none;
-        z-index: 2;
-      }
-      .panel {
-        pointer-events: auto;
-        padding: 22px;
-        border-radius: 16px;
-        border: 1px solid rgba(255, 255, 255, 0.14);
-        background: rgba(10, 13, 22, 0.78);
-        box-shadow: 0 20px 70px rgba(0, 0, 0, 0.45);
-        max-width: 520px;
-        width: min(90vw, 520px);
-        text-align: center;
-      }
-      .eyebrow {
-        letter-spacing: 2px;
-        text-transform: uppercase;
-        color: #8bc5ff;
-        font-size: 12px;
-        margin: 0 0 8px;
-      }
-      h1 {
-        margin: 0 0 12px;
-        font-size: clamp(28px, 5vw, 48px);
-        letter-spacing: 1px;
-      }
-      .copy {
-        margin: 0 0 20px;
-        color: #c7d7f0;
-        line-height: 1.6;
-        font-size: 15px;
-      }
-      .cta {
-        display: inline-flex;
-        align-items: center;
-        justify-content: center;
-        gap: 10px;
-        padding: 14px 20px;
-        border-radius: 999px;
-        border: 1px solid rgba(255, 255, 255, 0.22);
-        text-decoration: none;
-        color: #0a0c16;
-        background: linear-gradient(135deg, #4ad0ff, #9b7bff 60%, #ffc47a);
-        font-weight: 800;
-        letter-spacing: 0.6px;
-        box-shadow: 0 8px 30px rgba(154, 223, 255, 0.3);
-      }
-      .sub {
-        margin: 14px 0 0;
-        color: #9ab3d7;
-        font-size: 13px;
-      }
-    </style>
-  </head>
-  <body>
-    <canvas id="portal"></canvas>
-    <div class="hud">
-      <div class="panel">
-        <p class="eyebrow">ZK Dungeon · Live Portal</p>
-        <h1>Enter the sealed chambers</h1>
-        <p class="copy">
-          Pointer-lock, rune doors, proof-first traversal. This portal drops you into the live
-          testnet build; every attempt is notarized, every gate listens.
-        </p>
-        <button class="cta" id="launch-btn" type="button">Open the dungeon</button>
-        <p class="sub">Opens the live client in a new tab so the portal stays here.</p>
-      </div>
-    </div>
+<Layout title="ZK Dungeon — The Farm | Chapter 3" description="10 floors, 4 doors, every choice is a ZK proof on Stellar. Play the Stellar ZK Dungeon.">
+  <link href="https://fonts.googleapis.com/css2?family=Press+Start+2P&display=swap" rel="stylesheet" />
 
-    <script type="module">
-      const GAME_TARGET = ${JSON.stringify(GAME_TARGET)};
-      const launchBtn = document.getElementById("launch-btn");
-      launchBtn?.addEventListener("click", () => {
-        window.open(GAME_TARGET, "_blank", "noopener,noreferrer");
-      });
+  <div class="dungeon-game-wrapper">
+    <ZkDungeonGame client:only="svelte" />
+  </div>
+</Layout>
 
-      const GRID_COLOR = "rgba(120, 180, 255, 0.25)";
-      const canvas = document.getElementById("portal");
-      const ctx = canvas.getContext("2d");
-      const DPR = Math.min(window.devicePixelRatio || 1, 1.75);
-      let w, h, t = 0;
+<style is:global>
+  .dungeon-game-wrapper {
+    position: fixed;
+    inset: 0;
+    z-index: 9999;
+  }
 
-      const resize = () => {
-        w = canvas.width = innerWidth * DPR;
-        h = canvas.height = innerHeight * DPR;
-      };
-      resize();
-      window.addEventListener("resize", resize);
-
-      const stars = Array.from({ length: 120 }, () => ({
-        x: Math.random(),
-        y: Math.random(),
-        z: Math.random(),
-        s: 0.6 + Math.random() * 1.4,
-      }));
-
-      function draw() {
-        t += 0.003;
-        ctx.clearRect(0, 0, w, h);
-
-        // gradient background
-        const g = ctx.createRadialGradient(w * 0.5, h * 0.3, w * 0.05, w * 0.5, h * 0.5, w * 0.9);
-        g.addColorStop(0, "rgba(84,144,255,0.32)");
-        g.addColorStop(1, "rgba(5,7,13,0.2)");
-        ctx.fillStyle = g;
-        ctx.fillRect(0, 0, w, h);
-
-        // grid horizon
-        ctx.save();
-        ctx.translate(w * 0.5, h * 0.75);
-        ctx.strokeStyle = GRID_COLOR;
-        ctx.lineWidth = 1 * DPR;
-        for (let i = -20; i <= 20; i++) {
-          ctx.beginPath();
-          ctx.moveTo(i * 40, 0);
-          ctx.lineTo(i * 40, -h * 0.8);
-          ctx.stroke();
-        }
-        for (let j = 0; j < 25; j++) {
-          const y = -j * 32;
-          ctx.beginPath();
-          ctx.moveTo(-w, y);
-          ctx.lineTo(w, y);
-          ctx.stroke();
-        }
-        ctx.restore();
-
-        // pulse ring
-        ctx.save();
-        ctx.translate(w * 0.5, h * 0.5);
-        const r = (Math.sin(t * 2) * 0.5 + 0.5) * 90 + 120;
-        const ring = ctx.createRadialGradient(0, 0, r * 0.5, 0, 0, r);
-        ring.addColorStop(0, "rgba(82,255,201,0.18)");
-        ring.addColorStop(1, "rgba(82,255,201,0)");
-        ctx.fillStyle = ring;
-        ctx.beginPath();
-        ctx.arc(0, 0, r, 0, Math.PI * 2);
-        ctx.fill();
-        ctx.restore();
-
-        // stars
-        ctx.fillStyle = "rgba(255,255,255,0.8)";
-        for (const s of stars) {
-          s.z -= 0.004;
-          if (s.z < 0.01) s.z = 1;
-          const x = ((s.x - 0.5) * w * 0.8) / s.z + w * 0.5;
-          const y = ((s.y - 0.5) * h * 0.6) / s.z + h * 0.35;
-          const size = (1.2 - s.z) * s.s * DPR;
-          ctx.fillRect(x, y, size, size);
-        }
-
-        requestAnimationFrame(draw);
-      }
-      requestAnimationFrame(draw);
-    </script>
-  </body>
-</html>
+  .dungeon-game-wrapper ~ header,
+  .dungeon-game-wrapper ~ nav,
+  .dungeon-game-wrapper ~ footer {
+    display: none !important;
+  }
+</style>
