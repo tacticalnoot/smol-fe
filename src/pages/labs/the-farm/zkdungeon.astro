@@ -1,5 +1,5 @@
 ---
-// Fullscreen embed that drops straight into the dungeon client.
+// Fullscreen embed — drops directly into the ZK Dungeon game.
 const TARGET =
   import.meta.env.PUBLIC_ZK_DUNGEON_URL ??
   "/labs/the-farm/play";
@@ -10,11 +10,10 @@ const TARGET =
   <head>
     <meta charset="utf-8" />
     <title>ZK Dungeon | The Farm</title>
-    <meta name="description" content="Jump straight into the live ZK Dungeon client." />
+    <meta name="description" content="Jump straight into the live ZK Dungeon game — every door is a proof on Stellar." />
+    <link href="https://fonts.googleapis.com/css2?family=Press+Start+2P&display=swap" rel="stylesheet" />
     <style>
-      :root {
-        color-scheme: dark;
-      }
+      :root { color-scheme: dark; }
       body {
         margin: 0;
         background: #04060b;
@@ -32,34 +31,53 @@ const TARGET =
       .fallback {
         position: absolute;
         inset: 0;
-        display: grid;
-        place-items: center;
-        background: #05070d;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        background: #04060b;
         color: #e8f0ff;
         text-align: center;
         padding: 24px;
+        gap: 16px;
+      }
+      .fallback-badge {
+        font-family: "Press Start 2P", monospace;
+        font-size: 9px;
+        letter-spacing: 3px;
+        color: #4ad0ff;
+        padding: 6px 14px;
+        border: 1px solid rgba(74, 208, 255, 0.2);
+        border-radius: 999px;
+      }
+      .fallback h1 {
+        font-family: "Press Start 2P", monospace;
+        font-size: clamp(14px, 3vw, 20px);
+        letter-spacing: 2px;
+        margin: 0;
       }
       .cta {
         display: inline-block;
-        margin-top: 12px;
-        padding: 12px 18px;
-        border-radius: 999px;
-        border: 1px solid rgba(255, 255, 255, 0.22);
+        padding: 14px 28px;
+        border-radius: 10px;
+        border: 1px solid rgba(255, 255, 255, 0.2);
         text-decoration: none;
         color: #0a0c16;
-        background: linear-gradient(135deg, #4ad0ff, #9b7bff 60%, #ffc47a);
+        background: linear-gradient(135deg, #4ad0ff, #9b7bff 60%);
+        font-family: "Press Start 2P", monospace;
+        font-size: 11px;
         font-weight: 700;
-        letter-spacing: 0.4px;
+        letter-spacing: 2px;
+        box-shadow: 0 6px 24px rgba(74, 208, 255, 0.25);
       }
     </style>
   </head>
   <body>
-    <iframe class="frame" src={TARGET} allowfullscreen></iframe>
+    <iframe class="frame" src={TARGET} allowfullscreen title="ZK Dungeon"></iframe>
     <div class="fallback">
-      <div>
-        <h1>Launching ZK Dungeon…</h1>
-        <a class="cta" href={TARGET}>Open in a new tab</a>
-      </div>
+      <span class="fallback-badge">CHAPTER 3</span>
+      <h1>STELLAR ZK DUNGEON</h1>
+      <a class="cta" href={TARGET}>PLAY NOW</a>
     </div>
   </body>
 </html>
