@@ -102,6 +102,8 @@
     let verificationSuiteRunning = $state(false);
     let coordinationDigest = $state<string | null>(null);
     let copiedCoordinationSnapshot = $state(false);
+    let copiedDungeonContract = $state(false);
+    let copiedDungeonRepo = $state(false);
     let arcadeBatchRunning = $state(false);
     let arcadeBatchProgress = $state({
         total: 0,
@@ -491,6 +493,7 @@
     );
     let patternPreviewTimer: number | null = null;
     let toolchainCopyTimer: number | null = null;
+    let dungeonCopyTimer: number | null = null;
     let toolchainTemplateTimer: number | null = null;
     let toolchainJudgeTimer: number | null = null;
     let coordinationSnapshotTimer: number | null = null;
@@ -596,6 +599,10 @@
         "https://jamesbachini.github.io/Stellar-Game-Studio/";
     const STELLAR_GAME_STUDIO_REPO_URL =
         "https://github.com/jamesbachini/Stellar-Game-Studio";
+    const ZK_DUNGEON_REPO_URL =
+        "https://github.com/tacticalnoot/Stellar-Game-Studio-1";
+    const ZK_DUNGEON_CONTRACT_ID =
+        "CA34IFEOQADUHTDIMJGTQ2I7O34QYHL4FFXFOJYTUSPVRMJQCS3UAY6N";
     const GAME_HUB_CONTRACT_ID =
         "CB4VZAT2U3UC6XFK3N23SKRF2NDCMP3QHJYMCHHFMZO7MRQO6DQ2EMYG";
 
@@ -2928,6 +2935,36 @@
         }
     }
 
+    function resetCopyTimer(cb: () => void) {
+        if (dungeonCopyTimer) {
+            clearTimeout(dungeonCopyTimer);
+        }
+        dungeonCopyTimer = window.setTimeout(() => {
+            cb();
+            dungeonCopyTimer = null;
+        }, 1800);
+    }
+
+    async function copyDungeonContract() {
+        try {
+            await navigator.clipboard.writeText(ZK_DUNGEON_CONTRACT_ID);
+            copiedDungeonContract = true;
+            resetCopyTimer(() => (copiedDungeonContract = false));
+        } catch (e: any) {
+            gameError = e?.message || "Unable to copy dungeon contract";
+        }
+    }
+
+    async function copyDungeonRepo() {
+        try {
+            await navigator.clipboard.writeText(ZK_DUNGEON_REPO_URL);
+            copiedDungeonRepo = true;
+            resetCopyTimer(() => (copiedDungeonRepo = false));
+        } catch (e: any) {
+            gameError = e?.message || "Unable to copy dungeon repo link";
+        }
+    }
+
     async function copyGameStudioPipeline() {
         try {
             const pipeline = [
@@ -3943,20 +3980,58 @@
                             One tap runs Kale, Arcade, Noir, and zkVM rails in
                             sequence, then prepares a hackathon-ready submission pack.
                         </p>
-                        <div class="verification-primary-meta">
-                            <span>{verificationPassCount}/4 rails online</span>
-                            <span>{verificationRailEvidence.length} live receipts</span>
-                            <span>
-                                {allArcadeGamesOnchain
-                                    ? "Arcade portals fully attested"
-                                    : `${gameOnchainCount}/${zkGames.length} portals attested`}
-                            </span>
+                    <div class="verification-primary-meta">
+                        <span>{verificationPassCount}/4 rails online</span>
+                        <span>{verificationRailEvidence.length} live receipts</span>
+                        <span>
+                            {allArcadeGamesOnchain
+                                ? "Arcade portals fully attested"
+                                : `${gameOnchainCount}/${zkGames.length} portals attested`}
+                        </span>
+                    </div>
+                    <div class="dungeon-hero">
+                        <div class="dungeon-hero-left">
+                            <p class="dungeon-kicker">New · Testnet</p>
+                            <h3 class="dungeon-title">ZK Dungeon Alpha</h3>
+                            <p class="dungeon-copy">
+                                Two-player race through 10 rune doors. Every pick ships a ZK
+                                proof to the hub. Gates on floors 1 & 5 force sync. Testnet only,
+                                isolated from main login.
+                            </p>
+                            <div class="dungeon-actions">
+                                <button class="arcade-guide-btn" type="button" onclick={copyDungeonContract}>
+                                    {copiedDungeonContract ? "Contract ID copied" : "Copy contract ID"}
+                                </button>
+                                <button class="arcade-guide-btn ghost" type="button" onclick={copyDungeonRepo}>
+                                    {copiedDungeonRepo ? "Repo copied" : "Repo (fork)"}
+                                </button>
+                                <a
+                                    class="arcade-guide-btn primary-link"
+                                    href={ZK_DUNGEON_REPO_URL}
+                                    target="_blank"
+                                    rel="noreferrer"
+                                >
+                                    View testnet build
+                                </a>
+                            </div>
+                            <div class="dungeon-meta">
+                                <span>Contract: {shortHash(ZK_DUNGEON_CONTRACT_ID, 12, 10)}</span>
+                                <span>Network: testnet</span>
+                                <span>Hub: {shortHash(GAME_HUB_CONTRACT_ID, 10, 8)}</span>
+                            </div>
                         </div>
-                        <div class="verification-primary-actions">
-                            <button
-                                class="arcade-guide-btn verification-pack-btn"
-                                type="button"
-                                onclick={copyHackathonSubmissionPack}
+                        <div class="dungeon-hero-right" aria-hidden="true">
+                            <div class="dungeon-orb orb-a"></div>
+                            <div class="dungeon-orb orb-b"></div>
+                            <div class="dungeon-grid"></div>
+                            <div class="dungeon-portal">10 FLOORS</div>
+                        </div>
+                    </div>
+                    <div class="verification-primary-actions">
+                        <button
+                            class="arcade-guide-btn verification-pack-btn"
+                            type="button"
+                            onclick={copyHackathonSubmissionPack}
                             >
                                 {copiedSubmissionPack
                                     ? "Submission pack copied"
@@ -9254,6 +9329,139 @@ bun run publish my-game --build</code></pre>
         color: #c9ffe8;
         padding: 4px 8px;
     }
+    .dungeon-hero {
+        position: relative;
+        display: grid;
+        grid-template-columns: minmax(0, 1.2fr) minmax(240px, 0.8fr);
+        gap: 12px;
+        padding: 16px;
+        border-radius: 14px;
+        border: 1px solid rgba(255, 191, 140, 0.46);
+        background:
+            linear-gradient(150deg, rgba(16, 8, 24, 0.92), rgba(7, 26, 31, 0.9)),
+            radial-gradient(
+                140% 120% at 20% 10%,
+                rgba(255, 153, 102, 0.16),
+                rgba(255, 153, 102, 0)
+            );
+        overflow: hidden;
+        isolation: isolate;
+        box-shadow:
+            inset 0 0 0 1px rgba(255, 183, 146, 0.12),
+            0 20px 44px rgba(0, 0, 0, 0.4);
+    }
+    .dungeon-hero::before {
+        content: "";
+        position: absolute;
+        inset: -30% -10% auto auto;
+        height: 180px;
+        background: radial-gradient(
+            circle,
+            rgba(255, 194, 137, 0.28) 0%,
+            rgba(255, 194, 137, 0) 55%
+        );
+        filter: blur(22px);
+        opacity: 0.7;
+        z-index: 0;
+        transform: rotate(-8deg);
+    }
+    .dungeon-hero-left {
+        position: relative;
+        z-index: 1;
+        display: grid;
+        gap: 8px;
+    }
+    .dungeon-actions {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 8px;
+        align-items: center;
+    }
+    .dungeon-actions .arcade-guide-btn {
+        flex: 1 1 160px;
+        justify-content: center;
+    }
+    .dungeon-actions .primary-link {
+        text-decoration: none;
+    }
+    .dungeon-meta {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 6px;
+        font-size: 10px;
+        color: #f8d8c4;
+    }
+    .dungeon-meta span {
+        padding: 5px 9px;
+        border-radius: 10px;
+        border: 1px solid rgba(255, 199, 154, 0.35);
+        background: rgba(44, 16, 18, 0.55);
+    }
+    .dungeon-hero-right {
+        position: relative;
+        min-height: 180px;
+        border-radius: 12px;
+        overflow: hidden;
+        background: radial-gradient(120% 140% at 30% 30%, rgba(255, 146, 104, 0.12), rgba(255, 146, 104, 0));
+        z-index: 1;
+    }
+    .dungeon-grid {
+        position: absolute;
+        inset: 0;
+        background-image: linear-gradient(
+                rgba(255, 204, 157, 0.08) 1px,
+                transparent 1px
+            ),
+            linear-gradient(
+                90deg,
+                rgba(255, 204, 157, 0.08) 1px,
+                transparent 1px
+            );
+        background-size: 22px 22px, 22px 22px;
+        opacity: 0.6;
+    }
+    .dungeon-orb {
+        position: absolute;
+        width: 120px;
+        height: 120px;
+        border-radius: 50%;
+        filter: blur(0px);
+        opacity: 0.9;
+        mix-blend-mode: screen;
+        animation: dungeon-orbit 9s ease-in-out infinite alternate;
+    }
+    .dungeon-orb.orb-a {
+        top: 6%;
+        right: 4%;
+        background: radial-gradient(circle, rgba(255, 198, 120, 0.62), rgba(255, 198, 120, 0));
+    }
+    .dungeon-orb.orb-b {
+        bottom: -18%;
+        left: 6%;
+        width: 160px;
+        height: 160px;
+        background: radial-gradient(circle, rgba(120, 201, 255, 0.5), rgba(120, 201, 255, 0));
+        animation-duration: 11s;
+    }
+    .dungeon-portal {
+        position: absolute;
+        inset: auto 10px 10px auto;
+        padding: 10px 12px;
+        border-radius: 12px;
+        border: 1px solid rgba(255, 198, 150, 0.6);
+        background: linear-gradient(
+                140deg,
+                rgba(255, 202, 160, 0.12),
+                rgba(255, 202, 160, 0.02)
+            ),
+            rgba(9, 12, 24, 0.8);
+        font-family: "Press Start 2P", monospace;
+        font-size: 11px;
+        color: #ffe9cf;
+        text-align: center;
+        letter-spacing: 1px;
+        box-shadow: 0 14px 24px rgba(0, 0, 0, 0.35);
+    }
     .verification-primary-actions {
         display: flex;
         flex-wrap: wrap;
@@ -10053,6 +10261,20 @@ bun run publish my-game --build</code></pre>
             left: 150%;
         }
     }
+    @keyframes dungeon-orbit {
+        0% {
+            transform: translate3d(0, 0, 0) scale(0.96);
+            opacity: 0.82;
+        }
+        50% {
+            transform: translate3d(-6px, -4px, 0) scale(1.02);
+            opacity: 0.95;
+        }
+        100% {
+            transform: translate3d(8px, 12px, 0) scale(1.06);
+            opacity: 0.9;
+        }
+    }
     @keyframes cta-breathe {
         0%,
         100% {
@@ -10093,6 +10315,12 @@ bun run publish my-game --build</code></pre>
         }
         .dungeon-stats {
             grid-template-columns: 1fr;
+        }
+        .dungeon-hero {
+            grid-template-columns: 1fr;
+        }
+        .dungeon-hero-right {
+            min-height: 140px;
         }
         .toolchain-tabs {
             grid-template-columns: 1fr;
