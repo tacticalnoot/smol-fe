@@ -1,5 +1,15 @@
 <script lang="ts">
     import { userState } from "../../../../stores/user.svelte.ts";
+    import {
+        HUB_CONTRACT_ID,
+        callStartGame,
+        callEndGame,
+        attemptDoor as submitDoorAttempt,
+        getProofTypeForFloor,
+        generateSessionId,
+        txExplorerUrl,
+        contractExplorerUrl,
+    } from "./dungeonService";
 
     // ── Game State ──────────────────────────────────────────────────────
     type GamePhase = "title" | "lobby" | "playing" | "victory" | "defeat";
@@ -9,7 +19,6 @@
     const TOTAL_FLOORS = 10;
     const DOORS_PER_FLOOR = 4;
     const GATE_FLOORS = [1, 5];
-    const HUB_CONTRACT_ID = "CB4VZAT2U3UC6XFK3N23SKRF2NDCMP3QHJYMCHHFMZO7MRQO6DQ2EMYG";
 
     let phase = $state<GamePhase>("title");
     let lobbyCode = $state<string>("");
@@ -27,6 +36,11 @@
     let audioEnabled = $state<boolean>(false);
     let showHowItWorks = $state<boolean>(false);
     let floorTransition = $state<boolean>(false);
+    let sessionId = $state<number>(0);
+    let hubStartTx = $state<string | null>(null);
+    let hubEndTx = $state<string | null>(null);
+    let hubCallError = $state<string | null>(null);
+    let hubCalling = $state<boolean>(false);
 
     interface RunLogEntry {
         floor: number;
@@ -93,14 +107,41 @@
         phase = "lobby";
     }
 
-    function startGame() {
-        // In full implementation: both players set commits → start_game() called on hub
+    async function startGame() {
         currentFloor = 1;
         attempts = 0;
         runLog = [];
         doorStates = ["idle", "idle", "idle", "idle"];
         opponentName = opponentName || "Seeker-2";
+        sessionId = generateSessionId();
+        hubStartTx = null;
+        hubEndTx = null;
+        hubCallError = null;
         phase = "playing";
+
+        // Call start_game() on hub contract (real testnet tx)
+        let startTxHash: string | null = null;
+        if (isConnected && userState.keyId && userState.contractId) {
+            hubCalling = true;
+            try {
+                startTxHash = await callStartGame({
+                    gameId: HUB_CONTRACT_ID, // Using hub as game_id placeholder
+                    sessionId,
+                    player1: userState.contractId,
+                    player2: userState.contractId, // Solo mode: same player
+                    player1Points: 0n,
+                    player2Points: 0n,
+                    keyId: userState.keyId,
+                    contractId: userState.contractId,
+                });
+                hubStartTx = startTxHash;
+            } catch (err: any) {
+                console.warn("[Dungeon] start_game() failed (non-blocking):", err.message);
+                hubCallError = err.message;
+            } finally {
+                hubCalling = false;
+            }
+        }
 
         addLogEntry({
             floor: 0,
@@ -108,7 +149,7 @@
             attempt: 0,
             result: "correct",
             proofType: "Hub",
-            txHash: null,
+            txHash: startTxHash,
             timestamp: Date.now(),
         });
     }
@@ -121,13 +162,17 @@
         doorStates[doorIndex] = "proving";
         attempts++;
 
-        // Simulate proof generation (replaced with real ZK in PR4)
-        await new Promise((r) => setTimeout(r, 1200 + Math.random() * 800));
+        // Submit door attempt via dungeon service
+        const result = await submitDoorAttempt({
+            lobbyId: lobbyCode || "SOLO",
+            floor: currentFloor,
+            doorChoice: doorIndex,
+            attemptNonce: attempts,
+            keyId: userState.keyId ?? "",
+            contractId: userState.contractId ?? "",
+        });
 
-        // Determine correctness (in real version: circuit computes this)
-        const correctDoor = getCorrectDoor(currentFloor, attempts);
-        const isCorrect = doorIndex === correctDoor;
-
+        const isCorrect = result.isCorrect;
         doorStates[doorIndex] = isCorrect ? "correct" : "wrong";
 
         addLogEntry({
@@ -135,8 +180,8 @@
             door: doorIndex,
             attempt: attempts,
             result: isCorrect ? "correct" : "wrong",
-            proofType: currentLore.proofType,
-            txHash: null, // Real tx hash comes in PR3
+            proofType: result.proofType,
+            txHash: result.txHash,
             timestamp: Date.now(),
         });
 
@@ -145,14 +190,32 @@
 
         if (isCorrect) {
             if (currentFloor >= TOTAL_FLOORS) {
-                // Victory!
+                // Victory! Call end_game() on hub
+                let endTxHash: string | null = null;
+                if (isConnected && userState.keyId && userState.contractId) {
+                    hubCalling = true;
+                    try {
+                        endTxHash = await callEndGame({
+                            sessionId,
+                            player1Won: true,
+                            keyId: userState.keyId,
+                            contractId: userState.contractId,
+                        });
+                        hubEndTx = endTxHash;
+                    } catch (err: any) {
+                        console.warn("[Dungeon] end_game() failed (non-blocking):", err.message);
+                    } finally {
+                        hubCalling = false;
+                    }
+                }
+
                 addLogEntry({
                     floor: TOTAL_FLOORS,
                     door: -1,
                     attempt: attempts,
                     result: "correct",
                     proofType: "Hub",
-                    txHash: null,
+                    txHash: endTxHash,
                     timestamp: Date.now(),
                 });
                 phase = "victory";
@@ -168,8 +231,7 @@
                 // Check if co-op gate
                 if (isGateFloor) {
                     gateWaiting = true;
-                    // In full implementation: wait for both players
-                    // For now: auto-clear after brief delay (solo mode)
+                    // Solo mode: auto-clear after brief delay
                     setTimeout(() => {
                         gateWaiting = false;
                     }, 2000);
@@ -181,13 +243,6 @@
             doorStates = ["idle", "idle", "idle", "idle"];
             activeDoor = null;
         }
-    }
-
-    function getCorrectDoor(floor: number, attempt: number): number {
-        // Deterministic "correct" door based on floor + attempt
-        // In real version: derived from sigil_secret via circuit
-        const seed = floor * 1000 + attempt;
-        return ((seed * 7 + 3) % DOORS_PER_FLOOR);
     }
 
     function addLogEntry(entry: RunLogEntry) {
@@ -364,6 +419,9 @@
         <div class="dg-hud-left">
             <span class="dg-hud-floor">FLOOR {currentFloor}/{TOTAL_FLOORS}</span>
             <span class="dg-hud-proof-type">{currentLore.proofType}</span>
+            {#if hubCalling}
+                <span class="dg-hud-hub-status">HUB...</span>
+            {/if}
         </div>
         <div class="dg-hud-center">
             <div class="dg-progress-bar">
@@ -372,6 +430,9 @@
         </div>
         <div class="dg-hud-right">
             <span class="dg-hud-attempts">ATTEMPTS: {attempts}</span>
+            {#if hubStartTx}
+                <a class="dg-hud-tx-link" href={txExplorerUrl(hubStartTx)} target="_blank" rel="noreferrer" title="start_game tx">HUB</a>
+            {/if}
             <button class="dg-hud-btn" onclick={toggleFullscreen}>
                 {fullscreen ? "EXIT FS" : "FS"}
             </button>
@@ -439,7 +500,7 @@
                     <span class="dg-log-attempt">#{entry.attempt}</span>
                 {/if}
                 {#if entry.txHash}
-                    <a class="dg-log-tx" href="https://stellar.expert/explorer/testnet/tx/{entry.txHash}" target="_blank" rel="noreferrer">tx</a>
+                    <a class="dg-log-tx" href={txExplorerUrl(entry.txHash)} target="_blank" rel="noreferrer">tx</a>
                 {:else}
                     <span class="dg-log-tx dg-log-tx-pending">--</span>
                 {/if}
@@ -481,6 +542,18 @@
                 <span class="dg-proof-badge dg-proof-risc0">RISC Zero</span>
             </div>
         </div>
+
+        {#if hubStartTx || hubEndTx}
+        <div class="dg-victory-hub-txs">
+            <p class="dg-victory-log-title">HUB TRANSACTIONS</p>
+            {#if hubStartTx}
+                <a class="dg-hub-tx-link" href={txExplorerUrl(hubStartTx)} target="_blank" rel="noreferrer">start_game() → {hubStartTx.slice(0, 12)}...</a>
+            {/if}
+            {#if hubEndTx}
+                <a class="dg-hub-tx-link" href={txExplorerUrl(hubEndTx)} target="_blank" rel="noreferrer">end_game() → {hubEndTx.slice(0, 12)}...</a>
+            {/if}
+        </div>
+        {/if}
 
         <div class="dg-victory-actions">
             <button class="dg-btn dg-btn-primary" onclick={resetGame}>PLAY AGAIN</button>
@@ -1388,5 +1461,46 @@
         display: flex;
         gap: 12px;
         justify-content: center;
+    }
+
+    .dg-victory-hub-txs {
+        margin-bottom: 24px;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        gap: 8px;
+    }
+
+    .dg-hub-tx-link {
+        font-family: var(--dg-font-display);
+        font-size: 8px;
+        letter-spacing: 0.5px;
+        color: var(--dg-accent);
+        text-decoration: none;
+        padding: 6px 12px;
+        border: 1px solid rgba(74, 208, 255, 0.2);
+        border-radius: 6px;
+        transition: background 0.2s;
+    }
+    .dg-hub-tx-link:hover {
+        background: rgba(74, 208, 255, 0.06);
+    }
+
+    .dg-hud-hub-status {
+        font-family: var(--dg-font-display);
+        font-size: 8px;
+        color: var(--dg-accent-3);
+        animation: dg-pulse 1s ease-in-out infinite;
+    }
+
+    .dg-hud-tx-link {
+        font-family: var(--dg-font-display);
+        font-size: 8px;
+        letter-spacing: 1px;
+        color: var(--dg-accent);
+        text-decoration: none;
+        padding: 4px 8px;
+        border: 1px solid rgba(74, 208, 255, 0.2);
+        border-radius: 4px;
     }
 </style>
