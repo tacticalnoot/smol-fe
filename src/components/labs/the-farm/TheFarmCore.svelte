@@ -3815,16 +3815,72 @@
                         </div>
                     </section>
 
-                    <section class="concepts-section">
-                        <h2 class="concepts-label">Proof Modules</h2>
-                        <div class="concepts-strip">
-                            {#each galleryProofs.filter((p) => p.status !== "LIVE") as concept}
-                                <div class="concept-card">
-                                    <span class="concept-title">{concept.title}</span>
-                                    <span class="concept-summary"
-                                        >{concept.summary.split(".")[0]}.</span
-                                    >
-                                </div>
+                    <section class="gallery-section">
+                        <div class="gallery-header">
+                            <div>
+                                <p class="gallery-subtitle">Protocol proof gallery</p>
+                                <h2 class="chapter-title">Live + concept rails</h2>
+                            </div>
+                            <div class="gallery-header-right">
+                                <span class="gallery-subtitle">Groth16 · Noir · zkVM ready</span>
+                                <button
+                                    class="gallery-cta"
+                                    type="button"
+                                    onclick={() => openProof(galleryProofs[0])}
+                                >
+                                    Inspect live packet
+                                </button>
+                            </div>
+                        </div>
+                        <div class="gallery-grid">
+                            {#each galleryProofs as proof}
+                                <article
+                                    class={`gallery-card ${proof.status === "LIVE"
+                                        ? ""
+                                        : "gallery-card--concept"}`}
+                                >
+                                    <div class="gallery-card-top">
+                                        <span class="gallery-circuit">{proof.circuit}</span>
+                                        <span
+                                            class={`gallery-status ${proof.status === "LIVE"
+                                                ? "gallery-status--live"
+                                                : "gallery-status--concept"}`}
+                                        >
+                                            {proof.status}
+                                        </span>
+                                    </div>
+                                    <h3 class="gallery-title">{proof.title}</h3>
+                                    <p class="gallery-summary">{proof.summary}</p>
+                                    <div class="gallery-tags">
+                                        {#each proof.tags as tag}
+                                            <span class="gallery-tag">{tag}</span>
+                                        {/each}
+                                        <span class="gallery-tag gallery-tag--status">{proof.tested}</span>
+                                    </div>
+                                    <div class="gallery-foot">
+                                        <p class="gallery-proof">{proof.proof}</p>
+                                        <div class="gallery-actions">
+                                            <button
+                                                class="gallery-open"
+                                                type="button"
+                                                onclick={() => openProof(proof)}
+                                            >
+                                                Open
+                                            </button>
+                                            <a
+                                                class="gallery-link"
+                                                href={proof.file}
+                                                target="_blank"
+                                                rel="noreferrer"
+                                            >
+                                                Proof packet
+                                            </a>
+                                            {#if proof.requiresKale}
+                                                <span class="gallery-tag gallery-tag--status">KALE required</span>
+                                            {/if}
+                                        </div>
+                                    </div>
+                                </article>
                             {/each}
                         </div>
                     </section>
@@ -5478,6 +5534,75 @@ bun run publish my-game --build</code></pre>
                 {/if}
             </section>
         </div>
+
+        {#if activeProof}
+            <div class="gallery-overlay" role="dialog" aria-modal="true">
+                <button
+                    class="gallery-backdrop"
+                    aria-label="Close proof details"
+                    onclick={closeProof}
+                ></button>
+                <div class="gallery-modal">
+                    <div class="gallery-modal-header">
+                        <div>
+                            <p class="gallery-modal-label">Proof module</p>
+                            <h3 class="gallery-modal-title">{activeProof.title}</h3>
+                        </div>
+                        <button class="gallery-close" type="button" onclick={closeProof}>×</button>
+                    </div>
+                    <p class="gallery-modal-summary">{activeProof.summary}</p>
+                    <div class="gallery-modal-grid">
+                        <div class="gallery-modal-card">
+                            <span class="gallery-modal-eyebrow">Proof system</span>
+                            <span class="gallery-modal-value">{activeProof.proof}</span>
+                        </div>
+                        <div class="gallery-modal-card">
+                            <span class="gallery-modal-eyebrow">Circuit</span>
+                            <span class="gallery-modal-value">{activeProof.circuit}</span>
+                        </div>
+                        <div class="gallery-modal-card">
+                            <span class="gallery-modal-eyebrow">Wallet scope</span>
+                            <span class="gallery-modal-value">{activeProof.wallet}</span>
+                        </div>
+                        <div class="gallery-modal-card gallery-modal-requirement">
+                            <span class="gallery-modal-eyebrow">Requirement</span>
+                            <span class="gallery-modal-value">
+                                {activeProof.requirementCopy ??
+                                    "Available to all connected wallets."}
+                            </span>
+                        </div>
+                    </div>
+                    <div class="gallery-modal-lists">
+                        <div>
+                            <p class="gallery-modal-eyebrow">Inputs</p>
+                            <p class="gallery-modal-value">
+                                {activeProof.inputs.join(" · ")}
+                            </p>
+                        </div>
+                        <div>
+                            <p class="gallery-modal-eyebrow">Outputs</p>
+                            <p class="gallery-modal-value">
+                                {activeProof.outputs.join(" · ")}
+                            </p>
+                        </div>
+                    </div>
+                    <p class="gallery-modal-note">{activeProof.note}</p>
+                    <div class="gallery-actions">
+                        <a
+                            class="gallery-modal-link"
+                            href={activeProof.file}
+                            target="_blank"
+                            rel="noreferrer"
+                        >
+                            Open proof packet JSON
+                        </a>
+                        <button class="gallery-open" type="button" onclick={closeProof}>
+                            Close
+                        </button>
+                    </div>
+                </div>
+            </div>
+        {/if}
 
     <!-- Footer -->
     <footer class="farm-footer">

@@ -329,7 +329,7 @@ if (id) {
             <audio id="audio" src={song_url} preload="metadata" crossorigin="anonymous"></audio>
 
             <script>
-                const audio = document.getElementById('audio');
+                const audio = document.getElementById('audio') as HTMLAudioElement | null;
                 const toggle = document.getElementById('toggle');
                 const overlay = document.getElementById('overlay-click');
                 const iconPlay = document.getElementById('icon-play');
@@ -340,6 +340,7 @@ if (id) {
                 let isLoading = false;
 
                 function updateState() {
+                    if (!iconPlay || !iconPause || !loading) return;
                     if (isLoading) {
                         iconPlay.classList.add('hidden');
                         iconPause.classList.add('hidden');
@@ -356,9 +357,11 @@ if (id) {
                 }
 
                 function togglePlay() {
+                    if (!audio) return;
+
                     if (audio.paused) {
                         const playPromise = audio.play();
-                        
+
                         if (audio.readyState < 3) {
                             isLoading = true;
                             updateState();
@@ -369,7 +372,7 @@ if (id) {
                                 .then(() => {
                                     // Started
                                 })
-                                .catch(error => {
+                                .catch((error: any) => {
                                     console.error("Playback failed:", error);
                                     isLoading = false;
                                     isPlaying = false;
@@ -429,7 +432,7 @@ if (id) {
                         isLoading = false;
                         updateState();
                     });
-                    
+
                     audio.addEventListener('ended', () => {
                         isPlaying = false;
                         audio.currentTime = 0;
