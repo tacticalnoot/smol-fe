@@ -50,6 +50,9 @@
         proofType: string;
         txHash: string | null;
         timestamp: number;
+        verified?: boolean;
+        provingTimeMs?: number;
+        commitment?: string | null;
     }
 
     // Floor lore for atmosphere
@@ -162,12 +165,13 @@
         doorStates[doorIndex] = "proving";
         attempts++;
 
-        // Submit door attempt via dungeon service
+        // Submit door attempt via dungeon service (generates real Groth16 proof)
         const result = await submitDoorAttempt({
             lobbyId: lobbyCode || "SOLO",
             floor: currentFloor,
             doorChoice: doorIndex,
             attemptNonce: attempts,
+            playerAddress: userState.contractId ?? "anonymous",
             keyId: userState.keyId ?? "",
             contractId: userState.contractId ?? "",
         });
@@ -183,6 +187,9 @@
             proofType: result.proofType,
             txHash: result.txHash,
             timestamp: Date.now(),
+            verified: result.verified,
+            provingTimeMs: result.provingTimeMs,
+            commitment: result.commitment,
         });
 
         // Animate then advance
@@ -497,7 +504,12 @@
                     <span class="dg-log-door">D{entry.door + 1}</span>
                     <span class="dg-log-result">{entry.result === "correct" ? "OK" : "MISS"}</span>
                     <span class="dg-log-proof">{entry.proofType}</span>
-                    <span class="dg-log-attempt">#{entry.attempt}</span>
+                    {#if entry.verified}
+                        <span class="dg-log-verified">ZK</span>
+                    {/if}
+                    {#if entry.provingTimeMs}
+                        <span class="dg-log-time">{entry.provingTimeMs}ms</span>
+                    {/if}
                 {/if}
                 {#if entry.txHash}
                     <a class="dg-log-tx" href={txExplorerUrl(entry.txHash)} target="_blank" rel="noreferrer">tx</a>
@@ -1349,6 +1361,22 @@
     }
     .dg-log-tx-pending {
         color: var(--dg-text-dim);
+    }
+
+    .dg-log-verified {
+        font-family: var(--dg-font-display);
+        font-size: 7px;
+        letter-spacing: 1px;
+        color: var(--dg-correct);
+        padding: 1px 5px;
+        border: 1px solid rgba(74, 222, 128, 0.3);
+        border-radius: 3px;
+    }
+
+    .dg-log-time {
+        font-size: 8px;
+        color: var(--dg-text-dim);
+        min-width: 40px;
     }
 
     /* ── Victory Screen ──────────────────────────────────────────── */

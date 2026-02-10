@@ -186,13 +186,14 @@ export async function callEndGame(params: EndGameParams): Promise<string> {
     return txHash;
 }
 
-// ── Door Attempt (Placeholder — real ZK proof in PR4) ────────────────────────
+// ── Door Attempt (Real ZK Proof) ─────────────────────────────────────────────
 
 export interface DoorAttemptParams {
     lobbyId: string;
     floor: number;
     doorChoice: number;
     attemptNonce: number;
+    playerAddress: string;
     keyId: string;
     contractId: string;
 }
@@ -201,17 +202,23 @@ export interface DoorAttemptResult {
     isCorrect: boolean;
     txHash: string | null;
     proofType: string;
+    commitment: string | null;
+    provingTimeMs: number;
+    verified: boolean;
     error: string | null;
 }
 
 /**
- * Submit a door attempt.
+ * Submit a door attempt with a real ZK proof.
  *
- * PR3: Records attempt locally + generates a testnet tx stub.
- * PR4: Will include real Noir proof generation + on-chain verification.
+ * Flow:
+ * 1. Generate Groth16 proof via snarkjs (Poseidon commitment, real BN254)
+ * 2. Verify locally (debug check)
+ * 3. Return structured result
  *
- * NOTE: Even "wrong" choices produce valid proofs (is_correct=0).
- * The circuit never fails — only the output differs.
+ * NOTE: Wrong choices still generate valid proofs. The `is_correct` flag
+ * is determined by comparing the chosen door against the correct door.
+ * The proof itself always verifies — only the outcome differs.
  */
 export async function attemptDoor(
     params: DoorAttemptParams,
@@ -222,22 +229,60 @@ export async function attemptDoor(
         nonce: params.attemptNonce,
     });
 
-    // Compute correct door deterministically
-    // In PR4: this comes from the circuit (sigil_secret + floor + nonce) % 4
-    const seed = params.floor * 1000 + params.attemptNonce;
-    const correctDoor = (seed * 7 + 3) % 4;
-    const isCorrect = params.doorChoice === correctDoor;
-
-    // PR3: No on-chain proof yet, but return structured result
-    // The ZK proof + contract call will be wired in PR4
     const proofType = getProofTypeForFloor(params.floor);
 
-    return {
-        isCorrect,
-        txHash: null, // Real tx hash in PR4
-        proofType,
-        error: null,
-    };
+    try {
+        // Generate real Groth16 proof
+        const { generateDoorProof, verifyDoorProofLocally } = await import(
+            "./dungeonProofWorker"
+        );
+
+        const proofResult = await generateDoorProof({
+            playerAddress: params.playerAddress || params.contractId || "anonymous",
+            floor: params.floor,
+            doorChoice: params.doorChoice,
+            attemptNonce: params.attemptNonce,
+            lobbyId: params.lobbyId,
+        });
+
+        // Verify locally (debug / confidence check)
+        let verified = false;
+        try {
+            verified = await verifyDoorProofLocally(
+                proofResult.proof,
+                proofResult.publicSignals,
+            );
+            console.log("[Dungeon] Local verification:", verified ? "PASS" : "FAIL");
+        } catch (verifyErr) {
+            console.warn("[Dungeon] Local verification error (non-blocking):", verifyErr);
+        }
+
+        return {
+            isCorrect: proofResult.isCorrect,
+            txHash: null, // On-chain submission in next iteration
+            proofType: proofResult.proofType,
+            commitment: proofResult.commitment,
+            provingTimeMs: proofResult.provingTimeMs,
+            verified,
+            error: null,
+        };
+    } catch (err: any) {
+        console.error("[Dungeon] Proof generation failed:", err.message);
+
+        // Fallback: determine correctness without proof
+        const seed = params.floor * 1000 + params.attemptNonce;
+        const correctDoor = (seed * 7 + 3) % 4;
+
+        return {
+            isCorrect: params.doorChoice === correctDoor,
+            txHash: null,
+            proofType,
+            commitment: null,
+            provingTimeMs: 0,
+            verified: false,
+            error: err.message,
+        };
+    }
 }
 
 // ── Utility ──────────────────────────────────────────────────────────────────
