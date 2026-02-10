@@ -57,8 +57,7 @@ const DEFAULT_DUNGEON_URL =
     </style>
     <script>
       if (typeof window !== "undefined") {
-        const target = "{DEFAULT_DUNGEON_URL}";
-        // If same-origin navigation fails, fallback iframe stays visible.
+        const target = ${JSON.stringify(DEFAULT_DUNGEON_URL)};
         window.location.replace(target);
       }
     </script>

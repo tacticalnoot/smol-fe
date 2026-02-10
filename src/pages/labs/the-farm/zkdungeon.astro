@@ -49,7 +49,7 @@ const TARGET =
     </style>
     <script>
       if (typeof window !== "undefined") {
-        const target = "{TARGET}";
+        const target = ${JSON.stringify(TARGET)};
         window.location.replace(target);
       }
     </script>
