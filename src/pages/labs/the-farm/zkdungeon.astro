@@ -48,8 +48,8 @@ const TARGET =
       }
     </style>
     <script>
+      const target = {JSON.stringify(TARGET)};
       if (typeof window !== "undefined") {
-        const target = ${JSON.stringify(TARGET)};
         window.location.replace(target);
       }
     </script>
