@@ -1,0 +1,63 @@
+---
+// Minimal shell that immediately launches the live dungeon client.
+const TARGET =
+  import.meta.env.PUBLIC_ZK_DUNGEON_URL ??
+  "https://smol-fe-7jl.pages.dev/labs/the-farm";
+---
+
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>ZK Dungeon | The Farm</title>
+    <meta name="description" content="Jump straight into the live ZK Dungeon client." />
+    <meta http-equiv="refresh" content={`0; url=${TARGET}`} />
+    <style>
+      :root {
+        color-scheme: dark;
+      }
+      body {
+        margin: 0;
+        background: #04060b;
+        color: #e8f0ff;
+        display: grid;
+        place-items: center;
+        min-height: 100vh;
+        font-family: "Inter", system-ui, -apple-system, sans-serif;
+      }
+      .fallback {
+        text-align: center;
+        padding: 24px;
+      }
+      .cta {
+        display: inline-block;
+        margin-top: 12px;
+        padding: 12px 18px;
+        border-radius: 999px;
+        border: 1px solid rgba(255, 255, 255, 0.22);
+        text-decoration: none;
+        color: #0a0c16;
+        background: linear-gradient(135deg, #4ad0ff, #9b7bff 60%, #ffc47a);
+        font-weight: 700;
+        letter-spacing: 0.4px;
+      }
+      iframe {
+        width: 100vw;
+        height: 100vh;
+        border: none;
+      }
+    </style>
+    <script>
+      if (typeof window !== "undefined") {
+        const target = "{TARGET}";
+        window.location.replace(target);
+      }
+    </script>
+  </head>
+  <body>
+    <div class="fallback">
+      <h1>Launching ZK Dungeon…</h1>
+      <a class="cta" href={TARGET}>Enter the Dungeon</a>
+    </div>
+  </body>
+</html>
