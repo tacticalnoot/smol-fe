@@ -41,8 +41,10 @@ export async function poseidonHash(inputs: bigint[]): Promise<bigint> {
 // Proof Generation
 // ============================================================================
 
-const CIRCUIT_WASM_PATH = "/zk/tier_proof.wasm";
-const PROVING_KEY_PATH = "/zk/tier_proof.zkey";
+// Cache-busting version for artifacts to fix net::ERR_CACHE_READ_FAILURE in production
+const ZK_VERSION = Date.now();
+const CIRCUIT_WASM_PATH = `/zk/tier_proof.wasm?v=${ZK_VERSION}`;
+const PROVING_KEY_PATH = `/zk/tier_proof.zkey?v=${ZK_VERSION}`;
 
 /**
  * Generate a Groth16 proof for tier verification.
@@ -99,7 +101,7 @@ export async function verifyProofLocally(
     proof: Groth16Proof,
     publicSignals: string[],
 ): Promise<boolean> {
-    const vkeyResponse = await fetch("/zk/verification_key.json");
+    const vkeyResponse = await fetch(`/zk/verification_key.json?v=${ZK_VERSION}`);
     const vkey = await vkeyResponse.json();
 
     // @ts-ignore - snarkjs types (Robust fallback for production/Cloudflare)
