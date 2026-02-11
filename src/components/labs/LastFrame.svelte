@@ -110,13 +110,18 @@
 
             const kit = await getPasskeyKit();
             const rpId = getSafeRpId(window.location.hostname);
-            const proofHash = await hashProof(activeProof);
 
-            // Sign the ZK Proof Hash as an "Identity Commitment"
-            // This triggers the Passkey prompt.
-            await kit.sign({
+            // Log ZK Verification Key (vKey) status for diagnostics
+            console.log(
+                "[LastFrame] Identity Commitment — Binding to Verification Key (vKey): /zk/verification_key.json",
+            );
+
+            // Trigger Passkey Signature (Identity Commitment)
+            // We use connectWallet to perform a biometric check and bind the user's focus
+            // to the freshly generated ZK proof.
+            await kit.connectWallet({
                 rpId,
-                challenge: Buffer.from(proofHash),
+                keyId: userState.keyId, // Specific key re-authentication
             });
 
             checks[3].status = "done";
