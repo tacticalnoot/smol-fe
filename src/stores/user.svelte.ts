@@ -69,11 +69,10 @@ export async function ensureWalletConnected(): Promise<void> {
       } else {
         throw new Error('Wallet connection mismatch or failed');
       }
-    }
     } catch (error) {
-    console.error('[userState] Failed to reconnect wallet:', error);
+      console.error('[userState] Failed to reconnect wallet:', error);
+    }
   }
-}
 }
 
 /**
