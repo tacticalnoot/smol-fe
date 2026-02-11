@@ -1,6 +1,10 @@
 <script lang="ts">
     import { onMount } from "svelte";
-    import { userState, isAuthenticated } from "../../stores/user.svelte";
+    import {
+        userState,
+        isAuthenticated,
+        getPasskeyKit,
+    } from "../../stores/user.svelte";
     import {
         balanceState,
         updateContractBalance,
@@ -9,8 +13,9 @@
         generateTierProof,
         hashAddress,
         generateRandomSalt,
+        hashProof,
     } from "./the-farm/zkProof";
-    import { getTierForBalance } from "./the-farm/zkTypes";
+    import { getTierForBalance, getSafeRpId } from "./the-farm/zkTypes";
 
     let videoFile: File | null = null;
     let videoSrc: string | null = null;
@@ -30,6 +35,7 @@
         { id: "identity", label: "Stellar Identity", status: "pending" },
         { id: "zk_init", label: "Circuit Initialize", status: "pending" },
         { id: "zk_prove", label: "Generate ZK Proof", status: "pending" },
+        { id: "sign", label: "Sign Attestation", status: "pending" },
     ]);
 
     // Check for native share support (Mobile)
@@ -70,8 +76,12 @@
             checks[1].status = "done";
 
             // 3. Generate REAL ZK Proof (Noir UltraHonk Engine)
+            // Use requestAnimationFrame to let the UI update before blocking
             checks[2].status = "busy";
-            console.log("[LastFrame] Generating Noir UltraHonk Proof...");
+            console.log("[LastFrame] Preparing Noir UltraHonk Proof...");
+
+            await new Promise((r) => requestAnimationFrame(() => r(null)));
+            await new Promise((r) => setTimeout(r, 100)); // Force layout thrash for visibility
 
             const result = await generateTierProof(
                 addressHash,
@@ -82,8 +92,24 @@
 
             activeProof = result.proof;
             console.log("[LastFrame] Noir Proof Generated:", result);
-
             checks[2].status = "done";
+
+            // 4. Sign Attestation (Identity Commitment)
+            checks[3].status = "busy";
+            console.log("[LastFrame] Requesting Passkey Signature...");
+
+            const kit = await getPasskeyKit();
+            const rpId = getSafeRpId(window.location.hostname);
+            const proofHash = await hashProof(activeProof);
+
+            // Sign the ZK Proof Hash as an "Identity Commitment"
+            // This triggers the Passkey prompt.
+            await kit.sign({
+                rpId,
+                challenge: Buffer.from(proofHash),
+            });
+
+            checks[3].status = "done";
 
             await new Promise((r) => setTimeout(r, 800));
             isVerified = true;
