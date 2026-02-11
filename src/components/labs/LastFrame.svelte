@@ -1,5 +1,6 @@
 <script lang="ts">
     import { onMount } from "svelte";
+    import { userState, isAuthenticated } from "../../stores/user.svelte";
 
     let videoFile: File | null = null;
     let videoSrc: string | null = null;
@@ -7,12 +8,41 @@
     let canvasRef: HTMLCanvasElement;
     let extractedImage: string | null = null;
     let isProcessing = false;
+    let isVerified = false;
+    let isVerifying = false;
+
+    // Verification steps status
+    let checks = [
+        { id: "passkey", label: "Passkey Session Valid", status: "pending" },
+        {
+            id: "stellar",
+            label: "Stellar Account Verification",
+            status: "pending",
+        },
+        { id: "zksig", label: "ZK Intent Signature", status: "pending" },
+        { id: "smol", label: "SMOL Residency Status", status: "pending" },
+    ];
 
     // Check for native share support (Mobile)
     let canShare = false;
     onMount(() => {
         canShare = !!navigator.share;
     });
+
+    const startVerification = async () => {
+        isVerifying = true;
+
+        // Dramatic delay for ZK simulation
+        for (let i = 0; i < checks.length; i++) {
+            checks[i].status = "busy";
+            await new Promise((r) => setTimeout(r, 800 + Math.random() * 1000));
+            checks[i].status = "done";
+        }
+
+        await new Promise((r) => setTimeout(r, 500));
+        isVerified = true;
+        isVerifying = false;
+    };
 
     const handleFileChange = (e: Event) => {
         const target = e.target as HTMLInputElement;
@@ -115,117 +145,186 @@
 </script>
 
 <div class="font-pixel text-[#9ae600] space-y-8">
-    {#if !videoSrc}
-        <!-- Upload Zone -->
+    {#if !isVerified}
+        <!-- Gated Door UI -->
         <div
-            class="border-2 border-dashed border-[#333] rounded-xl p-12 md:p-24 text-center hover:border-[#9ae600] transition-colors cursor-pointer relative group bg-[#050505]"
+            class="border border-[#333] rounded-xl p-8 bg-[#0a0a0a] flex flex-col items-center justify-center min-h-[400px] text-center space-y-8"
         >
-            <input
-                type="file"
-                accept="video/*"
-                on:change={handleFileChange}
-                class="absolute inset-0 w-full h-full opacity-0 cursor-pointer z-10"
-            />
-            <div class="space-y-6 pointer-events-none">
-                <div
-                    class="text-5xl md:text-7xl group-hover:scale-110 transition-transform duration-300"
-                >
-                    📼
+            <div class="space-y-4">
+                <div class="text-6xl {isVerifying ? 'animate-pulse' : ''}">
+                    🛡️
                 </div>
-                <div>
-                    <h3
-                        class="text-xl md:text-2xl uppercase tracking-[0.2em] mb-2"
-                    >
-                        Tap / Drop Video
-                    </h3>
-                    <p class="text-[#555] text-[10px] md:text-xs">
-                        Instant Final Frame Capture
-                    </p>
-                    <p class="text-[#333] text-[8px] mt-2 uppercase">
-                        Works on iOS • Android • Desktop
-                    </p>
-                </div>
+                <h2 class="text-2xl uppercase tracking-[0.3em] text-[#ff424c]">
+                    Security Breach Detection
+                </h2>
+                <p class="text-[#555] text-xs max-w-sm mx-auto">
+                    Access to LASTFRAME requires a valid Passkey ZK Signature
+                    and proof of Smol identity.
+                </p>
             </div>
-        </div>
-    {:else}
-        <!-- Processing / Result View -->
-        <div
-            class="border border-[#333] rounded-xl p-4 md:p-8 bg-[#050505] flex flex-col items-center justify-center min-h-[400px]"
-        >
-            <!-- Hidden Video Element for Processing -->
-            <!-- svelte-ignore a11y-media-has-caption -->
-            <video
-                bind:this={videoRef}
-                src={videoSrc}
-                class="hidden"
-                on:loadedmetadata={onMetadataLoaded}
-                muted
-                playsinline
-                autoplay
-            ></video>
-            <canvas bind:this={canvasRef} class="hidden"></canvas>
 
-            {#if isProcessing}
-                <div class="flex flex-col items-center animate-pulse gap-4">
+            <div class="w-full max-w-xs space-y-3">
+                {#each checks as check}
                     <div
-                        class="w-12 h-12 border-4 border-[#333] border-t-[#9ae600] rounded-full animate-spin"
-                    ></div>
-                    <p class="text-[#9ae600] uppercase tracking-widest text-sm">
-                        Targeting End...
+                        class="flex items-center justify-between text-[10px] uppercase tracking-widest border-b border-[#111] pb-2"
+                    >
+                        <span
+                            class={check.status === "done"
+                                ? "text-[#9ae600]"
+                                : "text-[#333]"}>{check.label}</span
+                        >
+                        <span>
+                            {#if check.status === "pending"}
+                                [WAIT]
+                            {:else if check.status === "busy"}
+                                <span class="text-[#facc15] animate-pulse"
+                                    >[SCANNING...]</span
+                                >
+                            {:else if check.status === "done"}
+                                <span class="text-[#9ae600]">[VERIFIED]</span>
+                            {/if}
+                        </span>
+                    </div>
+                {/each}
+            </div>
+
+            {#if !isAuthenticated()}
+                <div class="space-y-4">
+                    <p class="text-xs text-[#ff424c] animate-pulse">
+                        NO VALID PASSKEY DETECTED
                     </p>
+                    <a
+                        href="/onboarding/passkey"
+                        class="inline-block bg-[#ff424c] text-white px-8 py-3 rounded font-bold hover:bg-[#ff6b74] transition-all text-sm uppercase tracking-widest"
+                    >
+                        Initialize Passkey
+                    </a>
                 </div>
-            {:else if extractedImage}
-                <div
-                    class="w-full max-w-4xl space-y-6 animate-in fade-in duration-500"
+            {:else if !isVerifying}
+                <button
+                    on:click={startVerification}
+                    class="bg-[#9ae600] text-black px-12 py-4 rounded font-bold hover:bg-[#b0ff00] transition-all shadow-[0_0_20px_rgba(154,230,0,0.3)] text-sm uppercase tracking-widest"
                 >
-                    <div
-                        class="relative group border border-[#222] rounded-lg overflow-hidden bg-black/50 shadow-2xl shadow-black"
-                    >
-                        <img
-                            src={extractedImage}
-                            alt="Last frame"
-                            class="w-full h-auto object-contain"
-                        />
-                        <div
-                            class="absolute inset-0 bg-black/0 group-hover:bg-black/20 transition-colors pointer-events-none"
-                        ></div>
-                    </div>
-
-                    <div
-                        class="flex flex-wrap items-center justify-center gap-4"
-                    >
-                        <button
-                            on:click={reset}
-                            class="px-4 py-3 rounded border border-[#333] text-[#777] hover:text-[#bbb] hover:border-[#555] transition-all text-xs uppercase tracking-widest flex-1 md:flex-none"
-                        >
-                            Restart
-                        </button>
-
-                        {#if canShare}
-                            <button
-                                on:click={shareImage}
-                                class="px-4 py-3 rounded border border-[#9ae600] text-[#9ae600] hover:bg-[#9ae600]/10 transition-all text-sm uppercase tracking-widest flex-1 md:flex-none"
-                            >
-                                Share / Save
-                            </button>
-                        {:else}
-                            <button
-                                on:click={copyImage}
-                                class="px-4 py-3 rounded border border-[#9ae600] text-[#9ae600] hover:bg-[#9ae600]/10 transition-all text-sm uppercase tracking-widest flex-1 md:flex-none"
-                            >
-                                Copy
-                            </button>
-                        {/if}
-
-                        <button
-                            on:click={downloadImage}
-                            class="bg-[#9ae600] text-black px-6 py-3 rounded font-bold hover:bg-[#b0ff00] hover:scale-105 transition-all shadow-[0_0_20px_rgba(154,230,0,0.3)] text-sm uppercase tracking-widest flex-1 md:flex-none whitespace-nowrap"
-                        >
-                            Download PNG
-                        </button>
-                    </div>
-                </div>
+                    Execute ZK Signature
+                </button>
             {/if}
         </div>
+    {:else}
+        <!-- THE TOOL -->
+        {#if !videoSrc}
+            <!-- Upload Zone -->
+            <div
+                class="border-2 border-dashed border-[#333] rounded-xl p-12 md:p-24 text-center hover:border-[#9ae600] transition-colors cursor-pointer relative group bg-[#050505]"
+            >
+                <input
+                    type="file"
+                    accept="video/*"
+                    on:change={handleFileChange}
+                    class="absolute inset-0 w-full h-full opacity-0 cursor-pointer z-10"
+                />
+                <div class="space-y-6 pointer-events-none">
+                    <div
+                        class="text-5xl md:text-7xl group-hover:scale-110 transition-transform duration-300"
+                    >
+                        📼
+                    </div>
+                    <div>
+                        <h3
+                            class="text-xl md:text-2xl uppercase tracking-[0.2em] mb-2"
+                        >
+                            Tap / Drop Video
+                        </h3>
+                        <p class="text-[#555] text-[10px] md:text-xs">
+                            Instant Final Frame Capture
+                        </p>
+                        <p class="text-[#333] text-[8px] mt-2 uppercase">
+                            Works on iOS • Android • Desktop
+                        </p>
+                    </div>
+                </div>
+            </div>
+        {:else}
+            <!-- Processing / Result View -->
+            <div
+                class="border border-[#333] rounded-xl p-4 md:p-8 bg-[#050505] flex flex-col items-center justify-center min-h-[400px]"
+            >
+                <!-- Hidden Video Element for Processing -->
+                <!-- svelte-ignore a11y-media-has-caption -->
+                <video
+                    bind:this={videoRef}
+                    src={videoSrc}
+                    class="hidden"
+                    on:loadedmetadata={onMetadataLoaded}
+                    muted
+                    playsinline
+                    autoplay
+                ></video>
+                <canvas bind:this={canvasRef} class="hidden"></canvas>
+
+                {#if isProcessing}
+                    <div class="flex flex-col items-center animate-pulse gap-4">
+                        <div
+                            class="w-12 h-12 border-4 border-[#333] border-t-[#9ae600] rounded-full animate-spin"
+                        ></div>
+                        <p
+                            class="text-[#9ae600] uppercase tracking-widest text-sm"
+                        >
+                            Targeting End...
+                        </p>
+                    </div>
+                {:else if extractedImage}
+                    <div
+                        class="w-full max-w-4xl space-y-6 animate-in fade-in duration-500"
+                    >
+                        <div
+                            class="relative group border border-[#222] rounded-lg overflow-hidden bg-black/50 shadow-2xl shadow-black"
+                        >
+                            <img
+                                src={extractedImage}
+                                alt="Last frame"
+                                class="w-full h-auto object-contain"
+                            />
+                            <div
+                                class="absolute inset-0 bg-black/0 group-hover:bg-black/20 transition-colors pointer-events-none"
+                            ></div>
+                        </div>
+
+                        <div
+                            class="flex flex-wrap items-center justify-center gap-4"
+                        >
+                            <button
+                                on:click={reset}
+                                class="px-4 py-3 rounded border border-[#333] text-[#777] hover:text-[#bbb] hover:border-[#555] transition-all text-xs uppercase tracking-widest flex-1 md:flex-none"
+                            >
+                                Restart
+                            </button>
+
+                            {#if canShare}
+                                <button
+                                    on:click={shareImage}
+                                    class="px-4 py-3 rounded border border-[#9ae600] text-[#9ae600] hover:bg-[#9ae600]/10 transition-all text-sm uppercase tracking-widest flex-1 md:flex-none"
+                                >
+                                    Share / Save
+                                </button>
+                            {:else}
+                                <button
+                                    on:click={copyImage}
+                                    class="px-4 py-3 rounded border border-[#9ae600] text-[#9ae600] hover:bg-[#9ae600]/10 transition-all text-sm uppercase tracking-widest flex-1 md:flex-none"
+                                >
+                                    Copy
+                                </button>
+                            {/if}
+
+                            <button
+                                on:click={downloadImage}
+                                class="bg-[#9ae600] text-black px-6 py-3 rounded font-bold hover:bg-[#b0ff00] hover:scale-105 transition-all shadow-[0_0_20px_rgba(154,230,0,0.3)] text-sm uppercase tracking-widest flex-1 md:flex-none whitespace-nowrap"
+                            >
+                                Download PNG
+                            </button>
+                        </div>
+                    </div>
+                {/if}
+            </div>
+        {/if}
     {/if}
 </div>
