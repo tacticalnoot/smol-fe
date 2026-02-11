@@ -74,3 +74,29 @@ export async function ensureWalletConnected(): Promise<void> {
     }
   }
 }
+
+/**
+ * Force a fresh Passkey authentication prompt (e.g. for ZK identity commitment).
+ * Resets the internal singleton to bypass any cached session state.
+ */
+export async function forceReauthentication(): Promise<void> {
+  const { resetPasskeyKit, account } = await import("../utils/passkey-kit");
+  resetPasskeyKit(); // Nuke the singleton to force a fresh prompt
+
+  const contractId = userState.contractId;
+  const keyId = userState.keyId;
+  const rpId = getSafeRpId(window.location.hostname);
+
+  if (!contractId || !keyId) throw new Error("Cannot re-authenticate: Missing auth state");
+
+  console.log('[userState] Forcing re-authentication via PasskeyKit...');
+
+  const kit = await account.get(); // Gets a FRESH instance
+  await kit.connectWallet({
+    rpId,
+    keyId,
+    getContractId: async () => contractId,
+  });
+
+  console.log('[userState] Re-authentication (Identity Commitment) complete');
+}

@@ -1,0 +1,4 @@
+- Aquarius verifiers: implement DEX trade before 2021-01-01, bonus trade-count multiplier, UltraStellar/LOBSTR/StellarTerm evidence, pre-2019 creation bonus.
+- ICE Delegates: add delegate proof (token, contract call, or API) and wire into `/qualifiers/aquarius`.
+- Switch qualifiers to ZK membership credentials once issuer is ready; keep one-signature UX.
+- Add roster persistence or membership-change rekey hook to rotate sender keys on join/leave.
