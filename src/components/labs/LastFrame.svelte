@@ -1,6 +1,14 @@
 <script lang="ts">
     import { onMount } from "svelte";
-    import { userState, isAuthenticated } from "../../stores/user.svelte";
+    import {
+        userState,
+        isAuthenticated,
+        getPasskeyKit,
+    } from "../../stores/user.svelte";
+    import {
+        balanceState,
+        updateContractBalance,
+    } from "../../stores/balance.svelte";
 
     let videoFile: File | null = null;
     let videoSrc: string | null = null;
@@ -10,18 +18,14 @@
     let isProcessing = false;
     let isVerified = false;
     let isVerifying = false;
+    let verificationError = "";
 
     // Verification steps status
-    let checks = [
-        { id: "passkey", label: "Passkey Session Valid", status: "pending" },
-        {
-            id: "stellar",
-            label: "Stellar Account Verification",
-            status: "pending",
-        },
+    let checks = $state([
+        { id: "passkey", label: "Passkey Identity", status: "pending" },
+        { id: "residency", label: "KALE Residency", status: "pending" },
         { id: "zksig", label: "ZK Intent Signature", status: "pending" },
-        { id: "smol", label: "SMOL Residency Status", status: "pending" },
-    ];
+    ]);
 
     // Check for native share support (Mobile)
     let canShare = false;
@@ -31,17 +35,56 @@
 
     const startVerification = async () => {
         isVerifying = true;
+        verificationError = "";
 
-        // Dramatic delay for ZK simulation
-        for (let i = 0; i < checks.length; i++) {
-            checks[i].status = "busy";
-            await new Promise((r) => setTimeout(r, 800 + Math.random() * 1000));
-            checks[i].status = "done";
+        try {
+            // 1. Check Passkey Identity
+            checks[0].status = "busy";
+            if (!isAuthenticated()) {
+                throw new Error(
+                    "Initialization failed: No valid Passkey found.",
+                );
+            }
+            await new Promise((r) => setTimeout(r, 600)); // Vibe delay
+            checks[0].status = "done";
+
+            // 2. Check Residency (Real Balance)
+            checks[1].status = "busy";
+            await updateContractBalance(userState.contractId);
+            if (!balanceState.balance || balanceState.balance === 0n) {
+                throw new Error("Residency failed: KALE balance must be > 0.");
+            }
+            await new Promise((r) => setTimeout(r, 600));
+            checks[1].status = "done";
+
+            // 3. Execute Real ZK Intent Signature (WebAuthn)
+            checks[2].status = "busy";
+            const kit = await getPasskeyKit();
+
+            // Request a real signature to prove intent
+            // We sign a payload that describes the intent to use the tool
+            const intentHash = btoa(`LASTFRAME_INTENT_${Date.now()}`);
+            await kit.sign({
+                message: intentHash,
+                description:
+                    "Sign this ZK intent to unlock the LastFrame tool.",
+            });
+
+            checks[2].status = "done";
+
+            await new Promise((r) => setTimeout(r, 500));
+            isVerified = true;
+        } catch (err: any) {
+            console.error("Verification failed", err);
+            verificationError =
+                err.message || "Cryptographic verification failed.";
+            // Reset busy checks to pending or error
+            checks = checks.map((c) =>
+                c.status === "busy" ? { ...c, status: "pending" } : c,
+            );
+        } finally {
+            isVerifying = false;
         }
-
-        await new Promise((r) => setTimeout(r, 500));
-        isVerified = true;
-        isVerifying = false;
     };
 
     const handleFileChange = (e: Event) => {
@@ -57,11 +100,8 @@
     const onMetadataLoaded = async () => {
         if (!videoRef) return;
 
-        // iOS Hack: Video needs to be "playing" to seek sometimes, but muted/playsinline handles most.
-        // We try to seek to end.
         const targetTime = Math.max(0, videoRef.duration - 0.05);
 
-        // Force stricter loading for iOS
         if (videoRef.readyState < 2) {
             await new Promise((r) => {
                 const onLoaded = () => {
@@ -155,11 +195,11 @@
                     🛡️
                 </div>
                 <h2 class="text-2xl uppercase tracking-[0.3em] text-[#ff424c]">
-                    Security Breach Detection
+                    Security Verified Access
                 </h2>
-                <p class="text-[#555] text-xs max-w-sm mx-auto">
-                    Access to LASTFRAME requires a valid Passkey ZK Signature
-                    and proof of Smol identity.
+                <p class="text-[#555] text-xs max-w-sm mx-auto leading-relaxed">
+                    Access to LASTFRAME requires a valid Passkey cryptographic
+                    signature and residency verification.
                 </p>
             </div>
 
@@ -175,10 +215,10 @@
                         >
                         <span>
                             {#if check.status === "pending"}
-                                [WAIT]
+                                [IDLE]
                             {:else if check.status === "busy"}
                                 <span class="text-[#facc15] animate-pulse"
-                                    >[SCANNING...]</span
+                                    >[CHECKING...]</span
                                 >
                             {:else if check.status === "done"}
                                 <span class="text-[#9ae600]">[VERIFIED]</span>
@@ -187,6 +227,14 @@
                     </div>
                 {/each}
             </div>
+
+            {#if verificationError}
+                <div
+                    class="bg-red-500/10 border border-red-500/30 p-3 rounded text-[10px] text-red-400 uppercase tracking-widest animate-in slide-in-from-top-2"
+                >
+                    {verificationError}
+                </div>
+            {/if}
 
             {#if !isAuthenticated()}
                 <div class="space-y-4">
@@ -197,13 +245,13 @@
                         href="/onboarding/passkey"
                         class="inline-block bg-[#ff424c] text-white px-8 py-3 rounded font-bold hover:bg-[#ff6b74] transition-all text-sm uppercase tracking-widest"
                     >
-                        Initialize Passkey
+                        Link Identity
                     </a>
                 </div>
             {:else if !isVerifying}
                 <button
                     on:click={startVerification}
-                    class="bg-[#9ae600] text-black px-12 py-4 rounded font-bold hover:bg-[#b0ff00] transition-all shadow-[0_0_20px_rgba(154,230,0,0.3)] text-sm uppercase tracking-widest"
+                    class="bg-[#9ae600] text-black px-12 py-4 rounded font-bold hover:bg-[#b0ff00] transition-all shadow-[0_0_20px_rgba(154,230,0,0.3)] text-sm uppercase tracking-widest active:scale-95"
                 >
                     Execute ZK Signature
                 </button>
