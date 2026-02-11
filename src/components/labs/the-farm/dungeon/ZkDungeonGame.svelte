@@ -1,5 +1,6 @@
 <script lang="ts">
     import { userState } from "../../../../stores/user.svelte.ts";
+    import { onDestroy } from "svelte";
     import {
         HUB_CONTRACT_ID,
         callStartGame,
@@ -7,7 +8,21 @@
         attemptDoor as submitDoorAttempt,
         generateSessionId,
         txExplorerUrl,
+        contractExplorerUrl,
     } from "./dungeonService";
+    import {
+        createLobby as lobbyCreate,
+        joinLobby as lobbyJoin,
+        signalGameStart,
+        broadcastDoorAttempt,
+        broadcastFloorCleared,
+        broadcastGateClear,
+        broadcastGameFinished,
+        onMessage,
+        destroyLobby,
+        shortAddr,
+        type LobbyMessage,
+    } from "./lobbyService";
 
     // ── Game State ──────────────────────────────────────────────────────
     type GamePhase = "title" | "lobby" | "playing" | "victory" | "defeat";
@@ -23,21 +38,29 @@
     let lobbyInput = $state<string>("");
     let lobbyRole = $state<LobbyRole>(null);
     let playerName = $state<string>("");
+    let playerAddr = $state<string>("");
     let opponentName = $state<string>("");
+    let opponentAddr = $state<string>("");
+    let opponentFloor = $state<number>(1);
+    let partnerConnected = $state<boolean>(false);
     let currentFloor = $state<number>(1);
     let attempts = $state<number>(0);
     let doorStates = $state<DoorState[]>(["idle", "idle", "idle", "idle"]);
     let activeDoor = $state<number | null>(null);
     let runLog = $state<RunLogEntry[]>([]);
     let gateWaiting = $state<boolean>(false);
+    let partnerGateCleared = $state<boolean>(false);
     let fullscreen = $state<boolean>(false);
     let showHowItWorks = $state<boolean>(false);
+    let showChainFeed = $state<boolean>(true);
     let floorTransition = $state<boolean>(false);
     let sessionId = $state<number>(0);
     let hubStartTx = $state<string | null>(null);
     let hubEndTx = $state<string | null>(null);
     let hubCallError = $state<string | null>(null);
     let hubCalling = $state<boolean>(false);
+    let doorStatus = $state<string>("");
+    let lastTxHash = $state<string | null>(null);
 
     interface RunLogEntry {
         floor: number;
@@ -50,6 +73,7 @@
         verified?: boolean;
         provingTimeMs?: number;
         commitment?: string | null;
+        player?: string;
     }
 
     // Floor lore for atmosphere
@@ -73,8 +97,80 @@
     let isGateFloor = $derived(GATE_FLOORS.includes(currentFloor));
     let progressPct = $derived(((currentFloor - 1) / TOTAL_FLOORS) * 100);
     let walletLabel = $derived(
-        walletAddress ? `${walletAddress.slice(0, 6)}...${walletAddress.slice(-4)}` : ""
+        walletAddress ? shortAddr(walletAddress) : ""
     );
+    let onChainTxCount = $derived(runLog.filter(e => e.txHash).length);
+    let isSoloMode = $derived(!opponentAddr);
+
+    // ── Lobby Service Integration ────────────────────────────────────────
+    let _unsubLobby: (() => void) | null = null;
+
+    function setupLobbyListener() {
+        _unsubLobby?.();
+        _unsubLobby = onMessage((msg: LobbyMessage) => {
+            switch (msg.type) {
+                case "PLAYER_JOINED":
+                    if (lobbyRole === "host" && msg.sender !== playerAddr) {
+                        opponentAddr = msg.sender;
+                        opponentName = shortAddr(msg.sender);
+                        partnerConnected = true;
+                    }
+                    break;
+                case "PONG":
+                    if (lobbyRole === "guest" && !partnerConnected) {
+                        const hostAddr = (msg.data?.hostAddress as string) ?? msg.sender;
+                        opponentAddr = hostAddr;
+                        opponentName = shortAddr(hostAddr);
+                        partnerConnected = true;
+                    }
+                    break;
+                case "PING":
+                    partnerConnected = true;
+                    break;
+                case "GAME_STARTING":
+                    if (lobbyRole === "guest") {
+                        sessionId = (msg.data?.sessionId as number) ?? sessionId;
+                        phase = "playing";
+                    }
+                    break;
+                case "DOOR_ATTEMPT":
+                    if (msg.sender !== playerAddr) {
+                        const d = msg.data!;
+                        addLogEntry({
+                            floor: d.floor as number,
+                            door: d.door as number,
+                            attempt: 0,
+                            result: d.result as "correct" | "wrong",
+                            proofType: d.proofType as string,
+                            txHash: (d.txHash as string) ?? null,
+                            timestamp: Date.now(),
+                            player: shortAddr(msg.sender),
+                        });
+                    }
+                    break;
+                case "FLOOR_CLEARED":
+                    if (msg.sender !== playerAddr) {
+                        opponentFloor = (msg.data?.floor as number) ?? opponentFloor;
+                    }
+                    break;
+                case "GATE_CLEAR":
+                    if (msg.sender !== playerAddr) {
+                        partnerGateCleared = true;
+                        if (gateWaiting) {
+                            gateWaiting = false;
+                        }
+                    }
+                    break;
+                case "GAME_FINISHED":
+                    break;
+            }
+        });
+    }
+
+    onDestroy(() => {
+        _unsubLobby?.();
+        destroyLobby();
+    });
 
     // ── Actions ─────────────────────────────────────────────────────────
 
@@ -90,8 +186,17 @@
     function createLobby() {
         lobbyCode = generateLobbyCode();
         lobbyRole = "host";
+        sessionId = generateSessionId();
+        playerAddr = walletAddress ?? "";
         playerName = walletLabel || "Seeker-1";
         opponentName = "";
+        opponentAddr = "";
+        partnerConnected = false;
+
+        // Create BroadcastChannel lobby
+        lobbyCreate(lobbyCode, playerAddr, sessionId);
+        setupLobbyListener();
+
         phase = "lobby";
     }
 
@@ -99,8 +204,16 @@
         if (lobbyInput.length < 4) return;
         lobbyCode = lobbyInput.toUpperCase();
         lobbyRole = "guest";
+        playerAddr = walletAddress ?? "";
         playerName = walletLabel || "Seeker-2";
-        opponentName = "Seeker-1";
+        opponentName = "";
+        opponentAddr = "";
+        partnerConnected = false;
+
+        // Join BroadcastChannel lobby
+        lobbyJoin(lobbyCode, playerAddr);
+        setupLobbyListener();
+
         phase = "lobby";
     }
 
@@ -110,33 +223,41 @@
         runLog = [];
         doorStates = ["idle", "idle", "idle", "idle"];
         opponentName = opponentName || "Seeker-2";
-        sessionId = generateSessionId();
+        opponentFloor = 1;
         hubStartTx = null;
         hubEndTx = null;
         hubCallError = null;
+        lastTxHash = null;
+        partnerGateCleared = false;
         phase = "playing";
+
+        // Signal game start to partner
+        signalGameStart(playerAddr, sessionId);
 
         // Call start_game() on hub contract (real testnet tx)
         let startTxHash: string | null = null;
         if (isConnected && userState.keyId && userState.contractId) {
             hubCalling = true;
+            doorStatus = "Registering game on hub...";
             try {
                 startTxHash = await callStartGame({
-                    gameId: HUB_CONTRACT_ID, // Using hub as game_id placeholder
+                    gameId: HUB_CONTRACT_ID,
                     sessionId,
                     player1: userState.contractId,
-                    player2: userState.contractId, // Solo mode: same player
+                    player2: opponentAddr || userState.contractId,
                     player1Points: 0n,
                     player2Points: 0n,
                     keyId: userState.keyId,
                     contractId: userState.contractId,
                 });
                 hubStartTx = startTxHash;
+                lastTxHash = startTxHash;
             } catch (err: any) {
                 console.warn("[Dungeon] start_game() failed (non-blocking):", err.message);
                 hubCallError = err.message;
             } finally {
                 hubCalling = false;
+                doorStatus = "";
             }
         }
 
@@ -158,20 +279,26 @@
         activeDoor = doorIndex;
         doorStates[doorIndex] = "proving";
         attempts++;
+        doorStatus = "Generating ZK proof...";
 
-        // Submit door attempt via dungeon service (generates real Groth16 proof)
-        const result = await submitDoorAttempt({
-            lobbyId: lobbyCode || "SOLO",
-            floor: currentFloor,
-            doorChoice: doorIndex,
-            attemptNonce: attempts,
-            playerAddress: userState.contractId ?? "anonymous",
-            keyId: userState.keyId ?? "",
-            contractId: userState.contractId ?? "",
-        });
+        // Submit door attempt via dungeon service (generates real Groth16 proof + on-chain tx)
+        const result = await submitDoorAttempt(
+            {
+                lobbyId: lobbyCode || "SOLO",
+                floor: currentFloor,
+                doorChoice: doorIndex,
+                attemptNonce: attempts,
+                playerAddress: userState.contractId ?? "anonymous",
+                keyId: userState.keyId ?? "",
+                contractId: userState.contractId ?? "",
+            },
+            (status) => { doorStatus = status; },
+        );
 
         const isCorrect = result.isCorrect;
         doorStates[doorIndex] = isCorrect ? "correct" : "wrong";
+        if (result.txHash) lastTxHash = result.txHash;
+        doorStatus = "";
 
         addLogEntry({
             floor: currentFloor,
@@ -184,7 +311,18 @@
             verified: result.verified,
             provingTimeMs: result.provingTimeMs,
             commitment: result.commitment,
+            player: playerName,
         });
+
+        // Broadcast to partner
+        broadcastDoorAttempt(
+            playerAddr,
+            currentFloor,
+            doorIndex,
+            isCorrect ? "correct" : "wrong",
+            result.txHash,
+            result.proofType,
+        );
 
         // Animate then advance
         await new Promise((r) => setTimeout(r, 800));
@@ -195,6 +333,7 @@
                 let endTxHash: string | null = null;
                 if (isConnected && userState.keyId && userState.contractId) {
                     hubCalling = true;
+                    doorStatus = "Finalizing game on hub...";
                     try {
                         endTxHash = await callEndGame({
                             sessionId,
@@ -203,10 +342,12 @@
                             contractId: userState.contractId,
                         });
                         hubEndTx = endTxHash;
+                        lastTxHash = endTxHash;
                     } catch (err: any) {
                         console.warn("[Dungeon] end_game() failed (non-blocking):", err.message);
                     } finally {
                         hubCalling = false;
+                        doorStatus = "";
                     }
                 }
 
@@ -219,6 +360,8 @@
                     txHash: endTxHash,
                     timestamp: Date.now(),
                 });
+
+                broadcastGameFinished(playerAddr, true);
                 phase = "victory";
             } else {
                 // Advance to next floor
@@ -229,13 +372,27 @@
                 activeDoor = null;
                 floorTransition = false;
 
+                broadcastFloorCleared(playerAddr, currentFloor);
+
                 // Check if co-op gate
                 if (isGateFloor) {
                     gateWaiting = true;
-                    // Solo mode: auto-clear after brief delay
-                    setTimeout(() => {
-                        gateWaiting = false;
-                    }, 2000);
+                    partnerGateCleared = false;
+
+                    if (isSoloMode) {
+                        // Solo mode: auto-clear after brief delay
+                        setTimeout(() => {
+                            gateWaiting = false;
+                        }, 2000);
+                    } else {
+                        // Real multiplayer: wait for partner or auto-clear after 15s timeout
+                        broadcastGateClear(playerAddr, currentFloor);
+                        setTimeout(() => {
+                            if (gateWaiting) {
+                                gateWaiting = false;
+                            }
+                        }, 15000);
+                    }
                 }
             }
         } else {
@@ -251,17 +408,25 @@
     }
 
     function resetGame() {
+        destroyLobby();
         phase = "title";
         lobbyCode = "";
         lobbyInput = "";
         lobbyRole = null;
+        playerAddr = "";
+        opponentAddr = "";
+        opponentFloor = 1;
+        partnerConnected = false;
         currentFloor = 1;
         attempts = 0;
         doorStates = ["idle", "idle", "idle", "idle"];
         activeDoor = null;
         runLog = [];
         gateWaiting = false;
+        partnerGateCleared = false;
         floorTransition = false;
+        doorStatus = "";
+        lastTxHash = null;
     }
 
     function toggleFullscreen() {
@@ -371,10 +536,10 @@
 <div class="dg-root dg-lobby-screen">
     <div class="dg-stars"></div>
     <div class="dg-lobby-content">
-        <button class="dg-back-btn" onclick={() => phase = "title"}>&larr; BACK</button>
+        <button class="dg-back-btn" onclick={resetGame}>&larr; BACK</button>
         <p class="dg-eyebrow">LOBBY</p>
         <h2 class="dg-lobby-title">
-            {lobbyRole === "host" ? "WAITING FOR PLAYER 2" : "JOINING LOBBY"}
+            {partnerConnected ? "BOTH SEEKERS CONNECTED" : lobbyRole === "host" ? "WAITING FOR PLAYER 2" : "CONNECTING..."}
         </h2>
 
         <div class="dg-lobby-code-display">
@@ -387,24 +552,45 @@
 
         <div class="dg-lobby-players">
             <div class="dg-lobby-player dg-lobby-player-ready">
-                <span class="dg-lobby-player-icon">P1</span>
+                <span class="dg-lobby-player-icon">{lobbyRole === "host" ? "P1" : "P2"}</span>
                 <span class="dg-lobby-player-name">{playerName}</span>
+                <span class="dg-lobby-player-addr">{playerAddr ? shortAddr(playerAddr) : ""}</span>
                 <span class="dg-lobby-player-status">READY</span>
             </div>
-            <div class="dg-lobby-player {lobbyRole === 'guest' || opponentName ? 'dg-lobby-player-ready' : 'dg-lobby-player-waiting'}">
-                <span class="dg-lobby-player-icon">P2</span>
+            <div class="dg-lobby-player {partnerConnected ? 'dg-lobby-player-ready' : 'dg-lobby-player-waiting'}">
+                <span class="dg-lobby-player-icon">{lobbyRole === "host" ? "P2" : "P1"}</span>
                 <span class="dg-lobby-player-name">{opponentName || "..."}</span>
-                <span class="dg-lobby-player-status">{opponentName ? "READY" : "WAITING"}</span>
+                <span class="dg-lobby-player-addr">{opponentAddr ? shortAddr(opponentAddr) : "—"}</span>
+                <span class="dg-lobby-player-status">{partnerConnected ? "CONNECTED" : "WAITING"}</span>
+            </div>
+        </div>
+
+        <!-- Lobby Inspector -->
+        <div class="dg-lobby-inspector">
+            <p class="dg-lobby-inspector-title">LOBBY STATE</p>
+            <div class="dg-lobby-inspector-grid">
+                <span class="dg-inspector-label">Session</span>
+                <span class="dg-inspector-value">{sessionId || "—"}</span>
+                <span class="dg-inspector-label">Sync</span>
+                <span class="dg-inspector-value dg-inspector-{partnerConnected ? 'live' : 'off'}">
+                    {partnerConnected ? "LIVE" : "WAITING"}
+                </span>
+                <span class="dg-inspector-label">Network</span>
+                <span class="dg-inspector-value dg-inspector-testnet">TESTNET</span>
+                <span class="dg-inspector-label">Hub</span>
+                <span class="dg-inspector-value dg-inspector-mono">{HUB_CONTRACT_ID.slice(0, 8)}...</span>
             </div>
         </div>
 
         {#if lobbyRole === "host"}
-            <p class="dg-hint">Share the code with another player, or start solo.</p>
+            <p class="dg-hint">{partnerConnected ? "Both players connected. Start when ready." : "Share the code, or start solo."}</p>
             <button class="dg-btn dg-btn-primary" onclick={startGame}>
-                {opponentName ? "START GAME" : "START SOLO"}
+                {partnerConnected ? "START GAME" : "START SOLO"}
             </button>
         {:else}
-            <button class="dg-btn dg-btn-primary" onclick={startGame}>READY</button>
+            <button class="dg-btn dg-btn-primary" onclick={startGame} disabled={!partnerConnected}>
+                {partnerConnected ? "READY" : "WAITING FOR HOST..."}
+            </button>
         {/if}
     </div>
 </div>
@@ -417,25 +603,67 @@
         <div class="dg-hud-left">
             <span class="dg-hud-floor">FLOOR {currentFloor}/{TOTAL_FLOORS}</span>
             <span class="dg-hud-proof-type">{currentLore.proofType}</span>
-            {#if hubCalling}
-                <span class="dg-hud-hub-status">HUB...</span>
-            {/if}
+            <span class="dg-hud-network">TESTNET</span>
         </div>
         <div class="dg-hud-center">
             <div class="dg-progress-bar">
                 <div class="dg-progress-fill" style="width: {progressPct}%"></div>
             </div>
+            {#if doorStatus}
+                <span class="dg-hud-door-status">{doorStatus}</span>
+            {/if}
         </div>
         <div class="dg-hud-right">
-            <span class="dg-hud-attempts">ATTEMPTS: {attempts}</span>
-            {#if hubStartTx}
-                <a class="dg-hud-tx-link" href={txExplorerUrl(hubStartTx)} target="_blank" rel="noreferrer" title="start_game tx">HUB</a>
+            <span class="dg-hud-attempts">TXS: {onChainTxCount}</span>
+            <span class="dg-hud-attempts">ATT: {attempts}</span>
+            {#if !isSoloMode}
+                <span class="dg-hud-partner" class:dg-hud-partner-live={partnerConnected}>
+                    P2 F{opponentFloor}
+                </span>
             {/if}
-            <button class="dg-hud-btn" onclick={toggleFullscreen}>
-                {fullscreen ? "EXIT FS" : "FS"}
+            <button class="dg-hud-btn" onclick={() => showChainFeed = !showChainFeed}>
+                {showChainFeed ? "LOG" : "FEED"}
             </button>
+            <button class="dg-hud-btn" onclick={toggleFullscreen}>FS</button>
         </div>
     </div>
+
+    <!-- Live Chain Feed -->
+    {#if showChainFeed && (lastTxHash || hubStartTx)}
+    <div class="dg-chain-feed">
+        <div class="dg-chain-feed-header">
+            <span class="dg-chain-feed-dot"></span>
+            <span>LIVE CHAIN FEED</span>
+            <span class="dg-chain-feed-network">STELLAR TESTNET</span>
+        </div>
+        <div class="dg-chain-feed-body">
+            {#if lastTxHash}
+                <div class="dg-chain-feed-row">
+                    <span class="dg-chain-feed-label">Last TX</span>
+                    <a class="dg-chain-feed-value dg-chain-feed-link" href={txExplorerUrl(lastTxHash)} target="_blank" rel="noreferrer">{lastTxHash.slice(0, 16)}...</a>
+                </div>
+            {/if}
+            <div class="dg-chain-feed-row">
+                <span class="dg-chain-feed-label">Hub</span>
+                <a class="dg-chain-feed-value dg-chain-feed-link" href={contractExplorerUrl(HUB_CONTRACT_ID)} target="_blank" rel="noreferrer">{HUB_CONTRACT_ID.slice(0, 12)}...</a>
+            </div>
+            <div class="dg-chain-feed-row">
+                <span class="dg-chain-feed-label">Session</span>
+                <span class="dg-chain-feed-value">{sessionId}</span>
+            </div>
+            <div class="dg-chain-feed-row">
+                <span class="dg-chain-feed-label">On-chain</span>
+                <span class="dg-chain-feed-value">{onChainTxCount} txs confirmed</span>
+            </div>
+            {#if !isSoloMode}
+            <div class="dg-chain-feed-row">
+                <span class="dg-chain-feed-label">Players</span>
+                <span class="dg-chain-feed-value">{shortAddr(playerAddr)} vs {opponentName}</span>
+            </div>
+            {/if}
+        </div>
+    </div>
+    {/if}
 
     <!-- Floor Content -->
     <div class="dg-floor-area">
@@ -448,7 +676,19 @@
         <div class="dg-gate-overlay">
             <div class="dg-gate-panel">
                 <p class="dg-gate-title">CO-OP GATE</p>
-                <p class="dg-gate-desc">Waiting for both seekers to clear this floor...</p>
+                <p class="dg-gate-desc">
+                    {isSoloMode
+                        ? "Synchronizing..."
+                        : `Waiting for ${opponentName || "partner"} to clear floor ${currentFloor}...`}
+                </p>
+                {#if !isSoloMode}
+                    <div class="dg-gate-players">
+                        <span class="dg-gate-player dg-gate-player-ready">YOU: F{currentFloor}</span>
+                        <span class="dg-gate-player" class:dg-gate-player-ready={partnerGateCleared}>
+                            {opponentName}: F{opponentFloor}
+                        </span>
+                    </div>
+                {/if}
                 <div class="dg-gate-spinner"></div>
             </div>
         </div>
@@ -481,7 +721,7 @@
     <div class="dg-run-log">
         <div class="dg-run-log-header">
             <span>RUN LOG</span>
-            <span class="dg-run-log-count">{runLog.length}</span>
+            <span class="dg-run-log-count">{runLog.length} events · {onChainTxCount} on-chain</span>
         </div>
         <div class="dg-run-log-entries">
             {#each runLog.toReversed() as entry}
@@ -491,21 +731,24 @@
                 {:else if entry.door === -1}
                     <span class="dg-log-text">Game finalized on hub</span>
                 {:else}
+                    {#if entry.player && !isSoloMode}
+                        <span class="dg-log-player">{entry.player.slice(0, 6)}</span>
+                    {/if}
                     <span class="dg-log-floor">F{entry.floor}</span>
                     <span class="dg-log-door">D{entry.door + 1}</span>
                     <span class="dg-log-result">{entry.result === "correct" ? "OK" : "MISS"}</span>
                     <span class="dg-log-proof">{entry.proofType}</span>
                     {#if entry.verified}
-                        <span class="dg-log-verified">ZK</span>
+                        <span class="dg-log-verified" title="ZK proof verified">ZK</span>
                     {/if}
                     {#if entry.provingTimeMs}
                         <span class="dg-log-time">{entry.provingTimeMs}ms</span>
                     {/if}
                 {/if}
                 {#if entry.txHash}
-                    <a class="dg-log-tx" href={txExplorerUrl(entry.txHash)} target="_blank" rel="noreferrer">tx</a>
+                    <a class="dg-log-tx dg-log-tx-confirmed" href={txExplorerUrl(entry.txHash)} target="_blank" rel="noreferrer" title={entry.txHash}>{entry.txHash.slice(0, 8)}...</a>
                 {:else}
-                    <span class="dg-log-tx dg-log-tx-pending">--</span>
+                    <span class="dg-log-tx dg-log-tx-local">local</span>
                 {/if}
             </div>
             {/each}
@@ -1516,5 +1759,198 @@
         padding: 4px 8px;
         border: 1px solid rgba(74, 208, 255, 0.2);
         border-radius: 4px;
+    }
+
+    /* ── Network Badge ─────────────────────────────────────────────── */
+    .dg-hud-network {
+        font-family: var(--dg-font-display);
+        font-size: 7px;
+        letter-spacing: 1px;
+        color: #4ade80;
+        background: rgba(74, 222, 128, 0.1);
+        padding: 3px 8px;
+        border-radius: 4px;
+        border: 1px solid rgba(74, 222, 128, 0.2);
+    }
+
+    .dg-hud-door-status {
+        font-family: var(--dg-font-display);
+        font-size: 7px;
+        letter-spacing: 0.5px;
+        color: var(--dg-accent-3);
+        animation: dg-pulse 1s ease-in-out infinite;
+    }
+
+    .dg-hud-partner {
+        font-family: var(--dg-font-display);
+        font-size: 8px;
+        color: var(--dg-text-dim);
+        padding: 3px 8px;
+        border-radius: 4px;
+        border: 1px solid var(--dg-border);
+    }
+    .dg-hud-partner-live {
+        color: var(--dg-correct);
+        border-color: rgba(74, 222, 128, 0.3);
+    }
+
+    /* ── Live Chain Feed ───────────────────────────────────────────── */
+    .dg-chain-feed {
+        position: absolute;
+        top: 48px;
+        right: 12px;
+        width: 280px;
+        background: rgba(4, 6, 11, 0.92);
+        border: 1px solid rgba(74, 208, 255, 0.15);
+        border-radius: 8px;
+        z-index: 20;
+        font-size: 11px;
+        backdrop-filter: blur(8px);
+    }
+    .dg-chain-feed-header {
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        padding: 8px 12px;
+        border-bottom: 1px solid var(--dg-border);
+        font-family: var(--dg-font-display);
+        font-size: 8px;
+        letter-spacing: 1px;
+        color: var(--dg-accent);
+    }
+    .dg-chain-feed-dot {
+        width: 6px;
+        height: 6px;
+        border-radius: 50%;
+        background: #4ade80;
+        animation: dg-pulse 2s ease-in-out infinite;
+    }
+    .dg-chain-feed-network {
+        margin-left: auto;
+        color: #4ade80;
+        font-size: 7px;
+    }
+    .dg-chain-feed-body {
+        padding: 8px 12px;
+        display: flex;
+        flex-direction: column;
+        gap: 4px;
+    }
+    .dg-chain-feed-row {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+    }
+    .dg-chain-feed-label {
+        color: var(--dg-text-dim);
+        font-size: 10px;
+    }
+    .dg-chain-feed-value {
+        color: var(--dg-text);
+        font-family: "JetBrains Mono", monospace;
+        font-size: 10px;
+    }
+    .dg-chain-feed-link {
+        color: var(--dg-accent);
+        text-decoration: none;
+    }
+    .dg-chain-feed-link:hover {
+        text-decoration: underline;
+    }
+
+    /* ── Lobby Inspector ───────────────────────────────────────────── */
+    .dg-lobby-inspector {
+        margin-top: 20px;
+        padding: 12px 16px;
+        background: rgba(10, 13, 22, 0.6);
+        border: 1px solid var(--dg-border);
+        border-radius: 8px;
+        max-width: 300px;
+        margin-left: auto;
+        margin-right: auto;
+    }
+    .dg-lobby-inspector-title {
+        font-family: var(--dg-font-display);
+        font-size: 8px;
+        letter-spacing: 2px;
+        color: var(--dg-text-dim);
+        margin-bottom: 8px;
+    }
+    .dg-lobby-inspector-grid {
+        display: grid;
+        grid-template-columns: auto 1fr;
+        gap: 4px 12px;
+        font-size: 11px;
+    }
+    .dg-inspector-label {
+        color: var(--dg-text-dim);
+    }
+    .dg-inspector-value {
+        color: var(--dg-text);
+        font-family: "JetBrains Mono", monospace;
+        font-size: 10px;
+        text-align: right;
+    }
+    .dg-inspector-live {
+        color: #4ade80;
+    }
+    .dg-inspector-off {
+        color: var(--dg-text-dim);
+    }
+    .dg-inspector-testnet {
+        color: #4ade80;
+    }
+    .dg-inspector-mono {
+        font-size: 9px;
+    }
+
+    /* ── Lobby Player Address ──────────────────────────────────────── */
+    .dg-lobby-player-addr {
+        font-family: "JetBrains Mono", monospace;
+        font-size: 9px;
+        color: var(--dg-text-dim);
+        letter-spacing: 0;
+    }
+
+    /* ── Gate Players ──────────────────────────────────────────────── */
+    .dg-gate-players {
+        display: flex;
+        gap: 16px;
+        margin-top: 12px;
+    }
+    .dg-gate-player {
+        font-family: var(--dg-font-display);
+        font-size: 9px;
+        padding: 6px 12px;
+        border-radius: 6px;
+        border: 1px solid var(--dg-border);
+        color: var(--dg-text-dim);
+    }
+    .dg-gate-player-ready {
+        color: var(--dg-correct);
+        border-color: rgba(74, 222, 128, 0.3);
+        background: rgba(74, 222, 128, 0.05);
+    }
+
+    /* ── Log Entry Updates ─────────────────────────────────────────── */
+    .dg-log-player {
+        font-family: "JetBrains Mono", monospace;
+        font-size: 9px;
+        color: var(--dg-accent-2);
+        min-width: 46px;
+    }
+    .dg-log-tx-confirmed {
+        color: var(--dg-correct) !important;
+        font-family: "JetBrains Mono", monospace;
+        font-size: 9px;
+        text-decoration: none;
+    }
+    .dg-log-tx-confirmed:hover {
+        text-decoration: underline;
+    }
+    .dg-log-tx-local {
+        color: var(--dg-text-dim);
+        font-size: 9px;
+        font-style: italic;
     }
 </style>

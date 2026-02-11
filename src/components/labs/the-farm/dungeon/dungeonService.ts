@@ -3,7 +3,7 @@
  *
  * Handles:
  * - Game hub start_game() / end_game() calls
- * - Door attempt transactions (real on-chain, ZK proof wiring in PR4)
+ * - Door attempt transactions with real ZK proof submission
  * - Testnet RPC + simulation + signing via passkey-kit
  */
 
@@ -14,6 +14,7 @@ import {
     TransactionBuilder,
     Networks,
     Account,
+    xdr,
     rpc,
 } from "@stellar/stellar-sdk/minimal";
 
@@ -24,6 +25,9 @@ const { Server, Api, assembleTransaction } = rpc;
 /** Game hub contract on Stellar testnet */
 export const HUB_CONTRACT_ID =
     "CB4VZAT2U3UC6XFK3N23SKRF2NDCMP3QHJYMCHHFMZO7MRQO6DQ2EMYG";
+
+/** Tier verifier contract for on-chain proof verification */
+const TIER_VERIFIER_ID = "CAU7NET7FXSFBBRMLM6X7CJMVAIHMG7RC4YPCXG6G4YOYG6C3CVGR25M";
 
 /** Testnet RPC endpoint */
 const TESTNET_RPC = "https://soroban-testnet.stellar.org";
@@ -208,13 +212,17 @@ export interface DoorAttemptResult {
     error: string | null;
 }
 
+/** Status callback for door attempt UI updates */
+export type DoorAttemptStatusCallback = (status: string) => void;
+
 /**
- * Submit a door attempt with a real ZK proof.
+ * Submit a door attempt with a real ZK proof + on-chain transaction.
  *
  * Flow:
  * 1. Generate Groth16 proof via snarkjs (Poseidon commitment, real BN254)
  * 2. Verify locally (debug check)
- * 3. Return structured result
+ * 3. Submit proof on-chain via tier-verifier contract (if wallet connected)
+ * 4. Return structured result with tx hash
  *
  * NOTE: Wrong choices still generate valid proofs. The `is_correct` flag
  * is determined by comparing the chosen door against the correct door.
@@ -222,6 +230,7 @@ export interface DoorAttemptResult {
  */
 export async function attemptDoor(
     params: DoorAttemptParams,
+    onStatus?: DoorAttemptStatusCallback,
 ): Promise<DoorAttemptResult> {
     console.log("[Dungeon] attemptDoor →", {
         floor: params.floor,
@@ -230,6 +239,7 @@ export async function attemptDoor(
     });
 
     const proofType = getProofTypeForFloor(params.floor);
+    onStatus?.("Generating ZK proof...");
 
     try {
         // Generate real Groth16 proof
@@ -247,6 +257,7 @@ export async function attemptDoor(
 
         // Verify locally (debug / confidence check)
         let verified = false;
+        onStatus?.("Verifying proof locally...");
         try {
             verified = await verifyDoorProofLocally(
                 proofResult.proof,
@@ -257,9 +268,34 @@ export async function attemptDoor(
             console.warn("[Dungeon] Local verification error (non-blocking):", verifyErr);
         }
 
+        // Attempt on-chain submission if wallet is connected
+        let txHash: string | null = null;
+        if (params.keyId && params.contractId) {
+            onStatus?.("Signing transaction...");
+            try {
+                txHash = await submitProofOnChain(
+                    proofResult.proof,
+                    proofResult.publicSignals,
+                    params.playerAddress || params.contractId,
+                    params.keyId,
+                    params.contractId,
+                    onStatus,
+                );
+            } catch (txErr: any) {
+                console.warn("[Dungeon] On-chain submission failed (non-blocking):", txErr.message);
+                // Proof was still generated and verified locally — game continues
+            }
+        }
+
+        if (txHash) {
+            onStatus?.("Confirmed on-chain");
+        } else {
+            onStatus?.("Verified locally");
+        }
+
         return {
             isCorrect: proofResult.isCorrect,
-            txHash: null, // On-chain submission in next iteration
+            txHash,
             proofType: proofResult.proofType,
             commitment: proofResult.commitment,
             provingTimeMs: proofResult.provingTimeMs,
@@ -268,6 +304,7 @@ export async function attemptDoor(
         };
     } catch (err: any) {
         console.error("[Dungeon] Proof generation failed:", err.message);
+        onStatus?.("Proof error (fallback)");
 
         // Fallback: determine correctness without proof
         const seed = params.floor * 1000 + params.attemptNonce;
@@ -283,6 +320,89 @@ export async function attemptDoor(
             error: err.message,
         };
     }
+}
+
+// ── On-Chain Proof Submission ───────────────────────────────────────────────
+
+/**
+ * Submit a Groth16 proof to the tier-verifier contract on testnet.
+ * Uses verify_and_attest to create a real on-chain verification record.
+ */
+async function submitProofOnChain(
+    proof: any,
+    publicSignals: string[],
+    farmerAddress: string,
+    keyId: string,
+    contractId: string,
+    onStatus?: DoorAttemptStatusCallback,
+): Promise<string> {
+    // Serialize proof to BN254 format
+    const { serializeProof } = await import("../zkProof");
+
+    const serialized = serializeProof(proof);
+
+    // Build proof struct for the contract
+    const proofStruct = xdr.ScVal.scvMap([
+        new xdr.ScMapEntry({
+            key: xdr.ScVal.scvSymbol("pi_a"),
+            val: nativeToScVal(Buffer.from(serialized.pi_a), { type: "bytes" }),
+        }),
+        new xdr.ScMapEntry({
+            key: xdr.ScVal.scvSymbol("pi_b"),
+            val: nativeToScVal(Buffer.from(serialized.pi_b), { type: "bytes" }),
+        }),
+        new xdr.ScMapEntry({
+            key: xdr.ScVal.scvSymbol("pi_c"),
+            val: nativeToScVal(Buffer.from(serialized.pi_c), { type: "bytes" }),
+        }),
+    ]);
+
+    // Compute commitment as 32-byte buffer from publicSignals[0]
+    const commitmentBigInt = BigInt(publicSignals[0]);
+    const commitmentBytes = new Uint8Array(32);
+    let v = commitmentBigInt;
+    for (let i = 31; i >= 0; i--) {
+        commitmentBytes[i] = Number(v & 0xffn);
+        v >>= 8n;
+    }
+
+    // Build verify_and_attest call
+    const contract = new Contract(TIER_VERIFIER_ID);
+    const op = contract.call(
+        "verify_and_attest",
+        new Address(farmerAddress).toScVal(),
+        nativeToScVal(0, { type: "u32" }),  // tier_id = 0 (Sprout)
+        nativeToScVal(Buffer.from(commitmentBytes), { type: "bytes" }),
+        proofStruct,
+    );
+
+    const sourceAccount = new Account(NULL_ACCOUNT, "0");
+    const tx = new TransactionBuilder(sourceAccount, {
+        fee: "10000000",
+        networkPassphrase: TESTNET_PASSPHRASE,
+    })
+        .addOperation(op)
+        .setTimeout(300)
+        .build();
+
+    onStatus?.("Simulating...");
+    const server = getTestnetServer();
+    const simResult = await server.simulateTransaction(tx);
+
+    if (Api.isSimulationError(simResult)) {
+        const errMsg = typeof simResult.error === "string"
+            ? simResult.error
+            : JSON.stringify(simResult.error);
+        throw new Error(`Proof simulation failed: ${errMsg}`);
+    }
+
+    const assembled = assembleTransaction(tx, simResult).build();
+
+    onStatus?.("Signing...");
+    const txHash = await signAndSendTestnet(assembled, keyId, contractId);
+
+    console.log("[Dungeon] Proof submitted on-chain:", txHash);
+    return txHash;
 }
 
 // ── Utility ──────────────────────────────────────────────────────────────────
