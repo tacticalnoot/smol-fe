@@ -4,6 +4,7 @@
         userState,
         isAuthenticated,
         getPasskeyKit,
+        forceReauthentication,
     } from "../../stores/user.svelte";
     import {
         balanceState,
@@ -118,14 +119,10 @@
             );
 
             // Trigger Passkey Signature (Identity Commitment)
-            // We use connectWallet to perform a biometric check and bind the user's focus
-            // to the freshly generated ZK proof.
+            // We use forceReauthentication to RESET the PasskeyKit singleton and force
+            // a fresh biometric prompt. This is critical for the "Identity Commitment" feel.
             try {
-                await kit.connectWallet({
-                    rpId,
-                    keyId: userState.keyId,
-                    getContractId: async () => userState.contractId,
-                });
+                await forceReauthentication();
                 console.log("[LastFrame] Passkey Commitment Success");
             } catch (pErr: any) {
                 console.error("[LastFrame] Passkey Commitment Failed:", pErr);
@@ -166,7 +163,25 @@
     const onMetadataLoaded = async () => {
         if (!videoRef) return;
 
-        const targetTime = Math.max(0, videoRef.duration - 0.05);
+        // Wait for valid duration (Address the "First Frame" bug)
+        let attempts = 0;
+        while (
+            (isNaN(videoRef.duration) || videoRef.duration === Infinity) &&
+            attempts < 50
+        ) {
+            await new Promise((r) => setTimeout(r, 100));
+            attempts++;
+        }
+
+        const duration = videoRef.duration;
+        // Fallback: If duration is still weird, we can't seek to end.
+        if (isNaN(duration) || duration === Infinity) {
+            console.error("[LastFrame] Could not determine video duration");
+            isProcessing = false;
+            return;
+        }
+
+        const targetTime = Math.max(0, duration - 0.1); // Seek slightly earlier to avoid EOF glitches
 
         if (videoRef.readyState < 2) {
             await new Promise((r) => {
@@ -187,6 +202,9 @@
             };
             videoRef.addEventListener("seeked", onSeek);
         });
+
+        // Small delay to ensure frame is actually rendered
+        await new Promise((r) => setTimeout(r, 150));
 
         if (canvasRef) {
             canvasRef.width = videoRef.videoWidth;
