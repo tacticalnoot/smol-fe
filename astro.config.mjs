@@ -26,7 +26,7 @@ export default defineConfig({
       }
     },
     ssr: {
-      noExternal: ['snarkjs']
+      external: ['snarkjs', 'circomlibjs']
     },
     plugins: [
       nodePolyfills({

@@ -1,0 +1,35 @@
+
+> smol-fe@1.5.4 build
+> node --max-old-space-size=4096 ./node_modules/astro/astro.js build
+
+01:56:32 [@astrojs/cloudflare] Enabling sessions with Cloudflare KV with the "SESSION" KV binding.
+01:56:32 [@astrojs/cloudflare] If you see the error "Invalid binding `SESSION`" in your build output, you need to add the binding to your wrangler config file.
+01:56:32 [WARN] [adapter] Cloudflare does not support sharp at runtime. However, you can configure `imageService: "compile"` to optimize images with sharp on prerendered pages during build time.
+01:56:32 [content] Syncing content
+01:56:32 [content] Synced content
+01:56:32 [types] Generated 187ms
+01:56:32 [build] output: "server"
+01:56:32 [build] mode: "server"
+01:56:32 [build] directory: C:\Users\Jeff\Mixtape Auto\smol-fe\dist\
+01:56:32 [build] adapter: @astrojs/cloudflare
+01:56:32 [build] Collecting build info...
+01:56:32 [build] Γ£ô Completed in 278ms.
+01:56:32 [build] Building server entrypoints...
+01:57:31 [ERROR] [vite] Γ£ù Build failed in 58.58s
+src/components/labs/LastFrame.svelte (12:8): "getTierForBalance" is not exported by "src/components/labs/the-farm/zkProof.ts", imported by "src/components/labs/LastFrame.svelte".
+file: C:/Users/Jeff/Mixtape Auto/smol-fe/src/components/labs/LastFrame.svelte:12:8
+
+10:         hashAddress,
+11:         generateRandomSalt,
+12:         getTierForBalance,
+            ^
+13:     } from "./the-farm/zkProof";
+
+  Location:
+    C:/Users/Jeff/Mixtape Auto/smol-fe/src/components/labs/LastFrame.svelte:12:8
+  Stack trace:
+    at getRollupError (file:///C:/Users/Jeff/Mixtape%20Auto/smol-fe/node_modules/.pnpm/rollup@4.40.1/node_modules/rollup/dist/es/shared/parseAst.js:397:41)
+    at Module.error (file:///C:/Users/Jeff/Mixtape%20Auto/smol-fe/node_modules/.pnpm/rollup@4.40.1/node_modules/rollup/dist/es/shared/node-entry.js:16750:16)
+    at ModuleScope.findVariable (file:///C:/Users/Jeff/Mixtape%20Auto/smol-fe/node_modules/.pnpm/rollup@4.40.1/node_modules/rollup/dist/es/shared/node-entry.js:14855:39)
+    at FunctionBodyScope.findVariable (file:///C:/Users/Jeff/Mixtape%20Auto/smol-fe/node_modules/.pnpm/rollup@4.40.1/node_modules/rollup/dist/es/shared/node-entry.js:5583:38)
+    at FunctionBodyScope.findVariable (file:///C:/Users/Jeff/Mixtape%20Auto/smol-fe/node_modules/.pnpm/rollup@4.40.1/node_modules/rollup/dist/es/shared/node-entry.js:5583:38)
