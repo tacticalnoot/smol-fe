@@ -1,3 +1,184 @@
 ---
-return Astro.redirect("/labs/the-farm/client/", 301);
+import Layout from "../../layouts/Layout.astro";
 ---
+
+<Layout
+  title="The Farm | Stellar ZK Dungeon"
+  description="10 Floors. Two Players. One Winner. Zero-Knowledge Proofs on Stellar."
+  hideBottomBar={true}
+>
+  <style>
+    :global(body) {
+      background: #03060d;
+      margin: 0;
+      overflow: hidden;
+    }
+
+    .tf-hero--centered {
+        display: flex;
+        flex-direction: column;
+        justify-content: center;
+        align-items: center;
+        min-height: 100vh;
+        text-align: center;
+        padding: 20px;
+        position: relative;
+        z-index: 10;
+        color: #e8f2ff;
+        background: radial-gradient(circle at 50% 30%, rgba(20, 30, 50, 0.6), rgba(5, 7, 10, 0.95));
+    }
+
+    .tf-hero__viz {
+        position: absolute;
+        inset: 0;
+        z-index: 0;
+        pointer-events: none;
+    }
+
+    .tf-portal {
+        position: absolute;
+        top: 50%;
+        left: 50%;
+        transform: translate(-50%, -50%);
+        width: 400px;
+        height: 400px;
+        border-radius: 50%;
+        border: 2px solid rgba(255, 193, 139, 0.3);
+        box-shadow: 0 0 100px rgba(255, 144, 90, 0.1);
+        opacity: 0.3;
+        filter: blur(1px);
+        background: radial-gradient(circle, rgba(7, 10, 18, 0.8), transparent 70%);
+    }
+
+    .tf-hero__ring {
+        position: absolute;
+        border: 1px solid rgba(255, 255, 255, 0.08);
+        border-radius: 50%;
+        animation: tf-pulse 7s ease-in-out infinite;
+    }
+    
+    .tf-hero__ring--a { inset: 10%; }
+    .tf-hero__ring--b { inset: 20%; animation-delay: 1.4s; }
+
+    .tf-hero__text {
+        position: relative;
+        z-index: 2;
+        display: flex;
+        flex-direction: column;
+        gap: 12px;
+        align-items: center;
+    }
+
+    .tf-kicker {
+        font-family: "Inter", system-ui, sans-serif;
+        font-size: 12px;
+        letter-spacing: 2px;
+        text-transform: uppercase;
+        color: #ffb374;
+        margin: 0;
+        opacity: 0.9;
+    }
+
+    .tf-title {
+        font-family: "Inter", system-ui, sans-serif;
+        font-size: 48px;
+        font-weight: 900;
+        letter-spacing: -1px;
+        margin: 0;
+        text-shadow: 0 0 30px rgba(122, 255, 207, 0.2);
+        background: linear-gradient(180deg, #fff, #b6c8dd);
+        -webkit-background-clip: text;
+        -webkit-text-fill-color: transparent;
+    }
+
+    .tf-subtitle {
+        font-family: "Inter", system-ui, sans-serif;
+        font-size: 16px;
+        color: #b6c8dd;
+        max-width: 500px;
+        opacity: 0.8;
+        line-height: 1.6;
+        margin: 0;
+    }
+
+    .tf-button--mega {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        margin-top: 40px;
+        font-family: "Inter", system-ui, sans-serif;
+        font-size: 18px;
+        font-weight: 700;
+        padding: 16px 42px;
+        border-radius: 999px;
+        letter-spacing: 2px;
+        text-transform: uppercase;
+        text-decoration: none;
+        color: #041019;
+        background: linear-gradient(120deg, #7affcf, #35c0ff);
+        box-shadow: 0 0 30px rgba(122, 255, 207, 0.3), 0 0 10px rgba(53, 192, 255, 0.5);
+        border: 1px solid rgba(255,255,255,0.4);
+        animation: tf-pulse 3s infinite;
+        transition: transform 0.2s cubic-bezier(0.25, 0.46, 0.45, 0.94);
+    }
+
+    .tf-button--mega:hover {
+        transform: scale(1.05);
+        box-shadow: 0 0 50px rgba(122, 255, 207, 0.6);
+    }
+
+    .tf-pills {
+        display: flex;
+        gap: 10px;
+        margin-top: 40px;
+        opacity: 0.5;
+    }
+
+    .tf-pill {
+        border-radius: 12px;
+        padding: 6px 12px;
+        font-size: 11px;
+        letter-spacing: 0.5px;
+        border: 1px solid rgba(255, 255, 255, 0.12);
+        color: #e8f2ff;
+        font-family: "Inter", system-ui, sans-serif;
+    }
+
+    .tf-pill--amber {
+        border-color: rgba(255, 179, 116, 0.4);
+        color: #ffd5b1;
+    }
+
+    @keyframes tf-pulse {
+        0% { transform: scale(1); opacity: 0.6; }
+        50% { transform: scale(1.02); opacity: 0.9; }
+        100% { transform: scale(1); opacity: 0.6; }
+    }
+  </style>
+
+  <main class="tf-hero tf-hero--centered">
+    <div class="tf-hero__viz">
+        <div class="tf-portal"></div>
+        <div class="tf-hero__ring tf-hero__ring--a"></div>
+        <div class="tf-hero__ring tf-hero__ring--b"></div>
+    </div>
+
+    <div class="tf-hero__text">
+        <p class="tf-kicker">Stellar ZK Dungeon</p>
+        <h1 class="tf-title">THE FARM</h1>
+        <p class="tf-subtitle">
+            10 Floors. Two Players. One Winner.<br/>
+            Wait for the signal. Trust no one.
+        </p>
+
+        <a href="/labs/the-farm/client/play" class="tf-button--mega">
+            ENTER DUNGEON
+        </a>
+
+        <div class="tf-pills">
+            <span class="tf-pill">Turn-Based Strategy</span>
+            <span class="tf-pill tf-pill--amber">Testnet Beta</span>
+        </div>
+    </div>
+  </main>
+</Layout>
