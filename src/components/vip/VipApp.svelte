@@ -28,8 +28,8 @@
     error = null;
     status = "loading-kit";
     try {
-      const { StellarWalletsKit } = await loadWalletKit();
-      kit = StellarWalletsKit;
+      const { kit: loadedKit } = await loadWalletKit();
+      kit = loadedKit;
       status = "auth";
       await kit.authModal();
       const { address } = await kit.getAddress();
