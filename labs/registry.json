@@ -138,7 +138,7 @@
     {
         "id": "lab_last_frame",
         "title": "LastFrame",
-        "description": "Instant last-frame extractor for video loops and thumbnails.",
+        "description": "Instant last-frame capture for video loops and thumbnails.",
         "href": "/labs/video-frame",
         "badge": "EXP-011",
         "tags": [

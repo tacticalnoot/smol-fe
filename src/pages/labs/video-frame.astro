@@ -1,7 +1,7 @@
 ---
 import Layout from "../../layouts/Layout.astro";
 import BackLink from "../../components/labs/BackLink.astro";
-import VideoFrameExtractor from "../../components/labs/VideoFrameExtractor.svelte";
+import LastFrame from "../../components/labs/LastFrame.svelte";
 ---
 
 <Layout title="Smol Labs | LastFrame">
@@ -21,10 +21,10 @@ import VideoFrameExtractor from "../../components/labs/VideoFrameExtractor.svelt
         </div>
 
         <p class="text-[#777] mb-8 text-sm max-w-lg">
-          Extract the final frame from any video in full resolution. Perfect for <strong>extending AI generations</strong>, creating seamless loops, or grabbing input images for img2vid workflows.
+          Grab the final frame from any video in full resolution. Perfect for <strong>extending AI generations</strong>, creating seamless loops, or input images for img2vid workflows.
         </p>
 
-        <VideoFrameExtractor client:visible />
+        <LastFrame client:visible />
       </div>
     </div>
   </div>
