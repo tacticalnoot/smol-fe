@@ -140,14 +140,14 @@
         "title": "LastFrame",
         "description": "Instant last-frame capture for video loops and thumbnails.",
         "href": "/labs/video-frame",
-        "badge": "EXP-011",
+        "badge": "ZK-SIG",
         "tags": [
             "Video",
             "Tool",
-            "Utility"
+            "Verified"
         ],
         "isLocked": false,
-        "status_color": "#facc15",
-        "readiness_score": 90
+        "status_color": "GREEN",
+        "readiness_score": 100
     }
 ]
