@@ -18,15 +18,15 @@
     import { getTierForBalance } from "./the-farm/zkTypes";
     import { getSafeRpId } from "../../utils/domains";
 
-    let videoFile: File | null = null;
-    let videoSrc: string | null = null;
+    let videoFile: File | null = $state(null);
+    let videoSrc: string | null = $state(null);
     let videoRef: HTMLVideoElement;
     let canvasRef: HTMLCanvasElement;
-    let extractedImage: string | null = null;
-    let isProcessing = false;
-    let isVerified = false;
-    let isVerifying = false;
-    let verificationError = "";
+    let extractedImage: string | null = $state(null);
+    let isProcessing = $state(false);
+    let isVerified = $state(false);
+    let isVerifying = $state(false);
+    let verificationError = $state("");
 
     // ZK Proof Data for visualization
     let activeProof: any = $state(null);
@@ -55,6 +55,7 @@
     });
 
     const startVerification = async () => {
+        if (isVerifying) return; // Prevent double-trigger
         isVerifying = true;
         verificationError = "";
         activeProof = null;
@@ -119,10 +120,20 @@
             // Trigger Passkey Signature (Identity Commitment)
             // We use connectWallet to perform a biometric check and bind the user's focus
             // to the freshly generated ZK proof.
-            await kit.connectWallet({
-                rpId,
-                keyId: userState.keyId, // Specific key re-authentication
-            });
+            try {
+                await kit.connectWallet({
+                    rpId,
+                    keyId: userState.keyId,
+                    getContractId: async () => userState.contractId,
+                });
+                console.log("[LastFrame] Passkey Commitment Success");
+            } catch (pErr: any) {
+                console.error("[LastFrame] Passkey Commitment Failed:", pErr);
+                throw new Error(
+                    "Identity commitment failed: " +
+                        (pErr.message || "User cancelled or timeout"),
+                );
+            }
 
             checks[3].status = "done";
 
