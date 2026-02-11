@@ -15,7 +15,8 @@
         generateRandomSalt,
         hashProof,
     } from "./the-farm/zkProof";
-    import { getTierForBalance, getSafeRpId } from "./the-farm/zkTypes";
+    import { getTierForBalance } from "./the-farm/zkTypes";
+    import { getSafeRpId } from "../../utils/domains";
 
     let videoFile: File | null = null;
     let videoSrc: string | null = null;
