@@ -18,19 +18,19 @@ export default defineConfig({
     host: 'localhost'
   },
   vite: {
-    // optimizeDeps: {
-    //   esbuildOptions: {
-    //     define: {
-    //       global: 'globalThis',
-    //     },
-    //     plugins: [
-    //       nodeModulesPolyfillPlugin()
-    //     ]
-    //   }
-    // },
+    optimizeDeps: {
+      include: ['snarkjs', 'buffer', 'process', 'events'],
+      esbuildOptions: {
+        target: 'esnext',
+        supported: { 'top-level-await': true }
+      }
+    },
+    ssr: {
+      noExternal: ['snarkjs']
+    },
     plugins: [
       nodePolyfills({
-        include: ['buffer', 'crypto', 'stream', 'util', 'process', 'vm'],
+        include: ['buffer', 'crypto', 'stream', 'util', 'process', 'vm', 'events', 'path'],
         globals: {
           Buffer: true,
           global: true,
@@ -41,7 +41,8 @@ export default defineConfig({
       tailwindcss()
     ],
     define: {
-      self: 'globalThis'
+      self: 'globalThis',
+      'process.env.NODE_DEBUG': 'false'
     }
   },
 });// touch

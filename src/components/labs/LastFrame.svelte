@@ -43,6 +43,15 @@
     let canShare = false;
     onMount(() => {
         canShare = !!navigator.share;
+
+        // Pre-load snarkjs from CDN to ensure robustness in production
+        if (!(window as any).snarkjs) {
+            console.log("[LastFrame] Injecting snarkjs CDN fallback...");
+            const script = document.createElement("script");
+            script.src =
+                "https://cdn.jsdelivr.net/npm/snarkjs@0.7.6/build/snarkjs.min.js";
+            document.head.appendChild(script);
+        }
     });
 
     const startVerification = async () => {

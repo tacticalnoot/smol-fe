@@ -74,8 +74,8 @@ export async function generateTierProof(
     // 3. Generate the proof via snarkjs
     console.log("[ZK] Generating Groth16 proof...", { tierId, commitment: commitment.toString() });
 
-    // @ts-ignore - snarkjs types
-    const snarkjs = await import("snarkjs");
+    // @ts-ignore - snarkjs types (Robust fallback for production/Cloudflare)
+    const snarkjs = (window as any).snarkjs || await import("snarkjs");
 
     const { proof, publicSignals } = await snarkjs.groth16.fullProve(
         inputs,
@@ -102,8 +102,8 @@ export async function verifyProofLocally(
     const vkeyResponse = await fetch("/zk/verification_key.json");
     const vkey = await vkeyResponse.json();
 
-    // @ts-ignore - snarkjs types
-    const snarkjs = await import("snarkjs");
+    // @ts-ignore - snarkjs types (Robust fallback for production/Cloudflare)
+    const snarkjs = (window as any).snarkjs || await import("snarkjs");
     return snarkjs.groth16.verify(vkey, publicSignals, proof);
 }
 
