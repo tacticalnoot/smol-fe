@@ -9,8 +9,8 @@
         generateTierProof,
         hashAddress,
         generateRandomSalt,
-        getTierForBalance,
     } from "./the-farm/zkProof";
+    import { getTierForBalance } from "./the-farm/zkTypes";
 
     let videoFile: File | null = null;
     let videoSrc: string | null = null;
