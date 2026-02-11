@@ -1,7 +1,7 @@
 name = "vip-worker"
 main = "src/index.ts"
 compatibility_date = "2024-12-18"
-node_compat = true
+compatibility_flags = ["nodejs_compat"]
 
 [vars]
 VIP_TOKEN_TTL_SECONDS = 600
@@ -15,4 +15,4 @@ bindings = [
 
 [[migrations]]
 tag = "v1"
-new_classes = ["RoomsDO"]
+new_sqlite_classes = ["RoomsDO"]

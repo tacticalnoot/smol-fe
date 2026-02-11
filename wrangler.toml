@@ -27,11 +27,7 @@ VIP_HORIZON_URL = "https://horizon.stellar.org"
 
 [durable_objects]
 bindings = [
-  { name = "VIP_ROOMS", class_name = "RoomsDO" }
+  { name = "VIP_ROOMS", class_name = "RoomsDO", script_name = "vip-worker" }
 ]
-
-[[migrations]]
-tag = "vip-v1"
-new_classes = ["RoomsDO"]
 
 
