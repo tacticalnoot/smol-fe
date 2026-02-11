@@ -5,7 +5,8 @@
   "scripts": {
     "dev": "astro dev",
     "start": "astro dev",
-    "build": "node --max-old-space-size=4096 ./node_modules/astro/astro.js build",
+    "build": "pnpm build:the-farm-client && node --max-old-space-size=4096 ./node_modules/astro/astro.js build",
+    "build:the-farm-client": "node scripts/sync-the-farm-client.mjs",
     "preview": "astro preview",
     "astro": "astro",
     "test": "node --test tests/*.test.js",
