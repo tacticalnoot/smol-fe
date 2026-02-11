@@ -1,28 +1,23 @@
-let kitPromise: Promise<{
-  StellarWalletsKit: any;
-  WalletNetwork: any;
-}> | null = null;
+let kitPromise:
+  | Promise<{
+      kit: any;
+      WalletNetwork: any;
+    }>
+  | null = null;
 
 export async function loadWalletKit() {
   if (kitPromise) return kitPromise;
 
   kitPromise = (async () => {
-    const [{ StellarWalletsKit, WalletNetwork }, utils] = await Promise.all([
-      import("@creit.tech/stellar-wallets-kit/sdk"),
-      import("@creit.tech/stellar-wallets-kit/modules/utils"),
-    ]);
-
-    const modules =
-      typeof utils.defaultModules === "function"
-        ? utils.defaultModules()
-        : utils.modules?.default?.() ?? [];
-
-    StellarWalletsKit.init({
+    const { StellarWalletsKit, WalletNetwork, allowAllModules } = await import(
+      "@creit.tech/stellar-wallets-kit"
+    );
+    const modules = allowAllModules();
+    const kit = new StellarWalletsKit({
       modules,
       network: WalletNetwork.PUBLIC,
     });
-
-    return { StellarWalletsKit, WalletNetwork };
+    return { kit, WalletNetwork };
   })();
 
   return kitPromise;
