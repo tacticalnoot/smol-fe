@@ -139,7 +139,7 @@
         "id": "lab_last_frame",
         "title": "LastFrame",
         "description": "Instant last-frame capture for video loops and thumbnails.",
-        "href": "/labs/video-frame",
+        "href": "/labs/lastframe",
         "badge": "ZK-SIG",
         "tags": [
             "Video",
