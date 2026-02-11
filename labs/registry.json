@@ -149,5 +149,23 @@
         "isLocked": false,
         "status_color": "GREEN",
         "readiness_score": 100
+    },
+    {
+        "id": "lab_the_vip",
+        "title": "THE VIP",
+        "badge": "ZK-GATED",
+        "status_color": "GREEN",
+        "readiness_score": 70,
+        "last_reviewed": "2026-02-11",
+        "blast_radius": "LABS_ONLY",
+        "path": "experiments/the-vip/experiment.yml",
+        "href": "/labs/the-vip",
+        "description": "Route-isolated Stellar Wallets Kit + E2EE chat (Commons + Lumenauts).",
+        "tags": [
+            "Stellar",
+            "Chat",
+            "E2EE"
+        ],
+        "isLocked": false
     }
 ]
