@@ -127,7 +127,7 @@
         "last_reviewed": "2026-02-07",
         "blast_radius": "LABS_ONLY",
         "path": "experiments/the-farm/experiment.yml",
-        "href": "/labs/the-farm/client/",
+        "href": "/labs/the-farm",
         "description": "Zero-Knowledge proofs on Stellar. Prove your KALE tier via Groth16 on the BN254 curve with on-chain verification.",
         "tags": [
             "ZK",
