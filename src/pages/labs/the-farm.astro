@@ -1,184 +1,159 @@
 ---
 import Layout from "../../layouts/Layout.astro";
+import TheFarmCore from "../../components/labs/the-farm/TheFarmCore.svelte";
+import FarmSampleProofs from "../../components/labs/the-farm/FarmSampleProofs.svelte";
 ---
 
-<Layout
-  title="The Farm | Stellar ZK Dungeon"
-  description="10 Floors. Two Players. One Winner. Zero-Knowledge Proofs on Stellar."
-  hideBottomBar={true}
->
-  <style>
-    :global(body) {
-      background: #03060d;
-      margin: 0;
-      overflow: hidden;
-    }
+<Layout title="The Farm | Smol Labs" description="Proof of Farm — commit your KALE farming tier with a salted SHA-256 hash. Smart Wallet Dreamboard on Stellar.">
+  <link href="https://fonts.googleapis.com/css2?family=Press+Start+2P&display=swap" rel="stylesheet">
 
-    .tf-hero--centered {
-        display: flex;
-        flex-direction: column;
-        justify-content: center;
-        align-items: center;
-        min-height: 100vh;
-        text-align: center;
-        padding: 20px;
-        position: relative;
-        z-index: 10;
-        color: #e8f2ff;
-        background: radial-gradient(circle at 50% 30%, rgba(20, 30, 50, 0.6), rgba(5, 7, 10, 0.95));
-    }
+  <div class="farm-page" style="font-family: 'Press Start 2P', cursive;">
 
-    .tf-hero__viz {
-        position: absolute;
-        inset: 0;
-        z-index: 0;
-        pointer-events: none;
-    }
+    <!-- Nav Back -->
+    <a href="/labs" class="absolute top-4 left-4 md:top-8 md:left-8 z-30 text-[10px] md:text-xs uppercase tracking-widest text-[#5a8a5a] hover:text-[#9ae600] flex items-center gap-2 transition-colors">
+      <span>&larr; LABS</span>
+    </a>
 
-    .tf-portal {
-        position: absolute;
-        top: 50%;
-        left: 50%;
-        transform: translate(-50%, -50%);
-        width: 400px;
-        height: 400px;
-        border-radius: 50%;
-        border: 2px solid rgba(255, 193, 139, 0.3);
-        box-shadow: 0 0 100px rgba(255, 144, 90, 0.1);
-        opacity: 0.3;
-        filter: blur(1px);
-        background: radial-gradient(circle, rgba(7, 10, 18, 0.8), transparent 70%);
-    }
-
-    .tf-hero__ring {
-        position: absolute;
-        border: 1px solid rgba(255, 255, 255, 0.08);
-        border-radius: 50%;
-        animation: tf-pulse 7s ease-in-out infinite;
-    }
-    
-    .tf-hero__ring--a { inset: 10%; }
-    .tf-hero__ring--b { inset: 20%; animation-delay: 1.4s; }
-
-    .tf-hero__text {
-        position: relative;
-        z-index: 2;
-        display: flex;
-        flex-direction: column;
-        gap: 12px;
-        align-items: center;
-    }
-
-    .tf-kicker {
-        font-family: "Inter", system-ui, sans-serif;
-        font-size: 12px;
-        letter-spacing: 2px;
-        text-transform: uppercase;
-        color: #ffb374;
-        margin: 0;
-        opacity: 0.9;
-    }
-
-    .tf-title {
-        font-family: "Inter", system-ui, sans-serif;
-        font-size: 48px;
-        font-weight: 900;
-        letter-spacing: -1px;
-        margin: 0;
-        text-shadow: 0 0 30px rgba(122, 255, 207, 0.2);
-        background: linear-gradient(180deg, #fff, #b6c8dd);
-        -webkit-background-clip: text;
-        -webkit-text-fill-color: transparent;
-    }
-
-    .tf-subtitle {
-        font-family: "Inter", system-ui, sans-serif;
-        font-size: 16px;
-        color: #b6c8dd;
-        max-width: 500px;
-        opacity: 0.8;
-        line-height: 1.6;
-        margin: 0;
-    }
-
-    .tf-button--mega {
-        display: inline-flex;
-        align-items: center;
-        justify-content: center;
-        margin-top: 40px;
-        font-family: "Inter", system-ui, sans-serif;
-        font-size: 18px;
-        font-weight: 700;
-        padding: 16px 42px;
-        border-radius: 999px;
-        letter-spacing: 2px;
-        text-transform: uppercase;
-        text-decoration: none;
-        color: #041019;
-        background: linear-gradient(120deg, #7affcf, #35c0ff);
-        box-shadow: 0 0 30px rgba(122, 255, 207, 0.3), 0 0 10px rgba(53, 192, 255, 0.5);
-        border: 1px solid rgba(255,255,255,0.4);
-        animation: tf-pulse 3s infinite;
-        transition: transform 0.2s cubic-bezier(0.25, 0.46, 0.45, 0.94);
-    }
-
-    .tf-button--mega:hover {
-        transform: scale(1.05);
-        box-shadow: 0 0 50px rgba(122, 255, 207, 0.6);
-    }
-
-    .tf-pills {
-        display: flex;
-        gap: 10px;
-        margin-top: 40px;
-        opacity: 0.5;
-    }
-
-    .tf-pill {
-        border-radius: 12px;
-        padding: 6px 12px;
-        font-size: 11px;
-        letter-spacing: 0.5px;
-        border: 1px solid rgba(255, 255, 255, 0.12);
-        color: #e8f2ff;
-        font-family: "Inter", system-ui, sans-serif;
-    }
-
-    .tf-pill--amber {
-        border-color: rgba(255, 179, 116, 0.4);
-        color: #ffd5b1;
-    }
-
-    @keyframes tf-pulse {
-        0% { transform: scale(1); opacity: 0.6; }
-        50% { transform: scale(1.02); opacity: 0.9; }
-        100% { transform: scale(1); opacity: 0.6; }
-    }
-  </style>
-
-  <main class="tf-hero tf-hero--centered">
-    <div class="tf-hero__viz">
-        <div class="tf-portal"></div>
-        <div class="tf-hero__ring tf-hero__ring--a"></div>
-        <div class="tf-hero__ring tf-hero__ring--b"></div>
+    <!-- TheFarmCore: original hero + full interactive game -->
+    <div class="farm-core-wrapper">
+      <TheFarmCore client:only="svelte" />
     </div>
 
-    <div class="tf-hero__text">
-        <p class="tf-kicker">Stellar ZK Dungeon</p>
-        <h1 class="tf-title">THE FARM</h1>
-        <p class="tf-subtitle">
-            10 Floors. Two Players. One Winner.<br/>
-            Wait for the signal. Trust no one.
-        </p>
+    <!-- Quick Links: game routes added in recent commits -->
+    <section class="quick-links">
+      <h2 class="ql-heading">More Games</h2>
+      <div class="ql-grid">
 
-        <a href="/labs/the-farm/client/play" class="tf-button--mega">
-            ENTER DUNGEON
+        <a href="/labs/the-farm/dungeon-room" class="ql-card">
+          <h3 class="ql-card-title">ZK Dungeon</h3>
+          <p class="ql-card-desc">10 floors of ZK-proven door choices. Every move is a Groth16 proof on Stellar.</p>
+          <span class="ql-card-cta">Play &rarr;</span>
         </a>
 
-        <div class="tf-pills">
-            <span class="tf-pill">Turn-Based Strategy</span>
-            <span class="tf-pill tf-pill--amber">Testnet Beta</span>
-        </div>
+        <a href="/labs/the-farm/client/play" class="ql-card">
+          <h3 class="ql-card-title">Dungeon Client</h3>
+          <p class="ql-card-desc">Launch the standalone game client with full-screen dungeon experience.</p>
+          <span class="ql-card-cta">Play &rarr;</span>
+        </a>
+
+        <a href="/labs/the-farm/zkdungeon" class="ql-card">
+          <h3 class="ql-card-title">ZK Dungeon Portal</h3>
+          <p class="ql-card-desc">Quick-launch portal — jump straight into the dungeon from any device.</p>
+          <span class="ql-card-cta">Play &rarr;</span>
+        </a>
+
+      </div>
+    </section>
+
+    <!-- Sample Proofs -->
+    <div class="sample-proofs-wrapper">
+      <FarmSampleProofs client:visible />
     </div>
-  </main>
+
+  </div>
 </Layout>
+
+<style is:global>
+  .farm-page {
+    position: relative;
+    width: 100%;
+    min-height: 100vh;
+    background: linear-gradient(170deg, #020617 0%, #041008 40%, #020617 100%);
+  }
+
+  .farm-core-wrapper {
+    position: relative;
+    z-index: 10;
+    width: 100%;
+  }
+
+  /* ── Quick Links ── */
+  .quick-links {
+    position: relative;
+    z-index: 10;
+    width: 100%;
+    max-width: 1100px;
+    margin: 0 auto;
+    padding: 48px 20px;
+  }
+
+  .ql-heading {
+    font-family: "Inter", system-ui, sans-serif;
+    font-size: 28px;
+    font-weight: 800;
+    letter-spacing: -0.5px;
+    color: #e8f2ff;
+    margin: 0 0 24px;
+  }
+
+  .ql-grid {
+    display: grid;
+    grid-template-columns: 1fr;
+    gap: 16px;
+  }
+
+  @media (min-width: 640px) {
+    .ql-grid {
+      grid-template-columns: repeat(2, 1fr);
+    }
+  }
+
+  @media (min-width: 1024px) {
+    .ql-grid {
+      grid-template-columns: repeat(3, 1fr);
+    }
+  }
+
+  .ql-card {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    padding: 20px;
+    background: rgba(10, 18, 30, 0.8);
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    border-radius: 12px;
+    text-decoration: none;
+    transition: border-color 0.2s, box-shadow 0.2s, transform 0.2s;
+  }
+
+  .ql-card:hover {
+    border-color: rgba(154, 230, 0, 0.4);
+    box-shadow: 0 0 24px rgba(154, 230, 0, 0.08);
+    transform: translateY(-2px);
+  }
+
+  .ql-card-title {
+    font-family: "Inter", system-ui, sans-serif;
+    font-size: 16px;
+    font-weight: 700;
+    color: #e8f2ff;
+    margin: 0;
+  }
+
+  .ql-card-desc {
+    font-family: "Inter", system-ui, sans-serif;
+    font-size: 13px;
+    color: #8899aa;
+    line-height: 1.5;
+    margin: 0;
+    flex: 1;
+  }
+
+  .ql-card-cta {
+    font-family: "Inter", system-ui, sans-serif;
+    font-size: 12px;
+    font-weight: 600;
+    color: #9ae600;
+    letter-spacing: 0.5px;
+    text-transform: uppercase;
+    margin-top: 8px;
+  }
+
+  /* ── Sample Proofs Wrapper ── */
+  .sample-proofs-wrapper {
+    position: relative;
+    z-index: 10;
+    width: 100%;
+    border-top: 1px solid rgba(255, 255, 255, 0.05);
+  }
+</style>
