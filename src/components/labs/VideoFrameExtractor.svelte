@@ -8,6 +8,12 @@
     let extractedImage: string | null = null;
     let isProcessing = false;
 
+    // Check for native share support (Mobile)
+    let canShare = false;
+    onMount(() => {
+        canShare = !!navigator.share;
+    });
+
     const handleFileChange = (e: Event) => {
         const target = e.target as HTMLInputElement;
         if (target.files && target.files[0]) {
@@ -21,10 +27,23 @@
     const onMetadataLoaded = async () => {
         if (!videoRef) return;
 
-        // Seek to very end (duration - small buffer)
-        videoRef.currentTime = Math.max(0, videoRef.duration - 0.05);
+        // iOS Hack: Video needs to be "playing" to seek sometimes, but muted/playsinline handles most.
+        // We try to seek to end.
+        const targetTime = Math.max(0, videoRef.duration - 0.05);
 
-        // Wait for seek
+        // Force stricter loading for iOS
+        if (videoRef.readyState < 2) {
+            await new Promise((r) => {
+                const onLoaded = () => {
+                    videoRef.removeEventListener("loadeddata", onLoaded);
+                    r(true);
+                };
+                videoRef.addEventListener("loadeddata", onLoaded);
+            });
+        }
+
+        videoRef.currentTime = targetTime;
+
         await new Promise((r) => {
             const onSeek = () => {
                 videoRef.removeEventListener("seeked", onSeek);
@@ -33,7 +52,6 @@
             videoRef.addEventListener("seeked", onSeek);
         });
 
-        // Capture high-res frame
         if (canvasRef) {
             canvasRef.width = videoRef.videoWidth;
             canvasRef.height = videoRef.videoHeight;
@@ -64,7 +82,29 @@
             });
         } catch (err) {
             console.error("Failed to copy", err);
+            alert("Clipboard not supported. Use Share or Download.");
         }
+    };
+
+    const shareImage = async () => {
+        if (!canvasRef || !videoFile) return;
+        canvasRef.toBlob(async (blob) => {
+            if (!blob) return;
+            const file = new File([blob], "last-frame.png", {
+                type: "image/png",
+            });
+            if (navigator.share) {
+                try {
+                    await navigator.share({
+                        files: [file],
+                        title: "Last Frame",
+                        text: "Extracted via Smol Labs",
+                    });
+                } catch (err) {
+                    console.log("Share cancelled or failed", err);
+                }
+            }
+        });
     };
 
     const reset = () => {
@@ -78,7 +118,7 @@
     {#if !videoSrc}
         <!-- Upload Zone -->
         <div
-            class="border-2 border-dashed border-[#333] rounded-xl p-24 text-center hover:border-[#9ae600] transition-colors cursor-pointer relative group bg-[#050505]"
+            class="border-2 border-dashed border-[#333] rounded-xl p-12 md:p-24 text-center hover:border-[#9ae600] transition-colors cursor-pointer relative group bg-[#050505]"
         >
             <input
                 type="file"
@@ -88,16 +128,21 @@
             />
             <div class="space-y-6 pointer-events-none">
                 <div
-                    class="text-7xl group-hover:scale-110 transition-transform duration-300"
+                    class="text-5xl md:text-7xl group-hover:scale-110 transition-transform duration-300"
                 >
                     📼
                 </div>
                 <div>
-                    <h3 class="text-2xl uppercase tracking-[0.2em] mb-2">
-                        Drop Video
+                    <h3
+                        class="text-xl md:text-2xl uppercase tracking-[0.2em] mb-2"
+                    >
+                        Tap / Drop Video
                     </h3>
-                    <p class="text-[#555] text-xs">
+                    <p class="text-[#555] text-[10px] md:text-xs">
                         Instant Last Frame Extraction
+                    </p>
+                    <p class="text-[#333] text-[8px] mt-2 uppercase">
+                        Works on iOS • Android • Desktop
                     </p>
                 </div>
             </div>
@@ -105,7 +150,7 @@
     {:else}
         <!-- Processing / Result View -->
         <div
-            class="border border-[#333] rounded-xl p-8 bg-[#050505] flex flex-col items-center justify-center min-h-[400px]"
+            class="border border-[#333] rounded-xl p-4 md:p-8 bg-[#050505] flex flex-col items-center justify-center min-h-[400px]"
         >
             <!-- Hidden Video Element for Processing -->
             <!-- svelte-ignore a11y-media-has-caption -->
@@ -116,6 +161,7 @@
                 on:loadedmetadata={onMetadataLoaded}
                 muted
                 playsinline
+                autoplay
             ></video>
             <canvas bind:this={canvasRef} class="hidden"></canvas>
 
@@ -125,7 +171,7 @@
                         class="w-12 h-12 border-4 border-[#333] border-t-[#9ae600] rounded-full animate-spin"
                     ></div>
                     <p class="text-[#9ae600] uppercase tracking-widest text-sm">
-                        Seeking End of Tape...
+                        Seeking End...
                     </p>
                 </div>
             {:else if extractedImage}
@@ -145,22 +191,35 @@
                         ></div>
                     </div>
 
-                    <div class="flex items-center justify-center gap-6">
+                    <div
+                        class="flex flex-wrap items-center justify-center gap-4"
+                    >
                         <button
                             on:click={reset}
-                            class="px-6 py-3 rounded border border-[#333] text-[#777] hover:text-[#bbb] hover:border-[#555] transition-all text-xs uppercase tracking-widest"
+                            class="px-4 py-3 rounded border border-[#333] text-[#777] hover:text-[#bbb] hover:border-[#555] transition-all text-xs uppercase tracking-widest flex-1 md:flex-none"
                         >
-                            Start Over
+                            Restart
                         </button>
-                        <button
-                            on:click={copyImage}
-                            class="px-6 py-3 rounded border border-[#9ae600] text-[#9ae600] hover:bg-[#9ae600]/10 transition-all text-sm uppercase tracking-widest"
-                        >
-                            Copy
-                        </button>
+
+                        {#if canShare}
+                            <button
+                                on:click={shareImage}
+                                class="px-4 py-3 rounded border border-[#9ae600] text-[#9ae600] hover:bg-[#9ae600]/10 transition-all text-sm uppercase tracking-widest flex-1 md:flex-none"
+                            >
+                                Share / Save
+                            </button>
+                        {:else}
+                            <button
+                                on:click={copyImage}
+                                class="px-4 py-3 rounded border border-[#9ae600] text-[#9ae600] hover:bg-[#9ae600]/10 transition-all text-sm uppercase tracking-widest flex-1 md:flex-none"
+                            >
+                                Copy
+                            </button>
+                        {/if}
+
                         <button
                             on:click={downloadImage}
-                            class="bg-[#9ae600] text-black px-8 py-3 rounded font-bold hover:bg-[#b0ff00] hover:scale-105 transition-all shadow-[0_0_20px_rgba(154,230,0,0.3)] text-sm uppercase tracking-widest"
+                            class="bg-[#9ae600] text-black px-6 py-3 rounded font-bold hover:bg-[#b0ff00] hover:scale-105 transition-all shadow-[0_0_20px_rgba(154,230,0,0.3)] text-sm uppercase tracking-widest flex-1 md:flex-none whitespace-nowrap"
                         >
                             Download PNG
                         </button>
