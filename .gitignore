@@ -69,3 +69,7 @@ artifacts/phase-*.json
 
 .agent/_reports/
 
+# Agent Coordination
+THE_FARM_LOG.md
+CLAWDBOT_DIRECTIVES.md
+

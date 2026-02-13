@@ -1,6 +1,6 @@
 # THE FARM Evidence Pack
 
-Date: 2026-02-12
+Date: 2026-02-13
 
 ## Guardrails
 
@@ -170,18 +170,26 @@ Contract + client paths:
 Environment check:
 
 ```text
-PUBLIC_MAINNET_RPC_URL=
-PUBLIC_MAINNET_NETWORK_PASSPHRASE=
-PUBLIC_FARM_ATTESTATIONS_CONTRACT_ID_MAINNET=
+PUBLIC_MAINNET_RPC_URL=https://rpc.ankr.com/stellar_soroban
+PUBLIC_MAINNET_NETWORK_PASSPHRASE=Public Global Stellar Network ; September 2015
+PUBLIC_FARM_ATTESTATIONS_CONTRACT_ID_MAINNET=CDVJZSMI5KSRK7T6D6GGYVB6UPFCDQLAZAYRGXVJKDBOHLAZOPHHX2FR
 ```
 
-Status:
-- Mainnet deploy/invoke evidence is not complete in this environment because required vars are missing.
-- UI remains gated and shows missing vars:
-  - `PUBLIC_MAINNET_RPC_URL`
-  - `PUBLIC_FARM_ATTESTATIONS_CONTRACT_ID_MAINNET`
+Mainnet deploy (upgrade-capable contract + admin init):
+- install tx: `a683f02cc146911abb18dc377271613538316c9e7b7ca5061995b9199ebe1c91`
+- deploy tx: `9498f3e6ca14b989d31e6273149b9383cf9947de698733722ee4679f77434225`
+- init_admin tx: `a522fc606e955f2572ed6ed3ac04a6fe4d9706a88d720e273bb5f7ce5425e6db`
+- contract id: `CDVJZSMI5KSRK7T6D6GGYVB6UPFCDQLAZAYRGXVJKDBOHLAZOPHHX2FR`
 
-Required for full completion:
-- Mainnet contract ID
-- 3 mainnet tx hashes (Circom / Noir / RISC0)
-- Stellar Expert links for each tx
+Mainnet attest transactions (one per proof system):
+- Circom tx: `03845ab36a1528a5ddaf1c7bc108700770e3446b470f8a5f675969088ed20283`
+  - https://stellar.expert/explorer/public/tx/03845ab36a1528a5ddaf1c7bc108700770e3446b470f8a5f675969088ed20283
+- Noir tx: `a7bc728b182a3a830ecb928a144fd56f92e9242d36a04bb3141019d1d0a7172f`
+  - https://stellar.expert/explorer/public/tx/a7bc728b182a3a830ecb928a144fd56f92e9242d36a04bb3141019d1d0a7172f
+- RISC0 tx: `61ce5991ffbd0705280d8fab12b88b44997ab34c1d60dfc6ffe8040c2844995a`
+  - https://stellar.expert/explorer/public/tx/61ce5991ffbd0705280d8fab12b88b44997ab34c1d60dfc6ffe8040c2844995a
+
+Notes:
+- These txs are confirmed `SUCCESS` on mainnet.
+- Attestation payloads use digest-only fields (`statement_hash`, `verifier_hash`) and do not publish proof bodies.
+- The passkey frontend path remains `src/lib/the-farm/attest/publishAttestationMainnet.ts`; txs above were submitted from CLI for environment evidence.
