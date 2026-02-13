@@ -31,3 +31,9 @@ bindings = [
 ]
 
 
+
+[[d1_databases]]
+binding = "DB"
+database_name = "smol-chat-db"
+database_id = "c89be5eb-b58d-4829-9b9d-7911fbed722a"
+

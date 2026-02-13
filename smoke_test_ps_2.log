@@ -1,0 +1,18 @@
+--- CI Smoke Test: Server-side Noir Verification ---
+Starting local Cloudflare Workers server...
+Waiting for server to be ready on port 8788...
+C:\Users\Jeff\Mixtape Auto
+\smol-fe\scripts\ci-smoke.
+ps1 : Error: Server 
+failed to start in time.
+    + CategoryInfo        
+      : NotSpecified: (:  
+  ) [Write-Error], Writ   
+ eErrorException
+    + FullyQualifiedError 
+   Id : Microsoft.PowerS  
+  hell.Commands.WriteEr   
+ rorException,ci-smoke    
+.ps1
+ 
+Cleaning up...

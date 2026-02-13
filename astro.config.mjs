@@ -1,10 +1,8 @@
 // @ts-check
 import { defineConfig } from 'astro/config';
 import svelte from '@astrojs/svelte';
-// import { nodeModulesPolyfillPlugin } from 'esbuild-plugins-node-modules-polyfill';
 import cloudflare from '@astrojs/cloudflare';
 import tailwindcss from '@tailwindcss/vite';
-import mkcert from 'vite-plugin-mkcert';
 import { nodePolyfills } from 'vite-plugin-node-polyfills';
 import sitemap from '@astrojs/sitemap';
 
@@ -15,10 +13,16 @@ export default defineConfig({
   integrations: [svelte(), sitemap()],
   adapter: cloudflare(),
   server: {
-    host: 'localhost'
+    host: 'localhost',
+    headers: {
+      // Required for SharedArrayBuffer (Noir multiprocessing)
+      'Cross-Origin-Embedder-Policy': 'require-corp',
+      'Cross-Origin-Opener-Policy': 'same-origin',
+    }
   },
   vite: {
     optimizeDeps: {
+<<<<<<< HEAD
       include: ['snarkjs', 'buffer', 'process', 'events'],
       esbuildOptions: {
         target: 'esnext',
@@ -27,6 +31,16 @@ export default defineConfig({
     },
     ssr: {
       external: ['snarkjs', 'circomlibjs']
+=======
+      exclude: ['@noir-lang/backend_barretenberg', '@noir-lang/noir_js'],
+      esbuildOptions: {
+        target: 'esnext'
+      }
+    },
+    // Fix for Noir in Vite SSR
+    ssr: {
+      noExternal: ['@noir-lang/backend_barretenberg', '@noir-lang/noir_js']
+>>>>>>> farm-mainnet-real-triple-zk
     },
     plugins: [
       nodePolyfills({
@@ -37,12 +51,19 @@ export default defineConfig({
           process: true,
         },
       }),
-      // mkcert(),
       tailwindcss()
     ],
     define: {
+<<<<<<< HEAD
       self: 'globalThis',
       'process.env.NODE_DEBUG': 'false'
+=======
+      // Polyfill self for some browser libs running in worker/ssr
+      self: 'globalThis'
+    },
+    build: {
+      target: 'esnext'
+>>>>>>> farm-mainnet-real-triple-zk
     }
   },
-});// touch
+});

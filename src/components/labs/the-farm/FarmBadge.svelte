@@ -9,6 +9,8 @@
 
     let tierData = $derived(badge?.data?.tier != null ? TIER_CONFIG[badge.data.tier as number] : null);
     let commitment = $derived(badge?.data?.commitment as string | undefined);
+    let attestationTx = $derived(badge?.data?.attestationTx as string | undefined);
+    let verificationState = $derived(badge?.data?.state as 'local' | 'attested' | undefined);
 
     function timeAgo(ts: number): string {
         const s = Math.floor((Date.now() - ts) / 1000);
@@ -39,7 +41,17 @@
 
             <div class="badge-verified">
                 <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>
+<<<<<<< HEAD
                 <span>Commitment sealed</span>
+=======
+                {#if verificationState === 'attested' && attestationTx}
+                    <span>Attested on Stellar (Mainnet)</span>
+                {:else if verificationState === 'local'}
+                    <span>Verified locally</span>
+                {:else}
+                    <span>Not attested</span>
+                {/if}
+>>>>>>> farm-mainnet-real-triple-zk
             </div>
 
             {#if commitment}

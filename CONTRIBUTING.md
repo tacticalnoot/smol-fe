@@ -12,7 +12,12 @@ This project and everyone participating in it is governed by the [Code of Conduc
 
 1.  **Fork the repo** and clone it locally.
 2.  **Install dependencies**: `pnpm install` (We strictly use `pnpm`).
-3.  **Start development**: `pnpm dev` (Runs on port `4321`).
+### Development
+
+- **Frontend**: `pnpm dev` (Vite + Astro)
+- **ZK Verification**: `pnpm dev:cf` (Cloudflare Pages Runtime)
+  > **Note**: The standard `pnpm dev` environment (Node.js/Vite SSR) cannot run the Noir ZK verification WASM modules. To test server-side ZK verification logic locally, you must use `pnpm dev:cf`.
+- **Docs**: `pnpm docs:test`
 4.  **Read the docs**: Check `docs/INDEX.md` for architecture and setup guides.
 
 ## How Can I Contribute?

@@ -5,8 +5,12 @@
   "scripts": {
     "dev": "astro dev",
     "start": "astro dev",
+<<<<<<< HEAD
     "build": "pnpm build:the-farm-client && node --max-old-space-size=4096 ./node_modules/astro/astro.js build",
     "build:the-farm-client": "node scripts/sync-the-farm-client.mjs",
+=======
+    "build": "node --max-old-space-size=8192 ./node_modules/astro/astro.js build",
+>>>>>>> farm-mainnet-real-triple-zk
     "preview": "astro preview",
     "astro": "astro",
     "test": "node --test tests/*.test.js",
@@ -19,14 +23,23 @@
     "docs:lint": "node scripts/docs/check_links.mjs && node scripts/docs/check_claims.mjs && node scripts/docs/check_consistency.mjs",
     "docs:flows": "node scripts/docs/extract_flows.mjs",
     "docs:test": "pnpm docs:xref && pnpm docs:lint && pnpm docs:flows",
-    "doctor": "node scripts/repo-doctor.js"
+    "doctor": "node scripts/repo-doctor.js",
+    "dev:cf": "astro build && wrangler pages dev dist"
   },
   "dependencies": {
     "@astrojs/check": "^0.9.6",
     "@astrojs/sitemap": "^3.6.1",
+<<<<<<< HEAD
     "@creit.tech/stellar-wallets-kit": "^1.9.5",
+=======
+    "@aztec/bb.js": "^2.1.11",
+    "@creit.tech/stellar-wallets-kit": "^1.9.5",
+    "@eqty/risc-zero-verifier": "^0.2.0",
+>>>>>>> farm-mainnet-real-triple-zk
     "@google/genai": "^1.34.0",
     "@google/generative-ai": "^0.24.1",
+    "@noir-lang/backend_barretenberg": "^0.36.0",
+    "@noir-lang/noir_js": "1.0.0-beta.18",
     "@stellar/stellar-sdk": "^14.4.3",
     "@types/canvas-confetti": "^1.9.0",
     "@types/three": "^0.182.0",
@@ -36,6 +49,7 @@
     "comet-sdk": "link:ext/comet-sdk",
     "cookie": "^1.0.2",
     "js-cookie": "^3.0.5",
+    "jsonwebtoken": "^9.0.3",
     "passkey-kit": "^0.12.0",
     "qrcode": "^1.5.4",
     "smart-account-kit": "0.2.9",
@@ -45,7 +59,9 @@
     "svelte-dnd-action": "^0.9.65",
     "svelte-turnstile": "^0.11.0",
     "three": "^0.182.0",
-    "tldts": "^7.0.16"
+    "tldts": "^7.0.16",
+    "tweetnacl": "^1.0.3",
+    "tweetnacl-util": "^0.15.1"
   },
   "devDependencies": {
     "@astrojs/cloudflare": "^12.6.9",
@@ -56,6 +72,7 @@
     "@tailwindcss/vite": "^4.1.14",
     "@types/js-cookie": "^3.0.6",
     "@types/node": "^24.7.0",
+    "@types/snarkjs": "^0.7.9",
     "astro": "^5.14.1",
     "esbuild-plugins-node-modules-polyfill": "^1.7.1",
     "sass": "^1.93.2",

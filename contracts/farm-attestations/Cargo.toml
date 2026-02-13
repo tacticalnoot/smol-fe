@@ -1,0 +1,31 @@
+[package]
+name = "farm-attestations"
+version = "0.1.0"
+edition = "2021"
+<<<<<<< HEAD:proof-of-farm/Cargo.toml
+description = "Proof of Farm — SHA-256 committed farming tier attestation badges on Stellar"
+=======
+description = "Mainnet attestation registry for THE FARM proof digests"
+>>>>>>> farm-mainnet-real-triple-zk:contracts/farm-attestations/Cargo.toml
+
+[lib]
+crate-type = ["cdylib"]
+
+[features]
+testutils = ["soroban-sdk/testutils"]
+
+[dependencies]
+soroban-sdk = "21.7.1"
+
+[dev-dependencies]
+soroban-sdk = { version = "21.7.1", features = ["testutils"] }
+
+[profile.release]
+opt-level = "z"
+overflow-checks = true
+debug = 0
+strip = "symbols"
+debug-assertions = false
+panic = "abort"
+codegen-units = 1
+lto = true

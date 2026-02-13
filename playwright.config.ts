@@ -8,7 +8,7 @@ export default defineConfig({
   },
   retries: 0,
   use: {
-    baseURL: 'http://localhost:4321',
+    baseURL: process.env.PLAYWRIGHT_TEST_BASE_URL || 'http://localhost:4321',
     trace: 'retain-on-failure',
   },
   webServer: {

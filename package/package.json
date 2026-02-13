@@ -1,0 +1,23 @@
+{
+  "name": "@eqty/risc-zero-verifier",
+  "description": "Verifier for RISC Zero receipts. See also risc-zero-verifier-react for a UI component.",
+  "version": "0.2.0",
+  "license": "Apache-2.0",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/eqtylab/risc-zero-verifier"
+  },
+  "files": [
+    "risc_zero_verifier_bg.wasm",
+    "risc_zero_verifier.js",
+    "risc_zero_verifier_bg.js",
+    "risc_zero_verifier.d.ts"
+  ],
+  "module": "risc_zero_verifier.js",
+  "homepage": "https://github.com/eqtylab/risc-zero-verifier",
+  "types": "risc_zero_verifier.d.ts",
+  "sideEffects": [
+    "./risc_zero_verifier.js",
+    "./snippets/*"
+  ]
+}

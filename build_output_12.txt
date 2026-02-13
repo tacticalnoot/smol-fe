@@ -1,0 +1,45 @@
+
+> smol-fe@1.5.4 build C:\Users\Jeff\Mixtape Auto\smol-fe
+> node --max-old-space-size=8192 ./node_modules/astro/astro.js build
+
+04:29:47 [@astrojs/cloudflare] Enabling sessions with Cloudflare KV with the "SESSION" KV binding.
+04:29:47 [@astrojs/cloudflare] If you see the error "Invalid binding `SESSION`" in your build output, you need to add the binding to your wrangler config file.
+04:29:47 [WARN] [adapter] Cloudflare does not support sharp at runtime. However, you can configure `imageService: "compile"` to optimize images with sharp on prerendered pages during build time.
+04:29:47 [content] Syncing content
+04:29:47 [content] Synced content
+04:29:47 [types] Generated 169ms
+04:29:47 [build] output: "server"
+04:29:47 [build] mode: "server"
+04:29:47 [build] directory: C:\Users\Jeff\Mixtape Auto\smol-fe\dist\
+04:29:47 [build] adapter: @astrojs/cloudflare
+04:29:47 [build] Collecting build info...
+04:29:47 [build] Γ£ô Completed in 260ms.
+04:29:47 [build] Building server entrypoints...
+04:55:03 [WARN] [vite] [33mGenerated an empty chunk: "kale-or-fail.4a25530b".[39m
+04:55:03 [WARN] [vite] [33mnode_modules/.pnpm/vm-browserify@1.1.2/node_modules/vm-browserify/index.js (110:11): Use of eval in "node_modules/.pnpm/vm-browserify@1.1.2/node_modules/vm-browserify/index.js" is strongly discouraged as it poses security risks and may cause issues with minification.[39m
+04:55:06 [vite] [32mΓ£ô built in 25m 19s[39m
+04:55:06 [build] Γ£ô Completed in 1519.31s.
+
+ building client (vite) 
+04:55:07 [vite] transforming...
+04:56:09 [vite] [32mΓ£ô[39m 1688 modules transformed.
+04:56:09 [ERROR] [vite] Γ£ù Build failed in 1m 3s
+src/lib/the-vip/swk.ts (6:4): "FREIGHTER_MODULE" is not exported by "node_modules/.pnpm/@creit.tech+stellar-wallets_1b0b09704717b6c87000791ed65e1f48/node_modules/@creit.tech/stellar-wallets-kit/index.mjs", imported by "src/lib/the-vip/swk.ts".
+file: C:/Users/Jeff/Mixtape Auto/smol-fe/src/lib/the-vip/swk.ts:6:4
+
+4:     WalletNetwork,
+5:     allowAllModules,
+6:     FREIGHTER_MODULE,
+       ^
+7:     XBULL_MODULE,
+8:     ALBEDO_MODULE
+
+  Location:
+    C:/Users/Jeff/Mixtape Auto/smol-fe/src/lib/the-vip/swk.ts:6:4
+  Stack trace:
+    at getRollupError (file:///C:/Users/Jeff/Mixtape%20Auto/smol-fe/node_modules/.pnpm/rollup@4.40.1/node_modules/rollup/dist/es/shared/parseAst.js:397:41)
+    at Module.error (file:///C:/Users/Jeff/Mixtape%20Auto/smol-fe/node_modules/.pnpm/rollup@4.40.1/node_modules/rollup/dist/es/shared/node-entry.js:16750:16)
+    at ModuleScope.findVariable (file:///C:/Users/Jeff/Mixtape%20Auto/smol-fe/node_modules/.pnpm/rollup@4.40.1/node_modules/rollup/dist/es/shared/node-entry.js:14855:39)
+    at ArrayExpression.bind (file:///C:/Users/Jeff/Mixtape%20Auto/smol-fe/node_modules/.pnpm/rollup@4.40.1/node_modules/rollup/dist/es/shared/node-entry.js:2780:28)
+    at ObjectExpression.bind (file:///C:/Users/Jeff/Mixtape%20Auto/smol-fe/node_modules/.pnpm/rollup@4.40.1/node_modules/rollup/dist/es/shared/node-entry.js:2780:28)
+ΓÇëELIFECYCLEΓÇë Command failed with exit code 1.
