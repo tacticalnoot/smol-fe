@@ -118,6 +118,13 @@
   let activeKey = $derived(sampleKey(activeSystem, activeSample.tier));
   let activeAttestResult = $derived(attestationByKey[activeKey]);
 
+  // Derived check for any verified circom status on this account
+  let hasOnChainVerified = $derived.by(() => {
+    return Object.values(attestationByKey).some(
+      (r) => r?.ok && r?.feeCharged === "Already Verified",
+    );
+  });
+
   function sampleKey(system: ProofSystem, tier: Tier): string {
     return `${system}:${tier}`;
   }
@@ -240,6 +247,8 @@
             feeCharged: "Relayed",
           });
           confetti();
+          // Force a sync to update the global verified state
+          syncOnChainStatus();
         } else {
           throw new Error(submitResult.error || "On-chain verification failed");
         }
@@ -284,7 +293,9 @@
         });
 
         setAttestationResult(system, sample.tier, attestResult);
-        if (!attestResult.ok) {
+        if (attestResult.ok) {
+          confetti();
+        } else {
           throw new Error(attestResult.error || "Attestation failed");
         }
       }
@@ -297,8 +308,33 @@
     }
   }
 
+  async function syncOnChainStatus(): Promise<void> {
+    if (!userState.contractId) return;
+    try {
+      const status = await (
+        await import("./zkProof")
+      ).checkAttestation(userState.contractId);
+      if (status.verified && status.tier !== undefined) {
+        const tierName = tierOrder[status.tier];
+        // Mirror to attestationByKey so the UI shows it immediately
+        setAttestationResult("circom", tierName, {
+          ok: true,
+          txHash: status.commitment || "0x_on_chain",
+          ledger: status.timestamp || 0,
+          feeCharged: "Already Verified",
+        });
+        console.log("[ZK] On-chain attestation discovered:", status);
+      }
+    } catch (e) {
+      console.warn("[ZK] Initial status check failed:", e);
+    }
+  }
+
   $effect(() => {
     mounted = true;
+    if (userState.contractId) {
+      syncOnChainStatus();
+    }
   });
 
   $effect(() => {
@@ -309,6 +345,7 @@
   $effect(() => {
     if (userState.contractId) {
       updateContractBalance(userState.contractId);
+      syncOnChainStatus();
     }
   });
 
@@ -325,9 +362,15 @@
   <div class="farm-shell">
     <section class="hero card">
       <div class="hero-top">
-        <p class="eyebrow" style="color: var(--farm-leaf); font-size: 0.6rem;">
-          Mission-Critical Cryptography
-        </p>
+        <div class="hero-header-row">
+          <p class="eyebrow">Mission-Critical Cryptography</p>
+          {#if hasOnChainVerified}
+            <div class="verified-badge-hero">
+              <span class="v-icon">✓</span>
+              ON-CHAIN PROOF ACTIVE
+            </div>
+          {/if}
+        </div>
         <h1>THE FARM</h1>
       </div>
       <p class="hero-sub">
@@ -395,7 +438,7 @@
             class="tab-btn"
             class:active={activeSystem === system}
             aria-selected={activeSystem === system}
-            on:click={() => {
+            onclick={() => {
               activeSystem = system;
               setPanelError(system, null);
             }}
@@ -420,7 +463,7 @@
           <select
             id="sample-tier"
             value={selectedTier[activeSystem]}
-            on:change={(event) =>
+            onchange={(event) =>
               setSelectedTier(
                 activeSystem,
                 (event.currentTarget as HTMLSelectElement).value as Tier,
@@ -450,7 +493,7 @@
             type="button"
             class="action attest"
             disabled={processing[activeSystem] || !isAuth}
-            on:click={() => secureFarmClaim(activeSystem)}
+            onclick={() => secureFarmClaim(activeSystem)}
           >
             {#if processing[activeSystem]}
               {step[activeSystem] || "Processing..."}
@@ -467,19 +510,39 @@
 
           <div class="result-panel">
             {#if activeAttestResult?.ok && activeAttestResult.txHash}
-              <p class="ok">Attested on Stellar (Mainnet)</p>
-              <p class="tx-line">
-                Tx: <a
-                  href={`https://stellar.expert/explorer/public/tx/${activeAttestResult.txHash}`}
-                  target="_blank"
-                  rel="noreferrer"
-                >
-                  {shortHash(activeAttestResult.txHash)}
-                </a>
-              </p>
-              <p class="neutral">Result: Verified & Secure</p>
+              <div class="verified-status card-glow">
+                <div class="v-head">
+                  <span class="v-badge">VERIFIED ON MAINNET</span>
+                  <a
+                    href={`https://stellar.expert/explorer/public/tx/${activeAttestResult.txHash}`}
+                    target="_blank"
+                    rel="noreferrer"
+                    class="v-link"
+                  >
+                    View on Stellar.Expert ↗
+                  </a>
+                </div>
+                <div class="v-body">
+                  <p class="v-text">
+                    Your ZK attestation is etched into the Stellar ledger.
+                  </p>
+                  <div class="v-hash">
+                    <span class="k">Commitment:</span>
+                    <span class="v">{shortHash(activeAttestResult.txHash)}</span
+                    >
+                  </div>
+                </div>
+              </div>
+            {:else if processing[activeSystem]}
+              <div class="processing-glow">
+                <p class="status-pulse">
+                  {step[activeSystem] || "Processing..."}
+                </p>
+              </div>
             {:else}
-              <p class="neutral">No on-chain attestation for this session.</p>
+              <p class="neutral-hint">
+                Secure your farming status with one click.
+              </p>
             {/if}
           </div>
         </div>
@@ -643,6 +706,49 @@
     padding: 40px;
     text-align: center;
   }
+
+  .hero-header-row {
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    gap: 16px;
+    margin-bottom: 8px;
+    flex-wrap: wrap;
+  }
+
+  .eyebrow {
+    color: var(--farm-leaf);
+    font-size: 0.6rem;
+    font-family: "Press Start 2P";
+    margin: 0;
+  }
+
+  .verified-badge-hero {
+    background: rgba(16, 185, 129, 0.2);
+    border: 1px solid var(--farm-leaf);
+    color: var(--farm-leaf);
+    padding: 6px 12px;
+    border-radius: 30px;
+    font-family: "Press Start 2P";
+    font-size: 0.5rem;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    animation: glow-pulse 2s infinite;
+  }
+
+  @keyframes glow-pulse {
+    0% {
+      box-shadow: 0 0 5px var(--farm-leaf);
+    }
+    50% {
+      box-shadow: 0 0 20px var(--farm-leaf);
+    }
+    100% {
+      box-shadow: 0 0 5px var(--farm-leaf);
+    }
+  }
+
   .hero-top h1 {
     font-family: "Press Start 2P", cursive;
     font-size: 2.5rem;
@@ -682,6 +788,11 @@
     align-items: center;
     justify-content: center;
     gap: 8px;
+  }
+
+  .tier-icon {
+    width: 24px;
+    height: 24px;
   }
 
   .proof-suite {
@@ -799,20 +910,116 @@
     border: none;
     border-radius: 12px;
     font-family: "Press Start 2P";
-    font-size: 0.8rem;
+    font-size: 0.7rem;
     cursor: pointer;
-    box-shadow: 0 4px 15px rgba(16, 185, 129, 0.3);
-    transition: 0.2s;
+    transition: 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+    border: 1px solid rgba(255, 255, 255, 0.1);
   }
   .action.attest:hover:not(:disabled) {
     transform: translateY(-2px);
-    box-shadow: 0 6px 20px rgba(16, 185, 129, 0.5);
+    box-shadow: 0 0 30px rgba(16, 185, 129, 0.4);
+    background: linear-gradient(135deg, #34d399, #065f46);
   }
   .action.attest:disabled {
     opacity: 0.5;
     cursor: not-allowed;
+    filter: grayscale(0.5);
   }
 
+  .bad {
+    color: #f87171;
+    font-size: 0.8rem;
+    background: rgba(248, 113, 113, 0.1);
+    padding: 12px;
+    border-radius: 8px;
+    border-left: 3px solid #f87171;
+  }
+
+  .result-panel {
+    min-height: 120px;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    border-top: 1px solid var(--farm-line);
+    padding-top: 20px;
+  }
+
+  .verified-status {
+    background: rgba(16, 185, 129, 0.1);
+    border: 1px solid var(--farm-leaf);
+    border-radius: 12px;
+    padding: 16px;
+    display: grid;
+    gap: 12px;
+    box-shadow: 0 0 30px rgba(16, 185, 129, 0.1);
+  }
+
+  .v-head {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+  }
+
+  .v-badge {
+    font-family: "Press Start 2P";
+    font-size: 0.55rem;
+    color: var(--farm-leaf);
+    letter-spacing: 1px;
+  }
+
+  .v-link {
+    font-size: 0.7rem;
+    color: var(--farm-sun);
+    text-decoration: none;
+    font-weight: 600;
+  }
+  .v-link:hover {
+    text-decoration: underline;
+  }
+
+  .v-text {
+    font-size: 0.85rem;
+    opacity: 0.9;
+    margin: 0;
+  }
+
+  .v-hash {
+    display: flex;
+    gap: 8px;
+    font-size: 0.7rem;
+    opacity: 0.6;
+    font-family: monospace;
+  }
+
+  .processing-glow {
+    text-align: center;
+    padding: 20px;
+  }
+
+  .status-pulse {
+    font-family: "Press Start 2P";
+    font-size: 0.6rem;
+    color: var(--farm-leaf);
+    animation: pulse 1.5s infinite;
+  }
+
+  .neutral-hint {
+    text-align: center;
+    font-size: 0.8rem;
+    opacity: 0.4;
+    font-style: italic;
+  }
+
+  .info-panel {
+    align-self: start;
+    position: sticky;
+    top: 24px;
+    background: linear-gradient(
+      180deg,
+      rgba(10, 30, 15, 0.8) 0%,
+      rgba(5, 15, 10, 0.9) 100%
+    );
+  }
   .intelligence-list {
     display: grid;
     gap: 16px;
@@ -823,56 +1030,117 @@
     align-items: flex-start;
   }
   .intel-icon {
-    background: rgba(74, 222, 128, 0.1);
-    padding: 10px;
-    border-radius: 12px;
-    border: 1px solid var(--farm-line);
+    font-size: 1.2rem;
   }
   .intel-text strong {
+    font-size: 0.8rem;
     display: block;
-    font-size: 0.9rem;
-    margin-bottom: 4px;
     color: var(--farm-leaf);
+    margin-bottom: 4px;
   }
   .intel-text p {
+    font-size: 0.75rem;
+    opacity: 0.8;
     margin: 0;
-    font-size: 0.8rem;
-    opacity: 0.7;
+    line-height: 1.4;
   }
 
+  .proves {
+    padding: 40px;
+  }
+  .proves h2 {
+    font-family: "Press Start 2P";
+    font-size: 1rem;
+    color: var(--farm-leaf);
+    margin-bottom: 32px;
+    text-align: center;
+  }
   .guarantee-grid {
     display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
-    gap: 20px;
-    margin-top: 16px;
+    grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+    gap: 24px;
   }
   .guarantee {
     background: rgba(0, 0, 0, 0.3);
-    padding: 20px;
+    padding: 24px;
     border-radius: 16px;
     border: 1px solid var(--farm-line);
+    text-align: center;
   }
   .guarantee strong {
     display: block;
-    margin-bottom: 8px;
+    margin-bottom: 12px;
     color: var(--farm-sun);
-    font-size: 1rem;
+    font-size: 0.9rem;
   }
   .guarantee p {
-    margin: 0;
-    font-size: 0.9rem;
+    font-size: 0.8rem;
     opacity: 0.7;
+    margin: 0;
+    line-height: 1.5;
   }
 
-  .result-panel {
-    background: rgba(0, 0, 0, 0.4);
-    padding: 15px;
+  .collapse {
+    padding: 0;
+    overflow: hidden;
+  }
+  .collapse summary {
+    padding: 20px 24px;
+    cursor: pointer;
+    font-family: "Press Start 2P";
+    font-size: 0.6rem;
+    color: var(--farm-leaf);
+    user-select: none;
+  }
+  .collapse-body {
+    padding: 0 24px 24px;
+    font-size: 0.85rem;
+    opacity: 0.9;
+    line-height: 1.6;
+  }
+  .collapse-body pre {
+    background: rgba(0, 0, 0, 0.5);
+    padding: 16px;
     border-radius: 12px;
-    text-align: center;
+    border: 1px solid var(--farm-line);
+    overflow-x: auto;
+    font-family: "Courier New", Courier, monospace;
+    font-size: 0.75rem;
+    margin-top: 16px;
   }
 
-  @media (max-width: 800px) {
+  @keyframes pulse {
+    0% {
+      opacity: 0.4;
+    }
+    50% {
+      opacity: 1;
+    }
+    100% {
+      opacity: 0.4;
+    }
+  }
+
+  @keyframes pulse-chip {
+    0% {
+      box-shadow: 0 0 0 0 rgba(74, 222, 128, 0.4);
+    }
+    70% {
+      box-shadow: 0 0 0 10px rgba(74, 222, 128, 0);
+    }
+    100% {
+      box-shadow: 0 0 0 0 rgba(74, 222, 128, 0);
+    }
+  }
+
+  @media (max-width: 768px) {
+    .hero h1 {
+      font-size: 1.5rem;
+    }
     .suite-grid {
+      grid-template-columns: 1fr;
+    }
+    .hero-metrics {
       grid-template-columns: 1fr;
     }
     .hero-top h1 {
