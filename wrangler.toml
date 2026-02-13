@@ -25,10 +25,10 @@ VIP_TOKEN_TTL_SECONDS = 600
 VIP_CHALLENGE_TTL_SECONDS = 300
 VIP_HORIZON_URL = "https://horizon.stellar.org"
 
-# [durable_objects]
-# bindings = [
-#   { name = "VIP_ROOMS", class_name = "RoomsDO", script_name = "vip-worker" }
-# ]
+[durable_objects]
+bindings = [
+  { name = "VIP_ROOMS", class_name = "RoomsDO", script_name = "vip-worker" }
+]
 
 
 

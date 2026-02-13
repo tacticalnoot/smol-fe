@@ -1,4 +1,5 @@
 name = "vip-worker"
+account_id = "339f02928ef9167f935d315e0b51ed13"
 main = "src/index.ts"
 compatibility_date = "2024-12-18"
 compatibility_flags = ["nodejs_compat"]
