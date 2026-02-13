@@ -28,6 +28,16 @@ export default defineConfig({
     //     ]
     //   }
     // },
+    optimizeDeps: {
+      // @aztec/bb.js (UltraHonk verifier) uses top-level await in its browser build.
+      // Vite's default "modules" target includes browsers that don't support it,
+      // so esbuild refuses to prebundle without this override.
+      esbuildOptions: {
+        supported: {
+          'top-level-await': true,
+        },
+      },
+    },
     plugins: [
       nodePolyfills({
         include: ['buffer', 'crypto', 'stream', 'util', 'process', 'vm'],
