@@ -1,0 +1,21 @@
+---
+import Layout from "../../../layouts/Layout.astro";
+import VipRooms from "../../../components/vip/VipRooms.svelte";
+import { VIP_ROOMS } from "../../../lib/vip/rooms";
+---
+
+<Layout title="THE VIP" description="ZK-gated, E2EE chat for Stellar VIP cohorts">
+  <main class="min-h-screen bg-gradient-to-b from-black to-[#0a0b10] text-white px-4 pt-24 pb-16">
+    <div class="mx-auto max-w-6xl space-y-8">
+      <div class="flex flex-col gap-3">
+        <p class="text-xs uppercase tracking-[0.3em] text-white/60">Labs</p>
+        <h1 class="text-4xl font-semibold">THE VIP</h1>
+        <p class="max-w-3xl text-white/70">
+          Route-isolated Stellar Wallets Kit + end-to-end encrypted chat. Connect once, sign once, talk in ciphertext.
+        </p>
+      </div>
+
+      <VipRooms client:only="svelte" rooms={VIP_ROOMS} />
+    </div>
+  </main>
+</Layout>
