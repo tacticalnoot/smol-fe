@@ -1,0 +1,24 @@
+
+> smol-fe@1.5.4 build C:\Users\Jeff\Mixtape Auto\smol-fe
+> node --max-old-space-size=4096 ./node_modules/astro/astro.js build
+
+03:24:20 [@astrojs/cloudflare] Enabling sessions with Cloudflare KV with the "SESSION" KV binding.
+03:24:20 [@astrojs/cloudflare] If you see the error "Invalid binding `SESSION`" in your build output, you need to add the binding to your wrangler config file.
+03:24:20 [WARN] [adapter] Cloudflare does not support sharp at runtime. However, you can configure `imageService: "compile"` to optimize images with sharp on prerendered pages during build time.
+03:24:21 [content] Syncing content
+03:24:21 [content] Synced content
+03:24:21 [types] Generated 183ms
+03:24:21 [build] output: "server"
+03:24:21 [build] mode: "server"
+03:24:21 [build] directory: C:\Users\Jeff\Mixtape Auto\smol-fe\dist\
+03:24:21 [build] adapter: @astrojs/cloudflare
+03:24:21 [build] Collecting build info...
+03:24:21 [build] Γ£ô Completed in 312ms.
+03:24:21 [build] Building server entrypoints...
+03:24:22 [ERROR] [vite] Γ£ù Build failed in 1.39s
+Could not resolve "../../../../lib/the-vip/db" from "src/pages/api/chat/keys.ts"
+file: C:/Users/Jeff/Mixtape Auto/smol-fe/src/pages/api/chat/keys.ts
+  Stack trace:
+    at getRollupError (file:///C:/Users/Jeff/Mixtape%20Auto/smol-fe/node_modules/.pnpm/rollup@4.40.1/node_modules/rollup/dist/es/shared/parseAst.js:397:41)
+    at ModuleLoader.handleInvalidResolvedId (file:///C:/Users/Jeff/Mixtape%20Auto/smol-fe/node_modules/.pnpm/rollup@4.40.1/node_modules/rollup/dist/es/shared/node-entry.js:21333:24)
+ΓÇëELIFECYCLEΓÇë Command failed with exit code 1.

@@ -1,0 +1,28 @@
+
+> smol-fe@1.5.4 build C:\Users\Jeff\Mixtape Auto\smol-fe
+> node --max-old-space-size=4096 ./node_modules/astro/astro.js build
+
+03:27:19 [@astrojs/cloudflare] Enabling sessions with Cloudflare KV with the "SESSION" KV binding.
+03:27:19 [@astrojs/cloudflare] If you see the error "Invalid binding `SESSION`" in your build output, you need to add the binding to your wrangler config file.
+03:27:19 [WARN] [adapter] Cloudflare does not support sharp at runtime. However, you can configure `imageService: "compile"` to optimize images with sharp on prerendered pages during build time.
+03:27:19 [content] Syncing content
+03:27:19 [content] Synced content
+03:27:19 [types] Generated 182ms
+03:27:19 [build] output: "server"
+03:27:19 [build] mode: "server"
+03:27:19 [build] directory: C:\Users\Jeff\Mixtape Auto\smol-fe\dist\
+03:27:19 [build] adapter: @astrojs/cloudflare
+03:27:19 [build] Collecting build info...
+03:27:19 [build] Γ£ô Completed in 278ms.
+03:27:19 [build] Building server entrypoints...
+03:27:20 [ERROR] [vite] Γ£ù Build failed in 605ms
+Expected ";" but found "INTO"
+  Location:
+    C:/Users/Jeff/Mixtape Auto/smol-fe/src/pages/api/chat/keys.ts:23:19
+  Stack trace:
+    at failureErrorWithLog (C:\Users\Jeff\Mixtape Auto\smol-fe\node_modules\.pnpm\esbuild@0.25.4\node_modules\esbuild\lib\main.js:1463:15)
+    at responseCallbacks.<computed> (C:\Users\Jeff\Mixtape Auto\smol-fe\node_modules\.pnpm\esbuild@0.25.4\node_modules\esbuild\lib\main.js:601:9)
+    at Socket.readFromStdout (C:\Users\Jeff\Mixtape Auto\smol-fe\node_modules\.pnpm\esbuild@0.25.4\node_modules\esbuild\lib\main.js:579:7)
+    at Socket.emit (node:domain:489:12)
+    at readableAddChunkPushByteMode (node:internal/streams/readable:512:3)
+ΓÇëELIFECYCLEΓÇë Command failed with exit code 1.

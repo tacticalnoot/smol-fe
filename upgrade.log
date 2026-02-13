@@ -1,0 +1,42 @@
+≡ƒÜÇ Starting upgrade for contract: CAU7NET7FXSFBBRMLM6X7CJMVAIHMG7RC4YPCXG6G4YOYG6C3CVGR25M
+≡ƒôñ Installing WASM...
+ΓÜá∩╕Å  `stellar contract install` is deprecated and will be removed in future versions of the CLI. Use `stellar contract upload` instead.
+Γä╣∩╕Å  Simulating install transactionΓÇª
+Γä╣∩╕Å  Signing transaction: 9187ee761e44d658ef990cb0c9a94ddffea5c055bd3678cc4615305f4ac229c1
+≡ƒîÄ Submitting install transactionΓÇª
+Γ¥î error: transaction submission failed: TxInsufficientBalance
+Error: Command failed: stellar contract install --wasm "contracts/tier-verifier/target/wasm32v1-none/release/tier_verifier.optimized.wasm" --source tier-verifier-deployer --network mainnet --rpc-url https://mainnet.sorobanrpc.com --network-passphrase "Public Global Stellar Network ; September 2015"
+ΓÜá∩╕Å  `stellar contract install` is deprecated and will be removed in future versions of the CLI. Use `stellar contract upload` instead.
+Γä╣∩╕Å  Simulating install transactionΓÇª
+Γä╣∩╕Å  Signing transaction: 9187ee761e44d658ef990cb0c9a94ddffea5c055bd3678cc4615305f4ac229c1
+≡ƒîÄ Submitting install transactionΓÇª
+Γ¥î error: transaction submission failed: TxInsufficientBalance
+
+    at genericNodeError (node:internal/errors:983:15)
+    at wrappedFn (node:internal/errors:537:14)
+    at checkExecSyncError (node:child_process:916:11)
+    at execSync (node:child_process:988:15)
+    at upgrade (file:///C:/Users/Jeff/Mixtape%20Auto/smol-fe/scripts/upgrade-contract.mjs:22:27)
+    at file:///C:/Users/Jeff/Mixtape%20Auto/smol-fe/scripts/upgrade-contract.mjs:65:1
+    at ModuleJob.run (node:internal/modules/esm/module_job:343:25)
+    at async onImport.tracePromise.__proto__ (node:internal/modules/esm/loader:665:26)
+    at async asyncRunEntryPointWithESMLoader (node:internal/modules/run_main:117:5) {
+  status: 1,
+  signal: null,
+  output: [
+    null,
+    '',
+    'ΓÜá∩╕Å  `stellar contract install` is deprecated and will be removed in future versions of the CLI. Use `stellar contract upload` instead.\n' +
+      'Γä╣∩╕Å  Simulating install transactionΓÇª\n' +
+      'Γä╣∩╕Å  Signing transaction: 9187ee761e44d658ef990cb0c9a94ddffea5c055bd3678cc4615305f4ac229c1\n' +
+      '≡ƒîÄ Submitting install transactionΓÇª\n' +
+      'Γ¥î error: transaction submission failed: TxInsufficientBalance\n'
+  ],
+  pid: 34444,
+  stdout: '',
+  stderr: 'ΓÜá∩╕Å  `stellar contract install` is deprecated and will be removed in future versions of the CLI. Use `stellar contract upload` instead.\n' +
+    'Γä╣∩╕Å  Simulating install transactionΓÇª\n' +
+    'Γä╣∩╕Å  Signing transaction: 9187ee761e44d658ef990cb0c9a94ddffea5c055bd3678cc4615305f4ac229c1\n' +
+    '≡ƒîÄ Submitting install transactionΓÇª\n' +
+    'Γ¥î error: transaction submission failed: TxInsufficientBalance\n'
+}

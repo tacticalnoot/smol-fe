@@ -101,56 +101,6 @@ export function formatKaleBalance(balance: bigint): string {
     return Number(balance / 10_000_000n).toLocaleString();
 }
 
-// ---------------------------------------------------------------------------
-// ZK commitment (client-side stand-in for on-chain Poseidon / CAP-0075)
-// ---------------------------------------------------------------------------
-
-export async function generateCommitment(
-    farmerAddress: string,
-    balance: bigint,
-    salt: Uint8Array,
-): Promise<string> {
-    const encoder = new TextEncoder();
-    const payload = new Uint8Array([
-        ...encoder.encode(farmerAddress),
-        ...encoder.encode(balance.toString()),
-        ...salt,
-    ]);
-    const digest = await crypto.subtle.digest('SHA-256', payload);
-    return Array.from(new Uint8Array(digest))
-        .map((b) => b.toString(16).padStart(2, '0'))
-        .join('');
-}
-
-export function generateSalt(): Uint8Array {
-    return crypto.getRandomValues(new Uint8Array(32));
-}
-
 export function truncateHash(hash: string): string {
     return `${hash.slice(0, 8)}\u2026${hash.slice(-4)}`;
-}
-
-// ---------------------------------------------------------------------------
-// Local badge persistence (upgrades to on-chain reads once contract deploys)
-// ---------------------------------------------------------------------------
-
-const STORAGE_KEY = 'farm:badges';
-
-function storageKey(contractId: string): string {
-    return `${STORAGE_KEY}:${contractId}`;
-}
-
-export function saveEarnedBadge(contractId: string, badge: EarnedBadge): void {
-    const all = loadAllBadges(contractId);
-    all[badge.id] = badge;
-    localStorage.setItem(storageKey(contractId), JSON.stringify(all));
-}
-
-export function loadAllBadges(contractId: string): Record<string, EarnedBadge> {
-    try {
-        const raw = localStorage.getItem(storageKey(contractId));
-        return raw ? JSON.parse(raw) : {};
-    } catch {
-        return {};
-    }
 }

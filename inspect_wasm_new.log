@@ -1,0 +1,371 @@
+Env Meta: AAAAAAAAABkAAAAA
+ • Protocol Version: 25
+
+Contract Meta:
+ • rsver: 1.91.1
+ • rssdkver: 25.1.0#86c50a1ea4f87b40add3064ff9df95c7553565c5
+
+Contract Spec:
+ • Union: DataKey
+     Cases:
+      • VoidV0(
+            ScSpecUdtUnionCaseVoidV0 {
+                doc: StringM(),
+                name: StringM(Admin),
+            },
+        )
+      • VoidV0(
+            ScSpecUdtUnionCaseVoidV0 {
+                doc: StringM(),
+                name: StringM(Vkey),
+            },
+        )
+      • TupleV0(
+            ScSpecUdtUnionCaseTupleV0 {
+                doc: StringM(),
+                name: StringM(Attestation),
+                type_: VecM(
+                    [
+                        Address,
+                    ],
+                ),
+            },
+        )
+
+ • Struct: Groth16Proof
+     Docs: Groth16 proof points (BN254 curve)
+          pi_a: G1 point (64 bytes uncompressed)
+          pi_b: G2 point (128 bytes uncompressed)
+          pi_c: G1 point (64 bytes uncompressed)
+     Fields:
+      • pi_a: BytesN(
+            ScSpecTypeBytesN {
+                n: 64,
+            },
+        )
+      • pi_b: BytesN(
+            ScSpecTypeBytesN {
+                n: 128,
+            },
+        )
+      • pi_c: BytesN(
+            ScSpecTypeBytesN {
+                n: 64,
+            },
+        )
+
+ • Function: upgrade
+     Docs: Upgrade the contract to a new WASM hash. Only callable by admin.
+     Inputs: VecM(
+         [
+             ScSpecFunctionInputV0 {
+                 doc: StringM(),
+                 name: StringM(new_wasm_hash),
+                 type_: BytesN(
+                     ScSpecTypeBytesN {
+                         n: 32,
+                     },
+                 ),
+             },
+         ],
+     )
+     Output: VecM(
+         [
+             Result(
+                 ScSpecTypeResult {
+                     ok_type: Void,
+                     error_type: Udt(
+                         ScSpecTypeUdt {
+                             name: StringM(TierVerifierError),
+                         },
+                     ),
+                 },
+             ),
+         ],
+     )
+
+ • Function: set_vkey
+     Docs: Update the verification key (e.g. after circuit changes). Admin only.
+     Inputs: VecM(
+         [
+             ScSpecFunctionInputV0 {
+                 doc: StringM(),
+                 name: StringM(vkey),
+                 type_: Udt(
+                     ScSpecTypeUdt {
+                         name: StringM(VerificationKey),
+                     },
+                 ),
+             },
+         ],
+     )
+     Output: VecM(
+         [
+             Result(
+                 ScSpecTypeResult {
+                     ok_type: Void,
+                     error_type: Udt(
+                         ScSpecTypeUdt {
+                             name: StringM(TierVerifierError),
+                         },
+                     ),
+                 },
+             ),
+         ],
+     )
+
+ • Struct: TierAttestation
+     Docs: A verified tier attestation stored on-chain
+     Fields:
+      • commitment: BytesN(
+            ScSpecTypeBytesN {
+                n: 32,
+            },
+        )
+      • farmer: Address
+      • tier: U32
+      • verified_at: U64
+
+ • Struct: VerificationKey
+     Docs: Groth16 verification key stored on-chain
+          This encodes the circuit-specific parameters from tier_proof.circom
+     Fields:
+      • alpha_g1: BytesN(
+            ScSpecTypeBytesN {
+                n: 64,
+            },
+        )
+      • beta_g2: BytesN(
+            ScSpecTypeBytesN {
+                n: 128,
+            },
+        )
+      • delta_g2: BytesN(
+            ScSpecTypeBytesN {
+                n: 128,
+            },
+        )
+      • gamma_g2: BytesN(
+            ScSpecTypeBytesN {
+                n: 128,
+            },
+        )
+      • ic: Vec(
+            ScSpecTypeVec {
+                element_type: BytesN(
+                    ScSpecTypeBytesN {
+                        n: 64,
+                    },
+                ),
+            },
+        )
+        StringM(IC points: one for each public input + 1\nFor tier_proof: 3 IC points (1 base + 2 public inputs))
+
+ • Function: initialize
+     Docs: Initialize the contract with an admin address and verification key.
+     Inputs: VecM(
+         [
+             ScSpecFunctionInputV0 {
+                 doc: StringM(),
+                 name: StringM(admin),
+                 type_: Address,
+             },
+             ScSpecFunctionInputV0 {
+                 doc: StringM(),
+                 name: StringM(vkey),
+                 type_: Udt(
+                     ScSpecTypeUdt {
+                         name: StringM(VerificationKey),
+                     },
+                 ),
+             },
+         ],
+     )
+     Output: VecM(
+         [
+             Result(
+                 ScSpecTypeResult {
+                     ok_type: Void,
+                     error_type: Udt(
+                         ScSpecTypeUdt {
+                             name: StringM(TierVerifierError),
+                         },
+                     ),
+                 },
+             ),
+         ],
+     )
+
+ • Error: TierVerifierError
+     Cases:
+      • ScSpecUdtErrorEnumCaseV0 {
+            doc: StringM(),
+            name: StringM(InvalidProof),
+            value: 1,
+        }
+      • ScSpecUdtErrorEnumCaseV0 {
+            doc: StringM(),
+            name: StringM(InvalidTier),
+            value: 2,
+        }
+      • ScSpecUdtErrorEnumCaseV0 {
+            doc: StringM(),
+            name: StringM(NotAdmin),
+            value: 3,
+        }
+      • ScSpecUdtErrorEnumCaseV0 {
+            doc: StringM(),
+            name: StringM(AlreadyInitialized),
+            value: 4,
+        }
+      • ScSpecUdtErrorEnumCaseV0 {
+            doc: StringM(),
+            name: StringM(NotInitialized),
+            value: 5,
+        }
+      • ScSpecUdtErrorEnumCaseV0 {
+            doc: StringM(),
+            name: StringM(InvalidPublicInputs),
+            value: 6,
+        }
+
+ • Function: attest_tier
+     Docs: Legacy attestation for backwards compatibility during migration.
+           Stores attestation with proof hash for off-chain verification.
+           Will be deprecated once all clients upgrade to verify_and_attest.
+     Inputs: VecM(
+         [
+             ScSpecFunctionInputV0 {
+                 doc: StringM(),
+                 name: StringM(farmer),
+                 type_: Address,
+             },
+             ScSpecFunctionInputV0 {
+                 doc: StringM(),
+                 name: StringM(tier),
+                 type_: U32,
+             },
+             ScSpecFunctionInputV0 {
+                 doc: StringM(),
+                 name: StringM(commitment),
+                 type_: BytesN(
+                     ScSpecTypeBytesN {
+                         n: 32,
+                     },
+                 ),
+             },
+             ScSpecFunctionInputV0 {
+                 doc: StringM(),
+                 name: StringM(proof_hash),
+                 type_: BytesN(
+                     ScSpecTypeBytesN {
+                         n: 32,
+                     },
+                 ),
+             },
+         ],
+     )
+     Output: VecM(
+         [
+             Result(
+                 ScSpecTypeResult {
+                     ok_type: Bool,
+                     error_type: Udt(
+                         ScSpecTypeUdt {
+                             name: StringM(TierVerifierError),
+                         },
+                     ),
+                 },
+             ),
+         ],
+     )
+
+ • Function: get_attestation
+     Docs: Lookup a farmer's tier attestation.
+     Inputs: VecM(
+         [
+             ScSpecFunctionInputV0 {
+                 doc: StringM(),
+                 name: StringM(farmer),
+                 type_: Address,
+             },
+         ],
+     )
+     Output: VecM(
+         [
+             Option(
+                 ScSpecTypeOption {
+                     value_type: Udt(
+                         ScSpecTypeUdt {
+                             name: StringM(TierAttestation),
+                         },
+                     ),
+                 },
+             ),
+         ],
+     )
+
+ • Function: verify_and_attest
+     Docs: Verify a Groth16 proof and store the tier attestation on-chain.
+           
+           This performs the full Groth16 pairing check:
+           e(pi_a, pi_b) == e(alpha, beta) * e(vk_x, gamma) * e(pi_c, delta)
+           
+           Which is equivalent to checking:
+           e(-pi_a, pi_b) * e(alpha, beta) * e(vk_x, gamma) * e(pi_c, delta) == 1
+           
+           Where vk_x = IC[0] + sum(pub_input[i] * IC[i+1])
+           
+           # Arguments
+           * `farmer` - Address of the farmer (requires auth)
+           * `tier` - Claimed tier (0-3, public input to circuit)
+           * `commitment` - Poseidon commitment (public input to circuit)
+           * `proof` - The Groth16 proof (pi_a, pi_b, pi_c)
+     Inputs: VecM(
+         [
+             ScSpecFunctionInputV0 {
+                 doc: StringM(),
+                 name: StringM(farmer),
+                 type_: Address,
+             },
+             ScSpecFunctionInputV0 {
+                 doc: StringM(),
+                 name: StringM(tier),
+                 type_: U32,
+             },
+             ScSpecFunctionInputV0 {
+                 doc: StringM(),
+                 name: StringM(commitment),
+                 type_: BytesN(
+                     ScSpecTypeBytesN {
+                         n: 32,
+                     },
+                 ),
+             },
+             ScSpecFunctionInputV0 {
+                 doc: StringM(),
+                 name: StringM(proof),
+                 type_: Udt(
+                     ScSpecTypeUdt {
+                         name: StringM(Groth16Proof),
+                     },
+                 ),
+             },
+         ],
+     )
+     Output: VecM(
+         [
+             Result(
+                 ScSpecTypeResult {
+                     ok_type: Bool,
+                     error_type: Udt(
+                         ScSpecTypeUdt {
+                             name: StringM(TierVerifierError),
+                         },
+                     ),
+                 },
+             ),
+         ],
+     )
+
+

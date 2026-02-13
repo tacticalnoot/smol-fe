@@ -1,0 +1,18 @@
+At line:1 char:212
++ ... lders'} | 
+ConvertTo-Json) 
+-ContentType 
+'application/json';  | 
+Convert ...
++                         
+                          
+              ~
+An empty pipe element is 
+not allowed.
+    + CategoryInfo        
+      : ParserError: (:)  
+   [], ParentContainsEr   
+ rorRecordException
+    + FullyQualifiedError 
+   Id : EmptyPipeElement
+ 
