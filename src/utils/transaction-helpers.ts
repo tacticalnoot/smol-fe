@@ -93,10 +93,12 @@ export async function signAndSend(
             hash: result.hash || result.transactionHash,
         });
 
+        const txHash = result.hash || result.transactionHash || result.txHash || result.transactionId || result.transaction_hash;
+
         return {
             success: true,
             result,
-            transactionHash: result.hash || result.transactionHash,
+            transactionHash: txHash,
         };
     } catch (error: any) {
         // AI DEBUG: Detailed error logging
