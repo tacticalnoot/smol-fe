@@ -32,8 +32,15 @@ export default defineConfig({
       }
     },
     ssr: {
-      external: ['snarkjs', 'circomlibjs'],
-      noExternal: ['@noir-lang/backend_barretenberg', '@noir-lang/noir_js']
+      external: [
+        'snarkjs',
+        'circomlibjs',
+        '@aztec/bb.js',
+        '@noir-lang/backend_barretenberg',
+        '@noir-lang/noir_js',
+        '@eqty/risc-zero-verifier'
+      ],
+      noExternal: []
     },
     plugins: [
       nodePolyfills({
