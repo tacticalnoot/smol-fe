@@ -3,26 +3,25 @@
 Last updated: 2026-02-08
 Scope: `src/components/labs/the-farm`
 
-This is the real implementation plan for adding both requested tracks:
+This is the implementation plan for adding both requested tracks:
 
 - Noir-based proving flow
 - zkVM-based flow (RISC Zero)
 
-Both tracks settle into the live Super Verifier contract:
+On-chain Groth16 verification settles into the live Tier Verifier contract:
 
 - Contract ID: `CAU7NET7FXSFBBRMLM6X7CJMVAIHMG7RC4YPCXG6G4YOYG6C3CVGR25M`
 - Main entrypoint: `verify_and_attest`
 
 ## What is live now in The Farm UI
 
-- One-click on-chain settlement for both tracks via the same Super Verifier rail.
-- Artifact intake for real tool output manifests (`farm.toolchain.artifact.v1`).
-- Judge-bundle export containing:
-  - imported artifacts,
-  - linked on-chain settlement tx records,
-  - active contract + entrypoint metadata.
+- Circom (Groth16/BN254): in-browser proving + on-chain verification via `verify_and_attest`.
+- Noir (UltraHonk): local verification only (bb.js). Optional on-chain *record* via `farm-attestations` (statement hash), not proof verification.
+- RISC0 (zkVM receipt): local verification only (WASM verifier). Optional on-chain *record* via `farm-attestations` (statement hash), not proof verification.
 
-### Artifact schema (`farm.toolchain.artifact.v1`)
+Important: this repo does not claim Noir/RISC0 are verified on-chain today. The on-chain verifier contract only verifies Groth16 proofs.
+
+### Artifact schema (`farm.toolchain.artifact.v1`) (planned)
 
 Noir / UltraHonk:
 
@@ -60,11 +59,11 @@ RISC Zero zkVM:
 
 ## Why this structure
 
-The current Farm page already has a production on-chain path through Super Verifier.
+The current Farm page already has a production on-chain path through Tier Verifier.
 That makes it the canonical attestation rail.
 New toolchains should feed it, not bypass it.
 
-## Track A: Noir + UltraHonk on Soroban
+## Track A: Noir + UltraHonk on Soroban (planned)
 
 ### Learn phase
 
@@ -86,17 +85,17 @@ New toolchains should feed it, not bypass it.
    - verification key (`vk`)
    - proof
    - public inputs
-4. Verify in Soroban UltraHonk contract.
-5. Emit a deterministic commitment from the verified run and submit through Super Verifier (`verify_and_attest`) as the canonical chain event.
+4. Verify in a Soroban UltraHonk contract (not wired in this repo today).
+5. Emit a deterministic commitment from the verified run and submit through Tier Verifier (`verify_and_attest`) only once a Groth16 bridge exists (future work).
 
 ### Judge evidence
 
 - Reproducible command log for artifact generation.
 - Tx hash for UltraHonk verification path.
-- Tx hash for final Super Verifier attestation for the same run.
+- Tx hash for final Tier Verifier attestation for the same run.
 - vkey rotation note per release.
 
-## Track B: RISC Zero zkVM bridge
+## Track B: RISC Zero zkVM bridge (planned)
 
 ### Learn phase
 
@@ -121,7 +120,7 @@ New toolchains should feed it, not bypass it.
    - domain separator
 3. Verify receipt off-chain before any chain submit.
 4. Store image ID manifest for release integrity.
-5. Submit receipt-derived commitment through Super Verifier (`verify_and_attest`) for canonical on-chain settlement.
+5. Submit receipt-derived commitment through Tier Verifier (`verify_and_attest`) only once a Groth16 bridge exists (future work).
 
 ### Judge evidence
 
@@ -140,7 +139,7 @@ New toolchains should feed it, not bypass it.
 
 1. Noir track first (closest to Soroban verifier-native flow).
 2. RISC Zero bridge second (receipt verification + commitment settlement).
-3. Unified score board and badge logic via Super Verifier tx outcomes.
+3. Unified score board and badge logic via Tier Verifier (Groth16) + Farm Attestations (digest record) outcomes.
 
 ## Primary references
 

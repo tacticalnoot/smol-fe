@@ -31,6 +31,7 @@ pnpm-debug.log*
 
 # ZK build outputs
 zk/**/build/
+zk/circom-tier/artifacts/tier_proof.wasm
 
 # Large data files (exceed Cloudflare 25 MiB limit)
 data/all-smols.json

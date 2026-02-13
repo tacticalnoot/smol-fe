@@ -11,9 +11,10 @@ last_reviewed: "2026-02-13"
 dependencies:
   - "src/pages/labs/the-vip"
   - "src/components/vip"
-  - "vip-worker"
+  - "src/lib/vip"
+  - "src/pages/api/vip"
 links:
-  spec: "vip-worker/README.md"
+  spec: ""
   pr: ""
   docs: []
 definition_of_done:
@@ -21,4 +22,5 @@ definition_of_done:
   - "E2EE room messaging"
 notes: |
   Restored to /labs registry after an interrupted cleanup/regeneration pass.
-  Full functionality requires the VIP worker/API to be deployed/routed.
+  This is a Labs-only relay: the server stores ciphertext + metadata only.
+  Production reviewers should set VIP_SERVER_SECRET and run under a single server instance (or replace the in-memory relay with a durable store).
