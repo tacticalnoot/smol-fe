@@ -88,10 +88,6 @@ export type ZkGameProof = {
     onchainMode?: "tier-compat-v1";
 };
 
-// ---------------------------------------------------------------------------
-// Badge definitions (from proof.ts originally)
-// ---------------------------------------------------------------------------
-
 export type BadgeType =
     | 'proof-of-farm'
     | 'first-harvest'
@@ -158,7 +154,6 @@ export const BADGE_REGISTRY: BadgeDef[] = [
     },
 ];
 
-// Helper to build packet
 export function buildProofPacket(badge: EarnedBadge, farmerAddress: string): ProofPacket {
     const data = badge.data as {
         tier?: number;
@@ -171,25 +166,4 @@ export function buildProofPacket(badge: EarnedBadge, farmerAddress: string): Pro
         commitment: data.commitment ?? "",
         salt: data.salt ?? "",
     };
-}
-
-// Storage helpers
-const STORAGE_KEY = 'farm:badges';
-function storageKey(contractId: string): string {
-    return `${STORAGE_KEY}:${contractId}`;
-}
-
-export function saveEarnedBadge(contractId: string, badge: EarnedBadge): void {
-    const all = loadAllBadges(contractId);
-    all[badge.id] = badge;
-    localStorage.setItem(storageKey(contractId), JSON.stringify(all));
-}
-
-export function loadAllBadges(contractId: string): Record<string, EarnedBadge> {
-    try {
-        const raw = localStorage.getItem(storageKey(contractId));
-        return raw ? JSON.parse(raw) : {};
-    } catch {
-        return {};
-    }
 }

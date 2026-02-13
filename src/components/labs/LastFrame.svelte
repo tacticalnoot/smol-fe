@@ -12,7 +12,7 @@
         generateRandomSalt,
         hashProof,
     } from "./the-farm/zkProof";
-    import { getTierForBalance } from "./the-farm/zkTypes";
+    import { getTierIdForBalance } from "./the-farm/zkTypes";
     import { getSafeRpId } from "../../utils/domains";
 
     let videoFile: File | null = $state(null);
@@ -79,7 +79,7 @@
             const addressHash = await hashAddress(userState.contractId);
             const salt = generateRandomSalt();
             const balance = balanceState.balance || 0n;
-            const tierId = getTierForBalance(balance);
+            const tierId = getTierIdForBalance(balance);
             await new Promise((r) => setTimeout(r, 600));
             checks[1].status = "done";
 
