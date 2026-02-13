@@ -1,10 +1,10 @@
 import {
   base64ToBuf,
   bufToBase64,
-  DhKeyPair,
+  type DhKeyPair,
   generateDhKeyPair,
   generateIdentityKeyPair,
-  IdentityKeyPair,
+  type IdentityKeyPair,
   importDhKeys,
   importIdentityKeys,
   importPublicKeyRaw,

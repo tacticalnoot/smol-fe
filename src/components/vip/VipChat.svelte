@@ -2,7 +2,7 @@
   import { onDestroy, onMount } from "svelte";
   import { VIP_WS_BASE } from "../../lib/vip/config";
   import {
-    ClientKeyBundle,
+    type ClientKeyBundle,
     decryptWithSenderKey,
     encryptWithSenderKey,
     maybeRotateSenderKey,

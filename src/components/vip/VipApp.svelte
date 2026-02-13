@@ -8,7 +8,7 @@
     signChallenge,
     verifyProof,
   } from "../../lib/vip/proof";
-  import { loadKeys, ClientKeyBundle } from "../../lib/vip/e2ee/protocol";
+  import { loadKeys, type ClientKeyBundle } from "../../lib/vip/e2ee/protocol";
   import { shortKey } from "../../lib/vip/e2ee/keys";
 
   export let roomId: string;
