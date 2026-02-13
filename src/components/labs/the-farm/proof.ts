@@ -25,7 +25,6 @@ export {
 } from "./zkTypes";
 
 // ---------------------------------------------------------------------------
-<<<<<<< HEAD
 // SHA-256 commitment (legacy scheme, kept for verification of old commitments)
 // New proofs use Poseidon hashing via the Groth16 circuit in zkProof.ts
 // ---------------------------------------------------------------------------
@@ -72,38 +71,4 @@ export async function verifyCommitment(
     const salt = hexToBytes(saltHex);
     const recomputed = await generateCommitment(farmerAddress, balance, salt);
     return recomputed === expectedCommitment;
-=======
-// Tier configuration
-// ---------------------------------------------------------------------------
-
-export interface TierDef {
-    name: string;
-    icon: string;
-    min: number;
-    color: string;
-    glow: string;
-}
-
-export const TIER_CONFIG: TierDef[] = [
-    { name: 'Sprout', icon: '🌱', min: 0, color: '#86efac', glow: 'rgba(134,239,172,0.35)' },
-    { name: 'Grower', icon: '🌿', min: 100, color: '#4ade80', glow: 'rgba(74,222,128,0.35)' },
-    { name: 'Harvester', icon: '🥬', min: 1000, color: '#22c55e', glow: 'rgba(34,197,94,0.35)' },
-    { name: 'Whale', icon: '🐋', min: 10000, color: '#0ea5e9', glow: 'rgba(14,165,233,0.35)' },
-];
-
-export function getTierForBalance(balance: bigint): number {
-    const kale = Number(balance / 10_000_000n);
-    if (kale >= 10_000) return 3;
-    if (kale >= 1_000) return 2;
-    if (kale >= 100) return 1;
-    return 0;
-}
-
-export function formatKaleBalance(balance: bigint): string {
-    return Number(balance / 10_000_000n).toLocaleString();
-}
-
-export function truncateHash(hash: string): string {
-    return `${hash.slice(0, 8)}\u2026${hash.slice(-4)}`;
->>>>>>> farm-mainnet-real-triple-zk
 }

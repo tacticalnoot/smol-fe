@@ -2,11 +2,7 @@
 name = "farm-attestations"
 version = "0.1.0"
 edition = "2021"
-<<<<<<< HEAD:proof-of-farm/Cargo.toml
-description = "Proof of Farm — SHA-256 committed farming tier attestation badges on Stellar"
-=======
 description = "Mainnet attestation registry for THE FARM proof digests"
->>>>>>> farm-mainnet-real-triple-zk:contracts/farm-attestations/Cargo.toml
 
 [lib]
 crate-type = ["cdylib"]

@@ -67,25 +67,35 @@ function Ensure-DirForFile([string]$path) {
 }
 
 function Load-State([string]$path) {
+  $defaults = @{
+    lastRelayHash = $null
+    lastRelayAtUtc = $null
+    lastNudgeAtUtc = $null
+    lastNudgeForStatusUtc = $null
+    lastHandoffAtUtc = $null
+    lastHandoffForStatusUtc = $null
+    lastErrorAtUtc = $null
+    lastErrorHash = $null
+  }
+
   if (-not (Test-Path -LiteralPath $path)) {
-    return @{
-      lastRelayHash = $null
-      lastRelayAtUtc = $null
-      lastNudgeAtUtc = $null
-      lastNudgeForStatusUtc = $null
-      lastHandoffAtUtc = $null
-      lastHandoffForStatusUtc = $null
-      lastErrorAtUtc = $null
-      lastErrorHash = $null
-    }
+    return $defaults
   }
 
   $raw = Get-Content -LiteralPath $path -Raw
   if (-not $raw) {
-    return @{}
+    return $defaults
   }
 
-  return ($raw | ConvertFrom-Json -AsHashtable)
+  # PowerShell 5.1 does not support ConvertFrom-Json -AsHashtable.
+  $obj = $raw | ConvertFrom-Json
+  if ($obj -and $obj.PSObject -and $obj.PSObject.Properties) {
+    foreach ($p in $obj.PSObject.Properties) {
+      $defaults[$p.Name] = $p.Value
+    }
+  }
+
+  return $defaults
 }
 
 function Save-State([string]$path, [hashtable]$state) {
@@ -94,6 +104,13 @@ function Save-State([string]$path, [hashtable]$state) {
   $json = ($state | ConvertTo-Json -Depth 8)
   Set-Content -LiteralPath $tmp -Value $json -Encoding UTF8
   Move-Item -LiteralPath $tmp -Destination $path -Force
+}
+
+function Save-StateMaybe([string]$path, [hashtable]$state) {
+  if ($DryRun) {
+    return
+  }
+  Save-State $path $state
 }
 
 function Sha256Hex([string]$s) {
@@ -131,7 +148,8 @@ function OpenClaw-SendTelegram([string]$text) {
     return
   }
 
-  & openclaw message send `
+  # Use openclaw.cmd (not openclaw.ps1) to avoid PowerShell argument parsing issues with `--flags`.
+  & openclaw.cmd message send `
     --channel telegram `
     --account $TelegramAccount `
     --target $TelegramChatId `
@@ -164,7 +182,7 @@ if (-not $StatePath) { $StatePath = Get-DefaultStatePath }
 # Resolve TelegramChatId from OpenClaw config if not provided.
 if (-not $TelegramChatId) {
   try {
-    $allowFromJson = & openclaw config get channels.telegram.allowFrom --json 2>$null
+    $allowFromJson = & openclaw.cmd config get channels.telegram.allowFrom --json 2>$null
     $allowFrom = $allowFromJson | ConvertFrom-Json
     if ($allowFrom -and $allowFrom.Count -gt 0) {
       $TelegramChatId = [string]$allowFrom[0]
@@ -178,14 +196,15 @@ $state = Load-State $StatePath
 $now = [DateTimeOffset]::UtcNow
 
 try {
-  $lines = Get-Content -LiteralPath $LogPath
+  # Force UTF-8 so Windows PowerShell 5.1 doesn't mis-decode Unicode arrows.
+  $lines = Get-Content -LiteralPath $LogPath -Encoding UTF8
 } catch {
   Maybe-NotifyError $state ("Missing log file: " + $LogPath)
-  Save-State $StatePath $state
+  Save-StateMaybe $StatePath $state
   exit 0
 }
 
-$statusLineRe = '^\[UTC:(?<ts>[^\]]+)\]\s*Active Agent:\s*(?<active>.+?)\s*(?:->|\\u2192)\s*HandoffTo:\s*(?<handoff>.+?)\s*$'
+$statusLineRe = '^\[UTC:(?<ts>[^\]]+)\]\s*Active Agent:\s*(?<active>.+?)\s*(?:->|\u2192)\s*HandoffTo:\s*(?<handoff>.+?)\s*$'
 
 $idx = -1
 $tsRaw = $null
@@ -204,14 +223,14 @@ for ($i = $lines.Count - 1; $i -ge 0; $i--) {
 
 if ($idx -lt 0) {
   Maybe-NotifyError $state ("No status block found in log (expected '[UTC:...] Active Agent: ... -> HandoffTo: ...'). Path: " + $LogPath)
-  Save-State $StatePath $state
+  Save-StateMaybe $StatePath $state
   exit 0
 }
 
 $ts = Try-ParseUtc $tsRaw
 if (-not $ts) {
   Maybe-NotifyError $state ("Invalid UTC timestamp in status line: " + $tsRaw)
-  Save-State $StatePath $state
+  Save-StateMaybe $StatePath $state
   exit 0
 }
 
@@ -260,7 +279,8 @@ if ($handoffAgents -contains "main") {
 }
 
 # Nudge notification: codex/antigravity stalled.
-$isStallCandidate = ($activeAgents -contains "codex") -or ($activeAgents -contains "antigravity")
+# Interpretation: HandoffTo indicates whose turn it is now.
+$isStallCandidate = ($handoffAgents -contains "codex") -or ($handoffAgents -contains "antigravity")
 if ($isStallCandidate -and $ageMinutes -ge $NudgeCooldownMinutes) {
   $lastNudgeAt = Try-ParseUtc $state.lastNudgeAtUtc
   $shouldNudge = $false
@@ -270,7 +290,7 @@ if ($isStallCandidate -and $ageMinutes -ge $NudgeCooldownMinutes) {
   if ($lastNudgeAt -and ($now - $lastNudgeAt).TotalMinutes -ge $NudgeRepeatMinutes) { $shouldNudge = $true }
 
   if ($shouldNudge) {
-    OpenClaw-SendTelegram ("⚠️ ALERT: $activeRaw - Status? You're blocking the relay. (Stalled for > $NudgeCooldownMinutes min; last update $tsRaw)")
+    OpenClaw-SendTelegram ("⚠️ ALERT: $handoffRaw - Status? You're blocking the relay. (Stalled for > $NudgeCooldownMinutes min; last update $tsRaw)")
     $state.lastNudgeForStatusUtc = $tsRaw
     $state.lastNudgeAtUtc = $now.ToString("yyyy-MM-ddTHH:mm:ssZ")
     $didNudge = $true
@@ -281,12 +301,12 @@ if ($isStallCandidate -and $ageMinutes -ge $NudgeCooldownMinutes) {
       $append += ("[UTC:{0}] Active Agent: {1} -> HandoffTo: {1}" -f $now.ToString("yyyy-MM-ddTHH:mm:ssZ"), $activeRaw)
       $append += "Status: WATCHDOG NUDGE. Stalled."
       $append += "Message: Wake up!"
-      Add-Content -LiteralPath $LogPath -Value ($append -join [Environment]::NewLine)
+      Add-Content -LiteralPath $LogPath -Value ($append -join [Environment]::NewLine) -Encoding UTF8
     }
   }
 }
 
-Save-State $StatePath $state
+Save-StateMaybe $StatePath $state
 
 $summary = @(
   ("[UTC:{0}] Watchdog ok" -f $now.ToString("yyyy-MM-ddTHH:mm:ssZ")),
@@ -297,4 +317,3 @@ $summary = @(
 ) -join " | "
 
 Write-Output $summary
-
