@@ -1,4 +1,4 @@
-import { Account, Address, Contract, TransactionBuilder, rpc, xdr } from "@stellar/stellar-sdk/minimal";
+import { Account, Address, Contract, TransactionBuilder, TimeoutInfinite, rpc, xdr } from "@stellar/stellar-sdk/minimal";
 import { Buffer } from "buffer";
 import { MAINNET_NETWORK_PASSPHRASE, MAINNET_RPC_URL, FARM_ATTESTATIONS_CONTRACT_ID_MAINNET } from "../../../config/farmAttestation";
 import { account as passkeyAccount } from "../../../utils/passkey-kit";
@@ -103,6 +103,7 @@ export async function publishAttestationMainnet(
       networkPassphrase: MAINNET_NETWORK_PASSPHRASE,
     })
       .addOperation(operation)
+      .setTimeout(TimeoutInfinite)
       .build();
 
     const simulation = await server.simulateTransaction(tx);
