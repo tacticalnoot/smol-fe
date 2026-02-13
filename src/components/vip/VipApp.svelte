@@ -3,7 +3,11 @@
   import { findRoom } from "../../lib/vip/rooms";
   import VipChat from "./VipChat.svelte";
   import { loadWalletKit } from "../../lib/vip/walletKit.lazy";
-  import { fetchChallenge, signChallenge, verifyProof } from "../../lib/vip/proof";
+  import {
+    fetchChallenge,
+    signChallenge,
+    verifyProof,
+  } from "../../lib/vip/proof";
   import { loadKeys, ClientKeyBundle } from "../../lib/vip/e2ee/protocol";
   import { shortKey } from "../../lib/vip/e2ee/keys";
 
@@ -11,7 +15,13 @@
 
   const room = findRoom(roomId);
 
-  let status: "idle" | "loading-kit" | "auth" | "signing" | "verifying" | "ready" = "idle";
+  let status:
+    | "idle"
+    | "loading-kit"
+    | "auth"
+    | "signing"
+    | "verifying"
+    | "ready" = "idle";
   let error: string | null = null;
   let walletAddress = "";
   let token = "";
@@ -31,13 +41,37 @@
       const { kit: loadedKit } = await loadWalletKit();
       kit = loadedKit;
       status = "auth";
-      await kit.authModal();
-      const { address } = await kit.getAddress();
-      walletAddress = address;
+
+      await kit.openModal({
+        onWalletSelected: async (option: any) => {
+          kit.setWallet(option.id);
+          const { publicKey } = await kit.getPublicKey();
+          walletAddress = publicKey;
+        },
+      });
+
+      // Wait for walletAddress to be set via callback if not already
+      if (!walletAddress) {
+        // Fallback if modal closed without selection or callback async issue?
+        // Actually openModal awaits until closed. If user selected, callback ran.
+        // But let's check just in case.
+        try {
+          const { publicKey } = await kit.getPublicKey();
+          walletAddress = publicKey;
+        } catch (e) {
+          throw new Error("No wallet selected");
+        }
+      }
 
       status = "signing";
       const challenge = await fetchChallenge(room.id);
-      const signed = await signChallenge(kit, address, room.id, challenge.nonce, bundle);
+      const signed = await signChallenge(
+        kit,
+        address,
+        room.id,
+        challenge.nonce,
+        bundle,
+      );
 
       status = "verifying";
       const verify = await verifyProof({
@@ -75,12 +109,18 @@
       <div>
         <p class="text-xs uppercase tracking-[0.2em] text-white/60">THE VIP</p>
         <h1 class="text-3xl font-semibold text-white">{room.name}</h1>
-        <p class="mt-2 text-white/70 max-w-2xl leading-relaxed">{room.description}</p>
+        <p class="mt-2 text-white/70 max-w-2xl leading-relaxed">
+          {room.description}
+        </p>
         {#if room.qualifier.cutoffTs}
-          <p class="mt-1 text-xs text-white/50">Cutoff: {room.qualifier.cutoffTs}</p>
+          <p class="mt-1 text-xs text-white/50">
+            Cutoff: {room.qualifier.cutoffTs}
+          </p>
         {/if}
       </div>
-      <div class="rounded-full border border-white/10 bg-white/5 px-3 py-1 text-[11px] uppercase tracking-wide text-white/70">
+      <div
+        class="rounded-full border border-white/10 bg-white/5 px-3 py-1 text-[11px] uppercase tracking-wide text-white/70"
+      >
         {room.status === "enabled" ? "Live" : "Coming soon"}
       </div>
     </div>
@@ -95,8 +135,11 @@
     </div>
 
     {#if room.status === "comingSoon"}
-      <div class="mt-6 rounded-2xl border border-dashed border-white/15 bg-white/5 p-4 text-white/60">
-        Aquarius tiers and ICE delegates are wired but pending verifiers. Stay tuned.
+      <div
+        class="mt-6 rounded-2xl border border-dashed border-white/15 bg-white/5 p-4 text-white/60"
+      >
+        Aquarius tiers and ICE delegates are wired but pending verifiers. Stay
+        tuned.
       </div>
     {:else}
       <div class="mt-6 flex flex-col gap-4">
@@ -113,11 +156,16 @@
               on:click={connectAndJoin}
               disabled={status !== "idle" && status !== "ready"}
             >
-              {status === "idle" ? "Connect & Enter" : status === "ready" ? "Re-enter" : "Working…"}
+              {status === "idle"
+                ? "Connect & Enter"
+                : status === "ready"
+                  ? "Re-enter"
+                  : "Working…"}
             </button>
           </div>
           <p class="mt-2 text-xs text-white/60">
-            Flow: connect wallet → single signature → encrypted chat. No on-chain tx.
+            Flow: connect wallet → single signature → encrypted chat. No
+            on-chain tx.
           </p>
           {#if error}
             <p class="mt-2 text-xs text-rose-300">{error}</p>
@@ -127,23 +175,25 @@
         {#if status === "ready" && token && bundle}
           <VipChat
             roomId={room.id}
-            token={token}
+            {token}
             account={walletAddress}
-            bundle={bundle}
+            {bundle}
             rotation={{
               messages: room.e2eePolicy.rotateEveryMessages,
               minutes: room.e2eePolicy.rotateEveryMinutes,
             }}
           />
         {:else}
-          <div class="rounded-2xl border border-white/10 bg-black/30 p-4 text-sm text-white/60">
+          <div
+            class="rounded-2xl border border-white/10 bg-black/30 p-4 text-sm text-white/60"
+          >
             {status === "auth"
               ? "Awaiting wallet approval…"
               : status === "signing"
-              ? "Requesting single signature…"
-              : status === "verifying"
-              ? "Verifying eligibility…"
-              : "Connect to start encrypted chat."}
+                ? "Requesting single signature…"
+                : status === "verifying"
+                  ? "Verifying eligibility…"
+                  : "Connect to start encrypted chat."}
           </div>
         {/if}
       </div>
