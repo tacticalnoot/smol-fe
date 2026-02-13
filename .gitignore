@@ -70,8 +70,6 @@ artifacts/phase-*.json
 
 .agent/_reports/
 
-<<<<<<< HEAD
-
 # Deployer keys - DO NOT COMMIT
 DEPLOYER_KEY.md
 deployer-credentials.md
@@ -97,9 +95,7 @@ upload_sim*.json
 old_failures*.md
 old_failures*.txt
 contracts/tier-verifier/test_output.txt
-=======
+
 # Agent Coordination
 THE_FARM_LOG.md
 CLAWDBOT_DIRECTIVES.md
-
->>>>>>> farm-mainnet-real-triple-zk
