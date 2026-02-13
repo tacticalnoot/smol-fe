@@ -117,5 +117,58 @@
             "Audio"
         ],
         "isLocked": false
+    },
+    {
+        "id": "lab_last_frame",
+        "title": "LastFrame",
+        "badge": "ZK-SIG",
+        "status_color": "GREEN",
+        "readiness_score": 100,
+        "last_reviewed": "2026-02-13",
+        "blast_radius": "LABS_ONLY",
+        "path": "experiments/lastframe/experiment.yml",
+        "href": "/labs/lastframe",
+        "description": "Instant last-frame capture for video loops and thumbnails.",
+        "tags": [
+            "Video",
+            "Tool",
+            "Verified"
+        ],
+        "isLocked": false
+    },
+    {
+        "id": "lab_the_farm",
+        "title": "The Farm",
+        "badge": "ZK-001",
+        "status_color": "ORANGE",
+        "readiness_score": 70,
+        "last_reviewed": "2026-02-13",
+        "blast_radius": "LABS_ONLY",
+        "path": "experiments/the-farm/experiment.yml",
+        "href": "/labs/the-farm",
+        "description": "ZK Proof of Farm. Prove your KALE tier on-chain without revealing your balance. Smart Wallet Dreamboard.",
+        "tags": [
+            "ZK",
+            "Blockchain"
+        ],
+        "isLocked": false
+    },
+    {
+        "id": "lab_the_vip",
+        "title": "THE VIP",
+        "badge": "VIP-001",
+        "status_color": "ORANGE",
+        "readiness_score": 55,
+        "last_reviewed": "2026-02-13",
+        "blast_radius": "LABS_ONLY",
+        "path": "experiments/the-vip/experiment.yml",
+        "href": "/labs/the-vip",
+        "description": "ZK-gated, end-to-end encrypted chat for Stellar VIP cohorts.",
+        "tags": [
+            "Chat",
+            "E2EE",
+            "Stellar"
+        ],
+        "isLocked": false
     }
 ]
