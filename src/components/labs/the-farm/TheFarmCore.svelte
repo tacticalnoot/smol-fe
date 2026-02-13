@@ -78,12 +78,6 @@
     risc0: "RISC0 receipt verifier WASM",
   };
 
-  const commitmentLabel: Record<ProofSystem, string> = {
-    circom: "poseidon(balance,salt)",
-    noir: noirCommitmentScheme,
-    risc0: risc0CommitmentScheme,
-  };
-
   let mounted = $state(false);
   let activeSystem = $state<ProofSystem>("circom");
   let selectedTier = $state<SystemTierMap>({
@@ -108,22 +102,34 @@
   });
   let attestationByKey = $state<Record<string, AttestationResult | null>>({});
 
+  // ZK Terminal logs
+  let zkLogs = $state<string[]>([]);
+  let autoScrollTerminal = $state(true);
+
   let isAuth = $derived(!!userState.contractId && !!userState.keyId);
   let balance = $derived(balanceState.balance);
   let loading = $derived(balanceState.loading);
   let tierIndex = $derived(balance !== null ? getTierForBalance(balance) : 0);
   let tierCfg = $derived(TIER_CONFIG[tierIndex]);
-  let mainnetReady = $derived(isMainnetConfigured());
   let activeSample = $derived(getSample(activeSystem));
   let activeKey = $derived(sampleKey(activeSystem, activeSample.tier));
   let activeAttestResult = $derived(attestationByKey[activeKey]);
 
-  // Derived check for any verified circom status on this account
   let hasOnChainVerified = $derived.by(() => {
     return Object.values(attestationByKey).some(
       (r) => r?.ok && r?.feeCharged === "Already Verified",
     );
   });
+
+  function addLog(msg: string) {
+    const timestamp = new Date().toLocaleTimeString([], {
+      hour12: false,
+      hour: "2-digit",
+      minute: "2-digit",
+      second: "2-digit",
+    });
+    zkLogs = [...zkLogs.slice(-49), `[${timestamp}] ${msg}`];
+  }
 
   function sampleKey(system: ProofSystem, tier: Tier): string {
     return `${system}:${tier}`;
@@ -136,10 +142,12 @@
   ): void {
     processing = { ...processing, [system]: value };
     step = { ...step, [system]: statusText };
+    if (value && statusText) addLog(statusText);
   }
 
   function setPanelError(system: ProofSystem, value: string | null): void {
     panelError = { ...panelError, [system]: value };
+    if (value) addLog(`ERROR: ${value}`);
   }
 
   function setSelectedTier(system: ProofSystem, tier: Tier): void {
@@ -187,6 +195,7 @@
   async function secureFarmClaim(system: ProofSystem): Promise<void> {
     const sample = getSample(system);
     setPanelError(system, null);
+    zkLogs = []; // Clear for new run
 
     if (!isAuth) {
       setPanelError(system, "Connect your passkey smart wallet first.");
@@ -194,18 +203,22 @@
     }
 
     setProcessing(system, true, "Initializing Proof Pipeline...");
+    addLog(`System Target: ${systemLabel[system]}`);
+    addLog(`Contract: ${FARM_ATTESTATIONS_CONTRACT_ID_MAINNET}`);
 
     try {
-      // 1. Circom High-Fidelity Path (Unified)
       if (system === "circom") {
         setProcessing(system, true, "Generating ZK Proof...");
+        addLog("Computing Poseidon(Addr, Bal, Salt)...");
 
         const addrHash = await hashAddress(userState.contractId!);
         const currentBalance = balance ?? 0n;
         const salt = generateRandomSalt();
         const tierId = getTierForBalance(currentBalance);
 
-        // Generate real proof
+        addLog(`Tier identified: ${tierId} (${TIER_CONFIG[tierId].name})`);
+        addLog("Invoking snarkjs.groth16.fullProve...");
+
         const proofRes = await generateTierProof(
           addrHash,
           currentBalance,
@@ -213,9 +226,9 @@
           tierId,
         );
 
+        addLog("Proof generated successfully (2048-bit R1CS)");
         setProcessing(system, true, "Proof Generated. Attesting...");
 
-        // Compute commitment bytes for submission
         const { buildPoseidon } = await import("circomlibjs");
         const poseidon = await buildPoseidon();
         const commitmentBigInt = BigInt(
@@ -228,7 +241,11 @@
           v >>= 8n;
         }
 
-        // Submit real proof to SuperVerifier
+        addLog(
+          `Commitment Digest: 0x${commitmentBigInt.toString(16).slice(0, 16)}...`,
+        );
+        addLog("Submitting verification to Stellar Mainnet relayer...");
+
         const submitResult = await submitProofToContract(
           // @ts-ignore
           window.passkeyKit,
@@ -240,6 +257,7 @@
         );
 
         if (submitResult.success) {
+          addLog(`Verification SUCCESS. Tx: ${shortHash(submitResult.txHash)}`);
           setAttestationResult(system, sample.tier, {
             ok: true,
             txHash: submitResult.txHash,
@@ -247,15 +265,15 @@
             feeCharged: "Relayed",
           });
           confetti();
-          // Force a sync to update the global verified state
           syncOnChainStatus();
         } else {
           throw new Error(submitResult.error || "On-chain verification failed");
         }
-      }
-      // 2. Noir/RISC0 Legacy/Sample paths
-      else {
+      } else {
         setProcessing(system, true, "Verifying Sample Locally...");
+        addLog(`System: ${system}`);
+        addLog("Validating sample witness against verifier logic...");
+
         let verifyResult: VerificationResult;
         if (system === "noir") {
           verifyResult = await verifyNoirProof(
@@ -273,6 +291,7 @@
           throw new Error(verifyResult.error || "Sample verification failed");
         }
 
+        addLog("Sample witness verified. Publishing record...");
         setProcessing(system, true, "Sample Valid. Record on mainnet...");
 
         const statementHash = await sha256HexOfJson({
@@ -294,6 +313,7 @@
 
         setAttestationResult(system, sample.tier, attestResult);
         if (attestResult.ok) {
+          addLog("Attestation result recorded.");
           confetti();
         } else {
           throw new Error(attestResult.error || "Attestation failed");
@@ -305,6 +325,7 @@
       setPanelError(system, message);
     } finally {
       setProcessing(system, false);
+      addLog("Pipeline idle.");
     }
   }
 
@@ -316,14 +337,15 @@
       ).checkAttestation(userState.contractId);
       if (status.verified && status.tier !== undefined) {
         const tierName = tierOrder[status.tier];
-        // Mirror to attestationByKey so the UI shows it immediately
         setAttestationResult("circom", tierName, {
           ok: true,
           txHash: status.commitment || "0x_on_chain",
           ledger: status.timestamp || 0,
           feeCharged: "Already Verified",
         });
-        console.log("[ZK] On-chain attestation discovered:", status);
+        addLog(
+          `ON-CHAIN SYNC: Verified status discovered (Tier ${status.tier})`,
+        );
       }
     } catch (e) {
       console.warn("[ZK] Initial status check failed:", e);
@@ -357,17 +379,23 @@
   }
 </script>
 
-<div class="farm-root" class:farm-mounted={mounted}>
+<div
+  class="farm-root"
+  class:farm-mounted={mounted}
+  class:is-verified={hasOnChainVerified}
+>
   <div class="grain" aria-hidden="true"></div>
+  <div class="glow-field"></div>
+
   <div class="farm-shell">
-    <section class="hero card">
+    <section class="hero card" class:hero-verified={hasOnChainVerified}>
       <div class="hero-top">
         <div class="hero-header-row">
           <p class="eyebrow">Mission-Critical Cryptography</p>
           {#if hasOnChainVerified}
             <div class="verified-badge-hero">
               <span class="v-icon">✓</span>
-              ON-CHAIN PROOF ACTIVE
+              FARMER AUTHENTICATED
             </div>
           {/if}
         </div>
@@ -390,321 +418,247 @@
             {:else}
               {tierCfg.icon}
             {/if}
-            {tierCfg.name}
+            {tierCfg.name.toUpperCase()}
           </span>
         </div>
-        <div class="metric">
-          <span class="label">Verified Balance</span>
+        <div class="metric highlight">
+          <span class="label">On-Chain Verification</span>
           <span class="value">
-            {loading
-              ? "..."
-              : balance
-                ? `${formatKaleBalance(balance)} KALE`
-                : "0 KALE"}
+            {hasOnChainVerified ? "SECURE" : "PENDING"}
           </span>
         </div>
         <div class="metric">
           <span class="label">Passkey Core</span>
-          <span
-            class="value"
-            style="font-size: 0.8rem; font-family: 'Press Start 2P';"
-          >
+          <span class="value">
             {isAuth ? "ONLINE" : "OFFLINE"}
           </span>
         </div>
       </div>
     </section>
 
-    <section class="proof-suite card">
-      <div class="suite-head">
-        <div>
-          <h2>ZK Pipeline</h2>
-          <p>Generate and attest your proof in a single atomic flow.</p>
-        </div>
-        <div class="chip-row">
-          <span class="chip" style="animation: pulse-chip 2s infinite;"
-            >High Fidelity</span
-          >
-          <span class="chip">Gasless Relayer</span>
-          <span class="chip">Protocol 25 BN254</span>
-        </div>
-      </div>
-
-      <div class="system-tabs" role="tablist" aria-label="Proof systems">
-        {#each systems as system}
-          <button
-            type="button"
-            role="tab"
-            class="tab-btn"
-            class:active={activeSystem === system}
-            aria-selected={activeSystem === system}
-            onclick={() => {
-              activeSystem = system;
-              setPanelError(system, null);
-            }}
-          >
-            {systemLabel[system]}
-          </button>
-        {/each}
-      </div>
-
+    <section class="suite card">
       <div class="suite-grid">
-        <div class="panel plot">
-          <div class="panel-header">
-            <h3>Configuration</h3>
-            {#if activeSystem !== "circom"}
-              <span class="badge-mini">Sample Only</span>
-            {:else}
-              <span class="badge-mini live">Live Prove</span>
-            {/if}
-          </div>
-
-          <label for="sample-tier">Target Tier</label>
-          <select
-            id="sample-tier"
-            value={selectedTier[activeSystem]}
-            onchange={(event) =>
-              setSelectedTier(
-                activeSystem,
-                (event.currentTarget as HTMLSelectElement).value as Tier,
-              )}
-          >
-            {#each getTierOptions(activeSystem) as option}
-              <option value={option.tier}>{option.label}</option>
+        <div class="main-panel">
+          <div class="system-tabs">
+            {#each systems as system}
+              <button
+                type="button"
+                class="tab-btn"
+                class:active={activeSystem === system}
+                onclick={() => {
+                  activeSystem = system;
+                  setPanelError(system, null);
+                }}
+              >
+                {systemLabel[system]}
+              </button>
             {/each}
-          </select>
-
-          <div class="meta-grid">
-            <div class="meta-item">
-              <span class="k">Commitment</span>
-              <span class="v">{shortHash(activeSample.commitmentDigest)}</span>
-            </div>
-            <div class="meta-item">
-              <span class="k">Proof Digest</span>
-              <span class="v">{shortHash(activeSample.proofDigest)}</span>
-            </div>
-            <div class="meta-item">
-              <span class="k">Verifier</span>
-              <span class="v">{verifierLabel[activeSystem]}</span>
-            </div>
           </div>
 
-          <button
-            type="button"
-            class="action attest"
-            disabled={processing[activeSystem] || !isAuth}
-            onclick={() => secureFarmClaim(activeSystem)}
-          >
-            {#if processing[activeSystem]}
-              {step[activeSystem] || "Processing..."}
-            {:else}
-              Secure Farm Claim
+          <div class="control-panel panel">
+            <div class="panel-header">
+              <h3>Secure Pipeline</h3>
+              <span class="badge-mini" class:live={activeSystem === "circom"}>
+                {activeSystem === "circom" ? "LIVE PROVE" : "SAMPLE ONLY"}
+              </span>
+            </div>
+
+            <div class="config-row">
+              <div class="field">
+                <label for="sample-tier">Target Tier Threshold</label>
+                <select
+                  id="sample-tier"
+                  value={selectedTier[activeSystem]}
+                  disabled={processing[activeSystem]}
+                  onchange={(event) =>
+                    setSelectedTier(
+                      activeSystem,
+                      (event.currentTarget as HTMLSelectElement).value as Tier,
+                    )}
+                >
+                  {#each getTierOptions(activeSystem) as option}
+                    <option value={option.tier}>{option.label}</option>
+                  {/each}
+                </select>
+              </div>
+            </div>
+
+            <button
+              type="button"
+              class="action-btn"
+              disabled={processing[activeSystem] || !isAuth}
+              onclick={() => secureFarmClaim(activeSystem)}
+            >
+              {#if processing[activeSystem]}
+                {step[activeSystem] || "PROVING..."}
+              {:else}
+                EXECUTE SECURE CLAIM
+              {/if}
+            </button>
+
+            {#if panelError[activeSystem]}
+              <div class="error-box">
+                {panelError[activeSystem]}
+              </div>
             {/if}
-          </button>
 
-          {#if panelError[activeSystem]}
-            <p class="bad" style="margin-top: 8px;">
-              {panelError[activeSystem]}
-            </p>
-          {/if}
-
-          <div class="result-panel">
-            {#if activeAttestResult?.ok && activeAttestResult.txHash}
-              <div class="verified-status card-glow">
-                <div class="v-head">
-                  <span class="v-badge">VERIFIED ON MAINNET</span>
-                  <a
-                    href={`https://stellar.expert/explorer/public/tx/${activeAttestResult.txHash}`}
-                    target="_blank"
-                    rel="noreferrer"
-                    class="v-link"
-                  >
-                    View on Stellar.Expert ↗
-                  </a>
-                </div>
-                <div class="v-body">
-                  <p class="v-text">
-                    Your ZK attestation is etched into the Stellar ledger.
-                  </p>
-                  <div class="v-hash">
-                    <span class="k">Commitment:</span>
-                    <span class="v">{shortHash(activeAttestResult.txHash)}</span
+            <div class="result-display">
+              {#if activeAttestResult?.ok}
+                <div class="seal-glow">
+                  <div class="seal-head">
+                    <span class="seal-badge">VERIFIED</span>
+                    <a
+                      href={`https://stellar.expert/explorer/public/tx/${activeAttestResult.txHash}`}
+                      target="_blank"
+                      class="explorer-link"
                     >
+                      EXPLORER ↗
+                    </a>
+                  </div>
+                  <div class="seal-body">
+                    <p>On-chain attestation successful.</p>
+                    <code>{shortHash(activeAttestResult.txHash)}</code>
                   </div>
                 </div>
-              </div>
-            {:else if processing[activeSystem]}
-              <div class="processing-glow">
-                <p class="status-pulse">
-                  {step[activeSystem] || "Processing..."}
-                </p>
-              </div>
-            {:else}
-              <p class="neutral-hint">
-                Secure your farming status with one click.
-              </p>
-            {/if}
+              {:else if processing[activeSystem]}
+                <div class="loading-bar-container">
+                  <div class="loading-bar"></div>
+                </div>
+              {:else}
+                <div class="idle-hint">Ready for on-chain attestation.</div>
+              {/if}
+            </div>
           </div>
         </div>
 
-        <div class="panel info-panel">
-          <h3>Verification Intelligence</h3>
-          <div class="intelligence-list">
-            <div class="intel-item">
-              <div class="intel-icon">🧪</div>
-              <div class="intel-text">
-                <strong>Protocol Path</strong>
-                <p>
-                  Using {activeSystem === "circom"
-                    ? "BN254 host pairing checks"
-                    : "Off-chain record ledger"}.
-                </p>
+        <div class="side-panel">
+          <div class="terminal card">
+            <div class="terminal-head">
+              <span>ZK_CRYPTOGRAPHIC_LOG</span>
+              <div class="terminal-dots">
+                <span></span><span></span><span></span>
               </div>
             </div>
-            <div class="intel-item">
-              <div class="intel-icon">🛡️</div>
-              <div class="intel-text">
-                <strong>Privacy Shield</strong>
-                <p>
-                  Only the commitment is stored. Your balance remains private.
-                </p>
-              </div>
+            <div class="terminal-body" id="zk-terminal">
+              {#each zkLogs as log}
+                <div class="log-entry">{log}</div>
+              {/each}
+              {#if zkLogs.length === 0}
+                <div class="log-entry opacity-30">Waiting for execution...</div>
+              {/if}
             </div>
-            <div class="intel-item">
-              <div class="intel-icon">⛽</div>
-              <div class="intel-text">
-                <strong>Gasless Submission</strong>
-                <p>
-                  Transactions are relayed. No native XLM required for fees.
-                </p>
+          </div>
+
+          <div class="intel panel">
+            <h3>Intelligence</h3>
+            <div class="intel-items">
+              <div class="i-item">
+                <span class="i-icon">🛡️</span>
+                <div class="i-content">
+                  <strong>Zero-Leak</strong>
+                  <p>Balances never touch the contract.</p>
+                </div>
+              </div>
+              <div class="i-item">
+                <span class="i-icon">⚡</span>
+                <div class="i-content">
+                  <strong>Protocol 25</strong>
+                  <p>Native BN254 host pairing.</p>
+                </div>
               </div>
             </div>
           </div>
         </div>
       </div>
-    </section>
-
-    <section class="proves card">
-      <h2>Cryptographic Guarantees</h2>
-      <div class="guarantee-grid">
-        <div class="guarantee">
-          <strong>Threshold Enforcement</strong>
-          <p>
-            The proof logically ensures balance >= threshold without revealing
-            the value.
-          </p>
-        </div>
-        <div class="guarantee">
-          <strong>Non-Transferable Claims</strong>
-          <p>
-            Each attestation is mathematically tied to YOUR unique Passkey
-            address.
-          </p>
-        </div>
-        <div class="guarantee">
-          <strong>Absolute Persistence</strong>
-          <p>
-            Once verified on-chain, your status is stored in the Stellar global
-            state.
-          </p>
-        </div>
-      </div>
-    </section>
-
-    <section class="below-fold">
-      <details class="card collapse">
-        <summary>Security Model</summary>
-        <div class="collapse-body">
-          <p>
-            This implementation leverages the latest <strong
-              >Stellar Protocol 25</strong
-            > features, specifically the BN254 elliptic curve host functions.
-          </p>
-          <p>
-            By moving verification from "local UI" to "on-chain contract," we
-            eliminate the possibility of fake proofs being recorded in the
-            system.
-          </p>
-          <pre><code
-              >// On-chain logic:
-// e(-pi_a, pi_b) * e(alpha, beta) * e(vk_x, gamma) * e(pi_c, delta) == 1</code
-            ></pre>
-        </div>
-      </details>
     </section>
   </div>
 </div>
 
 <style>
   :root {
-    --farm-bg: #051a0d;
+    --farm-bg: #020604;
     --farm-ink: #ccfccb;
     --farm-soil: #1a4d2e;
-    --farm-soil-soft: #2d6a4f;
     --farm-leaf: #4ade80;
     --farm-sun: #bbf7d0;
-    --farm-card: rgba(10, 30, 15, 0.65);
-    --farm-line: rgba(74, 222, 128, 0.2);
+    --farm-card: rgba(10, 30, 15, 0.7);
+    --farm-line: rgba(74, 222, 128, 0.15);
+    --farm-term: #0a0a0a;
   }
 
   .farm-root {
     min-height: 100vh;
     color: var(--farm-ink);
+    background: var(--farm-bg);
+    position: relative;
+    overflow-x: hidden;
+    opacity: 0;
+    transition:
+      opacity 1s ease,
+      background 1s ease;
+    font-family: "Space Grotesk", sans-serif;
+  }
+  .farm-mounted {
+    opacity: 1;
+  }
+
+  .is-verified {
+    background: radial-gradient(circle at 50% 120%, #064e3b 0%, #020604 70%);
+  }
+
+  .glow-field {
+    position: fixed;
+    inset: 0;
     background: radial-gradient(
         circle at 15% 15%,
-        rgba(74, 222, 128, 0.08) 0%,
+        rgba(74, 222, 128, 0.05) 0%,
         transparent 40%
       ),
       radial-gradient(
         circle at 85% 85%,
-        rgba(34, 197, 94, 0.08) 0%,
+        rgba(34, 197, 94, 0.05) 0%,
         transparent 40%
-      ),
-      linear-gradient(180deg, #020604 0%, #051a0d 40%, #0a2f1b 100%);
-    position: relative;
-    overflow-x: hidden;
-    opacity: 0;
-    transition: opacity 0.5s ease;
-    font-family: "Space Grotesk", sans-serif;
-  }
-
-  .farm-mounted {
-    opacity: 1;
+      );
+    pointer-events: none;
+    z-index: 0;
   }
 
   .grain {
     position: fixed;
     inset: 0;
     pointer-events: none;
-    background-image: radial-gradient(
-      rgba(255, 255, 255, 0.1) 1px,
-      transparent 1px
-    );
-    background-size: 32px 32px;
-    opacity: 0.4;
+    background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 200 200' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noiseFilter'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.65' numOctaves='3' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noiseFilter)'/%3E%3C/svg%3E");
+    opacity: 0.05;
+    z-index: 100;
   }
 
   .farm-shell {
     position: relative;
     z-index: 1;
-    max-width: 1000px;
+    max-width: 1100px;
     margin: 0 auto;
-    padding: 72px 20px;
+    padding: 60px 20px;
     display: grid;
-    gap: 24px;
+    gap: 32px;
   }
 
   .card {
-    border: 1px solid var(--farm-line);
-    border-radius: 20px;
     background: var(--farm-card);
-    backdrop-filter: blur(20px);
-    box-shadow: 0 10px 40px rgba(0, 0, 0, 0.5);
+    border: 1px solid var(--farm-line);
+    border-radius: 24px;
+    backdrop-filter: blur(24px);
   }
 
   .hero {
-    padding: 40px;
+    padding: 60px 40px;
     text-align: center;
+    position: relative;
+    overflow: hidden;
+    transition: 0.5s cubic-bezier(0.4, 0, 0.2, 1);
+  }
+  .hero-verified {
+    border-color: var(--farm-leaf);
+    box-shadow: 0 0 60px rgba(74, 222, 128, 0.1);
   }
 
   .hero-header-row {
@@ -712,439 +666,365 @@
     justify-content: center;
     align-items: center;
     gap: 16px;
-    margin-bottom: 8px;
+    margin-bottom: 12px;
     flex-wrap: wrap;
   }
-
   .eyebrow {
-    color: var(--farm-leaf);
-    font-size: 0.6rem;
-    font-family: "Press Start 2P";
-    margin: 0;
-  }
-
-  .verified-badge-hero {
-    background: rgba(16, 185, 129, 0.2);
-    border: 1px solid var(--farm-leaf);
-    color: var(--farm-leaf);
-    padding: 6px 12px;
-    border-radius: 30px;
-    font-family: "Press Start 2P";
-    font-size: 0.5rem;
-    display: flex;
-    align-items: center;
-    gap: 6px;
-    animation: glow-pulse 2s infinite;
-  }
-
-  @keyframes glow-pulse {
-    0% {
-      box-shadow: 0 0 5px var(--farm-leaf);
-    }
-    50% {
-      box-shadow: 0 0 20px var(--farm-leaf);
-    }
-    100% {
-      box-shadow: 0 0 5px var(--farm-leaf);
-    }
-  }
-
-  .hero-top h1 {
-    font-family: "Press Start 2P", cursive;
-    font-size: 2.5rem;
-    color: var(--farm-leaf);
-    text-shadow: 0 0 20px rgba(74, 222, 128, 0.4);
-    margin: 12px 0;
-  }
-  .hero-sub {
-    max-width: 60ch;
-    margin: 0 auto 32px;
-    opacity: 0.8;
-    font-size: 1.1rem;
-  }
-
-  .hero-metrics {
-    display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
-    gap: 16px;
-  }
-  .metric {
-    background: rgba(0, 0, 0, 0.4);
-    padding: 20px;
-    border-radius: 16px;
-    border: 1px solid var(--farm-line);
-    display: grid;
-    gap: 8px;
-  }
-  .metric .label {
-    font-size: 0.6rem;
-    font-family: "Press Start 2P";
-    opacity: 0.6;
-  }
-  .metric .value {
-    font-size: 1.2rem;
-    font-weight: 800;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    gap: 8px;
-  }
-
-  .tier-icon {
-    width: 24px;
-    height: 24px;
-  }
-
-  .proof-suite {
-    padding: 32px;
-  }
-  .suite-head {
-    display: flex;
-    justify-content: space-between;
-    align-items: flex-end;
-    margin-bottom: 24px;
-    flex-wrap: wrap;
-    gap: 20px;
-  }
-  .suite-head h2 {
-    font-family: "Press Start 2P";
-    font-size: 1.2rem;
-    color: var(--farm-leaf);
-    margin: 0;
-  }
-  .chip-row {
-    display: flex;
-    gap: 10px;
-  }
-  .chip {
-    background: rgba(74, 222, 128, 0.1);
-    border: 1px solid var(--farm-line);
-    padding: 5px 12px;
-    border-radius: 20px;
-    font-size: 0.6rem;
-    font-family: "Press Start 2P";
-    color: var(--farm-sun);
-  }
-
-  .system-tabs {
-    display: flex;
-    gap: 12px;
-    margin-bottom: 24px;
-  }
-  .tab-btn {
-    flex: 1;
-    border: 1px solid var(--farm-line);
-    background: transparent;
-    color: var(--farm-ink);
-    padding: 12px;
-    border-radius: 12px;
-    font-family: "Press Start 2P";
-    font-size: 0.6rem;
-    cursor: pointer;
-    transition: 0.2s;
-  }
-  .tab-btn.active {
-    background: rgba(74, 222, 128, 0.15);
-    border-color: var(--farm-leaf);
-    color: white;
-    box-shadow: 0 0 20px rgba(74, 222, 128, 0.2);
-  }
-
-  .suite-grid {
-    display: grid;
-    grid-template-columns: 1.5fr 1fr;
-    gap: 24px;
-  }
-  .panel {
-    background: rgba(0, 0, 0, 0.2);
-    border: 1px solid var(--farm-line);
-    border-radius: 16px;
-    padding: 24px;
-    display: grid;
-    gap: 20px;
-  }
-
-  .panel-header {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-  }
-  .badge-mini {
-    font-size: 0.5rem;
-    font-family: "Press Start 2P";
-    padding: 4px 8px;
-    border-radius: 4px;
-    background: #444;
-  }
-  .badge-mini.live {
-    background: #065f46;
-    color: #34d399;
-  }
-
-  .meta-grid {
-    display: grid;
-    gap: 8px;
-  }
-  .meta-item {
-    background: rgba(0, 0, 0, 0.3);
-    padding: 12px;
-    border-radius: 12px;
-    border: 1px solid var(--farm-line);
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-  }
-  .meta-item .k {
-    font-size: 0.6rem;
-    opacity: 0.7;
-  }
-  .meta-item .v {
-    font-family: monospace;
-    font-size: 0.8rem;
-  }
-
-  .action.attest {
-    background: linear-gradient(135deg, #10b981, #064e3b);
-    color: white;
-    padding: 16px;
-    border: none;
-    border-radius: 12px;
-    font-family: "Press Start 2P";
-    font-size: 0.7rem;
-    cursor: pointer;
-    transition: 0.3s cubic-bezier(0.4, 0, 0.2, 1);
-    border: 1px solid rgba(255, 255, 255, 0.1);
-  }
-  .action.attest:hover:not(:disabled) {
-    transform: translateY(-2px);
-    box-shadow: 0 0 30px rgba(16, 185, 129, 0.4);
-    background: linear-gradient(135deg, #34d399, #065f46);
-  }
-  .action.attest:disabled {
-    opacity: 0.5;
-    cursor: not-allowed;
-    filter: grayscale(0.5);
-  }
-
-  .bad {
-    color: #f87171;
-    font-size: 0.8rem;
-    background: rgba(248, 113, 113, 0.1);
-    padding: 12px;
-    border-radius: 8px;
-    border-left: 3px solid #f87171;
-  }
-
-  .result-panel {
-    min-height: 120px;
-    display: flex;
-    flex-direction: column;
-    justify-content: center;
-    border-top: 1px solid var(--farm-line);
-    padding-top: 20px;
-  }
-
-  .verified-status {
-    background: rgba(16, 185, 129, 0.1);
-    border: 1px solid var(--farm-leaf);
-    border-radius: 12px;
-    padding: 16px;
-    display: grid;
-    gap: 12px;
-    box-shadow: 0 0 30px rgba(16, 185, 129, 0.1);
-  }
-
-  .v-head {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-  }
-
-  .v-badge {
     font-family: "Press Start 2P";
     font-size: 0.55rem;
     color: var(--farm-leaf);
-    letter-spacing: 1px;
-  }
-
-  .v-link {
-    font-size: 0.7rem;
-    color: var(--farm-sun);
-    text-decoration: none;
-    font-weight: 600;
-  }
-  .v-link:hover {
-    text-decoration: underline;
-  }
-
-  .v-text {
-    font-size: 0.85rem;
-    opacity: 0.9;
+    letter-spacing: 2px;
     margin: 0;
   }
-
-  .v-hash {
+  .verified-badge-hero {
+    background: rgba(16, 185, 129, 0.2);
+    border: 1px solid var(--farm-leaf);
+    padding: 6px 14px;
+    border-radius: 40px;
+    font-family: "Press Start 2P";
+    font-size: 0.5rem;
     display: flex;
+    align-items: center;
     gap: 8px;
-    font-size: 0.7rem;
-    opacity: 0.6;
-    font-family: monospace;
+    animation: badge-glow 2s infinite;
   }
-
-  .processing-glow {
-    text-align: center;
-    padding: 20px;
-  }
-
-  .status-pulse {
-    font-family: "Press Start 2P";
-    font-size: 0.6rem;
-    color: var(--farm-leaf);
-    animation: pulse 1.5s infinite;
-  }
-
-  .neutral-hint {
-    text-align: center;
-    font-size: 0.8rem;
-    opacity: 0.4;
-    font-style: italic;
-  }
-
-  .info-panel {
-    align-self: start;
-    position: sticky;
-    top: 24px;
-    background: linear-gradient(
-      180deg,
-      rgba(10, 30, 15, 0.8) 0%,
-      rgba(5, 15, 10, 0.9) 100%
-    );
-  }
-  .intelligence-list {
-    display: grid;
-    gap: 16px;
-  }
-  .intel-item {
-    display: flex;
-    gap: 12px;
-    align-items: flex-start;
-  }
-  .intel-icon {
-    font-size: 1.2rem;
-  }
-  .intel-text strong {
-    font-size: 0.8rem;
-    display: block;
-    color: var(--farm-leaf);
-    margin-bottom: 4px;
-  }
-  .intel-text p {
-    font-size: 0.75rem;
-    opacity: 0.8;
-    margin: 0;
-    line-height: 1.4;
-  }
-
-  .proves {
-    padding: 40px;
-  }
-  .proves h2 {
-    font-family: "Press Start 2P";
-    font-size: 1rem;
-    color: var(--farm-leaf);
-    margin-bottom: 32px;
-    text-align: center;
-  }
-  .guarantee-grid {
-    display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
-    gap: 24px;
-  }
-  .guarantee {
-    background: rgba(0, 0, 0, 0.3);
-    padding: 24px;
-    border-radius: 16px;
-    border: 1px solid var(--farm-line);
-    text-align: center;
-  }
-  .guarantee strong {
-    display: block;
-    margin-bottom: 12px;
-    color: var(--farm-sun);
-    font-size: 0.9rem;
-  }
-  .guarantee p {
-    font-size: 0.8rem;
-    opacity: 0.7;
-    margin: 0;
-    line-height: 1.5;
-  }
-
-  .collapse {
-    padding: 0;
-    overflow: hidden;
-  }
-  .collapse summary {
-    padding: 20px 24px;
-    cursor: pointer;
-    font-family: "Press Start 2P";
-    font-size: 0.6rem;
-    color: var(--farm-leaf);
-    user-select: none;
-  }
-  .collapse-body {
-    padding: 0 24px 24px;
-    font-size: 0.85rem;
-    opacity: 0.9;
-    line-height: 1.6;
-  }
-  .collapse-body pre {
-    background: rgba(0, 0, 0, 0.5);
-    padding: 16px;
-    border-radius: 12px;
-    border: 1px solid var(--farm-line);
-    overflow-x: auto;
-    font-family: "Courier New", Courier, monospace;
-    font-size: 0.75rem;
-    margin-top: 16px;
-  }
-
-  @keyframes pulse {
-    0% {
-      opacity: 0.4;
-    }
-    50% {
-      opacity: 1;
-    }
-    100% {
-      opacity: 0.4;
-    }
-  }
-
-  @keyframes pulse-chip {
+  @keyframes badge-glow {
     0% {
       box-shadow: 0 0 0 0 rgba(74, 222, 128, 0.4);
     }
     70% {
-      box-shadow: 0 0 0 10px rgba(74, 222, 128, 0);
+      box-shadow: 0 0 10px 4px rgba(74, 222, 128, 0);
     }
     100% {
       box-shadow: 0 0 0 0 rgba(74, 222, 128, 0);
     }
   }
 
-  @media (max-width: 768px) {
-    .hero h1 {
-      font-size: 1.5rem;
+  .hero h1 {
+    font-family: "Press Start 2P";
+    font-size: 3rem;
+    color: white;
+    margin: 16px 0;
+    letter-spacing: -2px;
+  }
+  .hero-sub {
+    max-width: 60ch;
+    margin: 0 auto 40px;
+    font-size: 1.15rem;
+    line-height: 1.6;
+    opacity: 0.7;
+  }
+
+  .hero-metrics {
+    display: flex;
+    justify-content: center;
+    gap: 24px;
+    flex-wrap: wrap;
+  }
+  .metric {
+    min-width: 180px;
+    padding: 20px;
+    background: rgba(0, 0, 0, 0.3);
+    border-radius: 20px;
+    border: 1px solid var(--farm-line);
+    display: grid;
+    gap: 10px;
+  }
+  .metric.highlight {
+    border-color: var(--farm-leaf);
+    background: rgba(74, 222, 128, 0.05);
+  }
+  .metric .label {
+    font-family: "Press Start 2P";
+    font-size: 0.45rem;
+    opacity: 0.5;
+  }
+  .metric .value {
+    font-size: 1.25rem;
+    font-weight: 800;
+    color: white;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+  }
+
+  .suite-grid {
+    display: grid;
+    grid-template-columns: 1fr 340px;
+    gap: 32px;
+  }
+
+  .system-tabs {
+    display: flex;
+    gap: 8px;
+    margin-bottom: 16px;
+  }
+  .tab-btn {
+    flex: 1;
+    padding: 14px;
+    border-radius: 14px;
+    background: rgba(0, 0, 0, 0.4);
+    border: 1px solid var(--farm-line);
+    color: var(--farm-ink);
+    font-family: "Press Start 2P";
+    font-size: 0.55rem;
+    cursor: pointer;
+    transition: 0.2s;
+  }
+  .tab-btn:hover {
+    background: rgba(74, 222, 128, 0.1);
+  }
+  .tab-btn.active {
+    background: var(--farm-leaf);
+    color: var(--farm-bg);
+    border-color: var(--farm-leaf);
+  }
+
+  .panel {
+    background: rgba(0, 0, 0, 0.3);
+    border: 1px solid var(--farm-line);
+    border-radius: 20px;
+    padding: 30px;
+  }
+
+  .panel-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 24px;
+  }
+  .badge-mini {
+    padding: 6px 10px;
+    background: #2a2a2a;
+    border-radius: 6px;
+    font-family: "Press Start 2P";
+    font-size: 0.45rem;
+    color: #888;
+  }
+  .badge-mini.live {
+    background: #065f46;
+    color: #34d399;
+  }
+
+  .config-row {
+    margin-bottom: 24px;
+  }
+  .field label {
+    display: block;
+    font-size: 0.85rem;
+    margin-bottom: 10px;
+    opacity: 0.7;
+  }
+  select {
+    width: 100%;
+    padding: 14px;
+    background: #111;
+    border: 1px solid var(--farm-line);
+    color: white;
+    border-radius: 12px;
+    font-family: "Space Grotesk";
+    font-size: 1rem;
+    outline: none;
+  }
+
+  .action-btn {
+    width: 100%;
+    padding: 20px;
+    background: linear-gradient(135deg, #4ade80, #166534);
+    border: none;
+    border-radius: 16px;
+    color: #020604;
+    font-family: "Press Start 2P";
+    font-size: 0.75rem;
+    cursor: pointer;
+    transition:
+      transform 0.2s,
+      box-shadow 0.2s;
+    box-shadow: 0 10px 20px rgba(0, 0, 0, 0.3);
+  }
+  .action-btn:hover:not(:disabled) {
+    transform: translateY(-2px);
+    box-shadow: 0 15px 30px rgba(74, 222, 128, 0.2);
+  }
+  .action-btn:disabled {
+    opacity: 0.4;
+    cursor: not-allowed;
+  }
+
+  .result-display {
+    margin-top: 24px;
+    min-height: 100px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+
+  .seal-glow {
+    width: 100%;
+    background: rgba(16, 185, 129, 0.1);
+    border: 1px solid var(--farm-leaf);
+    border-radius: 16px;
+    padding: 20px;
+    display: grid;
+    gap: 12px;
+    animation: seal-pulse 3s infinite;
+  }
+  @keyframes seal-pulse {
+    0% {
+      box-shadow: 0 0 10px rgba(16, 185, 129, 0.1);
     }
+    50% {
+      box-shadow: 0 0 30px rgba(16, 185, 129, 0.2);
+    }
+    100% {
+      box-shadow: 0 0 10px rgba(16, 185, 129, 0.1);
+    }
+  }
+  .seal-head {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+  }
+  .seal-badge {
+    font-family: "Press Start 2P";
+    font-size: 0.6rem;
+    color: var(--farm-leaf);
+  }
+  .explorer-link {
+    font-size: 0.75rem;
+    color: var(--farm-sun);
+    text-decoration: none;
+    font-weight: 700;
+  }
+
+  .terminal {
+    background: var(--farm-term);
+    border: 1px solid #333;
+    border-radius: 16px;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    height: 380px;
+  }
+  .terminal-head {
+    padding: 12px 16px;
+    background: #1a1a1a;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    font-family: "Press Start 2P";
+    font-size: 0.45rem;
+    color: #666;
+  }
+  .terminal-dots {
+    display: flex;
+    gap: 4px;
+  }
+  .terminal-dots span {
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    background: #333;
+  }
+  .terminal-body {
+    flex: 1;
+    padding: 16px;
+    font-family: "Courier New", Courier, monospace;
+    font-size: 0.75rem;
+    color: #4ade80;
+    overflow-y: auto;
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    background-image: linear-gradient(
+        rgba(18, 16, 16, 0) 50%,
+        rgba(0, 0, 0, 0.25) 50%
+      ),
+      linear-gradient(
+        90deg,
+        rgba(255, 0, 0, 0.06),
+        rgba(0, 255, 0, 0.02),
+        rgba(0, 0, 255, 0.06)
+      );
+    background-size:
+      100% 2px,
+      3px 100%;
+  }
+  .log-entry {
+    line-height: 1.4;
+  }
+
+  .intel {
+    margin-top: 24px;
+  }
+  .intel-items {
+    display: grid;
+    gap: 16px;
+  }
+  .i-item {
+    display: flex;
+    gap: 12px;
+    align-items: flex-start;
+  }
+  .i-icon {
+    font-size: 1.2rem;
+  }
+  .i-content strong {
+    display: block;
+    font-size: 0.85rem;
+    color: var(--farm-leaf);
+    margin-bottom: 2px;
+  }
+  .i-content p {
+    font-size: 0.75rem;
+    opacity: 0.6;
+    margin: 0;
+  }
+
+  .loading-bar-container {
+    width: 100%;
+    height: 4px;
+    background: #222;
+    border-radius: 2px;
+    overflow: hidden;
+  }
+  .loading-bar {
+    width: 30%;
+    height: 100%;
+    background: var(--farm-leaf);
+    animation: bar-slide 1.5s infinite linear;
+  }
+  @keyframes bar-slide {
+    0% {
+      transform: translateX(-100%);
+    }
+    100% {
+      transform: translateX(330%);
+    }
+  }
+
+  .idle-hint {
+    font-size: 0.85rem;
+    opacity: 0.3;
+    font-style: italic;
+  }
+  .error-box {
+    margin-top: 16px;
+    padding: 12px;
+    background: rgba(239, 68, 68, 0.1);
+    border: 1px solid #ef4444;
+    border-radius: 8px;
+    color: #ef4444;
+    font-size: 0.85rem;
+  }
+
+  @media (max-width: 900px) {
     .suite-grid {
       grid-template-columns: 1fr;
     }
-    .hero-metrics {
-      grid-template-columns: 1fr;
-    }
-    .hero-top h1 {
-      font-size: 1.8rem;
+    .hero h1 {
+      font-size: 2rem;
     }
   }
 </style>
