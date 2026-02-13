@@ -399,7 +399,7 @@
                 throw new Error(sendResult.error || "Swap submission failed");
             }
 
-            txHash = sendResult.transactionHash || "submitted";
+            txHash = sendResult.transactionHash ?? null;
             swapState = "confirmed";
             statusMessage = "Swap complete!";
             triggerSuccessConfetti();
@@ -471,7 +471,7 @@
                 throw new Error(sendResult.error || "Transfer failed");
             }
 
-            txHash = sendResult.transactionHash || "submitted";
+            txHash = sendResult.transactionHash ?? null;
             swapState = "confirmed";
             statusMessage = `Sent ${amountNum} ${sendToken}!`;
             triggerSuccessConfetti();
