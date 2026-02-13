@@ -12,6 +12,7 @@ export interface AttestationResult {
   ok: boolean;
   txHash?: string;
   ledger?: number;
+  timestamp?: number;
   feeCharged?: string;
   error?: string;
 }

@@ -11,7 +11,7 @@ test('ZK Auth Flow: Navigate -> Prove -> Verify', async ({ page }) => {
 
     // 2. Set Balance via Hook (requires DEV mode)
     // We need to wait for the component to mount and expose the hook.
-    await page.waitForFunction(() => window.__setBalance);
+    await page.waitForFunction(() => (window as any).__setBalance);
 
     // Set sufficient balance (e.g. 500 KALE, min is 100)
     // balanceState stores bigint. JSON.stringify handles basic types but passing bigint to evaluate might need care?

@@ -39,14 +39,11 @@
             });
             const { xdr } = await cRes.json();
 
-            // Step C: Sign
-            // SWK sign returns { signedXDR } structure usually.
-            // NOTE: StellarWalletsKit.sign() returns Promise<{ signedXDR: string }>
-            const { signedXDR } = await kit.sign({
-                xdr,
-                publicKey: userAddress,
-                network: "Public Global Stellar Network ; September 2015",
+            // Step C: Sign (wallet signs the SEP-10 challenge transaction XDR)
+            const { signedTxXdr } = await kit.signTransaction(xdr, {
+                address: userAddress,
             });
+            const signedXDR = signedTxXdr;
 
             // Step D: Verify
             const vRes = await fetch("/api/chat/auth/verify", {

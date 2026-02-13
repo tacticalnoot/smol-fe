@@ -18,13 +18,35 @@ function decodeBase64(base64: string): Uint8Array {
   return bytes;
 }
 
-async function getBackend(bytecode: string): Promise<UltraHonkBackend> {
-  if (!backend || backendBytecode !== bytecode) {
+function isGzip(bytes: Uint8Array): boolean {
+  return bytes.length >= 2 && bytes[0] === 0x1f && bytes[1] === 0x8b;
+}
+
+async function gunzip(bytes: Uint8Array): Promise<Uint8Array> {
+  if (typeof DecompressionStream === "undefined") {
+    throw new Error(
+      "Noir verifier bytecode is gzip-compressed, but DecompressionStream is unavailable in this browser.",
+    );
+  }
+
+  const ds = new DecompressionStream("gzip");
+  const safe = new Uint8Array(bytes) as unknown as Uint8Array<ArrayBuffer>;
+  const stream = new Blob([safe]).stream().pipeThrough(ds);
+  const buf = await new Response(stream).arrayBuffer();
+  return new Uint8Array(buf);
+}
+
+async function getBackend(bytecodeGzipBase64: string): Promise<UltraHonkBackend> {
+  if (!backend || backendBytecode !== bytecodeGzipBase64) {
     if (backend) {
       await backend.destroy();
     }
+
+    const rawBytes = decodeBase64(bytecodeGzipBase64);
+    const bytecode = isGzip(rawBytes) ? await gunzip(rawBytes) : rawBytes;
+
     backend = new UltraHonkBackend(bytecode, { threads: 1 });
-    backendBytecode = bytecode;
+    backendBytecode = bytecodeGzipBase64;
   }
   return backend;
 }
@@ -52,10 +74,7 @@ export async function verifyNoirProof(
 
   try {
     const verifier = await getBackend(bytecode);
-    const valid = await verifier.verifyProof({
-      proof: decodeBase64(payload.proofBase64),
-      publicInputs: payload.publicInputs,
-    });
+    const valid = await verifier.verifyProof(decodeBase64(payload.proofBase64));
     return {
       valid,
       durationMs: Math.round(performance.now() - startedAt),

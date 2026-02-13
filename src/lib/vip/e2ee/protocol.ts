@@ -187,10 +187,11 @@ export async function encryptWithSenderKey(
   message: string
 ) {
   const nonce = crypto.getRandomValues(new Uint8Array(12));
+  const plain = encodeUtf8(message);
   const cipher = await crypto.subtle.encrypt(
     { name: "AES-GCM", iv: nonce },
     sender.key,
-    encodeUtf8(message)
+    plain
   );
   sender.sentCount += 1;
   return {
@@ -215,7 +216,7 @@ export async function decryptWithSenderKey(
 
 export async function signPayload(
   identity: IdentityKeyPair,
-  fields: ArrayBuffer
+  fields: BufferSource
 ): Promise<string> {
   const signature = await crypto.subtle.sign(
     { name: "ECDSA", hash: "SHA-256" },

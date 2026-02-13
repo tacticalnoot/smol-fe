@@ -1,4 +1,5 @@
-import { StrKey, Transaction, Utils, Keypair, Networks } from '@stellar/stellar-sdk';
+import type { D1Database } from "@cloudflare/workers-types";
+import { Keypair, Networks, WebAuth } from "@stellar/stellar-sdk";
 
 /**
  * Validates a SEP-0010 challenge transaction.
@@ -10,41 +11,15 @@ export async function verifyChallengeTx(
     serverAddress: string
 ) {
     try {
-        const tx = new Transaction(challengeXdr, networkPassphrase);
-
-        if (tx.sequence !== '0') {
-            return { valid: false, error: 'Invalid sequence number' };
-        }
-
-        if (!tx.timeBounds) {
-            return { valid: false, error: 'Missing time bounds' };
-        }
-
-        const now = Math.floor(Date.now() / 1000);
-        if (now < Number(tx.timeBounds.minTime) || now > Number(tx.timeBounds.maxTime)) {
-            return { valid: false, error: 'Expired challenge' };
-        }
-
-        if (tx.source !== serverAddress) {
-            return { valid: false, error: 'Invalid server source' };
-        }
-
-        // Verify signature
-        // For MVP we trust Utils.verifyTransactionSignature for Ed25519
-        // For Smart Wallets, we might need to rely on the fact that the client *could* sign it.
-        // Real strict SEP-0010 requires verifying the specific signer weight.
-        // Here we check if the claimed address (or its signers) signed it.
-
-        // Attempt standard verification first
-        try {
-            if (Utils.verifyTransactionSignature(tx, clientAddress, networkPassphrase)) {
-                return { valid: true };
-            }
-        } catch (e) {
-            // Fallback for smart wallets or complex signers?
-        }
-
-        return { valid: false, error: 'Signature verification failed' };
+        WebAuth.verifyChallengeTxSigners(
+            challengeXdr,
+            serverAddress,
+            networkPassphrase,
+            [clientAddress],
+            ["smol.xyz"],
+            "smol.xyz",
+        );
+        return { valid: true };
 
     } catch (e: any) {
         return { valid: false, error: e.message };
@@ -53,12 +28,13 @@ export async function verifyChallengeTx(
 
 export function buildChallenge(serverSecret: string, clientAddress: string, networkPassphrase: string) {
     const serverKeypair = Keypair.fromSecret(serverSecret);
-    return Utils.buildChallengeTx(
+    return WebAuth.buildChallengeTx(
         serverKeypair,
         clientAddress,
         'smol.xyz', // Domain
         networkPassphrase === Networks.PUBLIC ? 300 : 300,
-        networkPassphrase
+        networkPassphrase,
+        'smol.xyz', // webAuthDomain
     );
 }
 

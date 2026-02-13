@@ -16,7 +16,13 @@ const ROOMS = [
     { id: 'contact', name: 'Your chat here', description: 'Contact admin.', disabled: true }
 ];
 
-export const GET: APIRoute = async ({ request, env }) => {
+export const GET: APIRoute = async (context) => {
+    const { request, locals } = context;
+    const env = (locals as any).runtime?.env;
+    if (!env?.DB) {
+        return new Response('Server not configured (missing DB binding)', { status: 500 });
+    }
+
     const db = await getDb(env);
     const session = await getSession(request, db);
 
@@ -61,7 +67,8 @@ export const GET: APIRoute = async ({ request, env }) => {
                 // YES. 
                 // Let's move eligibility check to `verify.ts` or a separate `refresh-access` endpoint?
                 // For now, let's just default to TRUE for Builders/General and FALSE for Lumenauts unless stored.
-                accessMap['lumenauts'] = true; // MVP: Open for testing.
+                // NOTE: legacy chat endpoint; keep locked-by-default unless a real check is implemented.
+                accessMap['lumenauts'] = false;
             }
         } catch (e) {
             console.error("Horizon check failed", e);

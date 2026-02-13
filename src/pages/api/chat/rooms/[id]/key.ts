@@ -10,7 +10,13 @@ import { Keypair } from '@stellar/stellar-sdk'; // Used for server secret -> key
 // Actually, `nacl.sign.keyPair.fromSecretKey` is for styling.
 // BETTER: Generate a dedicated X25519 Keypair for the server from a separate secret or hash of the secret.
 
-export const GET: APIRoute = async ({ request, env, params }) => {
+export const GET: APIRoute = async (context) => {
+    const { request, locals, params } = context;
+    const env = (locals as any).runtime?.env;
+    if (!env?.DB) {
+        return new Response('Server not configured (missing DB binding)', { status: 500 });
+    }
+
     const db = await getDb(env);
     const session = await getSession(request, db);
     if (!session) return new Response('Unauthorized', { status: 401 });
@@ -57,7 +63,10 @@ export const GET: APIRoute = async ({ request, env, params }) => {
     // We need a persistent Server X25519 Key.
     // Let's generate one from the CHAT_SERVER_SECRET (hash it -> params).
 
-    const serverSecret = (env as any).CHAT_SERVER_SECRET || 'SDHOAMBNLGCE2MV5XK4J53L3JX5L3JX5L3JX5L3JX5L3JX5L3JX5L3JX';
+    const serverSecret = (env as any).CHAT_SERVER_SECRET || process.env.CHAT_SERVER_SECRET;
+    if (!serverSecret) {
+        return new Response(JSON.stringify({ error: 'Missing CHAT_SERVER_SECRET' }), { status: 500 });
+    }
     // Hash secret to get 32 bytes for box seed
     const serverBoxSeed = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(serverSecret));
     const serverBoxKeypair = nacl.box.keyPair.fromSecretKey(new Uint8Array(serverBoxSeed));

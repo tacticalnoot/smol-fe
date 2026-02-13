@@ -128,7 +128,7 @@ export const VIP_ROOMS: VipRoom[] = [
     },
     proofFlow: [
       "Connect Stellar wallet",
-      "Sign nonce challenge",
+      "Sign SEP-10 challenge tx",
       "Server checks earliest ledger close time",
     ],
     e2eePolicy: {
@@ -154,7 +154,7 @@ export const VIP_ROOMS: VipRoom[] = [
     },
     proofFlow: [
       "Connect Stellar wallet",
-      "Sign nonce challenge",
+      "Sign SEP-10 challenge tx",
       "Server checks account existence",
     ],
     e2eePolicy: {

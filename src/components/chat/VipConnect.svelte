@@ -11,8 +11,8 @@
             await kit.openModal({
                 onWalletSelected: async (option) => {
                     kit.setWallet(option.id);
-                    const { publicKey } = await kit.getPublicKey();
-                    dispatch("connect", { publicKey });
+                    const { address } = await kit.getAddress();
+                    dispatch("connect", { publicKey: address });
                 },
             });
         } catch (e) {

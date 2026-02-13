@@ -66,10 +66,10 @@ function generateSalt(): bigint {
 }
 
 /**
- * Compute the correct door for a given floor + nonce.
- * This mirrors the on-chain logic: (sigil_secret + floor + nonce) % 4
- * For now, uses a deterministic derivation.
- * In the full Noir version, this comes from the private sigil_secret.
+ * Compute the correct door for a given floor + nonce (demo-only).
+ *
+ * This is deterministic game logic and is NOT proven by the ZK circuit.
+ * The circuit simply produces a proof bound to the attempt parameters.
  */
 function computeCorrectDoor(floor: number, nonce: number): number {
     const seed = floor * 1000 + nonce;
@@ -89,9 +89,7 @@ function encodeDoorData(floor: number, door: number, nonce: number): bigint {
 
 /** Map floor to proof type label — matches game lore */
 function proofTypeForFloor(floor: number): string {
-    if (floor === 3 || floor === 7) return "Circom";
-    if (floor === 10) return "RISC Zero";
-    return "Groth16";
+    return "Groth16 (Circom)";
 }
 
 // ── Proof Generation ─────────────────────────────────────────────────────────
@@ -183,7 +181,7 @@ export async function generateDoorProof(
 
 /**
  * Verify a door proof locally (for debugging / UI feedback).
- * In production, verification happens on-chain via the tier-verifier contract.
+ * ZK Dungeon currently performs local verification only.
  */
 export async function verifyDoorProofLocally(
     proof: any,

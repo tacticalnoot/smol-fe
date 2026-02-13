@@ -1,11 +1,7 @@
 <script lang="ts">
     import { userState } from "../../../../stores/user.svelte.ts";
     import {
-        HUB_CONTRACT_ID,
-        callStartGame,
-        callEndGame,
         attemptDoor as submitDoorAttempt,
-        generateSessionId,
         txExplorerUrl,
     } from "./dungeonService";
 
@@ -33,11 +29,6 @@
     let fullscreen = $state<boolean>(false);
     let showHowItWorks = $state<boolean>(false);
     let floorTransition = $state<boolean>(false);
-    let sessionId = $state<number>(0);
-    let hubStartTx = $state<string | null>(null);
-    let hubEndTx = $state<string | null>(null);
-    let hubCallError = $state<string | null>(null);
-    let hubCalling = $state<boolean>(false);
 
     interface RunLogEntry {
         floor: number;
@@ -54,16 +45,16 @@
 
     // Floor lore for atmosphere
     const FLOOR_LORE: Record<number, { name: string; desc: string; proofType: string }> = {
-        1: { name: "Threshold of Binding", desc: "Co-op gate. Both seekers must prove entry.", proofType: "Groth16" },
-        2: { name: "Hall of Echoes", desc: "Rune doors whisper half-truths.", proofType: "Groth16" },
-        3: { name: "Cipher Chamber", desc: "The Circom gate demands algebraic proof.", proofType: "Circom" },
-        4: { name: "Phantom Corridor", desc: "Shadows shift. Trust your commitment.", proofType: "Groth16" },
-        5: { name: "Warden's Gate", desc: "Co-op gate. Seekers must synchronize.", proofType: "Groth16" },
-        6: { name: "Vault of Secrets", desc: "Private inputs guard the path.", proofType: "Groth16" },
-        7: { name: "Merkle Depths", desc: "Hash trees grow deep here.", proofType: "Circom" },
-        8: { name: "Nonce Forge", desc: "Each attempt brands a new seal.", proofType: "Groth16" },
-        9: { name: "Verifier's Sanctum", desc: "The final proof before the boss.", proofType: "Groth16" },
-        10: { name: "Zero Knowledge Throne", desc: "RISC Zero boss. Prove everything. Reveal nothing.", proofType: "RISC Zero" },
+        1: { name: "Threshold of Binding", desc: "Co-op gate (lore). Proofs run locally in-browser.", proofType: "Groth16 (Circom)" },
+        2: { name: "Hall of Echoes", desc: "Rune doors whisper half-truths.", proofType: "Groth16 (Circom)" },
+        3: { name: "Cipher Chamber", desc: "Algebraic proof in the browser.", proofType: "Groth16 (Circom)" },
+        4: { name: "Phantom Corridor", desc: "Shadows shift. Trust your commitment.", proofType: "Groth16 (Circom)" },
+        5: { name: "Warden's Gate", desc: "Co-op gate (lore).", proofType: "Groth16 (Circom)" },
+        6: { name: "Vault of Secrets", desc: "Private inputs guard the path.", proofType: "Groth16 (Circom)" },
+        7: { name: "Merkle Depths", desc: "Hash trees grow deep here.", proofType: "Groth16 (Circom)" },
+        8: { name: "Nonce Forge", desc: "Each attempt brands a new seal.", proofType: "Groth16 (Circom)" },
+        9: { name: "Verifier's Sanctum", desc: "The final proof before the boss.", proofType: "Groth16 (Circom)" },
+        10: { name: "Zero Knowledge Throne", desc: "Boss floor (local verification).", proofType: "Groth16 (Circom)" },
     };
 
     // ── Derived State ───────────────────────────────────────────────────
@@ -110,43 +101,15 @@
         runLog = [];
         doorStates = ["idle", "idle", "idle", "idle"];
         opponentName = opponentName || "Seeker-2";
-        sessionId = generateSessionId();
-        hubStartTx = null;
-        hubEndTx = null;
-        hubCallError = null;
         phase = "playing";
-
-        // Call start_game() on hub contract (real testnet tx)
-        let startTxHash: string | null = null;
-        if (isConnected && userState.keyId && userState.contractId) {
-            hubCalling = true;
-            try {
-                startTxHash = await callStartGame({
-                    gameId: HUB_CONTRACT_ID, // Using hub as game_id placeholder
-                    sessionId,
-                    player1: userState.contractId,
-                    player2: userState.contractId, // Solo mode: same player
-                    player1Points: 0n,
-                    player2Points: 0n,
-                    keyId: userState.keyId,
-                    contractId: userState.contractId,
-                });
-                hubStartTx = startTxHash;
-            } catch (err: any) {
-                console.warn("[Dungeon] start_game() failed (non-blocking):", err.message);
-                hubCallError = err.message;
-            } finally {
-                hubCalling = false;
-            }
-        }
 
         addLogEntry({
             floor: 0,
             door: -1,
             attempt: 0,
             result: "correct",
-            proofType: "Hub",
-            txHash: startTxHash,
+            proofType: "Local",
+            txHash: null,
             timestamp: Date.now(),
         });
     }
@@ -191,32 +154,13 @@
 
         if (isCorrect) {
             if (currentFloor >= TOTAL_FLOORS) {
-                // Victory! Call end_game() on hub
-                let endTxHash: string | null = null;
-                if (isConnected && userState.keyId && userState.contractId) {
-                    hubCalling = true;
-                    try {
-                        endTxHash = await callEndGame({
-                            sessionId,
-                            player1Won: true,
-                            keyId: userState.keyId,
-                            contractId: userState.contractId,
-                        });
-                        hubEndTx = endTxHash;
-                    } catch (err: any) {
-                        console.warn("[Dungeon] end_game() failed (non-blocking):", err.message);
-                    } finally {
-                        hubCalling = false;
-                    }
-                }
-
                 addLogEntry({
                     floor: TOTAL_FLOORS,
                     door: -1,
                     attempt: attempts,
                     result: "correct",
-                    proofType: "Hub",
-                    txHash: endTxHash,
+                    proofType: "Local",
+                    txHash: null,
                     timestamp: Date.now(),
                 });
                 phase = "victory";
@@ -296,7 +240,7 @@
     <div class="dg-title-content">
         <p class="dg-eyebrow">CHAPTER 3</p>
         <h1 class="dg-game-title">STELLAR ZK DUNGEON</h1>
-        <p class="dg-subtitle">10 floors. 4 doors. Every choice is a zero-knowledge proof on Stellar.</p>
+        <p class="dg-subtitle">10 floors. 4 doors. Every choice is a zero-knowledge proof generated in your browser.</p>
 
         <div class="dg-title-actions">
             {#if isConnected}
@@ -344,8 +288,8 @@
             <div class="dg-hiw-item">
                 <span class="dg-hiw-num">3</span>
                 <div>
-                    <strong>Verify on-chain</strong>
-                    <p>The proof is verified on Stellar. Even wrong choices are real verified transactions.</p>
+                    <strong>Verify locally</strong>
+                    <p>The proof is verified locally in your browser. On-chain verification is not wired for the dungeon yet.</p>
                 </div>
             </div>
             <div class="dg-hiw-item">
@@ -417,9 +361,6 @@
         <div class="dg-hud-left">
             <span class="dg-hud-floor">FLOOR {currentFloor}/{TOTAL_FLOORS}</span>
             <span class="dg-hud-proof-type">{currentLore.proofType}</span>
-            {#if hubCalling}
-                <span class="dg-hud-hub-status">HUB...</span>
-            {/if}
         </div>
         <div class="dg-hud-center">
             <div class="dg-progress-bar">
@@ -428,9 +369,6 @@
         </div>
         <div class="dg-hud-right">
             <span class="dg-hud-attempts">ATTEMPTS: {attempts}</span>
-            {#if hubStartTx}
-                <a class="dg-hud-tx-link" href={txExplorerUrl(hubStartTx)} target="_blank" rel="noreferrer" title="start_game tx">HUB</a>
-            {/if}
             <button class="dg-hud-btn" onclick={toggleFullscreen}>
                 {fullscreen ? "EXIT FS" : "FS"}
             </button>
@@ -487,9 +425,9 @@
             {#each runLog.toReversed() as entry}
             <div class="dg-log-entry dg-log-{entry.result}">
                 {#if entry.floor === 0}
-                    <span class="dg-log-text">Game registered on hub</span>
+                    <span class="dg-log-text">Run initialized (local)</span>
                 {:else if entry.door === -1}
-                    <span class="dg-log-text">Game finalized on hub</span>
+                    <span class="dg-log-text">Run completed (local)</span>
                 {:else}
                     <span class="dg-log-floor">F{entry.floor}</span>
                     <span class="dg-log-door">D{entry.door + 1}</span>
@@ -520,7 +458,7 @@
     <div class="dg-victory-content">
         <p class="dg-eyebrow">DUNGEON CLEARED</p>
         <h1 class="dg-victory-title">VICTORY</h1>
-        <p class="dg-victory-subtitle">All 10 floors cleared. Every door choice verified on-chain.</p>
+        <p class="dg-victory-subtitle">All 10 floors cleared. Each door attempt generated a real proof locally (on-chain verify not wired yet).</p>
 
         <div class="dg-victory-stats">
             <div class="dg-stat">
@@ -532,8 +470,8 @@
                 <span class="dg-stat-label">ATTEMPTS</span>
             </div>
             <div class="dg-stat">
-                <span class="dg-stat-value">{runLog.filter(e => e.txHash).length}</span>
-                <span class="dg-stat-label">ON-CHAIN TXS</span>
+                <span class="dg-stat-value">{runLog.filter(e => e.door >= 0).length}</span>
+                <span class="dg-stat-label">PROOFS</span>
             </div>
         </div>
 
@@ -545,18 +483,6 @@
                 {/each}
             </div>
         </div>
-
-        {#if hubStartTx || hubEndTx}
-        <div class="dg-victory-hub-txs">
-            <p class="dg-victory-log-title">HUB TRANSACTIONS</p>
-            {#if hubStartTx}
-                <a class="dg-hub-tx-link" href={txExplorerUrl(hubStartTx)} target="_blank" rel="noreferrer">Game Start → {hubStartTx.slice(0, 12)}...</a>
-            {/if}
-            {#if hubEndTx}
-                <a class="dg-hub-tx-link" href={txExplorerUrl(hubEndTx)} target="_blank" rel="noreferrer">Game End → {hubEndTx.slice(0, 12)}...</a>
-            {/if}
-        </div>
-        {/if}
 
         <div class="dg-victory-actions">
             <button class="dg-btn dg-btn-primary" onclick={resetGame}>PLAY AGAIN</button>

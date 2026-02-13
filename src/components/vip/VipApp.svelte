@@ -45,8 +45,8 @@
       await kit.openModal({
         onWalletSelected: async (option: any) => {
           kit.setWallet(option.id);
-          const { publicKey } = await kit.getPublicKey();
-          walletAddress = publicKey;
+          const { address } = await kit.getAddress();
+          walletAddress = address;
         },
       });
 
@@ -56,31 +56,25 @@
         // Actually openModal awaits until closed. If user selected, callback ran.
         // But let's check just in case.
         try {
-          const { publicKey } = await kit.getPublicKey();
-          walletAddress = publicKey;
+          const { address } = await kit.getAddress();
+          walletAddress = address;
         } catch (e) {
           throw new Error("No wallet selected");
         }
       }
 
       status = "signing";
-      const challenge = await fetchChallenge(room.id);
-      const signed = await signChallenge(
-        kit,
-        address,
-        room.id,
-        challenge.nonce,
-        bundle,
-      );
+      const challenge = await fetchChallenge({
+        roomId: room.id,
+        address: walletAddress,
+      });
+      const signed = await signChallenge(kit, walletAddress, challenge.xdr);
 
       status = "verifying";
       const verify = await verifyProof({
         roomId: room.id,
-        address,
-        signedMessage: signed.signedMessage,
-        payload: signed.payload,
-        timestamp: signed.timestamp,
-        publicBundle: signed.publicBundle,
+        address: walletAddress,
+        xdr: signed.xdr,
       });
 
       if (verify.roomStatus !== "ok") {

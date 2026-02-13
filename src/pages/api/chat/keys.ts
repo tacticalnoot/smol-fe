@@ -3,8 +3,13 @@ import type { APIRoute } from 'astro';
 import { initDb, getDb } from '../../../lib/the-vip/db';
 import { getSession } from '../../../lib/the-vip/auth';
 
-export const PUT: APIRoute = async ({ request, env }) => {
+export const PUT: APIRoute = async (context) => {
+    const { request, locals } = context;
     try {
+        const env = (locals as any).runtime?.env;
+        if (!env?.DB) {
+            return new Response('Server not configured (missing DB binding)', { status: 500 });
+        }
         const db = await getDb(env);
         // await initDb(db); // Lazy init might be redundant if called often, but safe for MVP
 
@@ -34,7 +39,7 @@ x25519_pubkey = excluded.x25519_pubkey,
     }
 };
 
-export const GET: APIRoute = async ({ request, env }) => {
+export const GET: APIRoute = async (_context) => {
     // Check if we need to fetch SOMEONE else's key?
     // For MVP, maybe not needed if Server acts as KDC.
     // But good for debugging.

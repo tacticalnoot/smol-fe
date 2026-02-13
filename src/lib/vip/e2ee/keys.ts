@@ -111,8 +111,9 @@ export async function importPublicKeyRaw(
   return crypto.subtle.importKey("raw", buf, algorithm, true, usages);
 }
 
-export function encodeUtf8(input: string): Uint8Array {
-  return encoder.encode(input);
+export function encodeUtf8(input: string): Uint8Array<ArrayBuffer> {
+  // TextEncoder outputs an ArrayBuffer-backed Uint8Array in browsers.
+  return encoder.encode(input) as unknown as Uint8Array<ArrayBuffer>;
 }
 
 export function decodeUtf8(buf: ArrayBuffer): string {

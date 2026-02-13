@@ -88,10 +88,13 @@ export async function ensureWalletConnected(): Promise<void> {
 
     try {
       // Lazy load passkey-kit module (reduces initial bundle size by ~2.5MB)
-      const { account } = await import('./src/utils/passkey-kit');
+      const { account } = await import("./src/utils/passkey-kit");
+      const kit = await account.get();
 
-      await account.get().connectWallet({
+      await kit.connectWallet({
         rpId,
+        keyId: userState.keyId,
+        getContractId: async () => userState.contractId,
       });
       userState.walletConnected = true;
     } catch (error) {

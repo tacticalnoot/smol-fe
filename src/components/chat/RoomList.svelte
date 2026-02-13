@@ -1,6 +1,4 @@
 <script lang="ts">
-    import type { ChatRoom, RoomStatus } from "../../types/chat"; // Assuming definition or simpler inline
-
     export let rooms: any[] = []; // Typed later
     export let currentRoomId: string | null = null;
     export let onJoin: (id: string) => void;

@@ -2,6 +2,7 @@
 import Layout from "../../layouts/Layout.astro";
 import BackLink from "../../components/labs/BackLink.astro";
 import LastFrame from "../../components/labs/LastFrame.svelte";
+import IntegrityStatus from "../../components/labs/IntegrityStatus.astro";
 ---
 
 <Layout title="Smol Labs | LastFrame">
@@ -10,6 +11,17 @@ import LastFrame from "../../components/labs/LastFrame.svelte";
       <BackLink href="/labs" label="Return to Lab" />
       
       <div class="border border-[#333] rounded-xl p-8 bg-[#111]">
+        <IntegrityStatus
+          title="Integrity Status (LastFrame)"
+          items={[
+            { label: "ZK", value: "None", tone: "info" },
+            { label: "On-Chain Verify", value: "None", tone: "info" },
+            { label: "Stellar TX", value: "None", tone: "info" },
+            { label: "Data Handling", value: "Local-only (video never uploaded)", tone: "good" },
+          ]}
+          note="LastFrame is a pure client-side media tool. It does not generate ZK proofs and does not submit Stellar transactions."
+        />
+
         <div class="flex items-center justify-between mb-8 pb-8 border-b border-[#333]">
            <div>
               <span class="text-xs text-[#555] uppercase tracking-widest">EXP-011</span>

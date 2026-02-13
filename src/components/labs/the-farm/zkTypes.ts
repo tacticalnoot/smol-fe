@@ -167,3 +167,46 @@ export function buildProofPacket(badge: EarnedBadge, farmerAddress: string): Pro
         salt: data.salt ?? "",
     };
 }
+
+const BADGES_STORAGE_KEY = "smol:farm:badges:v1";
+
+export function loadAllBadges(): EarnedBadge[] {
+    if (typeof window === "undefined") return [];
+
+    try {
+        const raw = window.localStorage.getItem(BADGES_STORAGE_KEY);
+        if (!raw) return [];
+
+        const parsed = JSON.parse(raw) as unknown;
+        if (!Array.isArray(parsed)) return [];
+
+        return parsed
+            .map((item) => item as Partial<EarnedBadge> | null)
+            .filter((item): item is EarnedBadge => {
+                return !!item && typeof item.id === "string" && typeof item.earnedAt === "number";
+            })
+            .map((item) => ({
+                id: item.id,
+                earnedAt: item.earnedAt,
+                data: typeof item.data === "object" && item.data ? item.data : {},
+            }));
+    } catch {
+        return [];
+    }
+}
+
+export function saveEarnedBadge(badge: EarnedBadge): void {
+    if (typeof window === "undefined") return;
+
+    const existing = loadAllBadges();
+    const next = [
+        ...existing.filter((b) => b.id !== badge.id),
+        badge,
+    ];
+
+    try {
+        window.localStorage.setItem(BADGES_STORAGE_KEY, JSON.stringify(next));
+    } catch {
+        // Non-fatal: storage may be full or blocked by user settings.
+    }
+}

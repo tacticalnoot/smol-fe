@@ -2,7 +2,13 @@ import type { APIRoute } from 'astro';
 import { getDb } from '../../../../../lib/the-vip/db';
 import { getSession } from '../../../../../lib/the-vip/auth';
 
-export const GET: APIRoute = async ({ request, env, params }) => {
+export const GET: APIRoute = async (context) => {
+    const { request, locals, params } = context;
+    const env = (locals as any).runtime?.env;
+    if (!env?.DB) {
+        return new Response('Server not configured (missing DB binding)', { status: 500 });
+    }
+
     const db = await getDb(env);
     const session = await getSession(request, db);
     if (!session) return new Response('Unauthorized', { status: 401 });
@@ -44,7 +50,13 @@ export const GET: APIRoute = async ({ request, env, params }) => {
     }), { status: 200 });
 };
 
-export const POST: APIRoute = async ({ request, env, params }) => {
+export const POST: APIRoute = async (context) => {
+    const { request, locals, params } = context;
+    const env = (locals as any).runtime?.env;
+    if (!env?.DB) {
+        return new Response('Server not configured (missing DB binding)', { status: 500 });
+    }
+
     const db = await getDb(env);
     const session = await getSession(request, db);
     if (!session) return new Response('Unauthorized', { status: 401 });

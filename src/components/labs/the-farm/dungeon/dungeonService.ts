@@ -1,10 +1,12 @@
 /**
- * Dungeon Service — Stellar testnet contract interactions for the ZK Dungeon game.
+ * Dungeon Service — Local ZK proof generation plumbing for ZK Dungeon.
  *
- * Handles:
- * - Game hub start_game() / end_game() calls
- * - Door attempt transactions (real on-chain, ZK proof wiring in PR4)
- * - Testnet RPC + simulation + signing via passkey-kit
+ * What is real in this file:
+ * - Door attempt proof generation via Circom Groth16 (snarkjs) + local verification.
+ *
+ * What is NOT wired in this repo pass:
+ * - On-chain submission / verification for dungeon attempts.
+ * - Any "hub" contract calls are experimental and currently unused by the UI.
  */
 
 import {
@@ -269,12 +271,8 @@ export async function attemptDoor(
     } catch (err: any) {
         console.error("[Dungeon] Proof generation failed:", err.message);
 
-        // Fallback: determine correctness without proof
-        const seed = params.floor * 1000 + params.attemptNonce;
-        const correctDoor = (seed * 7 + 3) % 4;
-
         return {
-            isCorrect: params.doorChoice === correctDoor,
+            isCorrect: false,
             txHash: null,
             proofType,
             commitment: null,
@@ -289,9 +287,7 @@ export async function attemptDoor(
 
 /** Map floor number to proof framework label */
 export function getProofTypeForFloor(floor: number): string {
-    if (floor === 3 || floor === 7) return "Circom";
-    if (floor === 10) return "RISC Zero";
-    return "Groth16";
+    return "Groth16 (Circom)";
 }
 
 /** Generate a random session ID (u32) */

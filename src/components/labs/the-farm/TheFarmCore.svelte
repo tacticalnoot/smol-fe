@@ -38,6 +38,7 @@
   } from "../../../stores/balance.svelte.ts";
   import { userState } from "../../../stores/user.svelte.ts";
   import { TIER_CONFIG, formatKaleBalance, getTierForBalance } from "./proof";
+  import { TIER_VERIFIER_CONTRACT_ID } from "./zkTypes";
   import {
     generateTierProof,
     submitProofToContract,
@@ -192,6 +193,15 @@
     return `${clean.slice(0, 10)}...${clean.slice(-8)}`;
   }
 
+  function normalizeTxHash(value: string): string {
+    return value.startsWith("0x") ? value.slice(2) : value;
+  }
+
+  function isTxHash(value: string | undefined | null): boolean {
+    if (!value) return false;
+    return /^[0-9a-fA-F]{64}$/.test(normalizeTxHash(value));
+  }
+
   async function secureFarmClaim(system: ProofSystem): Promise<void> {
     const sample = getSample(system);
     setPanelError(system, null);
@@ -204,7 +214,11 @@
 
     setProcessing(system, true, "Initializing Proof Pipeline...");
     addLog(`System Target: ${systemLabel[system]}`);
-    addLog(`Contract: ${FARM_ATTESTATIONS_CONTRACT_ID_MAINNET}`);
+    if (system === "circom") {
+      addLog(`Verifier Contract: ${TIER_VERIFIER_CONTRACT_ID}`);
+    } else {
+      addLog(`Attestation Contract: ${FARM_ATTESTATIONS_CONTRACT_ID_MAINNET}`);
+    }
 
     try {
       if (system === "circom") {
@@ -257,6 +271,9 @@
         );
 
         if (submitResult.success) {
+          if (!submitResult.txHash) {
+            throw new Error("Verification succeeded but no transaction hash was returned.");
+          }
           addLog(`Verification SUCCESS. Tx: ${shortHash(submitResult.txHash)}`);
           setAttestationResult(system, sample.tier, {
             ok: true,
@@ -339,8 +356,7 @@
         const tierName = tierOrder[status.tier];
         setAttestationResult("circom", tierName, {
           ok: true,
-          txHash: status.commitment || "0x_on_chain",
-          ledger: status.timestamp || 0,
+          timestamp: status.timestamp,
           feeCharged: "Already Verified",
         });
         addLog(
@@ -392,6 +408,7 @@
       <div class="hero-top">
         <div class="hero-header-row">
           <p class="eyebrow">Mission-Critical Cryptography</p>
+          <a class="dungeon-link" href="/labs/the-farm/zkdungeon">ZK DUNGEON ↗</a>
           {#if hasOnChainVerified}
             <div class="verified-badge-hero">
               <span class="v-icon">✓</span>
@@ -402,8 +419,9 @@
         <h1>THE FARM</h1>
       </div>
       <p class="hero-sub">
-        Secure your farming status with trustless, on-chain zero-knowledge
-        proofs. No balances revealed. No privacy leaked.
+        Generate real ZK proofs in-browser. The Circom track verifies on-chain; Noir
+        and RISC0 tracks verify locally and can optionally publish a hash record
+        on-chain.
       </p>
       <div class="hero-metrics">
         <div class="metric">
@@ -434,6 +452,39 @@
           </span>
         </div>
       </div>
+    </section>
+
+    <section class="integrity card">
+      <div class="integrity-head">
+        <h2>Integrity Status</h2>
+        <span class="integrity-pill">Stellar Mainnet</span>
+      </div>
+      <div class="integrity-grid">
+        <div class="integrity-item">
+          <span class="k">Circom</span>
+          <span class="v">Groth16 proof + on-chain BN254 pairing check (`tier-verifier`)</span>
+        </div>
+        <div class="integrity-item">
+          <span class="k">Noir</span>
+          <span class="v">UltraHonk local verifier (bb.js), optional on-chain hash record</span>
+        </div>
+        <div class="integrity-item">
+          <span class="k">RISC0</span>
+          <span class="v">Receipt local verifier (WASM), optional on-chain hash record</span>
+        </div>
+        <div class="integrity-item">
+          <span class="k">Contracts</span>
+          <span class="v">
+            {TIER_VERIFIER_CONTRACT_ID.slice(0, 6)}…{TIER_VERIFIER_CONTRACT_ID.slice(-6)}
+            (verifier)
+          </span>
+        </div>
+      </div>
+      <p class="integrity-note">
+        Only the Circom tab performs on-chain cryptographic verification. Noir and
+        RISC0 tabs are real local verifications; their on-chain step records a
+        statement hash (not a proof verify).
+      </p>
     </section>
 
     <section class="suite card">
@@ -507,17 +558,25 @@
                 <div class="seal-glow">
                   <div class="seal-head">
                     <span class="seal-badge">VERIFIED</span>
-                    <a
-                      href={`https://stellar.expert/explorer/public/tx/${activeAttestResult.txHash}`}
-                      target="_blank"
-                      class="explorer-link"
-                    >
-                      EXPLORER ↗
-                    </a>
+                    {#if isTxHash(activeAttestResult.txHash)}
+                      <a
+                        href={`https://stellar.expert/explorer/public/tx/${normalizeTxHash(activeAttestResult.txHash ?? "")}`}
+                        target="_blank"
+                        class="explorer-link"
+                      >
+                        EXPLORER ↗
+                      </a>
+                    {/if}
                   </div>
                   <div class="seal-body">
-                    <p>On-chain attestation successful.</p>
-                    <code>{shortHash(activeAttestResult.txHash)}</code>
+                    <p>
+                      {activeSystem === "circom"
+                        ? "On-chain proof verified."
+                        : "On-chain statement hash recorded."}
+                    </p>
+                    {#if activeAttestResult.txHash}
+                      <code>{shortHash(activeAttestResult.txHash)}</code>
+                    {/if}
                   </div>
                 </div>
               {:else if processing[activeSystem]}
@@ -525,7 +584,11 @@
                   <div class="loading-bar"></div>
                 </div>
               {:else}
-                <div class="idle-hint">Ready for on-chain attestation.</div>
+                <div class="idle-hint">
+                  {activeSystem === "circom"
+                    ? "Ready for on-chain proof verification."
+                    : "Ready for local verification + on-chain hash record."}
+                </div>
               {/if}
             </div>
           </div>
@@ -676,6 +739,23 @@
     letter-spacing: 2px;
     margin: 0;
   }
+  .dungeon-link {
+    font-family: "Press Start 2P";
+    font-size: 0.5rem;
+    letter-spacing: 2px;
+    color: rgba(204, 252, 203, 0.7);
+    text-decoration: none;
+    border: 1px solid rgba(74, 222, 128, 0.25);
+    background: rgba(74, 222, 128, 0.06);
+    padding: 6px 10px;
+    border-radius: 999px;
+    transition: 0.2s;
+  }
+  .dungeon-link:hover {
+    color: white;
+    border-color: rgba(74, 222, 128, 0.45);
+    background: rgba(74, 222, 128, 0.12);
+  }
   .verified-badge-hero {
     background: rgba(16, 185, 129, 0.2);
     border: 1px solid var(--farm-leaf);
@@ -753,6 +833,74 @@
     display: grid;
     grid-template-columns: 1fr 340px;
     gap: 32px;
+  }
+
+  .integrity {
+    padding: 28px 26px;
+  }
+
+  .integrity-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 16px;
+    margin-bottom: 16px;
+  }
+
+  .integrity-head h2 {
+    margin: 0;
+    font-family: "Press Start 2P";
+    font-size: 0.65rem;
+    letter-spacing: 1px;
+    color: white;
+  }
+
+  .integrity-pill {
+    font-family: "Press Start 2P";
+    font-size: 0.45rem;
+    letter-spacing: 2px;
+    padding: 6px 10px;
+    border-radius: 999px;
+    border: 1px solid rgba(255, 255, 255, 0.12);
+    background: rgba(255, 255, 255, 0.04);
+    color: rgba(204, 252, 203, 0.75);
+  }
+
+  .integrity-grid {
+    display: grid;
+    grid-template-columns: 1fr;
+    gap: 10px;
+  }
+
+  .integrity-item {
+    display: flex;
+    justify-content: space-between;
+    gap: 16px;
+    padding: 12px 14px;
+    border: 1px solid var(--farm-line);
+    border-radius: 14px;
+    background: rgba(0, 0, 0, 0.25);
+  }
+
+  .integrity-item .k {
+    font-family: "Press Start 2P";
+    font-size: 0.48rem;
+    letter-spacing: 2px;
+    color: rgba(204, 252, 203, 0.65);
+    text-transform: uppercase;
+  }
+
+  .integrity-item .v {
+    font-size: 0.9rem;
+    color: rgba(255, 255, 255, 0.75);
+    text-align: right;
+  }
+
+  .integrity-note {
+    margin: 14px 0 0;
+    font-size: 0.85rem;
+    line-height: 1.6;
+    color: rgba(255, 255, 255, 0.6);
   }
 
   .system-tabs {

@@ -121,7 +121,7 @@
     {
         "id": "lab_last_frame",
         "title": "LastFrame",
-        "badge": "ZK-SIG",
+        "badge": "EXP-011",
         "status_color": "GREEN",
         "readiness_score": 100,
         "last_reviewed": "2026-02-13",
@@ -132,7 +132,7 @@
         "tags": [
             "Video",
             "Tool",
-            "Verified"
+            "Local"
         ],
         "isLocked": false
     },
@@ -163,7 +163,7 @@
         "blast_radius": "LABS_ONLY",
         "path": "experiments/the-vip/experiment.yml",
         "href": "/labs/the-vip",
-        "description": "ZK-gated, end-to-end encrypted chat for Stellar VIP cohorts.",
+        "description": "Signature-gated, end-to-end encrypted chat for Stellar VIP cohorts (Labs relay).",
         "tags": [
             "Chat",
             "E2EE",

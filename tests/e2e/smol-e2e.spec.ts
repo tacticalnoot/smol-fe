@@ -77,3 +77,38 @@ test('zkdungeon legacy routes redirect to /labs/the-farm/zkdungeon', async ({ pa
   await page.goto('/labs/the-farm/dungeon-room', { waitUntil: 'domcontentloaded' });
   await expect(page).toHaveURL(/\/labs\/the-farm\/zkdungeon/);
 });
+
+test('labs crawl: /labs forward links are reachable', async ({ page }) => {
+  // Block external API calls to avoid flaky dependencies.
+  await page.route('**/api.smol.xyz/**', route => route.abort());
+
+  const visited = new Set<string>();
+
+  async function visit(href: string) {
+    const url = href.split('#')[0];
+    if (!url.startsWith('/labs')) return;
+    if (visited.has(url)) return;
+    visited.add(url);
+
+    const res = await page.goto(url, { waitUntil: 'domcontentloaded' });
+    expect(res?.status() || 0).toBeLessThan(400);
+
+    // Give client-only content a moment to render (Farm/VIP are heavily client-driven).
+    await page.waitForTimeout(250);
+
+    const forwardLinks = await page.$$eval('a[href^="/labs/"]', (anchors) =>
+      anchors
+        .map((a) => a.getAttribute('href') || '')
+        .filter(Boolean)
+        .map((h) => h.split('#')[0])
+    );
+
+    for (const next of Array.from(new Set(forwardLinks))) {
+      if (next !== url) {
+        await visit(next);
+      }
+    }
+  }
+
+  await visit('/labs');
+});
