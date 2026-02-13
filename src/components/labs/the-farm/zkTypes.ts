@@ -10,6 +10,7 @@ export const STELLAR_NETWORK = "stellar-mainnet" as const;
 export interface TierDef {
     name: string;
     icon: string;
+    iconImage?: string;
     min: number;
     color: string;
     glow: string;

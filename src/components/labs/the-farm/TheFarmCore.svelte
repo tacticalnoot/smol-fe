@@ -4,7 +4,10 @@
     MAINNET_RPC_URL,
     isMainnetConfigured,
   } from "../../../config/farmAttestation";
-  import { circomSamples, circomVerificationKey } from "../../../data/the-farm/circomBundle";
+  import {
+    circomSamples,
+    circomVerificationKey,
+  } from "../../../data/the-farm/circomBundle";
   import {
     noirCommitmentScheme,
     noirSamples,
@@ -25,9 +28,18 @@
     VerificationResult,
   } from "../../../lib/the-farm/types";
   import { verifyCircomGroth16 } from "../../../lib/the-farm/verifiers/circomGroth16";
-  import { preloadNoirVerifier, verifyNoirProof } from "../../../lib/the-farm/verifiers/noir";
-  import { preloadRisc0Verifier, verifyRisc0Receipt } from "../../../lib/the-farm/verifiers/risc0";
-  import { balanceState, updateContractBalance } from "../../../stores/balance.svelte.ts";
+  import {
+    preloadNoirVerifier,
+    verifyNoirProof,
+  } from "../../../lib/the-farm/verifiers/noir";
+  import {
+    preloadRisc0Verifier,
+    verifyRisc0Receipt,
+  } from "../../../lib/the-farm/verifiers/risc0";
+  import {
+    balanceState,
+    updateContractBalance,
+  } from "../../../stores/balance.svelte.ts";
   import { userState } from "../../../stores/user.svelte.ts";
   import { TIER_CONFIG, formatKaleBalance, getTierForBalance } from "./proof";
 
@@ -36,7 +48,14 @@
   type SystemErrorMap = Record<ProofSystem, string | null>;
 
   const systems: ProofSystem[] = ["circom", "noir", "risc0"];
-  const tierOrder: Tier[] = ["sprout", "grower", "harvester", "whale", "edge", "invalid"];
+  const tierOrder: Tier[] = [
+    "sprout",
+    "grower",
+    "harvester",
+    "whale",
+    "edge",
+    "invalid",
+  ];
   const sampleMap: Record<ProofSystem, FarmSampleProof[]> = {
     circom: circomSamples,
     noir: noirSamples,
@@ -138,21 +157,39 @@
     setPanelError(system, null);
   }
 
-  function setVerifyResult(system: ProofSystem, tier: Tier, result: VerificationResult): void {
-    verificationByKey = { ...verificationByKey, [sampleKey(system, tier)]: result };
+  function setVerifyResult(
+    system: ProofSystem,
+    tier: Tier,
+    result: VerificationResult,
+  ): void {
+    verificationByKey = {
+      ...verificationByKey,
+      [sampleKey(system, tier)]: result,
+    };
   }
 
-  function setAttestationResult(system: ProofSystem, tier: Tier, result: AttestationResult): void {
-    attestationByKey = { ...attestationByKey, [sampleKey(system, tier)]: result };
+  function setAttestationResult(
+    system: ProofSystem,
+    tier: Tier,
+    result: AttestationResult,
+  ): void {
+    attestationByKey = {
+      ...attestationByKey,
+      [sampleKey(system, tier)]: result,
+    };
   }
 
   function getSample(system: ProofSystem): FarmSampleProof {
     const wantedTier = selectedTier[system];
-    const found = sampleMap[system].find((sample) => sample.tier === wantedTier);
+    const found = sampleMap[system].find(
+      (sample) => sample.tier === wantedTier,
+    );
     return found ?? sampleMap[system][0];
   }
 
-  function getTierOptions(system: ProofSystem): Array<{ tier: Tier; label: string }> {
+  function getTierOptions(
+    system: ProofSystem,
+  ): Array<{ tier: Tier; label: string }> {
     const entries = sampleMap[system];
     return tierOrder
       .map((tier) => entries.find((sample) => sample.tier === tier))
@@ -175,7 +212,9 @@
   function canPublish(system: ProofSystem, sample: FarmSampleProof): boolean {
     const key = sampleKey(system, sample.tier);
     const verifyResult = verificationByKey[key];
-    return !!verifyResult?.valid && sample.expectedValid && sample.tier !== "invalid";
+    return (
+      !!verifyResult?.valid && sample.expectedValid && sample.tier !== "invalid"
+    );
   }
 
   async function verifyLocally(system: ProofSystem): Promise<void> {
@@ -187,7 +226,11 @@
       let result: VerificationResult;
 
       if (system === "circom") {
-        result = await verifyCircomGroth16(circomVerificationKey, sample.proof, sample.publicInputs);
+        result = await verifyCircomGroth16(
+          circomVerificationKey,
+          sample.proof,
+          sample.publicInputs,
+        );
       } else if (system === "noir") {
         result = await verifyNoirProof(noirVerifierBytecode, sample.proof);
       } else {
@@ -196,7 +239,8 @@
 
       setVerifyResult(system, sample.tier, result);
     } catch (error) {
-      const message = error instanceof Error ? error.message : "Local verification failed";
+      const message =
+        error instanceof Error ? error.message : "Local verification failed";
       setVerifyResult(system, sample.tier, {
         valid: false,
         durationMs: 0,
@@ -227,7 +271,10 @@
       return;
     }
     if (!mainnetReady) {
-      setPanelError(system, `Missing env: ${getMissingMainnetVars().join(", ")}`);
+      setPanelError(
+        system,
+        `Missing env: ${getMissingMainnetVars().join(", ")}`,
+      );
       return;
     }
     if (!userState.contractId || !userState.keyId) {
@@ -260,7 +307,8 @@
         setPanelError(system, result.error ?? "Mainnet attestation failed");
       }
     } catch (error) {
-      const message = error instanceof Error ? error.message : "Mainnet attestation failed";
+      const message =
+        error instanceof Error ? error.message : "Mainnet attestation failed";
       setAttestationResult(system, sample.tier, { ok: false, error: message });
       setPanelError(system, message);
     } finally {
@@ -300,21 +348,40 @@
         <h1>THE FARM</h1>
       </div>
       <p class="hero-sub">
-        Three independent proof systems. Local cryptographic verification in-browser. Mainnet
-        passkey-signed attestations on Stellar.
+        Three independent proof systems. Local cryptographic verification
+        in-browser. Mainnet passkey-signed attestations on Stellar.
       </p>
       <div class="hero-metrics">
         <div class="metric">
           <span class="label">Wallet Tier</span>
-          <span class="value" style={`color:${tierCfg.color}`}>{tierCfg.icon} {tierCfg.name}</span>
+          <span class="value" style={`color:${tierCfg.color}`}>
+            {#if tierCfg.iconImage}
+              <img
+                src={tierCfg.iconImage}
+                alt={tierCfg.name}
+                class="tier-icon"
+              />
+            {:else}
+              {tierCfg.icon}
+            {/if}
+            {tierCfg.name}
+          </span>
         </div>
         <div class="metric">
           <span class="label">KALE Balance</span>
-          <span class="value">{loading ? "Loading..." : balance ? `${formatKaleBalance(balance)} KALE` : "0 KALE"}</span>
+          <span class="value"
+            >{loading
+              ? "Loading..."
+              : balance
+                ? `${formatKaleBalance(balance)} KALE`
+                : "0 KALE"}</span
+          >
         </div>
         <div class="metric">
           <span class="label">Wallet</span>
-          <span class="value">{isAuth ? "Passkey Connected" : "Connect Passkey Wallet"}</span>
+          <span class="value"
+            >{isAuth ? "Passkey Connected" : "Connect Passkey Wallet"}</span
+          >
         </div>
       </div>
     </section>
@@ -375,7 +442,9 @@
             </div>
             <div class="meta-item">
               <span class="k">Proof Digest</span>
-              <span class="v" title={activeSample.proofDigest}>{shortHash(activeSample.proofDigest)}</span>
+              <span class="v" title={activeSample.proofDigest}
+                >{shortHash(activeSample.proofDigest)}</span
+              >
             </div>
             <div class="meta-item">
               <span class="k">Verifier Digest</span>
@@ -405,12 +474,21 @@
           <div class="result-panel">
             {#if activeVerifyResult}
               {#if activeVerifyResult.valid}
-                <p class="ok">Verified locally (cryptographic) in {formatDuration(activeVerifyResult.durationMs)}</p>
+                <p class="ok">
+                  Verified locally (cryptographic) in {formatDuration(
+                    activeVerifyResult.durationMs,
+                  )}
+                </p>
               {:else}
-                <p class="bad">Invalid proof - {activeVerifyResult.error ?? "verification returned false"}</p>
+                <p class="bad">
+                  Invalid proof - {activeVerifyResult.error ??
+                    "verification returned false"}
+                </p>
               {/if}
             {:else}
-              <p class="neutral">Run local verification to produce a cryptographic result.</p>
+              <p class="neutral">
+                Run local verification to produce a cryptographic result.
+              </p>
             {/if}
           </div>
         </div>
@@ -418,7 +496,8 @@
         <div class="panel plot">
           <h3>Attest on Mainnet</h3>
           <p class="small">
-            Publish only digest-level claim data for this verified sample using your passkey smart wallet.
+            Publish only digest-level claim data for this verified sample using
+            your passkey smart wallet.
           </p>
 
           {#if !mainnetReady}
@@ -433,7 +512,10 @@
               type="checkbox"
               checked={acknowledgedMainnet[activeSystem]}
               on:change={(event) =>
-                setAcknowledged(activeSystem, (event.currentTarget as HTMLInputElement).checked)}
+                setAcknowledged(
+                  activeSystem,
+                  (event.currentTarget as HTMLInputElement).checked,
+                )}
             />
             <span>I understand this is MAINNET and costs real XLM.</span>
           </label>
@@ -441,16 +523,16 @@
           <button
             type="button"
             class="action attest"
-            disabled={
-              !canPublish(activeSystem, activeSample) ||
+            disabled={!canPublish(activeSystem, activeSample) ||
               !acknowledgedMainnet[activeSystem] ||
               publishing[activeSystem] ||
               !mainnetReady ||
-              !isAuth
-            }
+              !isAuth}
             on:click={() => attestOnMainnet(activeSystem)}
           >
-            {publishing[activeSystem] ? "Submitting to Mainnet..." : "Attest on Mainnet"}
+            {publishing[activeSystem]
+              ? "Submitting to Mainnet..."
+              : "Attest on Mainnet"}
           </button>
 
           {#if panelError[activeSystem]}
@@ -470,12 +552,20 @@
                   {shortHash(activeAttestResult.txHash)}
                 </a>
               </p>
-              <p class="neutral">Ledger: {activeAttestResult.ledger ?? "n/a"}</p>
-              <p class="neutral">Fee Charged: {activeAttestResult.feeCharged ?? "n/a"}</p>
+              <p class="neutral">
+                Ledger: {activeAttestResult.ledger ?? "n/a"}
+              </p>
+              <p class="neutral">
+                Fee Charged: {activeAttestResult.feeCharged ?? "n/a"}
+              </p>
             {:else if activeAttestResult && !activeAttestResult.ok}
-              <p class="bad">{activeAttestResult.error ?? "Mainnet attestation failed"}</p>
+              <p class="bad">
+                {activeAttestResult.error ?? "Mainnet attestation failed"}
+              </p>
             {:else}
-              <p class="neutral">No mainnet attestation submitted for this sample yet.</p>
+              <p class="neutral">
+                No mainnet attestation submitted for this sample yet.
+              </p>
             {/if}
           </div>
         </div>
@@ -487,15 +577,26 @@
       <ul>
         <li>
           <span>Tier threshold satisfied</span>
-          <span class="tip" title="The proof enforces balance >= selected threshold.">ⓘ</span>
+          <span
+            class="tip"
+            title="The proof enforces balance >= selected threshold.">ⓘ</span
+          >
         </li>
         <li>
           <span>Commitment binds hidden value</span>
-          <span class="tip" title="Commitment digest is tied to private witness values without revealing them.">ⓘ</span>
+          <span
+            class="tip"
+            title="Commitment digest is tied to private witness values without revealing them."
+            >ⓘ</span
+          >
         </li>
         <li>
           <span>Passkey smart wallet signed the claim on mainnet</span>
-          <span class="tip" title="The attest transaction is signed by your passkey wallet and posted to Stellar Mainnet.">ⓘ</span>
+          <span
+            class="tip"
+            title="The attest transaction is signed by your passkey wallet and posted to Stellar Mainnet."
+            >ⓘ</span
+          >
         </li>
       </ul>
     </section>
@@ -505,22 +606,39 @@
         <summary>Field Guide</summary>
         <div class="collapse-body">
           <h3>How each proof system works</h3>
-          <p><strong>Circom:</strong> Groth16 over bundled verification key with local `snarkjs` verification.</p>
-          <p><strong>Noir:</strong> UltraHonk proof checked in a worker through `bb.js` verifier logic.</p>
-          <p><strong>RISC0:</strong> Receipt verification in a local WASM verifier against the method ID digest.</p>
+          <p>
+            <strong>Circom:</strong> Groth16 over bundled verification key with local
+            `snarkjs` verification.
+          </p>
+          <p>
+            <strong>Noir:</strong> UltraHonk proof checked in a worker through `bb.js`
+            verifier logic.
+          </p>
+          <p>
+            <strong>RISC0:</strong> Receipt verification in a local WASM verifier
+            against the method ID digest.
+          </p>
 
           <h3>What gets published on-chain</h3>
-          <p>Only `statementHash` and `verifierHash` digests plus owner/system/tier metadata. Proof material is never published.</p>
+          <p>
+            Only `statementHash` and `verifierHash` digests plus
+            owner/system/tier metadata. Proof material is never published.
+          </p>
 
           <h3>Threat model</h3>
-          <p>Local verification blocks forged samples. Invalid or tampered proof artifacts fail verification and cannot be attested from the UI.</p>
+          <p>
+            Local verification blocks forged samples. Invalid or tampered proof
+            artifacts fail verification and cannot be attested from the UI.
+          </p>
 
           <h3>Repro commands</h3>
-          <pre><code>bash zk/circom-tier/scripts/verify_samples.sh
+          <pre><code
+              >bash zk/circom-tier/scripts/verify_samples.sh
 bash zk/noir-tier/scripts/verify_samples.sh
 bash zk/risc0-tier/scripts/verify_samples.sh
 bash scripts/the-farm/no-stubs.sh
-bash scripts/the-farm/no-leaks.sh</code></pre>
+bash scripts/the-farm/no-leaks.sh</code
+            ></pre>
         </div>
       </details>
 
@@ -533,23 +651,38 @@ bash scripts/the-farm/no-leaks.sh</code></pre>
           </article>
           <article class="slide">
             <h4>2. Solution</h4>
-            <p>Three local proof systems plus mainnet digest attestations signed by passkeys.</p>
+            <p>
+              Three local proof systems plus mainnet digest attestations signed
+              by passkeys.
+            </p>
           </article>
           <article class="slide">
             <h4>3. Architecture</h4>
-            <p>Browser verifier workers -> digest build -> Soroban attest contract on Stellar Mainnet.</p>
+            <p>
+              Browser verifier workers -> digest build -> Soroban attest
+              contract on Stellar Mainnet.
+            </p>
           </article>
           <article class="slide">
             <h4>4. Proof Comparison</h4>
-            <p>Circom Groth16, Noir UltraHonk, RISC0 receipts, each independently verifiable.</p>
+            <p>
+              Circom Groth16, Noir UltraHonk, RISC0 receipts, each independently
+              verifiable.
+            </p>
           </article>
           <article class="slide">
             <h4>5. Mainnet Attestation</h4>
-            <p>Passkey smart wallet signs `attest(owner, system, tier, statementHash, verifierHash)`.</p>
+            <p>
+              Passkey smart wallet signs `attest(owner, system, tier,
+              statementHash, verifierHash)`.
+            </p>
           </article>
           <article class="slide">
             <h4>6. Privacy Guarantees</h4>
-            <p>Proof/witness/salt are never sent to server and never stored in browser persistence.</p>
+            <p>
+              Proof/witness/salt are never sent to server and never stored in
+              browser persistence.
+            </p>
           </article>
           <article class="slide">
             <h4>7. Roadmap</h4>
@@ -563,23 +696,30 @@ bash scripts/the-farm/no-leaks.sh</code></pre>
 
 <style>
   :root {
-    --farm-bg: #f3eadb;
-    --farm-ink: #1f1b16;
-    --farm-soil: #5a3c2d;
-    --farm-soil-soft: #7a5640;
-    --farm-leaf: #39673d;
-    --farm-sun: #f2c975;
-    --farm-card: rgba(255, 253, 248, 0.78);
-    --farm-line: rgba(88, 55, 36, 0.24);
+    --farm-bg: #051a0d;
+    --farm-ink: #ccfccb;
+    --farm-soil: #1a4d2e;
+    --farm-soil-soft: #2d6a4f;
+    --farm-leaf: #4ade80;
+    --farm-sun: #bbf7d0;
+    --farm-card: rgba(10, 30, 15, 0.65);
+    --farm-line: rgba(74, 222, 128, 0.2);
   }
 
   .farm-root {
     min-height: 100vh;
     color: var(--farm-ink);
-    background:
-      radial-gradient(circle at 12% 4%, #ffe7be 0%, transparent 42%),
-      radial-gradient(circle at 87% 1%, #f6d5a4 0%, transparent 35%),
-      linear-gradient(180deg, #efe3d1 0%, #ead8c1 44%, #dfc8aa 100%);
+    background: radial-gradient(
+        circle at 15% 15%,
+        rgba(74, 222, 128, 0.08) 0%,
+        transparent 40%
+      ),
+      radial-gradient(
+        circle at 85% 85%,
+        rgba(34, 197, 94, 0.08) 0%,
+        transparent 40%
+      ),
+      linear-gradient(180deg, #020604 0%, #051a0d 40%, #0a2f1b 100%);
     position: relative;
     overflow-x: hidden;
     opacity: 0;
@@ -595,12 +735,18 @@ bash scripts/the-farm/no-leaks.sh</code></pre>
     position: fixed;
     inset: 0;
     pointer-events: none;
-    background-image:
-      radial-gradient(rgba(72, 40, 17, 0.09) 0.7px, transparent 0.7px),
-      radial-gradient(rgba(72, 40, 17, 0.05) 0.7px, transparent 0.7px);
-    background-size: 13px 13px, 17px 17px;
-    background-position: 0 0, 6px 9px;
-    opacity: 0.45;
+    background-image: radial-gradient(
+        rgba(255, 255, 255, 0.15) 1px,
+        transparent 1px
+      ),
+      radial-gradient(rgba(255, 255, 255, 0.1) 1px, transparent 1px);
+    background-size:
+      24px 24px,
+      42px 42px;
+    background-position:
+      0 0,
+      12px 18px;
+    opacity: 0.6;
   }
 
   .farm-shell {
@@ -615,12 +761,12 @@ bash scripts/the-farm/no-leaks.sh</code></pre>
 
   .card {
     border: 1px solid var(--farm-line);
-    border-radius: 20px;
+    border-radius: 16px;
     background: var(--farm-card);
-    backdrop-filter: blur(8px);
+    backdrop-filter: blur(12px);
     box-shadow:
-      0 8px 24px rgba(74, 40, 18, 0.12),
-      inset 0 1px 0 rgba(255, 255, 255, 0.45);
+      0 4px 24px rgba(0, 0, 0, 0.4),
+      inset 0 1px 0 rgba(255, 255, 255, 0.1);
   }
 
   .hero {
@@ -631,82 +777,100 @@ bash scripts/the-farm/no-leaks.sh</code></pre>
 
   .hero-top h1 {
     margin: 0;
-    font-family: "Fraunces", serif;
-    font-size: clamp(2rem, 3vw, 3rem);
-    letter-spacing: 0.03em;
-    color: #3f281d;
+    font-family: "Press Start 2P", cursive;
+    font-size: clamp(1.5rem, 2.5vw, 2.2rem);
+    line-height: 1.4;
+    letter-spacing: 0.05em;
+    color: var(--farm-leaf);
+    text-shadow: 0 0 10px rgba(74, 222, 128, 0.5);
   }
 
   .eyebrow {
-    margin: 0 0 2px;
+    margin: 0 0 8px;
     text-transform: uppercase;
-    letter-spacing: 0.2em;
-    font-size: 0.68rem;
-    color: #8d5e45;
-    font-weight: 700;
+    letter-spacing: 0.1em;
+    font-size: 0.7rem;
+    color: var(--farm-sun);
+    font-family: "Press Start 2P", cursive;
   }
 
   .hero-sub {
     margin: 0;
     max-width: 72ch;
-    color: #6a4a3a;
-    font-size: 0.97rem;
-    line-height: 1.45;
+    color: var(--farm-ink);
+    font-size: 1rem;
+    line-height: 1.6;
+    opacity: 0.9;
   }
 
   .hero-metrics {
-    margin-top: 4px;
+    margin-top: 12px;
     display: grid;
     grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));
-    gap: 10px;
+    gap: 12px;
   }
 
   .metric {
-    border: 1px solid rgba(105, 66, 43, 0.24);
+    border: 1px solid var(--farm-line);
     border-radius: 12px;
-    background: rgba(255, 248, 237, 0.78);
-    padding: 10px 12px;
+    background: rgba(0, 0, 0, 0.3);
+    padding: 14px;
     display: grid;
-    gap: 2px;
+    gap: 6px;
   }
 
   .metric .label {
-    font-size: 0.72rem;
-    color: #7d6049;
+    font-size: 0.65rem;
+    color: var(--farm-leaf);
     text-transform: uppercase;
     letter-spacing: 0.1em;
+    font-family: "Press Start 2P", cursive;
+    opacity: 0.8;
   }
 
   .metric .value {
-    font-size: 0.92rem;
+    font-size: 1rem;
+    color: #fff;
+    font-family: "Space Grotesk", sans-serif;
     font-weight: 700;
-    color: #2f2019;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+
+  .metric .value img.tier-icon {
+    width: 24px;
+    height: 24px;
+    object-fit: contain;
   }
 
   .proof-suite {
-    padding: 20px;
+    padding: 24px;
     display: grid;
-    gap: 14px;
+    gap: 20px;
   }
 
   .suite-head {
     display: flex;
     justify-content: space-between;
-    gap: 12px;
+    gap: 16px;
     flex-wrap: wrap;
+    align-items: flex-end;
   }
 
   .suite-head h2 {
     margin: 0;
-    font-family: "Fraunces", serif;
-    font-size: 1.5rem;
-    color: #3f281d;
+    font-family: "Press Start 2P", cursive;
+    font-size: 1.1rem;
+    color: var(--farm-leaf);
+    text-shadow: 0 0 8px rgba(74, 222, 128, 0.4);
   }
 
   .suite-head p {
-    margin: 2px 0 0;
-    color: #684834;
+    margin: 8px 0 0;
+    color: var(--farm-ink);
     font-size: 0.9rem;
+    opacity: 0.8;
   }
 
   .chip-row {
@@ -717,69 +881,72 @@ bash scripts/the-farm/no-leaks.sh</code></pre>
   }
 
   .chip {
-    border: 1px solid rgba(96, 61, 41, 0.36);
-    border-radius: 999px;
-    padding: 5px 11px;
-    font-size: 0.72rem;
-    font-weight: 700;
-    color: #5f3e2d;
-    background: rgba(246, 233, 212, 0.82);
-    animation: pulse-chip 2.8s ease-in-out infinite;
+    border: 1px solid var(--farm-line);
+    border-radius: 4px;
+    padding: 6px 10px;
+    font-size: 0.6rem;
+    font-family: "Press Start 2P", cursive;
+    color: var(--farm-sun);
+    background: rgba(74, 222, 128, 0.1);
+    box-shadow: 0 0 8px rgba(74, 222, 128, 0.1);
   }
 
   @keyframes pulse-chip {
-    0%, 100% {
-      transform: translateY(0);
+    0%,
+    100% {
+      box-shadow: 0 0 8px rgba(74, 222, 128, 0.1);
     }
     50% {
-      transform: translateY(-1px);
+      box-shadow: 0 0 12px rgba(74, 222, 128, 0.3);
     }
   }
 
   .system-tabs {
     display: grid;
-    gap: 8px;
-    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 12px;
+    grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
   }
 
   .tab-btn {
-    border: 1px solid rgba(94, 59, 40, 0.3);
-    background:
-      linear-gradient(145deg, rgba(121, 85, 56, 0.13), rgba(198, 149, 109, 0.16));
-    color: #5b3b2d;
-    border-radius: 12px;
-    padding: 10px 12px;
-    font-weight: 700;
-    font-size: 0.83rem;
-    transition: transform 0.18s ease, border-color 0.18s ease, background 0.18s ease;
+    border: 1px solid var(--farm-line);
+    background: rgba(0, 0, 0, 0.3);
+    color: var(--farm-ink);
+    border-radius: 8px;
+    padding: 12px;
+    font-family: "Press Start 2P", cursive;
+    font-size: 0.7rem;
+    line-height: 1.4;
+    transition: all 0.2s ease;
     cursor: pointer;
+    text-align: center;
   }
 
   .tab-btn:hover {
-    transform: translateY(-1px);
-    border-color: rgba(90, 122, 66, 0.58);
+    transform: translateY(-2px);
+    border-color: var(--farm-leaf);
+    box-shadow: 0 0 10px rgba(74, 222, 128, 0.2);
   }
 
   .tab-btn.active {
-    border-color: rgba(54, 100, 56, 0.72);
-    background:
-      linear-gradient(145deg, rgba(112, 174, 106, 0.28), rgba(204, 178, 112, 0.22));
-    color: #214826;
+    border-color: var(--farm-leaf);
+    background: rgba(74, 222, 128, 0.15);
+    color: #fff;
+    box-shadow: 0 0 15px rgba(74, 222, 128, 0.25);
   }
 
   .suite-grid {
     display: grid;
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-    gap: 12px;
+    grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+    gap: 16px;
   }
 
   .panel {
-    border: 1px solid rgba(90, 58, 41, 0.26);
-    background: rgba(255, 251, 243, 0.75);
-    border-radius: 14px;
-    padding: 14px;
+    border: 1px solid var(--farm-line);
+    background: rgba(0, 0, 0, 0.2);
+    border-radius: 12px;
+    padding: 18px;
     display: grid;
-    gap: 10px;
+    gap: 14px;
   }
 
   .plot {
@@ -791,10 +958,13 @@ bash scripts/the-farm/no-leaks.sh</code></pre>
     content: "";
     position: absolute;
     inset: 0;
-    background:
-      linear-gradient(90deg, rgba(70, 108, 60, 0.05) 1px, transparent 1px),
-      linear-gradient(0deg, rgba(70, 108, 60, 0.05) 1px, transparent 1px);
-    background-size: 18px 18px;
+    background: linear-gradient(
+        90deg,
+        rgba(74, 222, 128, 0.05) 1px,
+        transparent 1px
+      ),
+      linear-gradient(0deg, rgba(74, 222, 128, 0.05) 1px, transparent 1px);
+    background-size: 20px 20px;
     pointer-events: none;
   }
 
@@ -825,10 +995,10 @@ bash scripts/the-farm/no-leaks.sh</code></pre>
   }
 
   .meta-item {
-    border: 1px solid rgba(93, 57, 38, 0.19);
+    border: 1px solid var(--farm-line);
     border-radius: 9px;
     padding: 7px 9px;
-    background: rgba(255, 246, 233, 0.84);
+    background: rgba(0, 0, 0, 0.4);
     display: grid;
     grid-template-columns: minmax(120px, 1fr) minmax(0, 2fr);
     gap: 7px;
@@ -837,7 +1007,7 @@ bash scripts/the-farm/no-leaks.sh</code></pre>
 
   .meta-item .k {
     font-size: 0.67rem;
-    color: #7a5a45;
+    color: var(--farm-leaf);
     text-transform: uppercase;
     letter-spacing: 0.08em;
     font-weight: 700;
@@ -846,7 +1016,8 @@ bash scripts/the-farm/no-leaks.sh</code></pre>
   .meta-item .v {
     font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
     font-size: 0.76rem;
-    color: #2d1d15;
+    color: #fff;
+    opacity: 0.9;
     overflow-wrap: anywhere;
   }
 
@@ -856,43 +1027,54 @@ bash scripts/the-farm/no-leaks.sh</code></pre>
     padding: 10px 14px;
     font-weight: 800;
     cursor: pointer;
-    transition: transform 0.16s ease, filter 0.16s ease, opacity 0.16s ease;
+    transition:
+      transform 0.16s ease,
+      filter 0.16s ease,
+      opacity 0.16s ease;
     z-index: 1;
+    font-family: "Press Start 2P", cursive;
+    font-size: 0.7rem;
+    text-shadow: 0 1px 2px rgba(0, 0, 0, 0.5);
   }
 
   .action:hover:not(:disabled) {
     transform: translateY(-1px) scale(1.006);
-    filter: brightness(1.02);
+    filter: brightness(1.2);
+    box-shadow: 0 0 12px var(--farm-leaf);
   }
 
   .action:disabled {
     opacity: 0.56;
     cursor: not-allowed;
+    filter: grayscale(1);
   }
 
   .action.verify {
-    background: linear-gradient(145deg, #507a3f, #3d6131);
-    color: #f4ffe8;
+    background: linear-gradient(145deg, #166534, #14532d);
+    color: #f0fdf4;
+    border: 1px solid #22c55e;
   }
 
   .action.attest {
-    background: linear-gradient(145deg, #6a4d37, #4f3a29);
-    color: #fff8ef;
+    background: linear-gradient(145deg, #064e3b, #022c22);
+    color: #ecfdf5;
+    border: 1px solid #10b981;
   }
 
   .result-panel {
-    border: 1px dashed rgba(92, 58, 39, 0.32);
+    border: 1px dashed var(--farm-line);
     border-radius: 10px;
     padding: 9px 10px;
-    background: rgba(255, 250, 239, 0.86);
+    background: rgba(0, 0, 0, 0.3);
     z-index: 1;
   }
 
   .small {
     margin: 0;
-    color: #6b4d3d;
+    color: var(--farm-ink);
     font-size: 0.86rem;
     line-height: 1.4;
+    opacity: 0.8;
   }
 
   .ok,
@@ -902,49 +1084,53 @@ bash scripts/the-farm/no-leaks.sh</code></pre>
     margin: 0;
     font-size: 0.84rem;
     line-height: 1.36;
+    font-family: "Press Start 2P", cursive;
+    font-size: 0.65rem;
   }
 
   .ok {
-    color: #1e5a2d;
-    font-weight: 700;
+    color: #4ade80;
+    text-shadow: 0 0 5px rgba(74, 222, 128, 0.5);
   }
 
   .bad {
-    color: #8b271d;
-    font-weight: 700;
+    color: #ef4444;
+    text-shadow: 0 0 5px rgba(239, 68, 68, 0.5);
   }
 
   .neutral {
-    color: #6a4a39;
+    color: var(--farm-ink);
+    opacity: 0.7;
   }
 
   .tx-line a {
-    color: #1f4f8f;
+    color: #60a5fa;
     text-decoration: underline;
   }
 
   .warning {
-    border: 1px solid rgba(144, 93, 11, 0.3);
+    border: 1px solid rgba(234, 179, 8, 0.3);
     border-radius: 10px;
-    background: rgba(255, 236, 196, 0.73);
+    background: rgba(66, 32, 6, 0.6);
     padding: 9px 10px;
     z-index: 1;
   }
 
   .warning-title {
     margin: 0;
-    font-size: 0.75rem;
+    font-size: 0.7rem;
     font-weight: 800;
     text-transform: uppercase;
     letter-spacing: 0.08em;
-    color: #7a4c05;
+    color: #fbbf24;
+    font-family: "Press Start 2P", cursive;
   }
 
   .warning-desc {
-    margin: 3px 0 0;
+    margin: 6px 0 0;
     font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
     font-size: 0.74rem;
-    color: #5f3e0f;
+    color: #fcd34d;
     overflow-wrap: anywhere;
   }
 
@@ -953,12 +1139,13 @@ bash scripts/the-farm/no-leaks.sh</code></pre>
     align-items: flex-start;
     gap: 8px;
     font-size: 0.8rem;
-    color: #5e4232;
+    color: var(--farm-ink);
     z-index: 1;
   }
 
   .checkbox input {
     margin-top: 2px;
+    accent-color: var(--farm-leaf);
   }
 
   .proves {
@@ -969,9 +1156,9 @@ bash scripts/the-farm/no-leaks.sh</code></pre>
 
   .proves h2 {
     margin: 0;
-    font-family: "Fraunces", serif;
-    font-size: 1.3rem;
-    color: #3f281d;
+    font-family: "Press Start 2P", cursive;
+    font-size: 1rem;
+    color: var(--farm-leaf);
   }
 
   .proves ul {
@@ -983,21 +1170,21 @@ bash scripts/the-farm/no-leaks.sh</code></pre>
   }
 
   .proves li {
-    border: 1px solid rgba(93, 58, 39, 0.21);
+    border: 1px solid var(--farm-line);
     border-radius: 10px;
     padding: 10px 11px;
-    background: rgba(255, 249, 238, 0.84);
+    background: rgba(0, 0, 0, 0.4);
     display: flex;
     align-items: center;
     justify-content: space-between;
     gap: 10px;
     font-size: 0.9rem;
-    color: #3f2c20;
+    color: var(--farm-ink);
   }
 
   .tip {
     font-size: 0.94rem;
-    color: #6f503d;
+    color: var(--farm-sun);
     cursor: help;
   }
 
@@ -1015,12 +1202,11 @@ bash scripts/the-farm/no-leaks.sh</code></pre>
     list-style: none;
     cursor: pointer;
     padding: 14px 16px;
-    font-weight: 800;
-    letter-spacing: 0.05em;
-    text-transform: uppercase;
-    font-size: 0.82rem;
-    color: #5b3b2d;
-    border-bottom: 1px solid rgba(95, 59, 39, 0.17);
+    font-size: 0.7rem;
+    color: var(--farm-leaf);
+    border-bottom: 1px solid var(--farm-line);
+    font-family: "Press Start 2P", cursive;
+    line-height: 1.5;
   }
 
   .collapse summary::-webkit-details-marker {
@@ -1035,29 +1221,30 @@ bash scripts/the-farm/no-leaks.sh</code></pre>
 
   .collapse-body h3 {
     margin: 6px 0 0;
-    font-size: 0.9rem;
-    color: #453126;
+    font-size: 0.7rem;
+    color: var(--farm-sun);
+    font-family: "Press Start 2P", cursive;
   }
 
   .collapse-body p {
     margin: 0;
-    color: #5f4232;
+    color: var(--farm-ink);
     font-size: 0.86rem;
     line-height: 1.45;
   }
 
   .collapse-body pre {
     margin: 0;
-    border: 1px solid rgba(86, 56, 38, 0.2);
+    border: 1px solid var(--farm-line);
     border-radius: 10px;
-    background: rgba(255, 246, 229, 0.84);
+    background: rgba(0, 0, 0, 0.6);
     padding: 9px 11px;
     overflow: auto;
   }
 
   .collapse-body code {
     font-size: 0.76rem;
-    color: #2d1d14;
+    color: #a7f3d0;
   }
 
   .deck-grid {
@@ -1068,31 +1255,35 @@ bash scripts/the-farm/no-leaks.sh</code></pre>
   }
 
   .slide {
-    border: 1px solid rgba(87, 54, 36, 0.26);
+    border: 1px solid var(--farm-line);
     border-radius: 12px;
     padding: 12px;
-    background:
-      linear-gradient(180deg, rgba(255, 249, 238, 0.95), rgba(251, 238, 214, 0.8));
-    transition: transform 0.18s ease, box-shadow 0.18s ease;
+    background: rgba(10, 30, 20, 0.6);
+    transition:
+      transform 0.18s ease,
+      box-shadow 0.18s ease;
   }
 
   .slide:hover {
     transform: translateY(-2px);
-    box-shadow: 0 8px 18px rgba(80, 49, 30, 0.16);
+    box-shadow: 0 0 15px rgba(74, 222, 128, 0.2);
+    border-color: var(--farm-leaf);
   }
 
   .slide h4 {
-    margin: 0 0 6px;
-    font-family: "Fraunces", serif;
-    font-size: 1rem;
-    color: #4b2f22;
+    margin: 0 0 8px;
+    font-family: "Press Start 2P", cursive;
+    font-size: 0.7rem;
+    color: var(--farm-leaf);
+    line-height: 1.4;
   }
 
   .slide p {
     margin: 0;
     font-size: 0.86rem;
-    color: #604334;
+    color: var(--farm-ink);
     line-height: 1.4;
+    opacity: 0.8;
   }
 
   @media (max-width: 900px) {
