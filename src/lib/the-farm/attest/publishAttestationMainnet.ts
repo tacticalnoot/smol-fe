@@ -99,7 +99,7 @@ export async function publishAttestationMainnet(
     );
 
     const tx = new TransactionBuilder(new Account(NULL_ACCOUNT, "0"), {
-      fee: "1000000",
+      fee: "10000000", // Increase to 1 XLM for mainnet reliability
       networkPassphrase: MAINNET_NETWORK_PASSPHRASE,
     })
       .addOperation(operation)
@@ -126,16 +126,34 @@ export async function publishAttestationMainnet(
     const signed = await kit.sign(preparedTx, {
       rpId: getSafeRpId(window.location.hostname),
       keyId: input.keyId,
-      expiration: latestLedger.sequence + 60,
+      expiration: latestLedger.sequence + 120, // Increase expiration buffer
     });
 
     const signedTx = signed?.built ?? signed;
-    const sendResponse = await server.sendTransaction(signedTx);
-    if (sendResponse.status === "ERROR") {
-      throw new Error("Mainnet submission failed");
+
+    // Use relayer for mainnet submission instead of direct RPC
+    const { send } = await import("../../../utils/passkey-kit");
+    const { withRetry } = await import("../../../utils/retry");
+
+    const result = await withRetry(
+      () => send(signedTx),
+      {
+        maxRetries: 8,
+        baseDelayMs: 3000,
+        backoffFactor: 1.5,
+        onRetry: (attempt, _err, delay) => {
+          console.log(`[Attest] Relayer retry ${attempt}/8 in ${delay}ms...`);
+        },
+      },
+      "Mainnet-Attestation"
+    );
+
+    // Relayer returns hash or transactionHash
+    const txHash = result.hash || result.transactionHash || result.txHash || result.transactionId;
+    if (!txHash) {
+      throw new Error(`Relayer success but no hash: ${JSON.stringify(result)}`);
     }
 
-    const txHash = sendResponse.hash;
     const confirmed = await waitForTransaction(server, txHash);
     if (confirmed.status !== Api.GetTransactionStatus.SUCCESS) {
       return {
