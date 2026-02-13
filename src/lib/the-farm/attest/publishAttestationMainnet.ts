@@ -127,9 +127,9 @@ export async function publishAttestationMainnet(
       throw new Error(result.error || "Mainnet attestation failed");
     }
 
-    const txHash = result.transactionHash;
+    const txHash = result.transactionHash || result.result?.hash || result.result?.transactionHash || result.result?.txHash;
     if (!txHash) {
-      throw new Error("Relayer success but no hash returned");
+      throw new Error(`Relayer success but no hash discovered in result: ${JSON.stringify(result.result)}`);
     }
 
     const confirmed = await waitForTransaction(server, txHash);
