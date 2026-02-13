@@ -27,9 +27,10 @@ pnpm-debug.log*
 .wrangler/
 
 # Rust build artifacts
-**/target/debug/
-**/target/release/
-**/target/wasm32*/
+**/target/
+
+# ZK build outputs
+zk/**/build/
 
 # Large data files (exceed Cloudflare 25 MiB limit)
 data/all-smols.json
