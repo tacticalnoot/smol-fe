@@ -1,11 +1,7 @@
 <script lang="ts">
     import { onMount } from "svelte";
-    import {
-        userState,
-        isAuthenticated,
-        getPasskeyKit,
-        forceReauthentication,
-    } from "../../stores/user.svelte";
+    import { userState, isAuthenticated } from "../../stores/user.svelte";
+    import { account, resetPasskeyKit } from "../../utils/passkey-kit";
     import {
         balanceState,
         updateContractBalance,
@@ -110,7 +106,7 @@
             checks[3].status = "busy";
             console.log("[LastFrame] Requesting Passkey Signature...");
 
-            const kit = await getPasskeyKit();
+            const kit = await account.get();
             const rpId = getSafeRpId(window.location.hostname);
 
             // Log ZK Verification Key (vKey) status for diagnostics
@@ -122,7 +118,15 @@
             // We use forceReauthentication to RESET the PasskeyKit singleton and force
             // a fresh biometric prompt. This is critical for the "Identity Commitment" feel.
             try {
-                await forceReauthentication();
+                resetPasskeyKit();
+                const rpId = getSafeRpId(window.location.hostname);
+                await (
+                    await account.get()
+                ).connectWallet({
+                    rpId,
+                    keyId: userState.keyId!,
+                    getContractId: async () => userState.contractId!,
+                });
                 console.log("[LastFrame] Passkey Commitment Success");
             } catch (pErr: any) {
                 console.error("[LastFrame] Passkey Commitment Failed:", pErr);
