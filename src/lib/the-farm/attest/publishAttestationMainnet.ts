@@ -1,8 +1,6 @@
 import { Account, Address, Contract, TransactionBuilder, TimeoutInfinite, rpc, xdr } from "@stellar/stellar-sdk/minimal";
 import { Buffer } from "buffer";
 import { MAINNET_NETWORK_PASSPHRASE, MAINNET_RPC_URL, FARM_ATTESTATIONS_CONTRACT_ID_MAINNET } from "../../../config/farmAttestation";
-import { account as passkeyAccount } from "../../../utils/passkey-kit";
-import { getSafeRpId } from "../../../utils/domains";
 import { ensureBytes32Hex, hexToBytes } from "../digest";
 import type { AttestationResult, ProofSystem, Tier } from "../types";
 
@@ -113,45 +111,25 @@ export async function publishAttestationMainnet(
 
     const preparedTx = assembleTransaction(tx, simulation).build();
 
-    const kit = await passkeyAccount.get();
-    if (!kit.wallet) {
-      await kit.connectWallet({
-        rpId: getSafeRpId(window.location.hostname),
-        keyId: input.keyId,
-        getContractId: async () => input.owner,
-      });
-    }
+    // Use unified signAndSend which handles relayer, connectivity, and retries
+    const { signAndSend } = await import("../../../utils/transaction-helpers");
 
-    const latestLedger = await server.getLatestLedger();
-    const signed = await kit.sign(preparedTx, {
-      rpId: getSafeRpId(window.location.hostname),
+    // We pass the preparedTx to signAndSend. 
+    // It will handle kit.connectWallet internally if needed.
+    const result = await signAndSend(preparedTx, {
       keyId: input.keyId,
-      expiration: latestLedger.sequence + 120, // Increase expiration buffer
+      contractId: input.owner,
+      turnstileToken: "", // Mainnet attestation typically uses Direct (OZ) mode if available
+      updateBalance: true
     });
 
-    const signedTx = signed?.built ?? signed;
+    if (!result.success) {
+      throw new Error(result.error || "Mainnet attestation failed");
+    }
 
-    // Use relayer for mainnet submission instead of direct RPC
-    const { send } = await import("../../../utils/passkey-kit");
-    const { withRetry } = await import("../../../utils/retry");
-
-    const result = await withRetry(
-      () => send(signedTx),
-      {
-        maxRetries: 8,
-        baseDelayMs: 3000,
-        backoffFactor: 1.5,
-        onRetry: (attempt, _err, delay) => {
-          console.log(`[Attest] Relayer retry ${attempt}/8 in ${delay}ms...`);
-        },
-      },
-      "Mainnet-Attestation"
-    );
-
-    // Relayer returns hash or transactionHash
-    const txHash = result.hash || result.transactionHash || result.txHash || result.transactionId;
+    const txHash = result.transactionHash;
     if (!txHash) {
-      throw new Error(`Relayer success but no hash: ${JSON.stringify(result)}`);
+      throw new Error("Relayer success but no hash returned");
     }
 
     const confirmed = await waitForTransaction(server, txHash);
