@@ -40,6 +40,15 @@ export default defineConfig({
       // mkcert(),
       tailwindcss()
     ],
+    build: {
+      rollupOptions: {
+        external: [
+          '@noir-lang/noir_js',
+          '@noir-lang/backend_barretenberg',
+          '@aztec/bb.js',
+        ],
+      },
+    },
     define: {
       self: 'globalThis'
     }
