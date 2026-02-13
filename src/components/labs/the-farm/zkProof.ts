@@ -369,11 +369,12 @@ export async function checkAttestation(farmerAddress: string): Promise<{
  * Protocol 25 BN254 host functions before storing the attestation.
  */
 export async function submitProofToContract(
-    kit: any, // PasskeyKit instance
+    kit: any, // Backward compatibility, we will use signAndSend internally
     farmerAddress: string,
     tierId: number,
     commitment: Uint8Array,
     proof: Groth16Proof,
+    keyId?: string, // New optional argument
 ): Promise<{ success: boolean; txHash?: string; error?: string }> {
     try {
         console.log("[ZK] Submitting proof to mainnet contract for on-chain verification...", {
@@ -386,14 +387,10 @@ export async function submitProofToContract(
 
         const { Contract, Address, nativeToScVal, xdr, TransactionBuilder, rpc, Account, Networks } = await import("@stellar/stellar-sdk/minimal");
         const NULL_ACCOUNT = "GAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAWHF";
-        const { send } = await import("../../../utils/passkey-kit");
-        const { withRetry } = await import("../../../utils/retry");
-        const { getBestRpcUrl } = await import("../../../utils/rpc");
-        const { getSafeRpId } = await import("../../../utils/domains");
-        const { getLatestSequence } = await import("../../../utils/base");
+        const { signAndSend } = await import("../../../utils/transaction-helpers");
 
-        const server = new rpc.Server(getBestRpcUrl());
         const contractObj = new Contract(TIER_VERIFIER_CONTRACT_ID);
+
         const buildProofStruct = (serialized: {
             pi_a: Uint8Array;
             pi_b: Uint8Array;
@@ -432,208 +429,55 @@ export async function submitProofToContract(
                 .build();
         };
 
-        const collectFailureStrings = (
-            value: unknown,
-            out: Set<string>,
-            seen: Set<unknown>,
-            depth = 0,
-        ): void => {
-            if (value === null || value === undefined || depth > 8) return;
-            if (typeof value === "string") {
-                const text = value.trim();
-                if (!text) return;
-                out.add(text.length > 512 ? `${text.slice(0, 512)}...` : text);
-                return;
-            }
-            if (typeof value !== "object") return;
-            if (seen.has(value)) return;
-            seen.add(value);
-
-            if (Array.isArray(value)) {
-                for (const item of value.slice(0, 40)) {
-                    collectFailureStrings(item, out, seen, depth + 1);
-                }
-                return;
-            }
-
-            for (const [key, child] of Object.entries(
-                value as Record<string, unknown>,
-            )) {
-                if (key === "event" && typeof child === "string") {
-                    // Base64 event payloads are noisy and not human-readable.
-                    continue;
-                }
-                collectFailureStrings(child, out, seen, depth + 1);
-            }
-        };
-
-        const extractFailureText = (sim: unknown): string => {
-            const parts = new Set<string>();
-            collectFailureStrings(sim, parts, new Set<unknown>());
-            if (parts.size > 0) {
-                return Array.from(parts).join("\n");
-            }
-            try {
-                return JSON.stringify(sim);
-            } catch {
-                return String(sim);
-            }
-        };
-
-        const CONTRACT_ERROR_MESSAGES: Record<number, string> = {
-            1: "Super Verifier returned Contract #1 (InvalidProof): proof/public inputs do not match the on-chain verification key.",
-            2: "Super Verifier returned Contract #2 (InvalidTier): tier must be between 0 and 3.",
-            3: "Super Verifier returned Contract #3 (NotAdmin): caller is not admin for this method.",
-            4: "Super Verifier returned Contract #4 (AlreadyInitialized).",
-            5: "Super Verifier returned Contract #5 (NotInitialized): verification key/admin are not initialized on-chain.",
-            6: "Super Verifier returned Contract #6 (InvalidPublicInputs): verifier key IC length does not match expected public input count.",
-        };
-
-        const classifyFailure = (
-            sim: unknown,
-        ): {
-            kind: "g2_curve" | "crypto_invalid_input" | "contract_error" | "unknown";
-            raw: string;
-            contractCode?: number;
-        } => {
-            const raw = extractFailureText(sim);
-            if (raw.includes("bn254 G2: point not on curve")) {
-                return { kind: "g2_curve", raw };
-            }
-            if (
-                raw.includes("HostError: Error(Crypto, InvalidInput)") ||
-                raw.includes("Error(Crypto, InvalidInput)")
-            ) {
-                return { kind: "crypto_invalid_input", raw };
-            }
-
-            const contractErrorMatch = raw.match(/Error\(Contract,\s*#(\d+)\)/);
-            if (contractErrorMatch) {
-                return {
-                    kind: "contract_error",
-                    raw,
-                    contractCode: Number(contractErrorMatch[1]),
-                };
-            }
-
-            return { kind: "unknown", raw };
-        };
-
-        const summarizeFailure = (sim: unknown): string => {
-            const failure = classifyFailure(sim);
-            if (failure.kind === "g2_curve") {
-                return "bn254 G2 point decode failed on-chain (likely verification-key encoding mismatch).";
-            }
-            if (failure.kind === "crypto_invalid_input") {
-                return "on-chain BN254 host validation failed with Crypto.InvalidInput.";
-            }
-            if (
-                failure.kind === "contract_error" &&
-                typeof failure.contractCode === "number"
-            ) {
-                const base =
-                    CONTRACT_ERROR_MESSAGES[failure.contractCode] ||
-                    `Super Verifier returned Contract #${failure.contractCode}.`;
-                if (failure.contractCode === 1) {
-                    return `${base} Regenerate a proof with the current /zk artifacts; if this persists, admin must run update_vkey with the matching verification key.`;
-                }
-                return base;
-            }
-            const normalized = failure.raw.replace(/\s+/g, " ").trim();
-            return normalized.length > 320
-                ? `${normalized.slice(0, 320)}...`
-                : normalized;
-        };
-
-        const hasG2CurveError = (sim: unknown): boolean =>
-            classifyFailure(sim).kind === "g2_curve";
-
         const capProof = serializeProofWithMode(proof, "cap0074");
         const legacyProof = serializeProofWithMode(proof, "legacy");
+
+        const { getBestRpcUrl } = await import("../../../utils/rpc");
+        const server = new rpc.Server(getBestRpcUrl());
 
         let selectedMode: G2EncodingMode = "cap0074";
         let tx = buildTx(buildProofStruct(capProof));
         let sim = await server.simulateTransaction(tx);
 
         if (!rpc.Api.isSimulationSuccess(sim) && hasG2CurveError(sim)) {
-            // Compatibility probe for contracts initialized with older G2 limb ordering.
+            console.warn("[ZK] cap0074 simulation failed (G2 point error), trying legacy mode...");
             const legacyTx = buildTx(buildProofStruct(legacyProof));
             const legacySim = await server.simulateTransaction(legacyTx);
             if (rpc.Api.isSimulationSuccess(legacySim)) {
                 selectedMode = "legacy";
                 tx = legacyTx;
                 sim = legacySim;
-                console.warn(
-                    "[ZK] Falling back to legacy G2 limb ordering for this contract instance.",
-                );
-            } else if (hasG2CurveError(legacySim)) {
-                throw new Error(
-                    "Super Verifier rejected both G2 encodings (bn254 point decode failed). The on-chain verification key likely needs an update_vkey migration with CAP-0074 encoding.",
-                );
             } else {
                 sim = legacySim;
             }
         }
 
         if (!rpc.Api.isSimulationSuccess(sim)) {
-            console.error("[ZK] Simulation failed for verify_and_attest:", sim);
-            throw new Error(
-                "Simulation failed for verify_and_attest: " + summarizeFailure(sim),
-            );
+            throw new Error("Simulation failed for verify_and_attest: " + summarizeFailure(sim));
         }
+
         console.log(`[ZK] Simulation succeeded using ${selectedMode} G2 encoding.`);
 
         // Prepare transaction with simulation data
         const preparedTx = rpc.assembleTransaction(tx, sim).build();
 
-        // Sign with PasskeyKit
-        const rpId = getSafeRpId(window.location.hostname);
-        const sequence = await getLatestSequence();
-
-        const signedTx = await kit.sign(preparedTx, {
-            rpId,
-            keyId: kit.wallet?.keyId,
-            expiration: sequence + 60,
+        // Use unified signAndSend which handles relayer, connectivity, and retries
+        const result = await signAndSend(preparedTx, {
+            keyId: keyId || kit?.wallet?.keyId || "",
+            contractId: farmerAddress,
+            turnstileToken: "",
+            updateBalance: true,
         });
 
-
-
-        // Send via relayer with retry
-        const result = await withRetry(
-            () => send(signedTx),
-            {
-                maxRetries: 8, // Increased from 5
-                baseDelayMs: 3000, // Increased from 2000
-                backoffFactor: 1.5, // Slower backoff
-                onRetry: (attempt, _err, delay) => {
-                    console.log(`[ZK] Relayer retry ${attempt}/8 in ${delay}ms...`);
-                },
-            },
-            "ZK-ProofSubmit"
-        );
-
-        console.log("[ZK] Proof verified and attestation stored on-chain!", result);
-
-        // Robust hash extraction (handle flat and nested 'data' structures)
-        const txHash =
-            result.hash ||
-            result.transactionHash ||
-            result.txHash ||
-            result.id ||
-            result.transactionId ||
-            result.data?.hash ||
-            result.data?.transactionHash ||
-            result.data?.txHash ||
-            result.data?.transactionId;
-
-        if (!txHash) {
-            console.warn("[ZK] Relayer returned success but no hash found in result:", JSON.stringify(result));
+        if (!result.success) {
+            throw new Error(result.error || "On-chain verification failed");
         }
 
         return {
             success: true,
-            txHash: txHash,
+            txHash: result.transactionHash,
         };
+
     } catch (error: any) {
         console.error("[ZK] Failed to submit verify_and_attest transaction:", error);
         return {
@@ -641,6 +485,117 @@ export async function submitProofToContract(
             error: error.message || "Unknown error",
         };
     }
+}
+
+// ============================================================================
+// Internal Simulation Error Handling
+// ============================================================================
+
+function collectFailureStrings(
+    value: unknown,
+    out: Set<string>,
+    seen: Set<unknown>,
+    depth = 0,
+): void {
+    if (value === null || value === undefined || depth > 8) return;
+    if (typeof value === "string") {
+        const text = value.trim();
+        if (!text) return;
+        out.add(text.length > 512 ? `${text.slice(0, 512)}...` : text);
+        return;
+    }
+    if (typeof value !== "object") return;
+    if (seen.has(value)) return;
+    seen.add(value);
+
+    if (Array.isArray(value)) {
+        for (const item of value.slice(0, 40)) {
+            collectFailureStrings(item, out, seen, depth + 1);
+        }
+        return;
+    }
+
+    for (const [key, child] of Object.entries(value as Record<string, unknown>)) {
+        if (key === "event" && typeof child === "string") continue;
+        collectFailureStrings(child, out, seen, depth + 1);
+    }
+}
+
+function extractFailureText(sim: unknown): string {
+    const parts = new Set<string>();
+    collectFailureStrings(sim, parts, new Set<unknown>());
+    if (parts.size > 0) return Array.from(parts).join("\n");
+    try {
+        return JSON.stringify(sim);
+    } catch {
+        return String(sim);
+    }
+}
+
+const CONTRACT_ERROR_MESSAGES: Record<number, string> = {
+    1: "Super Verifier returned Contract #1 (InvalidProof): proof/public inputs do not match the on-chain verification key.",
+    2: "Super Verifier returned Contract #2 (InvalidTier): tier must be between 0 and 3.",
+    3: "Super Verifier returned Contract #3 (NotAdmin): caller is not admin for this method.",
+    4: "Super Verifier returned Contract #4 (AlreadyInitialized).",
+    5: "Super Verifier returned Contract #5 (NotInitialized): verification key/admin are not initialized on-chain.",
+    6: "Super Verifier returned Contract #6 (InvalidPublicInputs): verifier key IC length does not match expected public input count.",
+};
+
+function classifyFailure(
+    sim: unknown,
+): {
+    kind: "g2_curve" | "crypto_invalid_input" | "contract_error" | "unknown";
+    raw: string;
+    contractCode?: number;
+} {
+    const raw = extractFailureText(sim);
+    if (raw.includes("bn254 G2: point not on curve")) {
+        return { kind: "g2_curve", raw };
+    }
+    if (
+        raw.includes("HostError: Error(Crypto, InvalidInput)") ||
+        raw.includes("Error(Crypto, InvalidInput)")
+    ) {
+        return { kind: "crypto_invalid_input", raw };
+    }
+
+    const contractErrorMatch = raw.match(/Error\(Contract,\s*#(\d+)\)/);
+    if (contractErrorMatch) {
+        return {
+            kind: "contract_error",
+            raw,
+            contractCode: Number(contractErrorMatch[1]),
+        };
+    }
+
+    return { kind: "unknown", raw };
+}
+
+function summarizeFailure(sim: unknown): string {
+    const failure = classifyFailure(sim);
+    if (failure.kind === "g2_curve") {
+        return "bn254 G2 point decode failed on-chain (likely verification-key encoding mismatch).";
+    }
+    if (failure.kind === "crypto_invalid_input") {
+        return "on-chain BN254 host validation failed with Crypto.InvalidInput.";
+    }
+    if (
+        failure.kind === "contract_error" &&
+        typeof failure.contractCode === "number"
+    ) {
+        return (
+            CONTRACT_ERROR_MESSAGES[failure.contractCode] ||
+            `Super Verifier returned Contract #${failure.contractCode}.`
+        );
+    }
+    const normalized = failure.raw.replace(/\s+/g, " ").trim();
+    return normalized.length > 320
+        ? `${normalized.slice(0, 320)}...`
+        : normalized;
+}
+
+function hasG2CurveError(sim: unknown): boolean {
+    return classifyFailure(sim).kind === "g2_curve";
 }
 
 /**

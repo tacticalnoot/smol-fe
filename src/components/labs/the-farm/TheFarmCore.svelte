@@ -229,6 +229,7 @@
           tierId,
           commitmentBytes,
           proofRes.proof,
+          userState.keyId!,
         );
 
         if (submitResult.success) {
