@@ -275,7 +275,7 @@ test('the-farm noir verifier passes valid sample and fails tampered sample', asy
   expect(fail.valid).toBeFalsy();
 });
 
-test('the-farm circom input tier_id is scalar (no array / no comma string)', async ({ page }) => {
+test('the-farm circom inputs are scalar (no array / no comma string)', async ({ page }) => {
   test.setTimeout(60_000);
 
   const consoleErrors: string[] = [];
@@ -292,11 +292,16 @@ test('the-farm circom input tier_id is scalar (no array / no comma string)', asy
     window.snarkjs = {
       groth16: {
         fullProve: async (inputs: any) => {
-          const tier = inputs?.tier_id;
-          if (Array.isArray(tier)) throw new Error('tier_id must not be an array');
-          if (typeof tier !== 'string') throw new Error(`tier_id must be string, got ${typeof tier}`);
-          if (tier.includes(',')) throw new Error('tier_id must not contain commas');
-          if (!/^[0-9]+$/.test(tier)) throw new Error(`tier_id must be digits, got "${tier}"`);
+          if ('tier_id' in inputs) throw new Error('unexpected tier_id input');
+
+          const keys = ['balance', 'salt', 'threshold', 'commitment'];
+          for (const key of keys) {
+            const value = inputs?.[key];
+            if (Array.isArray(value)) throw new Error(`${key} must not be an array`);
+            if (typeof value !== 'string') throw new Error(`${key} must be string, got ${typeof value}`);
+            if (value.includes(',')) throw new Error(`${key} must not contain commas`);
+            if (!/^[0-9]+$/.test(value)) throw new Error(`${key} must be digits, got "${value}"`);
+          }
           return {
             proof: {
               pi_a: ['0', '0', '1'],
@@ -314,8 +319,8 @@ test('the-farm circom input tier_id is scalar (no array / no comma string)', asy
     // @ts-ignore - Resolved by Vite in browser (dev server).
     const mod = await import('/src/components/labs/the-farm/zkProof.ts');
 
-    // Small, deterministic inputs. We only care that the input builder passes a scalar tier_id.
-    const proofRes = await mod.generateTierProof(1n, 0n, 2n, 0);
+    // Small, deterministic inputs. We only care that the input builder passes scalars.
+    const proofRes = await mod.generateTierProof(0n, 2n, 0n);
     return {
       ok: true,
       publicSignalsLen: proofRes.publicSignals?.length ?? 0,
@@ -325,7 +330,7 @@ test('the-farm circom input tier_id is scalar (no array / no comma string)', asy
   expect(result.ok).toBeTruthy();
 
   const circomInputErrors = consoleErrors.filter((line) =>
-    /Too many values for input signal tier_id/i.test(line),
+    /Too many values for input signal/i.test(line),
   );
   expect(circomInputErrors).toEqual([]);
 });
