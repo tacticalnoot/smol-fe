@@ -45,6 +45,18 @@ tldts-results*.txt
 usernames.txt
 verification-check.txt
 check-output.txt
+*.xdr.txt
+upload_cost.txt
+upload_farm_attestations.xdr.txt
+install_farm_attestations.xdr.txt
+gateway_logs.txt
+openclaw_help.txt
+openclaw_full_help.txt
+models.txt
+deployed-*-id.txt
+
+# RISC0 local build cache
+zk/**/.risc0_work/
 
 .agent/_reports/
 
