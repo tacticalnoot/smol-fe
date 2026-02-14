@@ -1,5 +1,5 @@
 import { execSync } from "child_process";
-import { existsSync, writeFileSync, readFileSync } from "fs";
+import { writeFileSync } from "fs";
 import path from "path";
 import { fileURLToPath } from "url";
 
@@ -43,12 +43,11 @@ async function main() {
   console.log(`Identity: ${DEPLOYER_IDENTITY}`);
 
   // Best-effort: show deployer pubkey for funding instructions.
+  let deployerAddress = "";
   try {
-    const pk = run(`stellar keys public-key ${DEPLOYER_IDENTITY}`, { cwd: rootDir }).trim();
-    console.log(`Deployer address: ${pk}`);
-  } catch {
-    // ignore
-  }
+    deployerAddress = run(`stellar keys public-key ${DEPLOYER_IDENTITY}`, { cwd: rootDir }).trim();
+    console.log(`Deployer address: ${deployerAddress}`);
+  } catch {}
 
   // 1) Build wasm
   runInherit("cargo build --target wasm32v1-none --release", {
@@ -104,6 +103,26 @@ async function main() {
   console.log(`\nCONTRACT_ID=${contractId}`);
   writeFileSync(path.join(rootDir, "deployed-risc0-groth16-verifier-id.txt"), `${contractId}\n`, "utf8");
 
+  // 5) Initialize admin (upgrade authority)
+  if (deployerAddress) {
+    try {
+      runInherit(
+        `stellar contract invoke --id ${contractId} --source-account ${DEPLOYER_IDENTITY} --network mainnet --rpc-url ${RPC_URL} --network-passphrase "${NETWORK_PASSPHRASE}" -- --help`,
+        { cwd: rootDir },
+      );
+    } catch {}
+
+    try {
+      runInherit(
+        `stellar contract invoke --id ${contractId} --source-account ${DEPLOYER_IDENTITY} --network mainnet --rpc-url ${RPC_URL} --network-passphrase "${NETWORK_PASSPHRASE}" -- init_admin --admin ${deployerAddress}`,
+        { cwd: rootDir },
+      );
+    } catch (e) {
+      console.warn("\ninit_admin failed (contract may already be initialized).");
+      console.warn(String(e?.stdout || e?.message || e));
+    }
+  }
+
   console.log("\nNext step:");
   console.log('Set `PUBLIC_RISC0_GROTH16_VERIFIER_CONTRACT_ID_MAINNET` to this contract ID (e.g. in .env).');
 }
@@ -112,4 +131,3 @@ main().catch((e) => {
   console.error(e);
   process.exit(1);
 });
-

@@ -15,7 +15,7 @@ mod vkey;
 use soroban_sdk::{
     contract, contracterror, contractimpl, contracttype,
     crypto::bn254::{Bn254G1Affine, Bn254G2Affine, Fr},
-    Address, BytesN, Env, Symbol, Vec,
+    symbol_short, Address, BytesN, Env, Vec,
 };
 
 // ========================================================================
@@ -28,6 +28,7 @@ use soroban_sdk::{
 pub enum Risc0Groth16Error {
     InvalidProof = 1,
     InvalidPublicInputs = 2,
+    NotInitialized = 3,
 }
 
 // ========================================================================
@@ -52,6 +53,7 @@ pub struct ReceiptAttestation {
 
 #[contracttype]
 pub enum DataKey {
+    Admin,
     Attestation(Address),
 }
 
@@ -64,6 +66,33 @@ pub struct Risc0Groth16Verifier;
 
 #[contractimpl]
 impl Risc0Groth16Verifier {
+    pub fn init_admin(env: Env, admin: Address) {
+        if env.storage().instance().has(&DataKey::Admin) {
+            panic!();
+        }
+        admin.require_auth();
+        env.storage().instance().set(&DataKey::Admin, &admin);
+    }
+
+    pub fn admin(env: Env) -> Address {
+        env.storage()
+            .instance()
+            .get(&DataKey::Admin)
+            .unwrap_or_else(|| panic!())
+    }
+
+    pub fn set_admin(env: Env, new_admin: Address) {
+        let admin = Self::admin(env.clone());
+        admin.require_auth();
+        env.storage().instance().set(&DataKey::Admin, &new_admin);
+    }
+
+    pub fn upgrade(env: Env, new_wasm_hash: BytesN<32>) {
+        let admin = Self::admin(env.clone());
+        admin.require_auth();
+        env.deployer().update_current_contract_wasm(new_wasm_hash);
+    }
+
     /// Verify a RISC0 Groth16 receipt proof and store an attestation.
     ///
     /// - `owner` requires auth.
@@ -76,6 +105,10 @@ impl Risc0Groth16Verifier {
         public_inputs: Vec<BytesN<32>>,
         proof: Groth16Proof,
     ) -> Result<bool, Risc0Groth16Error> {
+        if !env.storage().instance().has(&DataKey::Admin) {
+            return Err(Risc0Groth16Error::NotInitialized);
+        }
+
         owner.require_auth();
 
         // The Groth16 VK embedded in this contract expects exactly 5 public inputs (IC length 6).
@@ -96,8 +129,10 @@ impl Risc0Groth16Verifier {
             .persistent()
             .set(&DataKey::Attestation(owner.clone()), &record);
 
-        env.events()
-            .publish((Symbol::new(&env, "Risc0Groth16Verified"),), (owner,));
+        env.events().publish(
+            (symbol_short!("risc0"), symbol_short!("g16"), symbol_short!("ok"),),
+            (owner,),
+        );
 
         Ok(true)
     }
@@ -195,4 +230,3 @@ pub struct VerificationKey {
     pub delta_g2: BytesN<128>,
     pub ic: Vec<BytesN<64>>,
 }
-
