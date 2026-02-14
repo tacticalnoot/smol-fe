@@ -52,6 +52,9 @@
     let groth16OnChain = $state<{ status: "idle" | "simulating" | "assembling" | "signing" | "submitted" | "confirmed" | "error"; txHash?: string; error?: string }>(
         { status: "idle" }
     );
+    let noirUltraHonkOnChain = $state<{ status: "idle" | "simulating" | "assembling" | "signing" | "submitted" | "confirmed" | "error"; txHash?: string; error?: string }>(
+        { status: "idle" }
+    );
     let risc0Groth16OnChain = $state<{ status: "idle" | "simulating" | "assembling" | "signing" | "submitted" | "confirmed" | "error"; txHash?: string; error?: string }>(
         { status: "idle" }
     );
@@ -391,6 +394,7 @@
         gateWaiting = false;
         lastForensics = null;
         groth16OnChain = { status: "idle" };
+        noirUltraHonkOnChain = { status: "idle" };
         risc0Groth16OnChain = { status: "idle" };
         phase = "playing";
 
@@ -582,6 +586,114 @@
                 }
             }
 
+            // Room 2 (Noir wing): if a passkey wallet is connected, optionally perform *real*
+            // on-chain UltraHonk verification (via the app's SSOT farm-attestations contract,
+            // which delegates to an upgradeable ultrahonk verifier contract).
+            //
+            // Note: this dungeon uses a training credential artifact (real proof), so this step
+            // demonstrates end-to-end on-chain verification wiring + passkey tx flow.
+            if (currentFloor === 2 && isConnected) {
+                if (!userState.contractId || !userState.keyId) {
+                    lastForensics = {
+                        ...result,
+                        accepted: false,
+                        reasonCode: "ERROR",
+                        reasonHuman: "Cannot submit on-chain UltraHonk verification (wallet missing)",
+                        forensics: {
+                            ...result.forensics,
+                            mismatchExplanation: "On-chain UltraHonk verification requires a connected passkey wallet.",
+                            nextAction: "Connect your passkey wallet and retry the door.",
+                        },
+                    };
+                    doorStates = ["idle", "idle", "idle", "idle"];
+                    activeDoor = null;
+                    return;
+                }
+
+                try {
+                    gateWaiting = true;
+                    noirUltraHonkOnChain = { status: "simulating" };
+
+                    const { publishNoirUltraHonkVerifyMainnet } = await import("../../../../lib/dungeon/publishNoirUltraHonkVerifyMainnet");
+                    const submitRes = await publishNoirUltraHonkVerifyMainnet({
+                        owner: userState.contractId,
+                        keyId: userState.keyId,
+                        tierId: effectiveTierId,
+                        onStage: (stage) => {
+                            if (stage === "simulating") noirUltraHonkOnChain = { status: "simulating" };
+                            if (stage === "assembling") noirUltraHonkOnChain = { status: "assembling" };
+                            if (stage === "signing") noirUltraHonkOnChain = { status: "signing" };
+                            if (stage === "submitted") noirUltraHonkOnChain = { status: "submitted" };
+                        },
+                    });
+
+                    if (!submitRes.ok) {
+                        throw new Error(submitRes.error || "On-chain UltraHonk verification failed");
+                    }
+                    if (!submitRes.txHash) {
+                        throw new Error("On-chain UltraHonk verification did not return a tx hash");
+                    }
+
+                    noirUltraHonkOnChain = { status: "submitted", txHash: submitRes.txHash };
+
+                    addLogEntry({
+                        floor: currentFloor,
+                        door: doorIndex,
+                        attempt: attempts,
+                        result: "correct",
+                        proofType: "On-chain UltraHonk (Noir)",
+                        txHash: submitRes.txHash,
+                        timestamp: Date.now(),
+                        verified: true,
+                        provingTimeMs: result.provingTimeMs,
+                        commitment: result.commitment,
+                        reasonCode: "ONCHAIN_VERIFIED",
+                    });
+
+                    const confirmed = await waitForMainnetTx(submitRes.txHash);
+                    if (confirmed === "success") {
+                        noirUltraHonkOnChain = { status: "confirmed", txHash: submitRes.txHash };
+                    } else if (confirmed === "failed") {
+                        noirUltraHonkOnChain = { status: "error", txHash: submitRes.txHash, error: "On-chain tx failed" };
+                        throw new Error("On-chain UltraHonk verification transaction failed");
+                    } else {
+                        noirUltraHonkOnChain = { status: "error", txHash: submitRes.txHash, error: "Confirmation timed out" };
+                        throw new Error("On-chain UltraHonk verification confirmation timed out");
+                    }
+                } catch (err) {
+                    const message = err instanceof Error ? err.message : String(err);
+                    noirUltraHonkOnChain = {
+                        status: "error",
+                        error: message,
+                        txHash: noirUltraHonkOnChain.txHash,
+                    };
+
+                    // If the verifier bridge isn't configured yet, don't brick the run.
+                    // We surface the failure honestly in the Integrity UI and let the user proceed.
+                    if (message.includes("NotConfigured") || message.includes("UltraHonk") && message.includes("configured")) {
+                        console.warn("[Dungeon] Noir on-chain verifier bridge disabled:", message);
+                    } else {
+                        lastForensics = {
+                            ...result,
+                            accepted: false,
+                            reasonCode: "ONCHAIN_VERIFY_FAILED",
+                            reasonHuman: "Door policy matched, but on-chain UltraHonk verification failed",
+                            forensics: {
+                                ...result.forensics,
+                                mismatchExplanation: message || "On-chain UltraHonk verification failed.",
+                                nextAction:
+                                    "Retry the door. If RPC is flaky, wait a moment and retry.",
+                            },
+                        };
+                        doorStates = ["idle", "idle", "idle", "idle"];
+                        activeDoor = null;
+                        return;
+                    }
+                } finally {
+                    gateWaiting = false;
+                }
+            }
+
             // Room 3 (RISC0 wing): if a passkey wallet is connected, optionally perform *real*
             // on-chain BN254 Groth16 verification of a RISC0 receipt proof before advancing.
             //
@@ -767,6 +879,7 @@
         floorTransition = false;
         lastForensics = null;
         groth16OnChain = { status: "idle" };
+        noirUltraHonkOnChain = { status: "idle" };
         risc0Groth16OnChain = { status: "idle" };
     }
 
@@ -892,6 +1005,7 @@
         entryStamp = { status: "idle" };
         withdrawalStamp = { status: "idle" };
         groth16OnChain = { status: "idle" };
+        noirUltraHonkOnChain = { status: "idle" };
         risc0Groth16OnChain = { status: "idle" };
         phase = "airlock";
     }
@@ -1229,6 +1343,30 @@
                             {#if currentFloor === 1 && groth16OnChain.status === "idle"}
                                 <div class="dg-placard-sub">
                                     Tip: clearing the correct door will trigger a real Tier Verifier `verify_and_attest` tx (passkey-signed).
+                                </div>
+                            {/if}
+                        {:else}
+                            <div class="dg-stamp-status">STATUS: DISABLED (WALLET NOT CONNECTED)</div>
+                        {/if}
+                    </div>
+                {/if}
+
+                {#if floorDef.verifierType === "NOIR_ULTRAHONK"}
+                    <div class="dg-stamp-box">
+                        <div class="dg-stamp-title">ON-CHAIN ULTRAHONK VERIFY (MAINNET)</div>
+                        {#if isConnected}
+                            <div class="dg-stamp-status">STATUS: {noirUltraHonkOnChain.status.toUpperCase()}</div>
+                            {#if noirUltraHonkOnChain.txHash}
+                                <a class="dg-stamp-link" href={txExplorerUrlMainnet(noirUltraHonkOnChain.txHash)} target="_blank" rel="noreferrer">
+                                    VIEW TX {noirUltraHonkOnChain.txHash.slice(0, 8)}...
+                                </a>
+                            {/if}
+                            {#if noirUltraHonkOnChain.error}
+                                <div class="dg-stamp-error">{noirUltraHonkOnChain.error}</div>
+                            {/if}
+                            {#if currentFloor === 2 && noirUltraHonkOnChain.status === "idle"}
+                                <div class="dg-placard-sub">
+                                    Tip: clearing the correct door will trigger a real UltraHonk verification tx (passkey-signed) via farm-attestations' verifier bridge.
                                 </div>
                             {/if}
                         {:else}

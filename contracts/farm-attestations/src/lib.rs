@@ -3,7 +3,7 @@
 use soroban_sdk::{
     contract, contracterror, contractimpl, contracttype, symbol_short,
     crypto::bn254::{Bn254G1Affine, Bn254G2Affine, Fr},
-    Address, BytesN, Env, Symbol, Vec,
+    Address, Bytes, BytesN, Env, IntoVal, Symbol, Val, Vec,
 };
 
 #[derive(Clone)]
@@ -14,6 +14,8 @@ pub enum DataKey {
     Entry((Address, Symbol, Symbol)),
     // Appended (do not reorder): Groth16 VK registry for on-chain verification.
     Groth16Vk(Symbol),
+    // Appended (do not reorder): External verifier addresses (upgrade bridge).
+    UltraHonkVerifier,
 }
 
 #[derive(Clone)]
@@ -36,6 +38,14 @@ pub enum Groth16Error {
     UnknownVk = 1,
     InvalidPublicInputs = 2,
     InvalidProof = 3,
+}
+
+#[contracterror]
+#[derive(Copy, Clone, Debug, Eq, PartialEq, PartialOrd, Ord)]
+#[repr(u32)]
+pub enum UltraHonkError {
+    NotConfigured = 1,
+    VerificationFailed = 2,
 }
 
 #[derive(Clone)]
@@ -138,6 +148,91 @@ impl FarmAttestations {
 
     pub fn has_groth16_vk(env: Env, vk_id: Symbol) -> bool {
         env.storage().persistent().has(&DataKey::Groth16Vk(vk_id))
+    }
+
+    // --------------------------------------------------------------------
+    // UltraHonk Bridge (Noir) - External Verifier Contract
+    // --------------------------------------------------------------------
+
+    /// Set the (upgradeable) UltraHonk verifier contract address used by `verify_ultrahonk_and_attest`.
+    ///
+    /// This is the "bridge" strategy: keep this contract as the SSOT for attestations,
+    /// while delegating UltraHonk verification to a dedicated verifier contract.
+    pub fn set_ultrahonk_verifier(env: Env, verifier: Address) {
+        let admin = Self::admin(env.clone());
+        admin.require_auth();
+        env.storage().instance().set(&DataKey::UltraHonkVerifier, &verifier);
+        Self::bump_instance_ttl(&env);
+    }
+
+    pub fn get_ultrahonk_verifier(env: Env) -> Option<Address> {
+        env.storage().instance().get(&DataKey::UltraHonkVerifier)
+    }
+
+    /// Verify an UltraHonk proof via the configured verifier contract, then store an attestation record.
+    ///
+    /// IMPORTANT: this verifies *cryptographically* on-chain (in the verifier contract), not a digest-only record.
+    /// The proof system is still identified by `system`, typically "NOIR".
+    pub fn verify_ultrahonk_and_attest(
+        env: Env,
+        owner: Address,
+        system: Symbol,
+        tier: Symbol,
+        statement_hash: BytesN<32>,
+        verifier_hash: BytesN<32>,
+        public_inputs: Bytes,
+        proof_bytes: Bytes,
+    ) -> Result<u64, UltraHonkError> {
+        owner.require_auth();
+
+        let verifier: Address = env
+            .storage()
+            .instance()
+            .get(&DataKey::UltraHonkVerifier)
+            .ok_or(UltraHonkError::NotConfigured)?;
+
+        // Cross-contract call into the verifier.
+        // Signature: verify_proof(public_inputs: Bytes, proof_bytes: Bytes) -> bool
+        let mut args: Vec<Val> = Vec::new(&env);
+        args.push_back(public_inputs.into_val(&env));
+        args.push_back(proof_bytes.into_val(&env));
+
+        let ok: bool = env.invoke_contract(
+            &verifier,
+            &Symbol::new(&env, "verify_proof"),
+            args,
+        );
+
+        if !ok {
+            return Err(UltraHonkError::VerificationFailed);
+        }
+
+        let attestation_id = Self::next_nonce(&env);
+        let ledger = env.ledger().sequence();
+        let timestamp = env.ledger().timestamp();
+
+        let record = AttestationRecord {
+            owner: owner.clone(),
+            system: system.clone(),
+            tier: tier.clone(),
+            statement_hash: statement_hash.clone(),
+            verifier_hash: verifier_hash.clone(),
+            ledger,
+            timestamp,
+            attestation_id,
+        };
+
+        let key = DataKey::Entry((owner.clone(), system.clone(), tier.clone()));
+        env.storage().persistent().set(&key, &record);
+        Self::bump_persistent_key_ttl(&env, &key);
+        Self::bump_instance_ttl(&env);
+
+        env.events().publish(
+            (symbol_short!("attest"), owner, system, tier),
+            (statement_hash, verifier_hash, ledger, timestamp, attestation_id),
+        );
+
+        Ok(attestation_id)
     }
 
     /// Verify Groth16 proof against registered VK, without storing anything.
