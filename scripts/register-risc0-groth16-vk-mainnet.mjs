@@ -65,7 +65,7 @@ function parseU8Array(name, rsText) {
   if (!m) throw new Error(`Failed to find ${name} in vk_constants.rs`);
   const body = m[1];
   const bytes = [];
-  for (const token of body.split(/[,\\s]+/)) {
+  for (const token of body.split(/[,\s]+/)) {
     if (!token) continue;
     if (!token.startsWith("0x")) continue;
     bytes.push(parseInt(token.slice(2), 16));
@@ -74,21 +74,18 @@ function parseU8Array(name, rsText) {
 }
 
 function parseVkIc(rsText) {
-  // pub const VK_IC: [[u8; 64]; 6] = [
-  //   [0x.., ...],
-  //   ...
-  // ];
+  // Parse the VK_IC constant in a line-oriented way (more robust than regex).
   const start = rsText.indexOf("pub const VK_IC:");
   if (start === -1) throw new Error("Failed to find VK_IC in vk_constants.rs");
   const tail = rsText.slice(start);
 
-  const rowRe = /\[([^\]]+)\],/g;
   const rows = [];
-  let match;
-  while ((match = rowRe.exec(tail))) {
-    const rowBody = match[1];
+  for (const line of tail.split(/\r?\n/)) {
+    const t = line.trim();
+    if (!t.startsWith("[0x")) continue;
+    const body = t.replace(/^\[/, "").replace(/\],?$/, "");
     const bytes = [];
-    for (const token of rowBody.split(/[,\\s]+/)) {
+    for (const token of body.split(/[, ]+/)) {
       if (!token) continue;
       if (!token.startsWith("0x")) continue;
       bytes.push(parseInt(token.slice(2), 16));
@@ -96,6 +93,7 @@ function parseVkIc(rsText) {
     if (bytes.length === 64) rows.push(Buffer.from(bytes));
     if (rows.length === 6) break;
   }
+
   if (rows.length !== 6) throw new Error(`Failed to parse VK_IC rows: got ${rows.length}`);
   return rows;
 }
@@ -164,8 +162,8 @@ async function main() {
   const vkVal = scvMap([
     mapEntry("alpha_g1", scvBytes(alpha)),
     mapEntry("beta_g2", scvBytes(beta)),
-    mapEntry("gamma_g2", scvBytes(gamma)),
     mapEntry("delta_g2", scvBytes(delta)),
+    mapEntry("gamma_g2", scvBytes(gamma)),
     mapEntry(
       "ic",
       xdr.ScVal.scvVec(icRows.map((b) => scvBytes(b))),
