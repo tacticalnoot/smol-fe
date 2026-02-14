@@ -390,6 +390,9 @@ export async function submitProofToContract(
     proof: Groth16Proof,
     publicSignals?: string[],
     keyId?: string, // New optional argument
+    opts?: {
+        onStage?: (stage: "simulating" | "assembling" | "signing" | "submitted") => void;
+    },
 ): Promise<{ success: boolean; txHash?: string; error?: string }> {
     try {
         console.log("[ZK] Submitting proof to mainnet contract for on-chain verification...", {
@@ -460,6 +463,7 @@ export async function submitProofToContract(
         const server = new rpc.Server(getBestRpcUrl());
 
         const simulateMode = async (mode: G2EncodingMode) => {
+            opts?.onStage?.("simulating");
             const serialized = mode === "cap0074" ? capProof : legacyProof;
             const nextTx = buildTx(buildProofStruct(serialized));
             const nextSim = await server.simulateTransaction(nextTx);
@@ -495,9 +499,11 @@ export async function submitProofToContract(
         console.log(`[ZK] Simulation succeeded using ${selectedMode} G2 encoding.`);
 
         // Prepare transaction with simulation data
+        opts?.onStage?.("assembling");
         const preparedTx = rpc.assembleTransaction(tx, sim).build();
 
         // Use unified signAndSend which handles relayer, connectivity, and retries
+        opts?.onStage?.("signing");
         const result = await signAndSend(preparedTx, {
             keyId: keyId || kit?.wallet?.keyId || "",
             contractId: farmerAddress,
@@ -521,6 +527,7 @@ export async function submitProofToContract(
             throw new Error(`Verification succeeded but no transaction hash was returned.`);
         }
 
+        opts?.onStage?.("submitted");
         return {
             success: true,
             txHash,

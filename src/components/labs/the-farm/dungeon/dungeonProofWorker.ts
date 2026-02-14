@@ -27,12 +27,14 @@ export interface DoorProofInput {
     attemptNonce: number;
     lobbyId: string;
     tierId: number;
+    balance: bigint;
 }
 
 export interface DoorProofResult {
     proof: any;             // Groth16 proof object (pi_a, pi_b, pi_c)
     publicSignals: string[];
     commitment: string;     // Poseidon commitment hex
+    commitmentBytes: Uint8Array; // 32-byte big-endian commitment (public input encoding for Tier Verifier)
     proofType: string;      // "Groth16" | "Circom" | "RISC Zero"
     provingTimeMs: number;
     tierId: number;
@@ -98,16 +100,14 @@ function generateSalt(): bigint {
     return salt;
 }
 
-/**
- * Encode door choice data into the balance field.
- * The tier_proof circuit accepts private inputs (address_hash, balance, salt) and
- * proves commitment_expected = Poseidon(address_hash, balance, salt).
- *
- * We encode: floor * 1_000_000 + door * 10_000 + nonce
- * This makes each proof unique to the specific attempt.
- */
-function encodeDoorData(floor: number, door: number, nonce: number): bigint {
-    return BigInt(floor) * 1_000_000n + BigInt(door) * 10_000n + BigInt(nonce);
+function bigintToBytes32(value: bigint): Uint8Array {
+    const bytes = new Uint8Array(32);
+    let v = value;
+    for (let i = 31; i >= 0; i--) {
+        bytes[i] = Number(v & 0xffn);
+        v >>= 8n;
+    }
+    return bytes;
 }
 
 /** Map floor to proof type label — matches game lore */
@@ -142,12 +142,13 @@ export async function generateDoorProof(
 
     // 1. Derive inputs
     const salt = generateSalt();
-    const encodedBalance = encodeDoorData(
-        input.floor,
-        input.doorChoice,
-        input.attemptNonce,
-    );
-    const addressHash = await hashToField(`${input.playerAddress}:${input.lobbyId}`);
+
+    // IMPORTANT: Use the user's real KALE balance as the circuit balance input.
+    // This keeps Groth16 proofs compatible with Tier Verifier on-chain verification.
+    const balance = input.balance ?? 0n;
+
+    // Keep address hashing consistent with the Farm circuit conventions.
+    const addressHash = await hashToField(input.playerAddress);
     const tierId = input.tierId;
 
     // 2. Compute Poseidon commitment
@@ -155,16 +156,17 @@ export async function generateDoorProof(
     const { buildPoseidon } = await importWithRetry("circomlibjs", () => import("circomlibjs"));
     const poseidon = await buildPoseidon();
     const commitmentField = poseidon.F.toString(
-        poseidon([addressHash, encodedBalance, salt]),
+        poseidon([addressHash, balance, salt]),
     );
     const commitment = BigInt(commitmentField);
+    const commitmentBytes = bigintToBytes32(commitment);
 
     // 3. Prepare circuit inputs
     const circuitInputs = {
         tier_id: normalizeCircomScalar(tierId, "tier_id"),
         commitment_expected: commitment.toString(),
         address_hash: addressHash.toString(),
-        balance: encodedBalance.toString(),
+        balance: balance.toString(),
         salt: salt.toString(),
     };
 
@@ -189,6 +191,7 @@ export async function generateDoorProof(
         proof,
         publicSignals,
         commitment: commitment.toString(),
+        commitmentBytes,
         proofType,
         provingTimeMs,
         tierId,

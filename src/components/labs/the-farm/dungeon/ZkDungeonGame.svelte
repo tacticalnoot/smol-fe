@@ -1,10 +1,12 @@
 <script lang="ts">
     import { userState } from "../../../../stores/user.svelte.ts";
+    import { balanceState, updateContractBalance } from "../../../../stores/balance.svelte.ts";
     import { evaluateDoorAttempt, type Mode as DungeonMode } from "../../../../lib/dungeon/evaluateDoorAttempt";
     import { getFloorDefinition, type DoorDefinition, type DoorId } from "../../../../lib/dungeon/policies";
     import { dungeonLore, type DungeonRoomId } from "../../../../data/dungeon/lore";
     import { publishDungeonStampMainnet, type DungeonStampKind } from "../../../../lib/dungeon/publishDungeonStampMainnet";
     import { sha256Hex, sha256HexOfJson } from "../../../../lib/the-farm/digest";
+    import { getTierForBalance } from "../proof";
     import {
         attemptDoor as submitDoorAttempt,
         txExplorerUrl,
@@ -47,6 +49,9 @@
     let trainingTierOverride = $state<number>(0);
     let credentialLoadError = $state<string | null>(null);
     let lastForensics = $state<import("./dungeonService").DoorAttemptResult | null>(null);
+    let groth16OnChain = $state<{ status: "idle" | "simulating" | "assembling" | "signing" | "submitted" | "confirmed" | "error"; txHash?: string; error?: string }>(
+        { status: "idle" }
+    );
 
     // Relay (real multiplayer presence via server state, Labs-only)
     type DungeonRosterEntry = {
@@ -100,7 +105,16 @@
         walletAddress ? `${walletAddress.slice(0, 6)}...${walletAddress.slice(-4)}` : ""
     );
     let floorDef = $derived(getFloorDefinition(currentFloor));
-    let effectiveTierId = $derived(attestedTierId !== null ? attestedTierId : trainingTierOverride);
+    let tierFromBalance = $derived(balanceState.balance !== null ? getTierForBalance(balanceState.balance) : null);
+    let effectiveTierId = $derived(
+        trainingMode && !isConnected
+            ? trainingTierOverride
+            : tierFromBalance !== null
+                ? tierFromBalance
+                : attestedTierId !== null
+                    ? attestedTierId
+                    : trainingTierOverride
+    );
     let effectiveMode = $derived<DungeonMode>(trainingMode ? "training" : "normal");
     let hasOpponent = $derived(relayRoster.filter((r) => r.account !== walletAddress).length > 0);
     let allReady = $derived(relayRoster.length >= 2 && relayRoster.every((r) => r.ready));
@@ -173,6 +187,11 @@
             } else {
                 credentialLoadError = res.reason;
             }
+
+            // Keep KALE balance fresh for Groth16 tier proofs (the circuit may enforce thresholds).
+            try {
+                await updateContractBalance(walletAddress);
+            } catch {}
         })().catch((err) => {
             if (cancelled) return;
             credentialLoadError = err instanceof Error ? err.message : String(err);
@@ -182,6 +201,21 @@
             cancelled = true;
         };
     });
+
+    async function waitForMainnetTx(hash: string): Promise<"success" | "failed" | "timeout"> {
+        const { rpc } = await import("@stellar/stellar-sdk/minimal");
+        const { getBestRpcUrl } = await import("../../../../utils/rpc");
+        const server = new rpc.Server(getBestRpcUrl());
+
+        for (let attempt = 0; attempt < 50; attempt += 1) {
+            const tx = await server.getTransaction(hash);
+            if (tx.status === rpc.Api.GetTransactionStatus.SUCCESS) return "success";
+            if (tx.status === rpc.Api.GetTransactionStatus.FAILED) return "failed";
+            await new Promise<void>((resolve) => setTimeout(resolve, 1200));
+        }
+
+        return "timeout";
+    }
 
     // ── Actions ─────────────────────────────────────────────────────────
 
@@ -353,6 +387,7 @@
         doorStates = ["idle", "idle", "idle", "idle"];
         gateWaiting = false;
         lastForensics = null;
+        groth16OnChain = { status: "idle" };
         phase = "playing";
 
         addLogEntry({
@@ -403,6 +438,7 @@
             keyId: userState.keyId ?? "",
             contractId: userState.contractId ?? "",
             tierId: effectiveTierId,
+            balance: balanceState.balance ?? 0n,
             mode: effectiveMode,
             lobbyState: {
                 enabled: multiplayerEnabled,
@@ -446,6 +482,102 @@
         await new Promise((r) => setTimeout(r, 800));
 
         if (accepted) {
+            // Room 1 (Groth16 wing): if a passkey wallet is connected, require real on-chain
+            // proof verification on mainnet via Tier Verifier before advancing.
+            if (currentFloor === 1 && isConnected) {
+                if (!result.groth16 || !userState.contractId || !userState.keyId) {
+                    lastForensics = {
+                        ...result,
+                        accepted: false,
+                        reasonCode: "ERROR",
+                        reasonHuman: "Cannot submit on-chain verification (missing proof bundle or wallet)",
+                        forensics: {
+                            ...result.forensics,
+                            mismatchExplanation: "On-chain Groth16 verification requires a connected passkey wallet and a generated proof bundle.",
+                            nextAction: "Connect your passkey wallet and retry the door.",
+                        },
+                    };
+                    doorStates = ["idle", "idle", "idle", "idle"];
+                    activeDoor = null;
+                    return;
+                }
+
+                try {
+                    gateWaiting = true;
+                    groth16OnChain = { status: "simulating" };
+
+                    const { submitProofToContract } = await import("../zkProof");
+                    const submitRes = await submitProofToContract(
+                        // @ts-ignore
+                        (window as any).passkeyKit,
+                        userState.contractId,
+                        result.tierId,
+                        result.groth16.commitmentBytes,
+                        result.groth16.proof,
+                        result.groth16.publicSignals,
+                        userState.keyId,
+                        {
+                            onStage: (stage) => {
+                                if (stage === "simulating") groth16OnChain = { status: "simulating" };
+                                if (stage === "assembling") groth16OnChain = { status: "assembling" };
+                                if (stage === "signing") groth16OnChain = { status: "signing" };
+                                if (stage === "submitted") groth16OnChain = { status: "submitted" };
+                            },
+                        },
+                    );
+
+                    if (!submitRes.success || !submitRes.txHash) {
+                        throw new Error(submitRes.error || "On-chain verification failed");
+                    }
+
+                    groth16OnChain = { status: "submitted", txHash: submitRes.txHash };
+
+                    addLogEntry({
+                        floor: currentFloor,
+                        door: doorIndex,
+                        attempt: attempts,
+                        result: "correct",
+                        proofType: "On-chain Groth16 (Tier Verifier)",
+                        txHash: submitRes.txHash,
+                        timestamp: Date.now(),
+                        verified: true,
+                        provingTimeMs: result.provingTimeMs,
+                        commitment: result.commitment,
+                        reasonCode: "ONCHAIN_VERIFIED",
+                    });
+
+                    const confirmed = await waitForMainnetTx(submitRes.txHash);
+                    if (confirmed === "success") {
+                        groth16OnChain = { status: "confirmed", txHash: submitRes.txHash };
+                    } else if (confirmed === "failed") {
+                        groth16OnChain = { status: "error", txHash: submitRes.txHash, error: "On-chain tx failed" };
+                        throw new Error("On-chain verification transaction failed");
+                    } else {
+                        groth16OnChain = { status: "error", txHash: submitRes.txHash, error: "Confirmation timed out" };
+                        throw new Error("On-chain verification confirmation timed out");
+                    }
+                } catch (err) {
+                    groth16OnChain = { status: "error", error: err instanceof Error ? err.message : String(err), txHash: groth16OnChain.txHash };
+                    lastForensics = {
+                        ...result,
+                        accepted: false,
+                        reasonCode: "ONCHAIN_VERIFY_FAILED",
+                        reasonHuman: "Door policy matched, but on-chain proof verification failed",
+                        forensics: {
+                            ...result.forensics,
+                            mismatchExplanation: groth16OnChain.error || "On-chain verification failed.",
+                            nextAction: "Retry the door. If RPC is flaky, wait a moment and retry.",
+                        },
+                    };
+                    doorStates = ["idle", "idle", "idle", "idle"];
+                    activeDoor = null;
+                    gateWaiting = false;
+                    return;
+                } finally {
+                    gateWaiting = false;
+                }
+            }
+
             if (currentFloor >= TOTAL_FLOORS) {
                 addLogEntry({
                     floor: TOTAL_FLOORS,
@@ -523,6 +655,7 @@
         gateWaiting = false;
         floorTransition = false;
         lastForensics = null;
+        groth16OnChain = { status: "idle" };
     }
 
     function toggleFullscreen() {
@@ -646,6 +779,7 @@
         runStartedAt = Date.now();
         entryStamp = { status: "idle" };
         withdrawalStamp = { status: "idle" };
+        groth16OnChain = { status: "idle" };
         phase = "airlock";
     }
 
@@ -966,6 +1100,30 @@
                 <p class="dg-placard">{roomLore.protocolPlacard}</p>
                 <div class="dg-placard-sub">{roomLore.verifierExplainer}</div>
 
+                {#if floorDef.verifierType === "GROTH16"}
+                    <div class="dg-stamp-box">
+                        <div class="dg-stamp-title">ON-CHAIN PROOF VERIFY (MAINNET)</div>
+                        {#if isConnected}
+                            <div class="dg-stamp-status">STATUS: {groth16OnChain.status.toUpperCase()}</div>
+                            {#if groth16OnChain.txHash}
+                                <a class="dg-stamp-link" href={txExplorerUrlMainnet(groth16OnChain.txHash)} target="_blank" rel="noreferrer">
+                                    VIEW TX {groth16OnChain.txHash.slice(0, 8)}...
+                                </a>
+                            {/if}
+                            {#if groth16OnChain.error}
+                                <div class="dg-stamp-error">{groth16OnChain.error}</div>
+                            {/if}
+                            {#if currentFloor === 1 && groth16OnChain.status === "idle"}
+                                <div class="dg-placard-sub">
+                                    Tip: clearing the correct door will trigger a real Tier Verifier `verify_and_attest` tx (passkey-signed).
+                                </div>
+                            {/if}
+                        {:else}
+                            <div class="dg-stamp-status">STATUS: DISABLED (WALLET NOT CONNECTED)</div>
+                        {/if}
+                    </div>
+                {/if}
+
                 {#if lastForensics}
                     <div class="dg-panel-split"></div>
                     <div class="dg-panel-head">FORENSICS</div>
@@ -1038,8 +1196,24 @@
                 {#if gateWaiting}
                     <div class="dg-gate-overlay">
                         <div class="dg-gate-panel">
-                            <p class="dg-gate-title">CO-OP GATE</p>
-                            <p class="dg-gate-desc">Waiting for both auditors to reach this room...</p>
+                            {#if currentFloor === 1 && isConnected && groth16OnChain.status !== "idle" && groth16OnChain.status !== "confirmed"}
+                                <p class="dg-gate-title">MAINNET PROOF VERIFY</p>
+                                <p class="dg-gate-desc">
+                                    Verifying your Groth16 credential on-chain (Tier Verifier). This is real proof verification.
+                                </p>
+                                <p class="dg-gate-desc">STATUS: {groth16OnChain.status.toUpperCase()}</p>
+                                {#if groth16OnChain.txHash}
+                                    <a class="dg-stamp-link" href={txExplorerUrlMainnet(groth16OnChain.txHash)} target="_blank" rel="noreferrer">
+                                        VIEW TX {groth16OnChain.txHash.slice(0, 8)}...
+                                    </a>
+                                {/if}
+                                {#if groth16OnChain.error}
+                                    <p class="dg-stamp-error">{groth16OnChain.error}</p>
+                                {/if}
+                            {:else}
+                                <p class="dg-gate-title">CO-OP GATE</p>
+                                <p class="dg-gate-desc">Waiting for both auditors to reach this room...</p>
+                            {/if}
                             <div class="dg-gate-spinner"></div>
                         </div>
                     </div>

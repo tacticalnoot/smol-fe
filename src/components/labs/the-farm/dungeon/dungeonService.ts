@@ -203,6 +203,7 @@ export interface DoorAttemptParams {
     keyId: string;
     contractId: string;
     tierId: number;
+    balance: bigint;
     mode: "normal" | "training";
     lobbyState: { enabled: boolean; waiting: boolean; reason?: string };
 }
@@ -230,6 +231,11 @@ export interface DoorAttemptResult {
     proofType: string;
     verifierType: string;
     trainingOnly?: boolean;
+    groth16?: {
+        proof: any;
+        publicSignals: string[];
+        commitmentBytes: Uint8Array;
+    };
     commitment: string | null;
     provingTimeMs: number;
     error: string | null;
@@ -268,6 +274,7 @@ export async function attemptDoor(
         let trainingOnly = false;
         let verifierType = floorDef.verifierType;
         let proofTypeLabel = proofType;
+        let groth16Bundle: DoorAttemptResult["groth16"] | undefined;
 
         if (floorDef.verifierType === "GROTH16") {
             // Generate real Groth16 proof (per attempt)
@@ -280,11 +287,17 @@ export async function attemptDoor(
                 attemptNonce: params.attemptNonce,
                 lobbyId: params.lobbyId,
                 tierId: params.tierId,
+                balance: params.balance ?? 0n,
             });
 
             commitment = proofResult.commitment;
             provingTimeMs = proofResult.provingTimeMs;
             proofTypeLabel = proofResult.proofType;
+            groth16Bundle = {
+                proof: proofResult.proof,
+                publicSignals: proofResult.publicSignals,
+                commitmentBytes: proofResult.commitmentBytes,
+            };
 
             // Verify locally (required integrity check)
             try {
@@ -329,22 +342,23 @@ export async function attemptDoor(
             mode: params.mode,
         });
 
-        return {
-            accepted: outcome.accepted,
-            reasonCode: outcome.reasonCode,
-            reasonHuman: outcome.reasonHuman,
-            forensics: outcome.forensics,
-            debug: outcome.debug,
-            tierId,
-            proofOk,
-            txHash: null, // On-chain submission in next iteration
-            proofType: proofTypeLabel,
-            verifierType,
-            trainingOnly,
-            commitment,
-            provingTimeMs,
-            error: null,
-        };
+            return {
+                accepted: outcome.accepted,
+                reasonCode: outcome.reasonCode,
+                reasonHuman: outcome.reasonHuman,
+                forensics: outcome.forensics,
+                debug: outcome.debug,
+                tierId,
+                proofOk,
+                txHash: null, // On-chain submission in next iteration
+                proofType: proofTypeLabel,
+                verifierType,
+                trainingOnly,
+                groth16: groth16Bundle,
+                commitment,
+                provingTimeMs,
+                error: null,
+            };
     } catch (err: any) {
         const msg = String(err?.message || err);
         console.error("[Dungeon] Proof generation failed:", msg);

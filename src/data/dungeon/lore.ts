@@ -54,7 +54,7 @@ export const dungeonLore: Record<DungeonRoomId, RoomLore> = {
     protocolPlacard:
       "Policy: Minimum Clearance. Door opens iff your proven tier_id >= the door’s MIN requirement.",
     verifierExplainer:
-      "Verifier: Groth16 (Circom / BN254). The dungeon generates a real proof per attempt and verifies it locally.",
+      "Verifier: Groth16 (Circom / BN254). The dungeon generates a real proof and verifies it locally. If your passkey wallet is connected, this wing also performs real on-chain verification via Tier Verifier (verify_and_attest).",
     failureExplainersByReasonCode: {
       PROOF_INVALID:
         "Credential invalid: the Groth16 verifier rejected the proof. This is not a policy mismatch. Regenerate and retry.",
@@ -135,4 +135,3 @@ export const dungeonLore: Record<DungeonRoomId, RoomLore> = {
       "Withdrawal recorded. The ledger now contains a completion stamp for this run.",
   },
 };
-
