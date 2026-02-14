@@ -419,7 +419,9 @@
       <div class="hero-top">
         <div class="hero-header-row">
           <p class="eyebrow">Mission-Critical Cryptography</p>
-          <a class="dungeon-link" href="/labs/the-farm/zkdungeon">ZK DUNGEON ↗</a>
+          <a class="dungeon-link dungeon-link-cta" href="/labs/the-farm/zkdungeon">
+            ENTER ZK DUNGEON <span class="dungeon-arrow" aria-hidden="true">-&gt;</span>
+          </a>
           {#if hasOnChainVerified}
             <div class="verified-badge-hero">
               <span class="v-icon">✓</span>
@@ -752,7 +754,7 @@
   }
   .dungeon-link {
     font-family: "Press Start 2P";
-    font-size: 0.5rem;
+    font-size: 0.55rem;
     letter-spacing: 2px;
     color: rgba(204, 252, 203, 0.7);
     text-decoration: none;
@@ -766,6 +768,37 @@
     color: white;
     border-color: rgba(74, 222, 128, 0.45);
     background: rgba(74, 222, 128, 0.12);
+  }
+  .dungeon-link-cta {
+    padding: 10px 14px;
+    border-color: rgba(74, 222, 128, 0.35);
+    background: linear-gradient(135deg, rgba(74, 222, 128, 0.95), rgba(74, 222, 128, 0.35));
+    color: rgba(10, 16, 12, 0.92);
+    box-shadow: 0 10px 30px rgba(74, 222, 128, 0.22);
+    position: relative;
+    overflow: hidden;
+  }
+  .dungeon-link-cta::before {
+    content: "";
+    position: absolute;
+    inset: -40%;
+    background: radial-gradient(circle at 30% 30%, rgba(255,255,255,0.35), transparent 50%);
+    transform: translateX(-35%);
+    transition: transform 0.35s ease;
+    pointer-events: none;
+  }
+  .dungeon-link-cta:hover {
+    color: rgba(10, 16, 12, 0.95);
+    border-color: rgba(74, 222, 128, 0.55);
+    box-shadow: 0 14px 40px rgba(74, 222, 128, 0.32);
+    transform: translateY(-1px);
+  }
+  .dungeon-link-cta:hover::before {
+    transform: translateX(10%);
+  }
+  .dungeon-arrow {
+    margin-left: 6px;
+    opacity: 0.85;
   }
   .verified-badge-hero {
     background: rgba(16, 185, 129, 0.2);

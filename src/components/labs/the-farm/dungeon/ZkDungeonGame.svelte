@@ -9,6 +9,7 @@
     type GamePhase = "title" | "lobby" | "playing" | "victory" | "defeat";
     type LobbyRole = "host" | "guest" | null;
     type DoorState = "idle" | "proving" | "correct" | "wrong";
+    type RelayStatus = "disconnected" | "connecting" | "connected" | "error";
 
     const TOTAL_FLOORS = 10;
     const DOORS_PER_FLOOR = 4;
@@ -29,6 +30,37 @@
     let fullscreen = $state<boolean>(false);
     let showHowItWorks = $state<boolean>(false);
     let floorTransition = $state<boolean>(false);
+    let trainingMode = $state<boolean>(true);
+    let hintDoor = $state<number | null>(null);
+
+    // Relay (real multiplayer presence via server state, Labs-only)
+    type DungeonRosterEntry = {
+        id: string;
+        account: string;
+        name: string;
+        joinedAt: number;
+        lastSeenAt: number;
+        ready: boolean;
+        floor: number;
+        attempts: number;
+    };
+    type DungeonEvent =
+        | { seq: number; kind: "system"; message: string; ts: number }
+        | { seq: number; kind: "ready"; account: string; ready: boolean; ts: number }
+        | { seq: number; kind: "start"; ts: number }
+        | { seq: number; kind: "progress"; account: string; floor: number; attempts: number; ts: number };
+    type DungeonEventInput =
+        | { kind: "ready"; account: string; ready: boolean; ts: number }
+        | { kind: "start"; ts: number }
+        | { kind: "progress"; account: string; floor: number; attempts: number; ts: number };
+
+    let relayStatus = $state<RelayStatus>("disconnected");
+    let relayError = $state<string | null>(null);
+    let relayToken = $state<string>("");
+    let relayCursor = $state<number>(0);
+    let relayRoster = $state<DungeonRosterEntry[]>([]);
+    let readySelf = $state<boolean>(false);
+    let pollHandle = $state<number | null>(null);
 
     interface RunLogEntry {
         floor: number;
@@ -66,6 +98,11 @@
     let walletLabel = $derived(
         walletAddress ? `${walletAddress.slice(0, 6)}...${walletAddress.slice(-4)}` : ""
     );
+    let hasOpponent = $derived(relayRoster.filter((r) => r.account !== walletAddress).length > 0);
+    let allReady = $derived(relayRoster.length >= 2 && relayRoster.every((r) => r.ready));
+    let opponentProgress = $derived(relayRoster.find((r) => r.account !== walletAddress) || null);
+    let opponentReady = $derived(!!opponentProgress && opponentProgress.ready);
+    let multiplayerEnabled = $derived(relayToken.length > 0 && relayRoster.length >= 2);
 
     // ── Actions ─────────────────────────────────────────────────────────
 
@@ -78,29 +115,161 @@
         return code;
     }
 
-    function createLobby() {
+    function stopRelayPolling() {
+        if (pollHandle !== null) {
+            window.clearInterval(pollHandle);
+            pollHandle = null;
+        }
+    }
+
+    function applyRoster(roster: DungeonRosterEntry[]) {
+        relayRoster = roster;
+        if (!walletAddress) return;
+        const other = roster.find((r) => r.account !== walletAddress);
+        opponentName = other?.name || "";
+    }
+
+    async function relayJoin(roomId: string) {
+        relayStatus = "connecting";
+        relayError = null;
+
+        const account = userState.contractId || "";
+        if (!account) throw new Error("Wallet not connected");
+
+        const resp = await fetch(`/api/dungeon/rooms/${encodeURIComponent(roomId)}/join`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+                account,
+                name: playerName || walletLabel || "Seeker",
+            }),
+        });
+
+        if (!resp.ok) {
+            const text = await resp.text();
+            throw new Error(text || `Join failed (${resp.status})`);
+        }
+
+        const data = (await resp.json()) as { token: string; roster: DungeonRosterEntry[]; cursor: number };
+        relayToken = data.token || "";
+        relayCursor = typeof data.cursor === "number" ? data.cursor : 0;
+        applyRoster(Array.isArray(data.roster) ? data.roster : []);
+        relayStatus = "connected";
+    }
+
+    async function relayPollOnce() {
+        if (!relayToken || !lobbyCode) return;
+
+        const resp = await fetch(
+            `/api/dungeon/rooms/${encodeURIComponent(lobbyCode)}/events?cursor=${encodeURIComponent(String(relayCursor))}`,
+            { headers: { Authorization: `Bearer ${relayToken}` } },
+        );
+
+        if (!resp.ok) {
+            const text = await resp.text();
+            throw new Error(text || `Relay poll failed (${resp.status})`);
+        }
+
+        const data = (await resp.json()) as {
+            roster: DungeonRosterEntry[];
+            events: DungeonEvent[];
+            cursor: number;
+        };
+
+        relayCursor = typeof data.cursor === "number" ? data.cursor : relayCursor;
+        applyRoster(Array.isArray(data.roster) ? data.roster : []);
+
+        const events = Array.isArray(data.events) ? data.events : [];
+        for (const evt of events) {
+            if (evt.kind === "start") {
+                if (phase === "lobby") {
+                    await startGameLocal({ fromRemote: true });
+                }
+            }
+        }
+
+        if (gateWaiting && multiplayerEnabled) {
+            const roster = relayRoster;
+            if (roster.length >= 2 && roster.every((r) => r.floor >= currentFloor)) {
+                gateWaiting = false;
+            }
+        }
+    }
+
+    async function relayPost(event: DungeonEventInput) {
+        if (!relayToken || !lobbyCode) return;
+        const resp = await fetch(`/api/dungeon/rooms/${encodeURIComponent(lobbyCode)}/events`, {
+            method: "POST",
+            headers: {
+                "Content-Type": "application/json",
+                Authorization: `Bearer ${relayToken}`,
+            },
+            body: JSON.stringify(event),
+        });
+        if (!resp.ok) {
+            const text = await resp.text();
+            throw new Error(text || `Relay post failed (${resp.status})`);
+        }
+    }
+
+    function startRelayPolling() {
+        stopRelayPolling();
+        if (!relayToken || !lobbyCode) return;
+        pollHandle = window.setInterval(() => {
+            relayPollOnce().catch((err) => {
+                relayStatus = "error";
+                relayError = err instanceof Error ? err.message : String(err);
+            });
+        }, 850);
+    }
+
+    async function setReady(nextReady: boolean) {
+        readySelf = nextReady;
+        if (!walletAddress) return;
+        await relayPost({ kind: "ready", account: walletAddress, ready: nextReady, ts: Date.now() });
+    }
+
+    async function createLobby() {
         lobbyCode = generateLobbyCode();
         lobbyRole = "host";
         playerName = walletLabel || "Seeker-1";
         opponentName = "";
         phase = "lobby";
+
+        try {
+            await relayJoin(lobbyCode);
+            await setReady(true);
+            startRelayPolling();
+        } catch (err) {
+            relayStatus = "error";
+            relayError = err instanceof Error ? err.message : String(err);
+        }
     }
 
-    function joinLobby() {
+    async function joinLobby() {
         if (lobbyInput.length < 4) return;
         lobbyCode = lobbyInput.toUpperCase();
         lobbyRole = "guest";
         playerName = walletLabel || "Seeker-2";
-        opponentName = "Seeker-1";
+        opponentName = "";
         phase = "lobby";
+
+        try {
+            await relayJoin(lobbyCode);
+            startRelayPolling();
+        } catch (err) {
+            relayStatus = "error";
+            relayError = err instanceof Error ? err.message : String(err);
+        }
     }
 
-    async function startGame() {
+    async function startGameLocal(opts?: { fromRemote?: boolean }) {
         currentFloor = 1;
         attempts = 0;
         runLog = [];
         doorStates = ["idle", "idle", "idle", "idle"];
-        opponentName = opponentName || "Seeker-2";
+        hintDoor = null;
+        gateWaiting = false;
         phase = "playing";
 
         addLogEntry({
@@ -112,6 +281,25 @@
             txHash: null,
             timestamp: Date.now(),
         });
+
+        if (relayToken && walletAddress) {
+            try {
+                await relayPost({
+                    kind: "progress",
+                    account: walletAddress,
+                    floor: 1,
+                    attempts: 0,
+                    ts: Date.now(),
+                });
+            } catch {}
+        }
+
+        if (opts?.fromRemote && relayToken) startRelayPolling();
+    }
+
+    async function hostStartGame() {
+        if (hasOpponent) await relayPost({ kind: "start", ts: Date.now() });
+        await startGameLocal();
     }
 
     async function chooseDoor(doorIndex: number) {
@@ -134,6 +322,11 @@
         });
 
         const isCorrect = result.isCorrect;
+        if (!isCorrect && trainingMode && typeof result.correctDoor === "number") {
+            hintDoor = result.correctDoor;
+        } else {
+            hintDoor = null;
+        }
         doorStates[doorIndex] = isCorrect ? "correct" : "wrong";
 
         addLogEntry({
@@ -148,6 +341,19 @@
             provingTimeMs: result.provingTimeMs,
             commitment: result.commitment,
         });
+
+        // Progress event (keep roster attempts fresh even on wrong doors)
+        if (relayToken && walletAddress) {
+            try {
+                await relayPost({
+                    kind: "progress",
+                    account: walletAddress,
+                    floor: currentFloor,
+                    attempts,
+                    ts: Date.now(),
+                });
+            } catch {}
+        }
 
         // Animate then advance
         await new Promise((r) => setTimeout(r, 800));
@@ -168,18 +374,33 @@
                 // Advance to next floor
                 floorTransition = true;
                 await new Promise((r) => setTimeout(r, 600));
-                currentFloor++;
+                const nextFloor = currentFloor + 1;
+                currentFloor = nextFloor;
                 doorStates = ["idle", "idle", "idle", "idle"];
                 activeDoor = null;
                 floorTransition = false;
 
-                // Check if co-op gate
-                if (isGateFloor) {
+                // Progress event (multiplayer presence)
+                if (relayToken && walletAddress) {
+                    try {
+                        await relayPost({
+                            kind: "progress",
+                            account: walletAddress,
+                            floor: nextFloor,
+                            attempts,
+                            ts: Date.now(),
+                        });
+                    } catch {}
+                }
+
+                // Gate floors: after clearing 1 and 5, wait for both players to reach the next floor.
+                if (GATE_FLOORS.includes(nextFloor - 1)) {
                     gateWaiting = true;
-                    // Solo mode: auto-clear after brief delay
-                    setTimeout(() => {
-                        gateWaiting = false;
-                    }, 2000);
+                    if (!multiplayerEnabled) {
+                        setTimeout(() => {
+                            gateWaiting = false;
+                        }, 1400);
+                    }
                 }
             }
         } else {
@@ -199,6 +420,13 @@
         lobbyCode = "";
         lobbyInput = "";
         lobbyRole = null;
+        relayToken = "";
+        relayCursor = 0;
+        relayRoster = [];
+        relayStatus = "disconnected";
+        relayError = null;
+        readySelf = false;
+        stopRelayPolling();
         currentFloor = 1;
         attempts = 0;
         doorStates = ["idle", "idle", "idle", "idle"];
@@ -206,6 +434,7 @@
         runLog = [];
         gateWaiting = false;
         floorTransition = false;
+        hintDoor = null;
     }
 
     function toggleFullscreen() {
@@ -228,6 +457,19 @@
         }
     }
 
+    async function playSolo() {
+        lobbyCode = "SOLO";
+        lobbyRole = null;
+        playerName = walletLabel || "Solo Seeker";
+        opponentName = "";
+        relayToken = "";
+        relayRoster = [];
+        relayStatus = "disconnected";
+        relayError = null;
+        stopRelayPolling();
+        await startGameLocal();
+    }
+
     // Door symbols
     const DOOR_SYMBOLS = ["\u16B1", "\u16C7", "\u16A6", "\u16D2"]; // Elder Futhark-like runes
     const DOOR_COLORS = ["#4ad0ff", "#9b7bff", "#ffc47a", "#7bffb0"];
@@ -243,25 +485,35 @@
         <p class="dg-subtitle">10 floors. 4 doors. Every choice is a zero-knowledge proof generated in your browser.</p>
 
         <div class="dg-title-actions">
+            <button class="dg-btn dg-btn-primary" onclick={playSolo}>
+                PLAY SOLO
+            </button>
+
             {#if isConnected}
                 <p class="dg-wallet-badge">{walletLabel}</p>
-                <button class="dg-btn dg-btn-primary" onclick={createLobby}>CREATE LOBBY</button>
+                <button class="dg-btn dg-btn-secondary" onclick={createLobby}>CREATE 2P LOBBY</button>
                 <div class="dg-join-row">
-                    <input
-                        class="dg-input"
-                        type="text"
-                        placeholder="LOBBY CODE"
-                        maxlength="6"
-                        bind:value={lobbyInput}
-                        onkeydown={(e) => e.key === "Enter" && joinLobby()}
-                    />
-                    <button class="dg-btn dg-btn-secondary" onclick={joinLobby}>JOIN</button>
+                    <label class="dg-join-label" for="dg-room-code">ROOM CODE</label>
+                    <div class="dg-join-controls">
+                        <input
+                            id="dg-room-code"
+                            class="dg-input"
+                            type="text"
+                            inputmode="text"
+                            autocomplete="one-time-code"
+                            placeholder="ENTER 6-CHAR CODE"
+                            maxlength="12"
+                            bind:value={lobbyInput}
+                            onkeydown={(e) => e.key === "Enter" && joinLobby()}
+                        />
+                        <button class="dg-btn dg-btn-primary dg-btn-join" onclick={joinLobby}>JOIN LOBBY</button>
+                    </div>
                 </div>
             {:else}
-                <button class="dg-btn dg-btn-primary" onclick={connectWallet}>
-                    CONNECT WALLET
+                <button class="dg-btn dg-btn-secondary" onclick={connectWallet}>
+                    CONNECT WALLET (2P)
                 </button>
-                <p class="dg-hint">Passkey smart account — zero friction, one tap</p>
+                <p class="dg-hint">2-player lobby uses a Labs-only relay (no SEP-10 auth yet).</p>
             {/if}
         </div>
 
@@ -296,7 +548,7 @@
                 <span class="dg-hiw-num">4</span>
                 <div>
                     <strong>Race to floor 10</strong>
-                    <p>Co-op gates on floors 1 & 5. The boss on floor 10 demands a RISC Zero proof.</p>
+                    <p>Co-op gates on floors 1 & 5. Dungeon proofs are Groth16/Circom locally verified only.</p>
                 </div>
             </div>
         </div>
@@ -315,7 +567,7 @@
 <div class="dg-root dg-lobby-screen">
     <div class="dg-stars"></div>
     <div class="dg-lobby-content">
-        <button class="dg-back-btn" onclick={() => phase = "title"}>&larr; BACK</button>
+        <button class="dg-back-btn" onclick={resetGame}>&larr; BACK</button>
         <p class="dg-eyebrow">LOBBY</p>
         <h2 class="dg-lobby-title">
             {lobbyRole === "host" ? "WAITING FOR PLAYER 2" : "JOINING LOBBY"}
@@ -329,26 +581,49 @@
             }}>COPY CODE</button>
         </div>
 
+        <div class="dg-relay-status" aria-live="polite">
+            <span class="dg-relay-pill dg-relay-{relayStatus}">
+                RELAY: {relayStatus.toUpperCase()}
+            </span>
+            {#if relayError}
+                <span class="dg-relay-detail">{relayError}</span>
+            {/if}
+        </div>
+
         <div class="dg-lobby-players">
             <div class="dg-lobby-player dg-lobby-player-ready">
                 <span class="dg-lobby-player-icon">P1</span>
                 <span class="dg-lobby-player-name">{playerName}</span>
                 <span class="dg-lobby-player-status">READY</span>
             </div>
-            <div class="dg-lobby-player {lobbyRole === 'guest' || opponentName ? 'dg-lobby-player-ready' : 'dg-lobby-player-waiting'}">
+            <div class="dg-lobby-player {opponentName ? 'dg-lobby-player-ready' : 'dg-lobby-player-waiting'}">
                 <span class="dg-lobby-player-icon">P2</span>
                 <span class="dg-lobby-player-name">{opponentName || "..."}</span>
-                <span class="dg-lobby-player-status">{opponentName ? "READY" : "WAITING"}</span>
+                <span class="dg-lobby-player-status">{opponentName ? (opponentReady ? "READY" : "NOT READY") : "WAITING"}</span>
             </div>
         </div>
 
         {#if lobbyRole === "host"}
             <p class="dg-hint">Share the code with another player, or start solo.</p>
-            <button class="dg-btn dg-btn-primary" onclick={startGame}>
-                {opponentName ? "START GAME" : "START SOLO"}
+            <button class="dg-btn dg-btn-primary" disabled={hasOpponent && !allReady} onclick={hostStartGame}>
+                {hasOpponent ? (allReady ? "START GAME" : "WAITING FOR READY") : "START SOLO"}
             </button>
         {:else}
-            <button class="dg-btn dg-btn-primary" onclick={startGame}>READY</button>
+            <button
+                class="dg-btn dg-btn-primary"
+                onclick={async () => {
+                    try {
+                        await setReady(true);
+                    } catch (err) {
+                        relayStatus = "error";
+                        relayError = err instanceof Error ? err.message : String(err);
+                    }
+                }}
+                disabled={readySelf || relayStatus !== "connected"}
+            >
+                {readySelf ? "READY" : "READY UP"}
+            </button>
+            <p class="dg-hint">Host will start the run when both players are ready.</p>
         {/if}
     </div>
 </div>
@@ -369,6 +644,11 @@
         </div>
         <div class="dg-hud-right">
             <span class="dg-hud-attempts">ATTEMPTS: {attempts}</span>
+            {#if multiplayerEnabled && opponentProgress}
+                <span class="dg-hud-opponent">
+                    P2 F{opponentProgress.floor} A{opponentProgress.attempts}
+                </span>
+            {/if}
             <button class="dg-hud-btn" onclick={toggleFullscreen}>
                 {fullscreen ? "EXIT FS" : "FS"}
             </button>
@@ -380,13 +660,22 @@
         <div class="dg-floor-header">
             <h2 class="dg-floor-name">{currentLore.name}</h2>
             <p class="dg-floor-desc">{currentLore.desc}</p>
+            <div class="dg-floor-controls">
+                <label class="dg-toggle">
+                    <input type="checkbox" bind:checked={trainingMode} />
+                    <span>TRAINING MODE</span>
+                </label>
+                {#if hintDoor !== null && trainingMode}
+                    <span class="dg-hint-pill">HINT: DOOR {hintDoor + 1}</span>
+                {/if}
+            </div>
         </div>
 
         {#if gateWaiting}
         <div class="dg-gate-overlay">
             <div class="dg-gate-panel">
                 <p class="dg-gate-title">CO-OP GATE</p>
-                <p class="dg-gate-desc">Waiting for both seekers to clear this floor...</p>
+                <p class="dg-gate-desc">Waiting for both seekers to reach this floor...</p>
                 <div class="dg-gate-spinner"></div>
             </div>
         </div>
@@ -601,7 +890,8 @@
         letter-spacing: 3px;
         text-transform: uppercase;
         text-align: center;
-        width: 160px;
+        width: 280px;
+        max-width: 90vw;
         outline: none;
     }
     .dg-input:focus {
@@ -663,9 +953,35 @@
     }
 
     .dg-join-row {
+        width: min(520px, 94vw);
         display: flex;
-        gap: 8px;
+        flex-direction: column;
+        gap: 10px;
+        align-items: stretch;
+        padding: 12px;
+        border: 1px solid rgba(255,255,255,0.08);
+        border-radius: 12px;
+        background: rgba(255,255,255,0.03);
+    }
+
+    .dg-join-label {
+        font-family: var(--dg-font-display);
+        font-size: 9px;
+        letter-spacing: 2px;
+        color: var(--dg-text-dim);
+        text-transform: uppercase;
+    }
+
+    .dg-join-controls {
+        display: flex;
+        gap: 10px;
         align-items: center;
+        justify-content: center;
+        flex-wrap: wrap;
+    }
+
+    .dg-btn-join {
+        min-width: 170px;
     }
 
     .dg-wallet-badge {
@@ -839,6 +1155,47 @@
         text-shadow: 0 0 20px rgba(74,208,255,0.3);
     }
 
+    .dg-relay-status {
+        display: flex;
+        flex-direction: column;
+        gap: 6px;
+        align-items: center;
+        margin: -8px 0 18px;
+    }
+
+    .dg-relay-pill {
+        font-family: var(--dg-font-display);
+        font-size: 9px;
+        letter-spacing: 2px;
+        padding: 6px 10px;
+        border-radius: 999px;
+        border: 1px solid rgba(255,255,255,0.14);
+        background: rgba(255,255,255,0.05);
+        color: var(--dg-text-dim);
+    }
+    .dg-relay-connected {
+        color: rgba(74, 222, 128, 0.95);
+        border-color: rgba(74, 222, 128, 0.35);
+        background: rgba(74, 222, 128, 0.08);
+    }
+    .dg-relay-connecting {
+        color: rgba(255, 196, 122, 0.95);
+        border-color: rgba(255, 196, 122, 0.35);
+        background: rgba(255, 196, 122, 0.08);
+    }
+    .dg-relay-error {
+        color: rgba(248, 113, 113, 0.95);
+        border-color: rgba(248, 113, 113, 0.35);
+        background: rgba(248, 113, 113, 0.08);
+    }
+
+    .dg-relay-detail {
+        font-size: 11px;
+        color: rgba(248, 113, 113, 0.85);
+        max-width: 60ch;
+        text-wrap: balance;
+    }
+
     .dg-lobby-players {
         display: flex;
         gap: 16px;
@@ -956,6 +1313,17 @@
         letter-spacing: 1px;
     }
 
+    .dg-hud-opponent {
+        font-family: var(--dg-font-display);
+        font-size: 10px;
+        letter-spacing: 1px;
+        padding: 4px 8px;
+        border-radius: 6px;
+        border: 1px solid rgba(255,255,255,0.12);
+        background: rgba(255,255,255,0.05);
+        color: rgba(255,255,255,0.75);
+    }
+
     .dg-hud-btn {
         background: rgba(255,255,255,0.06);
         border: 1px solid var(--dg-border);
@@ -1010,6 +1378,48 @@
         font-size: 13px;
         color: var(--dg-text-dim);
         margin: 0;
+    }
+
+    .dg-floor-controls {
+        margin-top: 14px;
+        display: flex;
+        gap: 10px;
+        align-items: center;
+        justify-content: center;
+        flex-wrap: wrap;
+    }
+
+    .dg-toggle {
+        display: inline-flex;
+        gap: 8px;
+        align-items: center;
+        padding: 8px 10px;
+        border-radius: 999px;
+        border: 1px solid rgba(255,255,255,0.12);
+        background: rgba(255,255,255,0.04);
+        color: var(--dg-text-dim);
+        font-family: var(--dg-font-display);
+        font-size: 9px;
+        letter-spacing: 1px;
+        cursor: pointer;
+        user-select: none;
+    }
+
+    .dg-toggle input {
+        width: 14px;
+        height: 14px;
+        accent-color: var(--dg-accent);
+    }
+
+    .dg-hint-pill {
+        font-family: var(--dg-font-display);
+        font-size: 9px;
+        letter-spacing: 2px;
+        padding: 8px 10px;
+        border-radius: 999px;
+        border: 1px solid rgba(255, 196, 122, 0.35);
+        background: rgba(255, 196, 122, 0.08);
+        color: rgba(255, 196, 122, 0.95);
     }
 
     /* ── Doors ───────────────────────────────────────────────────── */

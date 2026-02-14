@@ -18,6 +18,8 @@
 
 // ── Types ────────────────────────────────────────────────────────────────────
 
+import { normalizeCircomScalar } from "../../../../lib/the-farm/circomInputs";
+
 export interface DoorProofInput {
     playerAddress: string;
     floor: number;
@@ -78,8 +80,9 @@ function computeCorrectDoor(floor: number, nonce: number): number {
 
 /**
  * Encode door choice data into the balance field.
- * The tier_proof circuit accepts a balance input and checks balance >= threshold.
- * Using threshold=0, any non-negative balance passes.
+ * The tier_proof circuit accepts private inputs (address_hash, balance, salt) and
+ * proves commitment_expected = Poseidon(address_hash, balance, salt).
+ *
  * We encode: floor * 1_000_000 + door * 10_000 + nonce
  * This makes each proof unique to the specific attempt.
  */
@@ -98,9 +101,9 @@ function proofTypeForFloor(floor: number): string {
  * Generate a real Groth16 proof for a door attempt.
  *
  * The proof proves:
- * - The prover knows a salt `s` and encoded balance `b`
- * - commitment = Poseidon(b, s)
- * - b >= threshold (we set threshold=0 so it's always true)
+ * - The prover knows private inputs: address_hash, encoded balance, salt
+ * - commitment_expected = Poseidon(address_hash, balance, salt)
+ * - tier_id is a public hint (we use 0 for the dungeon)
  *
  * The `is_correct` flag is computed separately by comparing the
  * chosen door against the deterministic correct door.
@@ -125,23 +128,25 @@ export async function generateDoorProof(
         input.doorChoice,
         input.attemptNonce,
     );
+    const addressHash = await hashToField(`${input.playerAddress}:${input.lobbyId}`);
+    const tierId = 0;
 
     // 2. Compute Poseidon commitment
     // @ts-ignore - circomlibjs lacks TS declarations
     const { buildPoseidon } = await import("circomlibjs");
     const poseidon = await buildPoseidon();
     const commitmentField = poseidon.F.toString(
-        poseidon([encodedBalance, salt]),
+        poseidon([addressHash, encodedBalance, salt]),
     );
     const commitment = BigInt(commitmentField);
 
     // 3. Prepare circuit inputs
-    // Using threshold=0 so any non-negative encodedBalance passes.
     const circuitInputs = {
+        tier_id: normalizeCircomScalar(tierId, "tier_id"),
+        commitment_expected: commitment.toString(),
+        address_hash: addressHash.toString(),
         balance: encodedBalance.toString(),
         salt: salt.toString(),
-        threshold: "0",
-        commitment: commitment.toString(),
     };
 
     // 4. Generate Groth16 proof via snarkjs

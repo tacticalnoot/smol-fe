@@ -202,6 +202,7 @@ export interface DoorAttemptParams {
 
 export interface DoorAttemptResult {
     isCorrect: boolean;
+    correctDoor: number | null;
     txHash: string | null;
     proofType: string;
     commitment: string | null;
@@ -261,6 +262,7 @@ export async function attemptDoor(
 
         return {
             isCorrect: proofResult.isCorrect,
+            correctDoor: proofResult.correctDoor ?? null,
             txHash: null, // On-chain submission in next iteration
             proofType: proofResult.proofType,
             commitment: proofResult.commitment,
@@ -273,6 +275,7 @@ export async function attemptDoor(
 
         return {
             isCorrect: false,
+            correctDoor: null,
             txHash: null,
             proofType,
             commitment: null,
