@@ -61,12 +61,21 @@ pub struct FarmAttestations;
 
 #[contractimpl]
 impl FarmAttestations {
+    pub fn version() -> u32 {
+        2
+    }
+
+    pub fn is_initialized(env: Env) -> bool {
+        env.storage().instance().has(&DataKey::Admin)
+    }
+
     pub fn init_admin(env: Env, admin: Address) {
         if env.storage().instance().has(&DataKey::Admin) {
             panic!();
         }
         admin.require_auth();
         env.storage().instance().set(&DataKey::Admin, &admin);
+        Self::bump_instance_ttl(&env);
     }
 
     pub fn admin(env: Env) -> Address {
@@ -77,12 +86,36 @@ impl FarmAttestations {
         let admin = Self::admin(env.clone());
         admin.require_auth();
         env.storage().instance().set(&DataKey::Admin, &new_admin);
+        Self::bump_instance_ttl(&env);
     }
 
     pub fn upgrade(env: Env, new_wasm_hash: BytesN<32>) {
         let admin = Self::admin(env.clone());
         admin.require_auth();
         env.deployer().update_current_contract_wasm(new_wasm_hash);
+    }
+
+    /// Extend instance TTL (admin/nonce). Anyone may call to keep the contract alive.
+    pub fn extend_ttl(env: Env) {
+        Self::bump_instance_ttl(&env);
+    }
+
+    /// Extend TTL of a specific attestation entry (persistent storage).
+    /// Anyone may call; no state changes besides TTL.
+    pub fn extend_entry_ttl(env: Env, owner: Address, system: Symbol, tier: Symbol) {
+        let key = DataKey::Entry((owner, system, tier));
+        if env.storage().persistent().has(&key) {
+            Self::bump_persistent_key_ttl(&env, &key);
+        }
+    }
+
+    /// Extend TTL of a specific Groth16 VK (persistent storage).
+    /// Anyone may call; no state changes besides TTL.
+    pub fn extend_vk_ttl(env: Env, vk_id: Symbol) {
+        let key = DataKey::Groth16Vk(vk_id);
+        if env.storage().persistent().has(&key) {
+            Self::bump_persistent_key_ttl(&env, &key);
+        }
     }
 
     // --------------------------------------------------------------------
@@ -97,7 +130,10 @@ impl FarmAttestations {
     pub fn register_groth16_vk(env: Env, vk_id: Symbol, vk: Groth16VerificationKey) {
         let admin = Self::admin(env.clone());
         admin.require_auth();
-        env.storage().persistent().set(&DataKey::Groth16Vk(vk_id), &vk);
+        let key = DataKey::Groth16Vk(vk_id);
+        env.storage().persistent().set(&key, &vk);
+        Self::bump_persistent_key_ttl(&env, &key);
+        Self::bump_instance_ttl(&env);
     }
 
     pub fn has_groth16_vk(env: Env, vk_id: Symbol) -> bool {
@@ -164,6 +200,8 @@ impl FarmAttestations {
 
         let key = DataKey::Entry((owner.clone(), system.clone(), tier.clone()));
         env.storage().persistent().set(&key, &record);
+        Self::bump_persistent_key_ttl(&env, &key);
+        Self::bump_instance_ttl(&env);
 
         env.events().publish(
             (symbol_short!("attest"), owner, system, tier),
@@ -200,6 +238,8 @@ impl FarmAttestations {
 
         let key = DataKey::Entry((owner.clone(), system.clone(), tier.clone()));
         env.storage().persistent().set(&key, &record);
+        Self::bump_persistent_key_ttl(&env, &key);
+        Self::bump_instance_ttl(&env);
 
         env.events().publish(
             (symbol_short!("attest"), owner, system, tier),
@@ -233,6 +273,18 @@ impl FarmAttestations {
         let next = current + 1;
         env.storage().instance().set(&DataKey::Nonce, &next);
         next
+    }
+
+    fn bump_instance_ttl(env: &Env) {
+        let max = env.storage().max_ttl();
+        let threshold = if max > 1 { max / 2 } else { 1 };
+        env.storage().instance().extend_ttl(threshold, max);
+    }
+
+    fn bump_persistent_key_ttl(env: &Env, key: &DataKey) {
+        let max = env.storage().max_ttl();
+        let threshold = if max > 1 { max / 2 } else { 1 };
+        env.storage().persistent().extend_ttl(key, threshold, max);
     }
 
     fn verify_groth16_internal(
