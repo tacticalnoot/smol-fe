@@ -57,7 +57,7 @@ ZK status:
   - Local: generated in-browser via `snarkjs` (and can be verified locally with the vkey).
   - On-chain: YES. Calls `tier-verifier.verify_and_attest` which runs BN254 pairing checks on-chain.
 - Noir (UltraHonk): local verification only (bb.js).
-  - On-chain: NO (this repo does not claim on-chain UltraHonk verification).
+  - On-chain: YES (when configured). Uses `farm-attestations.verify_ultrahonk_and_attest`, which delegates proof verification to an upgradeable `ultrahonk-verifier` Soroban contract (VK stored on-chain). If the bridge contract isn't deployed/configured, the app must not claim on-chain verification and will surface an "on-chain disabled" state.
   - Optional on-chain record: YES (digest-only record in `farm-attestations`, not cryptographic verification).
 - RISC0 receipt: local verification only (WASM verifier).
   - On-chain: NO (this repo does not claim on-chain RISC0 verification).
@@ -151,11 +151,14 @@ Integrity model:
 - Purpose: statement record registry.
   - Baseline: digest-only records via `attest` (no proof verification).
   - Upgraded: optional *universal Groth16/BN254* on-chain verification via admin-registered verification keys (VK registry).
-- Called by: `/labs/the-farm` (Noir/RISC0 record flow), `/labs/the-farm/zkdungeon` (Room 3 RISC0 Groth16 on-chain verify, when VK registry is enabled).
+- Bridge: optional UltraHonk on-chain verification via a configured external `ultrahonk-verifier` contract.
+- Called by: `/labs/the-farm` (Noir/RISC0 record flow), `/labs/the-farm/zkdungeon` (Room 2 Noir UltraHonk on-chain verify bridge; Room 3 RISC0 Groth16 on-chain verify, when VK registry is enabled).
 - Methods used:
   - `attest(owner, system, tier, statement_hash, verifier_hash)`
   - (optional) `register_groth16_vk(vk_id, vk)` (admin)
   - (optional) `verify_groth16_and_attest(...)` (owner-auth + on-chain verify + record)
+  - (optional) `set_ultrahonk_verifier(verifier)` (admin)
+  - (optional) `verify_ultrahonk_and_attest(...)` (owner-auth + on-chain verify bridge + record)
 
 3. Batch Transfer (`contracts/batch-transfer`)
 
@@ -173,6 +176,15 @@ Integrity model:
 - Methods used:
   - `verify_and_attest(owner, claim_digest, public_inputs, proof)`
   - `get_attestation(owner)` (read path, optional)
+
+5. UltraHonk Verifier (`contracts/ultrahonk-verifier`)
+
+- Contract ID (mainnet): written to `deployed-ultrahonk-verifier-id.txt` after deployment (must be deployed + configured)
+- Purpose: on-chain Noir UltraHonk proof verification (VK stored on-chain; upgradeable).
+- Called by: `farm-attestations.verify_ultrahonk_and_attest` (bridge strategy)
+- Methods used:
+  - `set_vk(vk_bytes)` (admin)
+  - `verify_proof(public_inputs, proof_bytes)` (on-chain verify)
 
 ## Quick Reviewer Checklist
 
