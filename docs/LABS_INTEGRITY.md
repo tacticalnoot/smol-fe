@@ -148,10 +148,14 @@ Integrity model:
 2. Farm Attestations (`contracts/farm-attestations`)
 
 - Contract ID (mainnet): `PUBLIC_FARM_ATTESTATIONS_CONTRACT_ID_MAINNET` (env-config)
-- Purpose: digest-only statement record (no proof verification).
-- Called by: `/labs/the-farm` (Noir/RISC0 record flow).
+- Purpose: statement record registry.
+  - Baseline: digest-only records via `attest` (no proof verification).
+  - Upgraded: optional *universal Groth16/BN254* on-chain verification via admin-registered verification keys (VK registry).
+- Called by: `/labs/the-farm` (Noir/RISC0 record flow), `/labs/the-farm/zkdungeon` (Room 3 RISC0 Groth16 on-chain verify, when VK registry is enabled).
 - Methods used:
   - `attest(owner, system, tier, statement_hash, verifier_hash)`
+  - (optional) `register_groth16_vk(vk_id, vk)` (admin)
+  - (optional) `verify_groth16_and_attest(...)` (owner-auth + on-chain verify + record)
 
 3. Batch Transfer (`contracts/batch-transfer`)
 

@@ -1,6 +1,7 @@
 import { Account, Address, Contract, Networks, TransactionBuilder, TimeoutInfinite, rpc, xdr } from "@stellar/stellar-sdk/minimal";
 import { Buffer } from "buffer";
 import { MAINNET_NETWORK_PASSPHRASE, MAINNET_RPC_URL } from "../../config/farmAttestation";
+import { FARM_ATTESTATIONS_CONTRACT_ID_MAINNET } from "../../config/farmAttestation";
 import { RISC0_GROTH16_VERIFIER_CONTRACT_ID_MAINNET } from "../../config/risc0Groth16Verifier";
 import { ensureBytes32Hex, hexToBytes } from "../the-farm/digest";
 import { getRpcUrl } from "../../utils/rpc";
@@ -10,6 +11,10 @@ import risc0Groth16Sample from "../../data/dungeon/risc0_groth16_sample.json";
 
 const { Api, Server, assembleTransaction } = rpc;
 const NULL_ACCOUNT = "GAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAWHF";
+
+// Universal verifier path (preferred): farm-attestations Groth16 VK registry.
+// Keep <= 32 chars for Symbol.
+const RISC0_GROTH16_VK_ID = "R0G16V1";
 
 export type Risc0Groth16VerifyResult =
   | { ok: true; txHash: string; ledger?: number }
@@ -70,11 +75,6 @@ export async function publishRisc0Groth16VerifyMainnet(input: {
   onStage?: (stage: "simulating" | "assembling" | "signing" | "submitted" | "confirmed") => void;
 }): Promise<Risc0Groth16VerifyResult> {
   try {
-    const contractId = RISC0_GROTH16_VERIFIER_CONTRACT_ID_MAINNET.trim();
-    if (!contractId) {
-      throw new Error("Missing PUBLIC_RISC0_GROTH16_VERIFIER_CONTRACT_ID_MAINNET");
-    }
-
     const rpcUrl = resolveSorobanRpcUrl();
     if (!rpcUrl) {
       throw new Error("Soroban RPC URL not configured. Set PUBLIC_RPC_URL (or PUBLIC_MAINNET_RPC_URL).");
@@ -102,7 +102,6 @@ export async function publishRisc0Groth16VerifyMainnet(input: {
     }
 
     const server = new Server(rpcUrl);
-    const contract = new Contract(contractId);
 
     const proofStruct = xdr.ScVal.scvMap([
       new xdr.ScMapEntry({ key: symbol("pi_a"), val: xdr.ScVal.scvBytes(piA) }),
@@ -110,23 +109,79 @@ export async function publishRisc0Groth16VerifyMainnet(input: {
       new xdr.ScMapEntry({ key: symbol("pi_c"), val: xdr.ScVal.scvBytes(piC) }),
     ]);
 
-    const operation = contract.call(
-      "verify_and_attest",
-      new Address(input.owner).toScVal(),
-      xdr.ScVal.scvBytes(Buffer.from(hexToBytes(claimDigestHex))),
-      xdr.ScVal.scvVec(
-        publicInputsHex.map((hex) => xdr.ScVal.scvBytes(Buffer.from(hexToBytes(ensureBytes32Hex(hex))))),
-      ),
-      proofStruct,
+    const publicInputsVec = xdr.ScVal.scvVec(
+      publicInputsHex.map((hex) => xdr.ScVal.scvBytes(Buffer.from(hexToBytes(ensureBytes32Hex(hex))))),
     );
 
-    const tx = new TransactionBuilder(new Account(NULL_ACCOUNT, "0"), {
-      fee: "10000000", // 1 XLM max for mainnet reliability
-      networkPassphrase: MAINNET_NETWORK_PASSPHRASE || Networks.PUBLIC,
-    })
-      .addOperation(operation)
-      .setTimeout(TimeoutInfinite)
-      .build();
+    // Prefer the "universal" verifier path via farm-attestations (VK registry).
+    // This avoids needing a new contract per verifier, as long as the proof is Groth16/BN254.
+    const tryUniversalFirst = async (): Promise<{
+      tx: any;
+      contractLabel: string;
+    } | null> => {
+      const farmId = FARM_ATTESTATIONS_CONTRACT_ID_MAINNET.trim();
+      if (!farmId) return null;
+
+      const farm = new Contract(farmId);
+      const op = farm.call(
+        "verify_groth16_and_attest",
+        new Address(input.owner).toScVal(),
+        symbol("RISC0"),
+        symbol("SPROUT"),
+        xdr.ScVal.scvBytes(Buffer.from(hexToBytes(claimDigestHex))), // statement_hash
+        xdr.ScVal.scvBytes(Buffer.from(hexToBytes(claimDigestHex))), // verifier_hash (digest-only identifier)
+        symbol(RISC0_GROTH16_VK_ID),
+        publicInputsVec,
+        proofStruct,
+      );
+
+      const tx = new TransactionBuilder(new Account(NULL_ACCOUNT, "0"), {
+        fee: "10000000",
+        networkPassphrase: MAINNET_NETWORK_PASSPHRASE || Networks.PUBLIC,
+      })
+        .addOperation(op)
+        .setTimeout(TimeoutInfinite)
+        .build();
+
+      // Probe simulation: if contract hasn't been upgraded or VK isn't registered, this will fail.
+      const sim = await server.simulateTransaction(tx);
+      if (Api.isSimulationError(sim)) {
+        return null;
+      }
+
+      return { tx, contractLabel: `farm-attestations(${farmId})` };
+    };
+
+    const buildDedicated = (): { tx: any; contractLabel: string } => {
+      const contractId = RISC0_GROTH16_VERIFIER_CONTRACT_ID_MAINNET.trim();
+      if (!contractId) {
+        throw new Error(
+          "RISC0 on-chain verification unavailable: farm-attestations Groth16 registry is not ready and PUBLIC_RISC0_GROTH16_VERIFIER_CONTRACT_ID_MAINNET is missing.",
+        );
+      }
+
+      const contract = new Contract(contractId);
+      const op = contract.call(
+        "verify_and_attest",
+        new Address(input.owner).toScVal(),
+        xdr.ScVal.scvBytes(Buffer.from(hexToBytes(claimDigestHex))),
+        publicInputsVec,
+        proofStruct,
+      );
+
+      const tx = new TransactionBuilder(new Account(NULL_ACCOUNT, "0"), {
+        fee: "10000000",
+        networkPassphrase: MAINNET_NETWORK_PASSPHRASE || Networks.PUBLIC,
+      })
+        .addOperation(op)
+        .setTimeout(TimeoutInfinite)
+        .build();
+
+      return { tx, contractLabel: `risc0-groth16-verifier(${contractId})` };
+    };
+
+    const universal = await tryUniversalFirst();
+    const { tx, contractLabel } = universal ?? buildDedicated();
 
     input.onStage?.("simulating");
     const sim = await server.simulateTransaction(tx);
@@ -147,7 +202,7 @@ export async function publishRisc0Groth16VerifyMainnet(input: {
     });
 
     if (!result.success) {
-      throw new Error(result.error || "RISC0 Groth16 on-chain verification failed");
+      throw new Error(result.error || `RISC0 Groth16 on-chain verification failed (${contractLabel})`);
     }
 
     const txHash =
@@ -173,4 +228,3 @@ export async function publishRisc0Groth16VerifyMainnet(input: {
     return { ok: false, error: e instanceof Error ? e.message : "RISC0 Groth16 verification failed" };
   }
 }
-
