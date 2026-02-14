@@ -161,6 +161,15 @@ Integrity model:
 - Methods used:
   - `batch_transfer(token, from, recipients, amounts)`
 
+4. RISC0 Groth16 Receipt Verifier (`contracts/risc0-groth16-verifier`)
+
+- Contract ID (mainnet): `PUBLIC_RISC0_GROTH16_VERIFIER_CONTRACT_ID_MAINNET` (env-config; must be deployed)
+- Purpose: on-chain BN254 Groth16 verification for a RISC0 Groth16 receipt proof (STARK-to-SNARK output).
+- Called by: `/labs/the-farm/zkdungeon` (Room 3 on-chain receipt verify step, passkey-signed).
+- Methods used:
+  - `verify_and_attest(owner, claim_digest, public_inputs, proof)`
+  - `get_attestation(owner)` (read path, optional)
+
 ## Quick Reviewer Checklist
 
 1. Run:
@@ -173,4 +182,3 @@ Integrity model:
    - `/labs/the-farm/zkdungeon`
    - `/labs/the-vip` -> Commons/Lumenauts
    - `/labs/lastframe`
-

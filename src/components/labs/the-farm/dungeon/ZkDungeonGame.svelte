@@ -52,6 +52,9 @@
     let groth16OnChain = $state<{ status: "idle" | "simulating" | "assembling" | "signing" | "submitted" | "confirmed" | "error"; txHash?: string; error?: string }>(
         { status: "idle" }
     );
+    let risc0Groth16OnChain = $state<{ status: "idle" | "simulating" | "assembling" | "signing" | "submitted" | "confirmed" | "error"; txHash?: string; error?: string }>(
+        { status: "idle" }
+    );
 
     // Relay (real multiplayer presence via server state, Labs-only)
     type DungeonRosterEntry = {
@@ -388,6 +391,7 @@
         gateWaiting = false;
         lastForensics = null;
         groth16OnChain = { status: "idle" };
+        risc0Groth16OnChain = { status: "idle" };
         phase = "playing";
 
         addLogEntry({
@@ -578,6 +582,113 @@
                 }
             }
 
+            // Room 3 (RISC0 wing): if a passkey wallet is connected, optionally perform *real*
+            // on-chain BN254 Groth16 verification of a RISC0 receipt proof before advancing.
+            //
+            // Note: in this dungeon pass, RISC0 uses a training credential artifact (real proof),
+            // so this step proves the end-to-end on-chain verifier wiring + passkey tx flow.
+            if (currentFloor === 3 && isConnected) {
+                if (!userState.contractId || !userState.keyId) {
+                    lastForensics = {
+                        ...result,
+                        accepted: false,
+                        reasonCode: "ERROR",
+                        reasonHuman: "Cannot submit on-chain receipt verification (wallet missing)",
+                        forensics: {
+                            ...result.forensics,
+                            mismatchExplanation: "On-chain receipt verification requires a connected passkey wallet.",
+                            nextAction: "Connect your passkey wallet and retry the door.",
+                        },
+                    };
+                    doorStates = ["idle", "idle", "idle", "idle"];
+                    activeDoor = null;
+                    return;
+                }
+
+                try {
+                    gateWaiting = true;
+                    risc0Groth16OnChain = { status: "simulating" };
+
+                    const { publishRisc0Groth16VerifyMainnet } = await import("../../../../lib/dungeon/publishRisc0Groth16VerifyMainnet");
+                    const submitRes = await publishRisc0Groth16VerifyMainnet({
+                        owner: userState.contractId,
+                        keyId: userState.keyId,
+                        onStage: (stage) => {
+                            if (stage === "simulating") risc0Groth16OnChain = { status: "simulating" };
+                            if (stage === "assembling") risc0Groth16OnChain = { status: "assembling" };
+                            if (stage === "signing") risc0Groth16OnChain = { status: "signing" };
+                            if (stage === "submitted") risc0Groth16OnChain = { status: "submitted" };
+                        },
+                    });
+
+                    if (!submitRes.ok) {
+                        throw new Error(submitRes.error || "On-chain receipt verification failed");
+                    }
+                    if (!submitRes.txHash) {
+                        throw new Error("On-chain receipt verification did not return a tx hash");
+                    }
+
+                    risc0Groth16OnChain = { status: "submitted", txHash: submitRes.txHash };
+
+                    addLogEntry({
+                        floor: currentFloor,
+                        door: doorIndex,
+                        attempt: attempts,
+                        result: "correct",
+                        proofType: "On-chain RISC0 Groth16 Receipt",
+                        txHash: submitRes.txHash,
+                        timestamp: Date.now(),
+                        verified: true,
+                        provingTimeMs: result.provingTimeMs,
+                        commitment: result.commitment,
+                        reasonCode: "ONCHAIN_VERIFIED",
+                    });
+
+                    const confirmed = await waitForMainnetTx(submitRes.txHash);
+                    if (confirmed === "success") {
+                        risc0Groth16OnChain = { status: "confirmed", txHash: submitRes.txHash };
+                    } else if (confirmed === "failed") {
+                        risc0Groth16OnChain = { status: "error", txHash: submitRes.txHash, error: "On-chain tx failed" };
+                        throw new Error("On-chain receipt verification transaction failed");
+                    } else {
+                        risc0Groth16OnChain = { status: "error", txHash: submitRes.txHash, error: "Confirmation timed out" };
+                        throw new Error("On-chain receipt verification confirmation timed out");
+                    }
+                } catch (err) {
+                    const message = err instanceof Error ? err.message : String(err);
+                    risc0Groth16OnChain = {
+                        status: "error",
+                        error: message,
+                        txHash: risc0Groth16OnChain.txHash,
+                    };
+
+                    // If the verifier contract isn't deployed/configured yet, don't brick the run.
+                    // We show the failure honestly in the Integrity UI and let the user proceed.
+                    if (message.includes("Missing PUBLIC_RISC0_GROTH16_VERIFIER_CONTRACT_ID_MAINNET")) {
+                        console.warn("[Dungeon] RISC0 on-chain verifier disabled:", message);
+                    } else {
+                        lastForensics = {
+                            ...result,
+                            accepted: false,
+                            reasonCode: "ONCHAIN_VERIFY_FAILED",
+                            reasonHuman: "Door policy matched, but on-chain receipt verification failed",
+                            forensics: {
+                                ...result.forensics,
+                                mismatchExplanation: message || "On-chain receipt verification failed.",
+                                nextAction:
+                                    "Retry the door. If RPC is flaky, wait a moment and retry.",
+                            },
+                        };
+                        doorStates = ["idle", "idle", "idle", "idle"];
+                        activeDoor = null;
+                        gateWaiting = false;
+                        return;
+                    }
+                } finally {
+                    gateWaiting = false;
+                }
+            }
+
             if (currentFloor >= TOTAL_FLOORS) {
                 addLogEntry({
                     floor: TOTAL_FLOORS,
@@ -656,6 +767,7 @@
         floorTransition = false;
         lastForensics = null;
         groth16OnChain = { status: "idle" };
+        risc0Groth16OnChain = { status: "idle" };
     }
 
     function toggleFullscreen() {
@@ -780,6 +892,7 @@
         entryStamp = { status: "idle" };
         withdrawalStamp = { status: "idle" };
         groth16OnChain = { status: "idle" };
+        risc0Groth16OnChain = { status: "idle" };
         phase = "airlock";
     }
 
@@ -1124,6 +1237,31 @@
                     </div>
                 {/if}
 
+                {#if floorDef.verifierType === "RISC0_RECEIPT"}
+                    <div class="dg-stamp-box">
+                        <div class="dg-stamp-title">ON-CHAIN RECEIPT VERIFY (MAINNET)</div>
+                        {#if isConnected}
+                            <div class="dg-stamp-status">STATUS: {risc0Groth16OnChain.status.toUpperCase()}</div>
+                            {#if risc0Groth16OnChain.txHash}
+                                <a class="dg-stamp-link" href={txExplorerUrlMainnet(risc0Groth16OnChain.txHash)} target="_blank" rel="noreferrer">
+                                    VIEW TX {risc0Groth16OnChain.txHash.slice(0, 8)}...
+                                </a>
+                            {/if}
+                            {#if risc0Groth16OnChain.error}
+                                <div class="dg-stamp-error">{risc0Groth16OnChain.error}</div>
+                            {/if}
+                            {#if currentFloor === 3 && risc0Groth16OnChain.status === "idle"}
+                                <div class="dg-placard-sub">
+                                    Tip: clearing the correct door will trigger a real RISC0 Groth16 receipt pairing-check tx (passkey-signed),
+                                    if the verifier contract is deployed + configured.
+                                </div>
+                            {/if}
+                        {:else}
+                            <div class="dg-stamp-status">STATUS: DISABLED (WALLET NOT CONNECTED)</div>
+                        {/if}
+                    </div>
+                {/if}
+
                 {#if lastForensics}
                     <div class="dg-panel-split"></div>
                     <div class="dg-panel-head">FORENSICS</div>
@@ -1209,6 +1347,20 @@
                                 {/if}
                                 {#if groth16OnChain.error}
                                     <p class="dg-stamp-error">{groth16OnChain.error}</p>
+                                {/if}
+                            {:else if currentFloor === 3 && isConnected && risc0Groth16OnChain.status !== "idle" && risc0Groth16OnChain.status !== "confirmed"}
+                                <p class="dg-gate-title">MAINNET RECEIPT VERIFY</p>
+                                <p class="dg-gate-desc">
+                                    Verifying a RISC0 Groth16 receipt on-chain (BN254 pairing checks). This is real proof verification.
+                                </p>
+                                <p class="dg-gate-desc">STATUS: {risc0Groth16OnChain.status.toUpperCase()}</p>
+                                {#if risc0Groth16OnChain.txHash}
+                                    <a class="dg-stamp-link" href={txExplorerUrlMainnet(risc0Groth16OnChain.txHash)} target="_blank" rel="noreferrer">
+                                        VIEW TX {risc0Groth16OnChain.txHash.slice(0, 8)}...
+                                    </a>
+                                {/if}
+                                {#if risc0Groth16OnChain.error}
+                                    <p class="dg-stamp-error">{risc0Groth16OnChain.error}</p>
                                 {/if}
                             {:else}
                                 <p class="dg-gate-title">CO-OP GATE</p>
