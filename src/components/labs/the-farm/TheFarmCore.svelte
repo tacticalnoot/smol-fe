@@ -376,8 +376,9 @@
   });
 
   $effect(() => {
-    preloadNoirVerifier(noirVerifierBytecode);
-    preloadRisc0Verifier();
+    // Avoid pulling large verifier bundles until the user actually needs them.
+    if (activeSystem === "noir") preloadNoirVerifier(noirVerifierBytecode);
+    if (activeSystem === "risc0") preloadRisc0Verifier();
   });
 
   $effect(() => {

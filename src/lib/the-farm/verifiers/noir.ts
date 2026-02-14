@@ -1,4 +1,5 @@
 import { UltraHonkBackend } from "@aztec/bb.js";
+import type { ProofData } from "@aztec/bb.js";
 import type { VerificationResult } from "../types";
 
 type NoirProofPayload = {
@@ -18,42 +19,27 @@ function decodeBase64(base64: string): Uint8Array {
   return bytes;
 }
 
-function isGzip(bytes: Uint8Array): boolean {
-  return bytes.length >= 2 && bytes[0] === 0x1f && bytes[1] === 0x8b;
-}
-
-async function gunzip(bytes: Uint8Array): Promise<Uint8Array> {
-  if (typeof DecompressionStream === "undefined") {
-    throw new Error(
-      "Noir verifier bytecode is gzip-compressed, but DecompressionStream is unavailable in this browser.",
-    );
-  }
-
-  const ds = new DecompressionStream("gzip");
-  const safe = new Uint8Array(bytes) as unknown as Uint8Array<ArrayBuffer>;
-  const stream = new Blob([safe]).stream().pipeThrough(ds);
-  const buf = await new Response(stream).arrayBuffer();
-  return new Uint8Array(buf);
-}
-
 async function getBackend(bytecodeGzipBase64: string): Promise<UltraHonkBackend> {
   if (!backend || backendBytecode !== bytecodeGzipBase64) {
     if (backend) {
       await backend.destroy();
     }
 
-    const rawBytes = decodeBase64(bytecodeGzipBase64);
-    const bytecode = isGzip(rawBytes) ? await gunzip(rawBytes) : rawBytes;
-
-    backend = new UltraHonkBackend(bytecode, { threads: 1 });
+    // bb.js accepts Noir's base64(gzip(acir)) bytecode directly.
+    backend = new UltraHonkBackend(bytecodeGzipBase64, { threads: 1 });
     backendBytecode = bytecodeGzipBase64;
+
+    if (import.meta.env.DEV) {
+      console.debug("[Noir] UltraHonkBackend ready");
+    }
   }
+
   return backend;
 }
 
 export function preloadNoirVerifier(bytecode: string): void {
   void getBackend(bytecode).catch(() => {
-    // Fallback happens in verify call; preload failure is non-fatal.
+    // Preload failure is non-fatal; verify() will surface the error.
   });
 }
 
@@ -62,7 +48,11 @@ export async function verifyNoirProof(
   proof: unknown,
 ): Promise<VerificationResult> {
   const payload = proof as Partial<NoirProofPayload> | null;
-  if (!payload?.proofBase64 || !Array.isArray(payload.publicInputs)) {
+  if (
+    !payload?.proofBase64 ||
+    !Array.isArray(payload.publicInputs) ||
+    !payload.publicInputs.every((input) => typeof input === "string")
+  ) {
     return {
       valid: false,
       durationMs: 0,
@@ -74,7 +64,18 @@ export async function verifyNoirProof(
 
   try {
     const verifier = await getBackend(bytecode);
-    const valid = await verifier.verifyProof(decodeBase64(payload.proofBase64));
+
+    const proofData: ProofData = {
+      proof: decodeBase64(payload.proofBase64),
+      publicInputs: payload.publicInputs,
+    };
+
+    const valid = await verifier.verifyProof(proofData);
+
+    if (import.meta.env.DEV) {
+      console.debug(`[Noir] verifyProof ${valid ? "PASS" : "FAIL"}`);
+    }
+
     return {
       valid,
       durationMs: Math.round(performance.now() - startedAt),

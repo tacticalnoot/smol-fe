@@ -112,3 +112,159 @@ test('labs crawl: /labs forward links are reachable', async ({ page }) => {
 
   await visit('/labs');
 });
+
+test('the-farm noir verifier passes valid sample and fails tampered sample', async ({ page }) => {
+  test.setTimeout(180_000);
+
+  const consoleErrors: string[] = [];
+  const pageErrors: string[] = [];
+
+  page.on('console', (msg) => {
+    if (msg.type() === 'error') consoleErrors.push(msg.text());
+  });
+
+  page.on('pageerror', (error) => {
+    pageErrors.push(String(error));
+  });
+
+  await page.goto('/labs/the-farm', { waitUntil: 'domcontentloaded' });
+  await page.waitForLoadState('networkidle').catch(() => {});
+  await page.waitForTimeout(250);
+
+  let results: { pass: { valid: boolean }; fail: { valid: boolean } } | null = null;
+
+  for (let attempt = 0; attempt < 3; attempt += 1) {
+    try {
+      results = await page.evaluate(
+        async ({ internalTimeoutMs }) => {
+          const debugLogs: string[] = [];
+          const push = (msg: string) => debugLogs.push(`${Date.now()} ${msg}`);
+
+          // Capture worker failures; bb.js waits for a "ready" message and can otherwise hang forever.
+          const OriginalWorker = Worker;
+          // @ts-ignore - Intentionally monkeypatching for diagnostics inside the browser context.
+          window.Worker = function (...args) {
+            const [url] = args;
+            push(`Worker(new URL=${String(url)})`);
+            // @ts-ignore
+            const worker = new OriginalWorker(...args);
+            worker.addEventListener('error', (event) => {
+              // @ts-ignore
+              const where = event?.filename
+                ? ` at ${event.filename}:${event.lineno ?? '?'}:${event.colno ?? '?'}`
+                : '';
+              // @ts-ignore
+              push(`Worker error: ${event.message || 'unknown'}${where}`);
+              // @ts-ignore
+              if (event?.error?.stack) push(`Worker stack: ${event.error.stack}`);
+            });
+            worker.addEventListener('messageerror', () => {
+              push('Worker messageerror');
+            });
+            return worker;
+          };
+
+          const originalFetch = fetch.bind(window);
+          window.fetch = async (...args) => {
+            const [input] = args;
+            push(`fetch ${String(input)}`);
+            const res = await originalFetch(...args);
+            push(`fetch ${String(input)} -> ${res.status}`);
+            return res;
+          };
+
+          const originalCompile = WebAssembly.compile.bind(WebAssembly);
+          WebAssembly.compile = async (bufferSource) => {
+            // @ts-ignore
+            const size = bufferSource?.byteLength ?? 0;
+            push(`WebAssembly.compile start (${size} bytes)`);
+            const mod = await originalCompile(bufferSource);
+            push('WebAssembly.compile done');
+            return mod;
+          };
+
+          push('import noirBundle');
+          // @ts-ignore - Resolved by Vite in browser (dev server).
+          const noirBundle = await import('/src/data/the-farm/noirBundle.ts');
+          push('import noirVerifier');
+          // @ts-ignore - Resolved by Vite in browser (dev server).
+          const noirVerifier = await import('/src/lib/the-farm/verifiers/noir.ts');
+
+          const validSample = noirBundle.noirSamples.find((s: any) => s.expectedValid);
+          const invalidSample = noirBundle.noirSamples.find((s: any) => !s.expectedValid);
+
+          if (!validSample || !invalidSample) {
+            return { ok: false as const, error: 'Missing Noir samples', debugLogs };
+          }
+
+          const work = (async () => {
+            push('verify PASS start');
+            const pass = await noirVerifier.verifyNoirProof(
+              noirBundle.noirVerifierBytecode,
+              validSample.proof,
+            );
+            push('verify PASS done');
+
+            push('verify FAIL start');
+            const fail = await noirVerifier.verifyNoirProof(
+              noirBundle.noirVerifierBytecode,
+              invalidSample.proof,
+            );
+            push('verify FAIL done');
+
+            return { ok: true as const, pass, fail, debugLogs };
+          })();
+
+          const timeout = new Promise((resolve) => {
+            setTimeout(() => {
+              resolve({ ok: false as const, error: 'Timed out running Noir verification', debugLogs });
+            }, internalTimeoutMs);
+          });
+
+          return (await Promise.race([work, timeout])) as
+            | { ok: true; pass: { valid: boolean }; fail: { valid: boolean }; debugLogs: string[] }
+            | { ok: false; error: string; debugLogs: string[] };
+        },
+        { internalTimeoutMs: 30_000 },
+      );
+
+      if (!results.ok) {
+        console.log('Noir browser verifier failed:', results.error);
+        for (const line of results.debugLogs.slice(0, 80)) console.log('  ', line);
+        throw new Error(results.error);
+      }
+
+      break;
+    } catch (error) {
+      if (`${error}`.includes('Execution context was destroyed')) {
+        await page.waitForLoadState('domcontentloaded');
+        await page.waitForTimeout(250);
+        continue;
+      }
+
+      throw error;
+    }
+  }
+
+  if (!results) {
+    throw new Error('Noir verifier eval did not complete (navigation kept resetting the page)');
+  }
+
+  // At this point, results is the success shape.
+  // @ts-expect-error - see runtime guard above
+  const { pass, fail } = results;
+
+  const expectedHydrationErrors = [...consoleErrors, ...pageErrors].filter((line) =>
+    /Error hydrating|Failed to resolve module specifier|@aztec\/bb\.js/i.test(line),
+  );
+  expect(expectedHydrationErrors).toEqual([]);
+
+  if (!pass.valid) {
+    // Helps debug verifier wiring in CI logs.
+    console.log('Noir PASS result:', pass);
+    console.log('Noir FAIL result:', fail);
+  }
+
+  expect(pass.valid).toBeTruthy();
+  expect(fail.valid).toBeFalsy();
+});
