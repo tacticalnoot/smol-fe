@@ -57,27 +57,26 @@ const PROVING_KEY_PATH = `/zk/tier_proof.zkey?v=${ZK_VERSION}`;
  * @returns Proof and public signals
  */
 export async function generateTierProof(
+    addressHash: bigint,
     balance: bigint,
     salt: bigint,
-    threshold: bigint,
+    tierId: number,
 ): Promise<ProofResult> {
     // 1. Compute the Poseidon commitment that the circuit will verify
-    // Circuit: commitment = Poseidon(balance, salt)
-    const commitment = await poseidonHash([balance, salt]);
+    // Circuit: commitment_expected = Poseidon(address_hash, balance, salt)
+    const commitment = await poseidonHash([addressHash, balance, salt]);
 
     // 2. Prepare inputs for the circuit
     const inputs: TierProofInputs = {
+        tier_id: normalizeCircomScalar(tierId, "tier_id"),
+        commitment_expected: commitment.toString(),
+        address_hash: addressHash.toString(),
         balance: balance.toString(),
         salt: salt.toString(),
-        threshold: normalizeCircomScalar(threshold, "threshold"),
-        commitment: commitment.toString(),
     };
 
     // 3. Generate the proof via snarkjs
-    console.log("[ZK] Generating Groth16 proof...", {
-        threshold: threshold.toString(),
-        commitment: commitment.toString(),
-    });
+    console.log("[ZK] Generating Groth16 proof...", { tierId, commitment: commitment.toString() });
 
     // @ts-ignore - snarkjs types (Robust fallback for production/Cloudflare)
     const snarkjs = (window as any).snarkjs || await import("snarkjs");
@@ -90,7 +89,7 @@ export async function generateTierProof(
             ]),
         );
         console.log("[ZK][CircomInputs] shape", shape, {
-            threshold: { value: inputs.threshold, type: typeof inputs.threshold, isArray: Array.isArray(inputs.threshold) },
+            tier_id: { value: inputs.tier_id, type: typeof inputs.tier_id, isArray: Array.isArray(inputs.tier_id) },
         });
     }
 
@@ -389,6 +388,7 @@ export async function submitProofToContract(
     tierId: number,
     commitment: Uint8Array,
     proof: Groth16Proof,
+    publicSignals?: string[],
     keyId?: string, // New optional argument
 ): Promise<{ success: boolean; txHash?: string; error?: string }> {
     try {
@@ -399,6 +399,15 @@ export async function submitProofToContract(
         });
         console.log("[ZK] DEBUG: Using Contract ID:", TIER_VERIFIER_CONTRACT_ID);
         validateProofShape(proof);
+
+        if (import.meta.env.DEV && Array.isArray(publicSignals) && publicSignals.length > 0) {
+            try {
+                const localOk = await verifyProofLocally(proof, publicSignals);
+                console.log(`[ZK] Local groth16.verify: ${localOk ? "PASS" : "FAIL"}`);
+            } catch (e) {
+                console.warn("[ZK] Local groth16.verify failed to run:", e);
+            }
+        }
 
         const { Contract, Address, nativeToScVal, xdr, TransactionBuilder, rpc, Account, Networks } = await import("@stellar/stellar-sdk/minimal");
         const NULL_ACCOUNT = "GAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAWHF";
@@ -450,20 +459,32 @@ export async function submitProofToContract(
         const { getBestRpcUrl } = await import("../../../utils/rpc");
         const server = new rpc.Server(getBestRpcUrl());
 
-        let selectedMode: G2EncodingMode = "cap0074";
-        let tx = buildTx(buildProofStruct(capProof));
-        let sim = await server.simulateTransaction(tx);
+        const simulateMode = async (mode: G2EncodingMode) => {
+            const serialized = mode === "cap0074" ? capProof : legacyProof;
+            const nextTx = buildTx(buildProofStruct(serialized));
+            const nextSim = await server.simulateTransaction(nextTx);
+            return { mode, tx: nextTx, sim: nextSim };
+        };
 
-        if (!rpc.Api.isSimulationSuccess(sim) && hasG2CurveError(sim)) {
-            console.warn("[ZK] cap0074 simulation failed (G2 point error), trying legacy mode...");
-            const legacyTx = buildTx(buildProofStruct(legacyProof));
-            const legacySim = await server.simulateTransaction(legacyTx);
-            if (rpc.Api.isSimulationSuccess(legacySim)) {
-                selectedMode = "legacy";
-                tx = legacyTx;
-                sim = legacySim;
+        // CAP-0074 vs legacy limb ordering varies between toolchains/emitters.
+        // We try cap0074 first, and if it fails we also try legacy. This prevents
+        // "InvalidProof" failures caused purely by G2 limb order when the point still
+        // decodes as on-curve.
+        let { mode: selectedMode, tx, sim } = await simulateMode("cap0074");
+
+        if (!rpc.Api.isSimulationSuccess(sim)) {
+            const primary = summarizeFailure(sim);
+            console.warn(`[ZK] cap0074 simulation failed (${primary}). Trying legacy G2 encoding...`);
+            const legacyAttempt = await simulateMode("legacy");
+            if (rpc.Api.isSimulationSuccess(legacyAttempt.sim)) {
+                selectedMode = legacyAttempt.mode;
+                tx = legacyAttempt.tx;
+                sim = legacyAttempt.sim;
             } else {
-                sim = legacySim;
+                const secondary = summarizeFailure(legacyAttempt.sim);
+                throw new Error(
+                    `Simulation failed for verify_and_attest (cap0074): ${primary} | (legacy): ${secondary}`,
+                );
             }
         }
 

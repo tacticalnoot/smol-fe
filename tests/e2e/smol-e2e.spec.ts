@@ -292,9 +292,13 @@ test('the-farm circom inputs are scalar (no array / no comma string)', async ({ 
     window.snarkjs = {
       groth16: {
         fullProve: async (inputs: any) => {
-          if ('tier_id' in inputs) throw new Error('unexpected tier_id input');
-
-          const keys = ['balance', 'salt', 'threshold', 'commitment'];
+          const keys = [
+            'tier_id',
+            'commitment_expected',
+            'address_hash',
+            'balance',
+            'salt',
+          ];
           for (const key of keys) {
             const value = inputs?.[key];
             if (Array.isArray(value)) throw new Error(`${key} must not be an array`);
@@ -320,7 +324,7 @@ test('the-farm circom inputs are scalar (no array / no comma string)', async ({ 
     const mod = await import('/src/components/labs/the-farm/zkProof.ts');
 
     // Small, deterministic inputs. We only care that the input builder passes scalars.
-    const proofRes = await mod.generateTierProof(0n, 2n, 0n);
+    const proofRes = await mod.generateTierProof(0n, 2n, 0n, 0);
     return {
       ok: true,
       publicSignalsLen: proofRes.publicSignals?.length ?? 0,

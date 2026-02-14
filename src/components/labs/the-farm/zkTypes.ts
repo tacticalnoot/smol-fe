@@ -50,10 +50,11 @@ export function truncateHash(hash: string): string {
 }
 
 export interface TierProofInputs {
+    tier_id: string;
+    commitment_expected: string;
+    address_hash: string;
     balance: string;
     salt: string;
-    threshold: string;
-    commitment: string;
 }
 
 export interface Groth16Proof {

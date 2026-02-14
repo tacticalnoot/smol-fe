@@ -38,10 +38,11 @@
   } from "../../../stores/balance.svelte.ts";
   import { userState } from "../../../stores/user.svelte.ts";
   import { TIER_CONFIG, formatKaleBalance, getTierForBalance } from "./proof";
-  import { TIER_THRESHOLDS, TIER_VERIFIER_CONTRACT_ID } from "./zkTypes";
+  import { TIER_VERIFIER_CONTRACT_ID } from "./zkTypes";
   import {
     generateTierProof,
     submitProofToContract,
+    hashAddress,
     generateRandomSalt,
     serializeProof,
   } from "./zkProof";
@@ -222,27 +223,20 @@
     try {
       if (system === "circom") {
         setProcessing(system, true, "Generating ZK Proof...");
-        addLog("Computing Poseidon(Bal, Salt)...");
+        addLog("Computing Poseidon(Addr, Bal, Salt)...");
+        const addrHash = await hashAddress(userState.contractId!);
         const currentBalance = balance ?? 0n;
         const salt = generateRandomSalt();
         const tierId = getTierForBalance(currentBalance);
-        const threshold =
-          tierId === 0
-            ? TIER_THRESHOLDS.SPROUT
-            : tierId === 1
-              ? TIER_THRESHOLDS.GROWER
-              : tierId === 2
-                ? TIER_THRESHOLDS.HARVESTER
-                : TIER_THRESHOLDS.WHALE;
 
         addLog(`Tier identified: ${tierId} (${TIER_CONFIG[tierId].name})`);
-        addLog(`Tier threshold: ${threshold.toString()}`);
         addLog("Invoking snarkjs.groth16.fullProve...");
 
         const proofRes = await generateTierProof(
+          addrHash,
           currentBalance,
           salt,
-          threshold,
+          tierId,
         );
 
         addLog("Proof generated successfully (2048-bit R1CS)");
@@ -251,7 +245,7 @@
         const { buildPoseidon } = await import("circomlibjs");
         const poseidon = await buildPoseidon();
         const commitmentBigInt = BigInt(
-          poseidon.F.toString(poseidon([currentBalance, salt])),
+          poseidon.F.toString(poseidon([addrHash, currentBalance, salt])),
         );
         const commitmentBytes = new Uint8Array(32);
         let v = commitmentBigInt;
@@ -272,6 +266,7 @@
           tierId,
           commitmentBytes,
           proofRes.proof,
+          proofRes.publicSignals,
           userState.keyId!,
         );
 
