@@ -29,14 +29,15 @@ function extractHexTxHash(value: unknown): string | undefined {
     return undefined;
 }
 
-function extractTxHashFromRelayerResponse(result: any): string | undefined {
+function extractTxHashFromRelayerResponse(result: any, depth = 0): string | undefined {
+    if (!result || depth > 3) return undefined;
     // Common shapes we see across relayers:
     // 1) { hash: "..." }
     // 2) { transactionHash: "..." }
     // 3) { data: { hash: "..." } }  (OpenZeppelin Channels)
     // 4) { data: { transactionHash: "..." } }
     // Never treat UUID-like transactionId as a tx hash.
-    return (
+    const direct =
         extractHexTxHash(result?.hash) ||
         extractHexTxHash(result?.transactionHash) ||
         extractHexTxHash(result?.txHash) ||
@@ -44,8 +45,12 @@ function extractTxHashFromRelayerResponse(result: any): string | undefined {
         extractHexTxHash(result?.data?.hash) ||
         extractHexTxHash(result?.data?.transactionHash) ||
         extractHexTxHash(result?.data?.txHash) ||
-        extractHexTxHash(result?.data?.transaction_hash)
-    );
+        extractHexTxHash(result?.data?.transaction_hash);
+
+    if (direct) return direct;
+
+    // Some relayers wrap the response as { success, result: { ... } } or { result: { data: { hash } } }.
+    return extractTxHashFromRelayerResponse(result?.result, depth + 1);
 }
 
 /**

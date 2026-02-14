@@ -308,16 +308,6 @@
           throw new Error(verifyResult.error || "Sample verification failed");
         }
 
-        if (!FARM_ATTESTATIONS_CONTRACT_ID_MAINNET?.trim()) {
-          addLog("Sample witness verified (LOCAL).");
-          addLog("On-chain record is DISABLED: Missing PUBLIC_FARM_ATTESTATIONS_CONTRACT_ID_MAINNET.");
-          setAttestationResult(system, sample.tier, {
-            ok: true,
-            feeCharged: "Local Only",
-          });
-          return;
-        }
-
         addLog("Sample witness verified. Publishing record...");
         setProcessing(system, true, "Sample Valid. Record on mainnet...");
 

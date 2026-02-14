@@ -1,6 +1,10 @@
 import { execSync } from "child_process";
+import crypto from "crypto";
+import fs from "fs";
 import path from "path";
 import { fileURLToPath } from "url";
+
+import { Contract, Keypair, Networks, Operation, TransactionBuilder, rpc, xdr } from "@stellar/stellar-sdk/minimal";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -33,11 +37,52 @@ function runInherit(cmd, opts = {}) {
   execSync(cmd, { stdio: "inherit", ...opts });
 }
 
-function parseHash(output) {
-  const m = output.match(/[a-f0-9]{64}/);
-  if (m) return m[0];
-  const last = output.trim().split("\n").pop().trim();
-  return last.length === 64 ? last : "";
+function sha256Hex(filePath) {
+  const bytes = fs.readFileSync(filePath);
+  return crypto.createHash("sha256").update(bytes).digest("hex");
+}
+
+function getIdentitySecret(identity) {
+  // `stellar keys show` prints multiple lines; last line is secret.
+  const out = run(`stellar keys show ${identity}`, { cwd: rootDir }).trim().split("\n");
+  return out[out.length - 1].trim();
+}
+
+async function waitForTx(server, hash) {
+  for (let i = 0; i < 60; i += 1) {
+    const tx = await server.getTransaction(hash);
+    if (
+      tx.status === rpc.Api.GetTransactionStatus.SUCCESS ||
+      tx.status === rpc.Api.GetTransactionStatus.FAILED
+    ) {
+      return tx;
+    }
+    await new Promise((r) => setTimeout(r, 1200));
+  }
+  throw new Error("Timed out waiting for transaction confirmation");
+}
+
+async function sendPreparedTx({ server, tx, kp }) {
+  tx.sign(kp);
+  const send = await server.sendTransaction(tx);
+  if (send.status !== "PENDING") {
+    const resultName = send?.errorResult?._attributes?.result?._switch?.name;
+    if (resultName === "txInsufficientBalance") {
+      const feeCharged = Number(send?.errorResult?._attributes?.feeCharged?._value ?? 0);
+      const xlm = feeCharged / 10_000_000;
+      throw new Error(
+        `txInsufficientBalance: upgrade requires ~${xlm.toFixed(2)} XLM available in the source account to cover fees/resources`,
+      );
+    }
+    throw new Error(`Send failed: ${JSON.stringify(send)}`);
+  }
+
+  const confirmed = await waitForTx(server, send.hash);
+  if (confirmed.status !== rpc.Api.GetTransactionStatus.SUCCESS) {
+    throw new Error(`Transaction failed: ${JSON.stringify(confirmed)}`);
+  }
+
+  return { hash: send.hash, confirmed };
 }
 
 function getIdentityPubkey(identity) {
@@ -82,39 +127,58 @@ async function main() {
     cwd: rootDir,
   });
 
-  // 3) Install new wasm
-  let installOut;
-  try {
-    installOut = run(
-      `stellar contract install --wasm "${WASM_OPTIMIZED}" --source ${upgraderIdentity} --network mainnet --rpc-url ${RPC_URL} --network-passphrase "${NETWORK_PASSPHRASE}"`,
-      { cwd: rootDir },
-    );
-  } catch (e) {
-    console.error("\nInstall failed.");
-    console.error(String(e?.stdout || e?.message || e));
-    console.error("\nMost common cause: the upgrader account needs more XLM on mainnet.");
-    console.error(`Fund: ${upgraderPubkey}`);
-    process.exit(1);
-  }
-
-  const wasmHash = parseHash(installOut);
-  if (!wasmHash) {
-    console.error("Failed to parse wasm hash from install output.");
-    process.exit(1);
-  }
+  // 3) Upload wasm (do NOT rely on stellar-cli submission; it can timeout even if RPC is fine).
+  const wasmHash = sha256Hex(path.join(rootDir, WASM_OPTIMIZED));
   console.log(`WASM hash: ${wasmHash}`);
 
-  // 4) Upgrade (writes ledger, must send)
+  const secret = getIdentitySecret(upgraderIdentity);
+  const kp = Keypair.fromSecret(secret);
+  const server = new rpc.Server(RPC_URL);
+
+  console.log("\nUploading WASM...");
+  let alreadyUploaded = false;
   try {
-    runInherit(
-      `stellar contract invoke --id ${contractId} --source-account ${upgraderIdentity} --send yes --network mainnet --rpc-url ${RPC_URL} --network-passphrase "${NETWORK_PASSPHRASE}" -- upgrade --new_wasm_hash ${wasmHash}`,
-      { cwd: rootDir },
-    );
-  } catch (e) {
-    console.error("\nUpgrade invoke failed.");
-    console.error(String(e?.stdout || e?.message || e));
-    process.exit(1);
+    await server.getContractWasmByHash(wasmHash);
+    alreadyUploaded = true;
+  } catch {
+    // not uploaded yet
   }
+
+  if (!alreadyUploaded) {
+    const account = await server.getAccount(kp.publicKey());
+    const uploadOp = Operation.uploadContractWasm({
+      wasm: fs.readFileSync(path.join(rootDir, WASM_OPTIMIZED)),
+    });
+
+    const uploadTx = new TransactionBuilder(account, {
+      fee: "10000000",
+      networkPassphrase: NETWORK_PASSPHRASE || Networks.PUBLIC,
+    })
+      .addOperation(uploadOp)
+      .setTimeout(60)
+      .build();
+
+    const prepared = await server.prepareTransaction(uploadTx);
+    await sendPreparedTx({ server, tx: prepared, kp });
+  } else {
+    console.log("WASM already uploaded (hash exists on-chain).");
+  }
+
+  // 4) Upgrade (writes ledger, must send).
+  console.log("\nUpgrading contract...");
+  const account2 = await server.getAccount(kp.publicKey());
+  const contract = new Contract(contractId);
+  const op = contract.call("upgrade", xdr.ScVal.scvBytes(Buffer.from(wasmHash, "hex")));
+  const upgradeTx = new TransactionBuilder(account2, {
+    fee: "10000000",
+    networkPassphrase: NETWORK_PASSPHRASE || Networks.PUBLIC,
+  })
+    .addOperation(op)
+    .setTimeout(60)
+    .build();
+
+  const preparedUpgrade = await server.prepareTransaction(upgradeTx);
+  await sendPreparedTx({ server, tx: preparedUpgrade, kp });
 
   console.log("\nUpgrade complete.");
   console.log("Next steps:");
@@ -126,4 +190,3 @@ main().catch((e) => {
   console.error(e);
   process.exit(1);
 });
-

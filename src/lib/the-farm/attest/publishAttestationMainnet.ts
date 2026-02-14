@@ -45,12 +45,6 @@ function symbolForTier(tier: Tier): string {
   }
 }
 
-function ensureMainnetConfig(): void {
-  if (!FARM_ATTESTATIONS_CONTRACT_ID_MAINNET.trim()) {
-    throw new Error("Missing PUBLIC_FARM_ATTESTATIONS_CONTRACT_ID_MAINNET");
-  }
-}
-
 function resolveSorobanRpcUrl(): string {
   const fromEnv = MAINNET_RPC_URL.trim();
   if (fromEnv) return fromEnv;
@@ -95,8 +89,6 @@ export async function publishAttestationMainnet(
   input: PublishAttestationInput,
 ): Promise<AttestationResult> {
   try {
-    ensureMainnetConfig();
-
     const statementHash = ensureBytes32Hex(input.statementHash);
     const verifierHash = ensureBytes32Hex(input.verifierHash);
 

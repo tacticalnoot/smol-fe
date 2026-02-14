@@ -60,8 +60,9 @@ ZK status:
   - On-chain: YES (when configured). Uses `farm-attestations.verify_ultrahonk_and_attest`, which delegates proof verification to an upgradeable `ultrahonk-verifier` Soroban contract (VK stored on-chain). If the bridge contract isn't deployed/configured, the app must not claim on-chain verification and will surface an "on-chain disabled" state.
   - Optional on-chain record: YES (digest-only record in `farm-attestations`, not cryptographic verification).
 - RISC0 receipt: local verification only (WASM verifier).
-  - On-chain: NO (this repo does not claim on-chain RISC0 verification).
-  - Optional on-chain record: YES (digest-only record in `farm-attestations`, not cryptographic verification).
+  - On-chain: YES (Groth16 bridge) for ZK Dungeon Room 3.
+    - The dungeon uses a *Groth16/BN254 proof of a RISC0 receipt* and verifies it on-chain using the `farm-attestations` VK registry (`verify_groth16_and_attest`, VK_ID `R0G16V1`).
+  - Optional on-chain record: YES (digest-only record in `farm-attestations.attest`).
 
 Proof artifacts:
 
@@ -147,7 +148,7 @@ Integrity model:
 
 2. Farm Attestations (`contracts/farm-attestations`)
 
-- Contract ID (mainnet): `PUBLIC_FARM_ATTESTATIONS_CONTRACT_ID_MAINNET` (env-config)
+- Contract ID (mainnet): defaults to `CDVJZSMI5KSRK7T6D6GGYVB6UPFCDQLAZAYRGXVJKDBOHLAZOPHHX2FR` (override via `PUBLIC_FARM_ATTESTATIONS_CONTRACT_ID_MAINNET`)
 - Purpose: statement record registry.
   - Baseline: digest-only records via `attest` (no proof verification).
   - Upgraded: optional *universal Groth16/BN254* on-chain verification via admin-registered verification keys (VK registry).
