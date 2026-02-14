@@ -32,8 +32,10 @@ export type DoorDefinition = {
 
 export type FloorDefinition = {
   floor: number;
+  roomId: "intake" | "catalog" | "cold";
   policyName: string;
   briefing: string;
+  verifierType: "GROTH16" | "NOIR_ULTRAHONK" | "RISC0_RECEIPT";
   doors: DoorDefinition[];
 };
 
@@ -95,9 +97,11 @@ export function getFloorDefinition(floor: number): FloorDefinition {
   if (floor === 1) {
     return {
       floor,
+      roomId: "intake",
       policyName: "Minimum Clearance",
       briefing:
         "This wing uses minimum-clearance rules. Read the door tags and choose a policy your credential satisfies.",
+      verifierType: "GROTH16",
       doors: [mkMinTierDoor(0, 0), mkMinTierDoor(1, 1), mkMinTierDoor(2, 2), mkMinTierDoor(3, 3)],
     };
   }
@@ -105,9 +109,11 @@ export function getFloorDefinition(floor: number): FloorDefinition {
   if (floor === 2) {
     return {
       floor,
+      roomId: "catalog",
       policyName: "Role-Based Access",
       briefing:
         "This wing is role-gated. Only the exact matching clearance badge opens the door.",
+      verifierType: "NOIR_ULTRAHONK",
       doors: [mkExactTierDoor(0, 0), mkExactTierDoor(1, 1), mkExactTierDoor(2, 2), mkExactTierDoor(3, 3)],
     };
   }
@@ -115,9 +121,11 @@ export function getFloorDefinition(floor: number): FloorDefinition {
   if (floor === 3) {
     return {
       floor,
+      roomId: "cold",
       policyName: "Two-Factor Policy",
       briefing:
         "Incident response added a second rule: clearance level plus parity. Your proof can be valid yet still fail policy.",
+      verifierType: "RISC0_RECEIPT",
       doors: [
         mkMinTierParityDoor(0, 0, "EVEN"),
         mkMinTierParityDoor(1, 1, "ODD"),
@@ -127,22 +135,7 @@ export function getFloorDefinition(floor: number): FloorDefinition {
     };
   }
 
-  // Floors 4-10: keep deterministic and learnable by reusing a simple progression.
-  // This avoids "randomness" while keeping the game playable for any tier.
-  const parity = parityForTier(floor);
-  const baseline = floor % 4; // 0..3
-  return {
-    floor,
-    policyName: `Clearance Check (F${floor})`,
-    briefing:
-      "Deterministic clearance policy. Read the tags: one door is always compatible with your credential.",
-    doors: [
-      mkMinTierParityDoor(0, 0, parity),
-      mkMinTierParityDoor(1, Math.min(3, baseline), parity),
-      mkMinTierDoor(2, 0),
-      mkExactTierDoor(3, Math.min(3, baseline)),
-    ],
-  };
+  throw new Error(`Unsupported floor=${floor}`);
 }
 
 export function getDoorDefinition(floor: number, doorId: DoorId): DoorDefinition {
@@ -153,4 +146,3 @@ export function getDoorDefinition(floor: number, doorId: DoorId): DoorDefinition
   }
   return door;
 }
-

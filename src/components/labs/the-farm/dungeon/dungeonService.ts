@@ -21,6 +21,7 @@ import {
 
 import { evaluateDoorAttempt } from "../../../../lib/dungeon/evaluateDoorAttempt";
 import { getFloorDefinition } from "../../../../lib/dungeon/policies";
+import { verifyCredential } from "../../../../lib/dungeon/verifyCredential";
 
 const { Server, Api, assembleTransaction } = rpc;
 
@@ -227,6 +228,8 @@ export interface DoorAttemptResult {
     proofOk: boolean;
     txHash: string | null;
     proofType: string;
+    verifierType: string;
+    trainingOnly?: boolean;
     commitment: string | null;
     provingTimeMs: number;
     error: string | null;
@@ -256,38 +259,64 @@ export async function attemptDoor(
     const proofType = getProofTypeForFloor(params.floor);
 
     try {
-        // Generate real Groth16 proof
-        const { generateDoorProof, verifyDoorProofLocally } = await import(
-            "./dungeonProofWorker"
-        );
+        const floorDef = getFloorDefinition(params.floor);
 
-        const proofResult = await generateDoorProof({
-            playerAddress: params.playerAddress || params.contractId || "anonymous",
-            floor: params.floor,
-            doorChoice: params.doorChoice,
-            attemptNonce: params.attemptNonce,
-            lobbyId: params.lobbyId,
-            tierId: params.tierId,
-        });
-
-        // Verify locally (required integrity check)
         let proofOk = false;
-        try {
-            proofOk = await verifyDoorProofLocally(proofResult.proof, proofResult.publicSignals);
-            console.log("[Dungeon] Local verification:", proofOk ? "PASS" : "FAIL");
-        } catch (verifyErr) {
-            console.warn("[Dungeon] Local verification error:", verifyErr);
-            proofOk = false;
-        }
+        let tierId = params.tierId;
+        let commitment: string | null = null;
+        let provingTimeMs = 0;
+        let trainingOnly = false;
+        let verifierType = floorDef.verifierType;
+        let proofTypeLabel = proofType;
 
-        // Use tierId from public signals if we can find it; otherwise fall back to the input tierId.
-        // This ensures the "credential" we evaluate is actually bound to the proof.
-        const tierSignal =
-            Array.isArray(proofResult.publicSignals)
-                ? proofResult.publicSignals.find((s) => s === String(params.tierId)) ?? proofResult.publicSignals[0]
-                : String(params.tierId);
-        const provenTierId = Number.parseInt(String(tierSignal), 10);
-        const tierId = Number.isFinite(provenTierId) ? provenTierId : params.tierId;
+        if (floorDef.verifierType === "GROTH16") {
+            // Generate real Groth16 proof (per attempt)
+            const { generateDoorProof, verifyDoorProofLocally } = await import("./dungeonProofWorker");
+
+            const proofResult = await generateDoorProof({
+                playerAddress: params.playerAddress || params.contractId || "anonymous",
+                floor: params.floor,
+                doorChoice: params.doorChoice,
+                attemptNonce: params.attemptNonce,
+                lobbyId: params.lobbyId,
+                tierId: params.tierId,
+            });
+
+            commitment = proofResult.commitment;
+            provingTimeMs = proofResult.provingTimeMs;
+            proofTypeLabel = proofResult.proofType;
+
+            // Verify locally (required integrity check)
+            try {
+                proofOk = await verifyDoorProofLocally(proofResult.proof, proofResult.publicSignals);
+                console.log("[Dungeon] Local verification:", proofOk ? "PASS" : "FAIL");
+            } catch (verifyErr) {
+                console.warn("[Dungeon] Local verification error:", verifyErr);
+                proofOk = false;
+            }
+
+            // Prefer tierId from public signals (binds credential summary to the proof).
+            const tierSignal =
+                Array.isArray(proofResult.publicSignals)
+                    ? proofResult.publicSignals.find((s) => s === String(params.tierId)) ?? proofResult.publicSignals[0]
+                    : String(params.tierId);
+            const provenTierId = Number.parseInt(String(tierSignal), 10);
+            tierId = Number.isFinite(provenTierId) ? provenTierId : params.tierId;
+        } else {
+            // Noir / RISC0: verify a training credential artifact (cryptographically real verifier),
+            // selected by tierId. This is explicitly labeled as training-only in the UI.
+            const cred = await verifyCredential({ verifierType: floorDef.verifierType, tierId: params.tierId });
+            proofOk = cred.ok;
+            tierId = cred.tierId;
+            provingTimeMs = cred.durationMs;
+            trainingOnly = cred.trainingOnly;
+
+            if (floorDef.verifierType === "NOIR_ULTRAHONK") {
+                proofTypeLabel = "UltraHonk (Noir)";
+            } else if (floorDef.verifierType === "RISC0_RECEIPT") {
+                proofTypeLabel = "RISC0 Receipt (zkVM)";
+            }
+        }
 
         const outcome = evaluateDoorAttempt({
             floor: params.floor,
@@ -309,9 +338,11 @@ export async function attemptDoor(
             tierId,
             proofOk,
             txHash: null, // On-chain submission in next iteration
-            proofType: proofResult.proofType,
-            commitment: proofResult.commitment,
-            provingTimeMs: proofResult.provingTimeMs,
+            proofType: proofTypeLabel,
+            verifierType,
+            trainingOnly,
+            commitment,
+            provingTimeMs,
             error: null,
         };
     } catch (err: any) {
@@ -342,6 +373,7 @@ export async function attemptDoor(
             proofOk: false,
             txHash: null,
             proofType,
+            verifierType: floorDef.verifierType,
             commitment: null,
             provingTimeMs: 0,
             error: msg,
@@ -353,6 +385,7 @@ export async function attemptDoor(
 
 /** Map floor number to proof framework label */
 export function getProofTypeForFloor(floor: number): string {
+    // Historically, floors were all Groth16. The room can override with Noir/RISC0 in attemptDoor.
     return "Groth16 (Circom)";
 }
 

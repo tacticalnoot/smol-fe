@@ -85,8 +85,14 @@ test('zkdungeon solo floors 1-3 are learnable from policy tags (no guessing)', a
   await expect(page.getByRole('button', { name: 'PLAY SOLO' })).toBeVisible();
   await page.getByRole('button', { name: 'PLAY SOLO' }).click();
 
+  // Room 0: airlock (demo continues without wallet).
+  await expect(page.getByRole('button', { name: 'ENTER INTAKE WING →' })).toBeVisible();
+  // The airlock has long-form lore; ensure the primary action is in the viewport before clicking.
+  await page.getByRole('button', { name: 'ENTER INTAKE WING →' }).scrollIntoViewIfNeeded();
+  await page.getByRole('button', { name: 'ENTER INTAKE WING →' }).click();
+
   // Floor 1: choose an intentionally wrong door and validate forensic mismatch.
-  await expect(page.locator('.dg-hud-floor')).toContainText('FLOOR 1/10');
+  await expect(page.locator('.dg-hud-floor')).toContainText('ROOM 1/3');
   const wrongDoor = page
     .locator('.dg-doors .dg-door')
     .filter({ has: page.locator('.dg-door-tag', { hasText: 'MIN ≥ 3' }) })
@@ -101,7 +107,7 @@ test('zkdungeon solo floors 1-3 are learnable from policy tags (no guessing)', a
     .filter({ has: page.locator('.dg-door-tag', { hasText: 'MIN ≥ 0' }) })
     .first();
   await f1Right.click();
-  await expect(page.locator('.dg-hud-floor')).toContainText('FLOOR 2/10');
+  await expect(page.locator('.dg-hud-floor')).toContainText('ROOM 2/3');
 
   // Floor 2: exact tier match (ROLE = 0).
   const f2Right = page
@@ -109,7 +115,7 @@ test('zkdungeon solo floors 1-3 are learnable from policy tags (no guessing)', a
     .filter({ has: page.locator('.dg-door-tag', { hasText: 'ROLE = 0' }) })
     .first();
   await f2Right.click();
-  await expect(page.locator('.dg-hud-floor')).toContainText('FLOOR 3/10');
+  await expect(page.locator('.dg-hud-floor')).toContainText('ROOM 3/3');
 
   // Floor 3: two-factor (MIN ≥ 0 + EVEN) for Tier 0.
   const f3Right = page
@@ -118,7 +124,8 @@ test('zkdungeon solo floors 1-3 are learnable from policy tags (no guessing)', a
     .filter({ has: page.locator('.dg-door-tag', { hasText: 'EVEN' }) })
     .first();
   await f3Right.click();
-  await expect(page.locator('.dg-hud-floor')).toContainText('FLOOR 4/10');
+  // After room 3 clears, you should reach the ledger chamber.
+  await expect(page.locator('.dg-stamp-title')).toContainText('WITHDRAWAL RECORD (MAINNET)');
 });
 
 test('labs crawl: /labs forward links are reachable', async ({ page }) => {

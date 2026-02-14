@@ -2,21 +2,32 @@
     import { userState } from "../../../../stores/user.svelte.ts";
     import { evaluateDoorAttempt, type Mode as DungeonMode } from "../../../../lib/dungeon/evaluateDoorAttempt";
     import { getFloorDefinition, type DoorDefinition, type DoorId } from "../../../../lib/dungeon/policies";
+    import { dungeonLore, type DungeonRoomId } from "../../../../data/dungeon/lore";
+    import { publishDungeonStampMainnet, type DungeonStampKind } from "../../../../lib/dungeon/publishDungeonStampMainnet";
+    import { sha256Hex, sha256HexOfJson } from "../../../../lib/the-farm/digest";
     import {
         attemptDoor as submitDoorAttempt,
         txExplorerUrl,
     } from "./dungeonService";
 
     // ── Game State ──────────────────────────────────────────────────────
-    type GamePhase = "title" | "lobby" | "playing" | "victory" | "defeat";
+    type GamePhase = "title" | "lobby" | "airlock" | "playing" | "ledger" | "victory" | "defeat";
     type LobbyRole = "host" | "guest" | null;
     type DoorState = "idle" | "proving" | "correct" | "wrong";
     type RelayStatus = "disconnected" | "connecting" | "connected" | "error";
 
-    const TOTAL_FLOORS = 10;
-    const GATE_FLOORS = [1, 5];
+    const TOTAL_FLOORS = 3;
+    const GATE_FLOORS = [1];
 
     let phase = $state<GamePhase>("title");
+    let runId = $state<string>("");
+    let runStartedAt = $state<number>(0);
+    let entryStamp = $state<{ status: "idle" | "simulating" | "assembling" | "signing" | "submitted" | "confirmed" | "error"; txHash?: string; error?: string }>(
+        { status: "idle" }
+    );
+    let withdrawalStamp = $state<{ status: "idle" | "simulating" | "assembling" | "signing" | "submitted" | "confirmed" | "error"; txHash?: string; error?: string }>(
+        { status: "idle" }
+    );
     let lobbyCode = $state<string>("");
     let lobbyInput = $state<string>("");
     let lobbyRole = $state<LobbyRole>(null);
@@ -96,6 +107,39 @@
     let opponentProgress = $derived(relayRoster.find((r) => r.account !== walletAddress) || null);
     let opponentReady = $derived(!!opponentProgress && opponentProgress.ready);
     let multiplayerEnabled = $derived(relayToken.length > 0 && relayRoster.length >= 2);
+    let roomId = $derived<DungeonRoomId>(
+        phase === "airlock" ? "airlock" : phase === "ledger" || phase === "victory" ? "ledger" : floorDef.roomId
+    );
+    let roomLore = $derived(dungeonLore[roomId]);
+    let roomHeaderArt = $derived<string>(
+        roomId === "airlock"
+            ? "/labs/zkdungeon/art/room-airlock.webp"
+            : roomId === "intake"
+                ? "/labs/zkdungeon/art/room-intake.webp"
+                : roomId === "catalog"
+                    ? "/labs/zkdungeon/art/room-catalog.webp"
+                    : roomId === "cold"
+                        ? "/labs/zkdungeon/art/room-cold.webp"
+                        : "/labs/zkdungeon/art/room-ledger.webp"
+    );
+    let guardianArt = $derived<string>(
+        roomId === "catalog"
+            ? "/labs/zkdungeon/art/guardian-noir.webp"
+            : roomId === "cold"
+                ? "/labs/zkdungeon/art/guardian-risc0.webp"
+                : "/labs/zkdungeon/art/guardian-groth16.webp"
+    );
+    let verifierBadgeArt = $derived<string>(
+        roomId === "catalog"
+            ? "/labs/zkdungeon/art/badge-noir.webp"
+            : roomId === "cold"
+                ? "/labs/zkdungeon/art/badge-risc0.webp"
+                : "/labs/zkdungeon/art/badge-groth16.webp"
+    );
+
+    function txExplorerUrlMainnet(txHash: string): string {
+        return `https://stellar.expert/explorer/public/tx/${txHash}`;
+    }
 
     function doorDef(doorId: DoorId): DoorDefinition {
         return floorDef.doors.find((d) => d.id === doorId) as DoorDefinition;
@@ -265,6 +309,8 @@
     }
 
     async function createLobby() {
+        warmupDungeonVerifiers();
+
         lobbyCode = generateLobbyCode();
         lobbyRole = "host";
         playerName = walletLabel || "Seeker-1";
@@ -282,6 +328,8 @@
     }
 
     async function joinLobby() {
+        warmupDungeonVerifiers();
+
         if (lobbyInput.length < 4) return;
         lobbyCode = lobbyInput.toUpperCase();
         lobbyRole = "guest";
@@ -408,7 +456,7 @@
                     txHash: null,
                     timestamp: Date.now(),
                 });
-                phase = "victory";
+                phase = "ledger";
             } else {
                 // Advance to next floor
                 floorTransition = true;
@@ -497,7 +545,92 @@
         }
     }
 
+    async function proceedFromAirlock() {
+        // Gameplay begins after Room 0. (Room 0 can be recorded on-chain, but demo mode can proceed without it.)
+        await startGameLocal();
+    }
+
+    let zkWarmupStarted = false;
+    function warmupDungeonVerifiers(): void {
+        if (zkWarmupStarted) return;
+        zkWarmupStarted = true;
+
+        // Preload Noir (bb.js backend) + RISC0 WASM verifier in the background.
+        // This keeps Room 2/3 transitions snappy and avoids "first-verify" stalls.
+        void (async () => {
+            try {
+                const [{ preloadNoirVerifier }, { preloadRisc0Verifier }, noirBundle] = await Promise.all([
+                    import("../../../../lib/the-farm/verifiers/noir"),
+                    import("../../../../lib/the-farm/verifiers/risc0"),
+                    import("../../../../data/the-farm/noirBundle"),
+                ]);
+                preloadNoirVerifier(noirBundle.noirVerifierBytecode);
+                preloadRisc0Verifier();
+            } catch {
+                // Non-fatal; verifier calls will surface any real issues.
+            }
+        })();
+    }
+
+    async function stampOnChain(kind: DungeonStampKind) {
+        if (!userState.contractId || !userState.keyId) {
+            throw new Error("Connect your passkey wallet first.");
+        }
+
+        const plan = ["GROTH16", "NOIR_ULTRAHONK", "RISC0_RECEIPT"];
+        const statementHash = await sha256HexOfJson({
+            dungeon: "kale-seed-vault",
+            kind,
+            runId,
+            startedAt: runStartedAt,
+            plan,
+            floorsCompleted: currentFloor - 1,
+            attempts,
+        });
+        const verifierHash = await sha256Hex(`zkdungeon:stamp:v1:${kind}`);
+
+        const target = kind === "ENTRY" ? entryStamp : withdrawalStamp;
+        if (target.status === "simulating" || target.status === "assembling" || target.status === "signing") return;
+
+        if (kind === "ENTRY") entryStamp = { status: "simulating" };
+        else withdrawalStamp = { status: "simulating" };
+
+        const res = await publishDungeonStampMainnet({
+            owner: userState.contractId,
+            keyId: userState.keyId,
+            kind,
+            statementHash,
+            verifierHash,
+            onStage: (stage) => {
+                const update = (tx: typeof entryStamp) => {
+                    if (kind === "ENTRY") entryStamp = tx;
+                    else withdrawalStamp = tx;
+                };
+                if (stage === "simulating") update({ status: "simulating" });
+                if (stage === "assembling") update({ status: "assembling" });
+                if (stage === "signing") update({ status: "signing" });
+                if (stage === "submitted") update({ status: "submitted" });
+                if (stage === "confirmed") update({ status: "confirmed" });
+            },
+        });
+
+        if (!res.ok) {
+            if (kind === "ENTRY") entryStamp = { status: "error", error: res.error, txHash: res.txHash };
+            else withdrawalStamp = { status: "error", error: res.error, txHash: res.txHash };
+            return;
+        }
+
+        if (kind === "ENTRY") entryStamp = { status: "confirmed", txHash: res.txHash };
+        else withdrawalStamp = { status: "confirmed", txHash: res.txHash };
+    }
+
+    function finishRun() {
+        phase = "victory";
+    }
+
     async function playSolo() {
+        warmupDungeonVerifiers();
+
         lobbyCode = "SOLO";
         lobbyRole = null;
         playerName = walletLabel || "Solo Seeker";
@@ -507,7 +640,13 @@
         relayStatus = "disconnected";
         relayError = null;
         stopRelayPolling();
-        await startGameLocal();
+
+        // Initialize a new run and enter the Airlock (Room 0) before gameplay.
+        runId = crypto.randomUUID();
+        runStartedAt = Date.now();
+        entryStamp = { status: "idle" };
+        withdrawalStamp = { status: "idle" };
+        phase = "airlock";
     }
 
     // Door symbols
@@ -520,9 +659,9 @@
 <div class="dg-root dg-title-screen">
     <div class="dg-stars"></div>
     <div class="dg-title-content">
-        <p class="dg-eyebrow">CHAPTER 3</p>
-        <h1 class="dg-game-title">STELLAR ZK DUNGEON</h1>
-        <p class="dg-subtitle">10 floors. 4 doors. Every choice is a zero-knowledge proof generated in your browser.</p>
+        <p class="dg-eyebrow">THE FARM LABS</p>
+        <h1 class="dg-game-title">KALE-SEED VAULT</h1>
+        <p class="dg-subtitle">A guided compliance run through three protocol wings: Groth16 → Noir → RISC0. Two optional mainnet passkey audit stamps.</p>
 
         <div class="dg-title-actions">
             <button class="dg-btn dg-btn-primary" onclick={playSolo}>
@@ -603,29 +742,29 @@
             <div class="dg-hiw-item">
                 <span class="dg-hiw-num">1</span>
                 <div>
-                    <strong>Choose a door</strong>
-                    <p>Each floor has 4 rune-sealed doors. Pick one.</p>
+                    <strong>Airlock (optional mainnet stamp)</strong>
+                    <p>Stamp entry as a digest-only audit record via passkey (reviewer-proof), or proceed in demo mode.</p>
                 </div>
             </div>
             <div class="dg-hiw-item">
                 <span class="dg-hiw-num">2</span>
                 <div>
-                    <strong>Prove your choice</strong>
-                    <p>A ZK proof is generated in your browser — your secret stays hidden.</p>
+                    <strong>Read the placard, then choose a door</strong>
+                    <p>Doors show explicit policy tags. A valid credential can still be denied if the policy mismatch is real.</p>
                 </div>
             </div>
             <div class="dg-hiw-item">
                 <span class="dg-hiw-num">3</span>
                 <div>
-                    <strong>Verify locally</strong>
-                    <p>The proof is verified locally in your browser. On-chain verification is not wired for the dungeon yet.</p>
+                    <strong>Verifier changes by room</strong>
+                    <p>Room 1 uses Groth16 per attempt. Rooms 2–3 run real Noir/RISC0 verifiers on training credentials (explicitly labeled).</p>
                 </div>
             </div>
             <div class="dg-hiw-item">
                 <span class="dg-hiw-num">4</span>
                 <div>
-                    <strong>Race to floor 10</strong>
-                    <p>Co-op gates on floors 1 & 5. Dungeon proofs are Groth16/Circom locally verified only.</p>
+                    <strong>Ledger chamber (optional mainnet record)</strong>
+                    <p>Record a completion digest on-chain via passkey. This is a record, not on-chain proof verification.</p>
                 </div>
             </div>
         </div>
@@ -636,6 +775,73 @@
         <a href="/labs/the-farm" class="dg-footer-link">DASHBOARD</a>
         <span class="dg-footer-sep">|</span>
         <button class="dg-footer-link" onclick={toggleFullscreen}>FULLSCREEN</button>
+    </div>
+</div>
+
+<!-- ── Lobby ──────────────────────────────────────────────────────── -->
+{:else if phase === "airlock"}
+<div class="dg-root dg-vault-screen dg-airlock">
+    <div class="dg-vault-bg" aria-hidden="true"></div>
+    <div class="dg-vault-shell">
+        <button class="dg-back-btn" onclick={resetGame}>&larr; BACK</button>
+
+        <div class="dg-vault-header">
+            <img class="dg-room-art" src={roomHeaderArt} alt="" loading="eager" />
+            <div class="dg-vault-roomtitle">
+                <p class="dg-eyebrow">THE KALE-SEED VAULT</p>
+                <h2 class="dg-lobby-title">{roomLore.roomTitle}</h2>
+                <p class="dg-subtitle">{roomLore.roomSubtitle}</p>
+            </div>
+        </div>
+
+        <div class="dg-vault-grid">
+            <section class="dg-panel dg-panel-lore" aria-label="Lore Scroll">
+                <div class="dg-panel-head">LORE SCROLL</div>
+                {#each roomLore.briefingMarkdown.split("\n\n") as para (para)}
+                    <p class="dg-lore-p">{para}</p>
+                {/each}
+            </section>
+
+            <section class="dg-panel dg-panel-placard" aria-label="Protocol Placard">
+                <div class="dg-panel-head">PROTOCOL PLACARD</div>
+                <p class="dg-placard">{roomLore.protocolPlacard}</p>
+                <div class="dg-placard-sub">{roomLore.verifierExplainer}</div>
+
+                <div class="dg-stamp-box">
+                    <div class="dg-stamp-title">ENTRY STAMP (MAINNET)</div>
+                    <div class="dg-stamp-status">STATUS: {entryStamp.status.toUpperCase()}</div>
+                    {#if entryStamp.txHash}
+                        <a class="dg-stamp-link" href={txExplorerUrlMainnet(entryStamp.txHash)} target="_blank" rel="noreferrer">
+                            VIEW TX {entryStamp.txHash.slice(0, 8)}...
+                        </a>
+                    {/if}
+                    {#if entryStamp.error}
+                        <div class="dg-stamp-error">{entryStamp.error}</div>
+                    {/if}
+
+                    {#if isConnected}
+                        <button
+                            class="dg-btn dg-btn-primary"
+                            disabled={entryStamp.status === "simulating" || entryStamp.status === "assembling" || entryStamp.status === "signing"}
+                            onclick={() => stampOnChain("ENTRY")}
+                        >
+                            STAMP ENTRY ON-CHAIN (PASSKEY)
+                        </button>
+                    {:else}
+                        <button class="dg-btn dg-btn-secondary" onclick={connectWallet}>CONNECT WALLET (PASSKEY)</button>
+                    {/if}
+                </div>
+
+                <div class="dg-vault-actions">
+                    <button class="dg-btn dg-btn-primary" onclick={proceedFromAirlock}>
+                        ENTER INTAKE WING →
+                    </button>
+                    {#if !isConnected}
+                        <p class="dg-hint">Demo mode: you can proceed without an on-chain entry stamp.</p>
+                    {/if}
+                </div>
+            </section>
+        </div>
     </div>
 </div>
 
@@ -707,157 +913,294 @@
 
 <!-- ── Playing ────────────────────────────────────────────────────── -->
 {:else if phase === "playing"}
-<div class="dg-root dg-game-screen" class:dg-floor-transition={floorTransition}>
-    <!-- HUD -->
-    <div class="dg-hud">
-        <div class="dg-hud-left">
-            <span class="dg-hud-floor">FLOOR {currentFloor}/{TOTAL_FLOORS}</span>
-            <span class="dg-hud-proof-type">GROTH16 (LOCAL)</span>
-        </div>
-        <div class="dg-hud-center">
-            <div class="dg-progress-bar">
-                <div class="dg-progress-fill" style="width: {progressPct}%"></div>
-            </div>
-        </div>
-        <div class="dg-hud-right">
-            <span class="dg-hud-attempts">ATTEMPTS: {attempts}</span>
-            {#if multiplayerEnabled && opponentProgress}
-                <span class="dg-hud-opponent">
-                    P2 F{opponentProgress.floor} A{opponentProgress.attempts}
+<div class="dg-root dg-vault-screen dg-game" class:dg-floor-transition={floorTransition}>
+    <div class="dg-vault-bg" aria-hidden="true"></div>
+    <div class="dg-vault-shell">
+        <!-- HUD -->
+        <div class="dg-hud">
+            <div class="dg-hud-left">
+                <span class="dg-hud-floor">ROOM {currentFloor}/{TOTAL_FLOORS}</span>
+                <span class="dg-hud-proof-type">
+                    {#if floorDef.verifierType === "GROTH16"}
+                        VERIFIER: GROTH16 (BN254)
+                    {:else if floorDef.verifierType === "NOIR_ULTRAHONK"}
+                        VERIFIER: ULTRAHONK (NOIR)
+                    {:else}
+                        VERIFIER: RISC0 RECEIPT (ZKVM)
+                    {/if}
+                    {#if floorDef.verifierType !== "GROTH16"}
+                        <span class="dg-proof-note">TRAINING CREDENTIAL</span>
+                    {/if}
                 </span>
-            {/if}
-            <button class="dg-hud-btn" onclick={toggleFullscreen}>
-                {fullscreen ? "EXIT FS" : "FS"}
-            </button>
+            </div>
+            <div class="dg-hud-center">
+                <div class="dg-progress-bar">
+                    <div class="dg-progress-fill" style="width: {progressPct}%"></div>
+                </div>
+            </div>
+            <div class="dg-hud-right">
+                <span class="dg-hud-attempts">ATTEMPTS: {attempts}</span>
+                {#if multiplayerEnabled && opponentProgress}
+                    <span class="dg-hud-opponent">
+                        P2 R{opponentProgress.floor} A{opponentProgress.attempts}
+                    </span>
+                {/if}
+                <button class="dg-hud-btn" onclick={toggleFullscreen}>
+                    {fullscreen ? "EXIT FS" : "FS"}
+                </button>
+            </div>
+        </div>
+
+        <div class="dg-room-grid">
+            <!-- Left: Lore + placard + forensics -->
+            <section class="dg-panel dg-panel-lore" aria-label="Lore Scroll">
+                <div class="dg-panel-head">LORE SCROLL</div>
+                <div class="dg-room-title">{roomLore.roomTitle}</div>
+                <div class="dg-room-sub">{roomLore.roomSubtitle}</div>
+                {#each roomLore.briefingMarkdown.split("\n\n") as para (para)}
+                    <p class="dg-lore-p">{para}</p>
+                {/each}
+
+                <div class="dg-panel-split"></div>
+                <div class="dg-panel-head">PROTOCOL PLACARD</div>
+                <p class="dg-placard">{roomLore.protocolPlacard}</p>
+                <div class="dg-placard-sub">{roomLore.verifierExplainer}</div>
+
+                {#if lastForensics}
+                    <div class="dg-panel-split"></div>
+                    <div class="dg-panel-head">FORENSICS</div>
+                    <div class="dg-forensics dg-forensics-{lastForensics.accepted ? 'ok' : 'no'}" aria-live="polite">
+                        <p class="dg-forensics-outcome">
+                            {lastForensics.accepted ? "ACCESS GRANTED" : "ACCESS DENIED"}
+                        </p>
+                        <p class="dg-forensics-why">{lastForensics.reasonHuman}</p>
+                        <div class="dg-forensics-grid">
+                            <div class="dg-forensics-item">
+                                <span class="k">Door Policy</span>
+                                <span class="v">{lastForensics.forensics.policyRule}</span>
+                            </div>
+                            <div class="dg-forensics-item">
+                                <span class="k">Verifier</span>
+                                <span class="v">
+                                    {lastForensics.proofOk ? "PROOF VALID" : "PROOF INVALID"}
+                                    {#if lastForensics.trainingOnly}
+                                        <span class="dg-proof-note">TRAINING</span>
+                                    {/if}
+                                </span>
+                            </div>
+                            <div class="dg-forensics-item">
+                                <span class="k">Your Credential</span>
+                                <span class="v">{lastForensics.forensics.yourCredentialSummary}</span>
+                            </div>
+                            <div class="dg-forensics-item">
+                                <span class="k">Mismatch</span>
+                                <span class="v">{lastForensics.forensics.mismatchExplanation}</span>
+                            </div>
+                            <div class="dg-forensics-item">
+                                <span class="k">Next Action</span>
+                                <span class="v">{lastForensics.forensics.nextAction}</span>
+                            </div>
+                        </div>
+
+                        {#if trainingMode && lastForensics.debug}
+                            <div class="dg-forensics-debug">
+                                <p class="dg-debug-title">TRAINING: COMPARISON TRACE</p>
+                                <ul class="dg-debug-list">
+                                    {#each lastForensics.debug.comparisons as line}
+                                        <li>{line}</li>
+                                    {/each}
+                                </ul>
+                            </div>
+                        {/if}
+                    </div>
+                {/if}
+            </section>
+
+            <!-- Center: Doors -->
+            <section class="dg-panel dg-panel-doors" aria-label="Doors">
+                <div class="dg-floor-header">
+                    <h2 class="dg-floor-name">POLICY: {floorDef.policyName}</h2>
+                    <p class="dg-floor-desc">{floorDef.briefing}</p>
+                    <div class="dg-floor-controls">
+                        <label class="dg-toggle">
+                            <input type="checkbox" bind:checked={trainingMode} />
+                            <span>TRAINING MODE</span>
+                        </label>
+                        <span class="dg-hint-pill">CLEARANCE: TIER {effectiveTierId}</span>
+                        {#if attestedTierId !== null}
+                            <span class="dg-cred-source">ON-CHAIN</span>
+                        {:else}
+                            <span class="dg-cred-source dg-cred-source-demo">DEMO</span>
+                        {/if}
+                    </div>
+                </div>
+
+                {#if gateWaiting}
+                    <div class="dg-gate-overlay">
+                        <div class="dg-gate-panel">
+                            <p class="dg-gate-title">CO-OP GATE</p>
+                            <p class="dg-gate-desc">Waiting for both auditors to reach this room...</p>
+                            <div class="dg-gate-spinner"></div>
+                        </div>
+                    </div>
+                {:else}
+                    <div class="dg-doors">
+                        {#each doorStates as state, i}
+                            {@const def = doorDef(i as any)}
+                            <button
+                                class="dg-door dg-door-{state}"
+                                class:dg-door-suggested={trainingMode && doorWouldAccept(def)}
+                                disabled={state !== "idle" || activeDoor !== null}
+                                onclick={() => chooseDoor(i)}
+                            >
+                                <span class="dg-door-rune">{DOOR_SYMBOLS[i]}</span>
+                                <span class="dg-door-label">DOOR {i + 1}</span>
+                                <div class="dg-door-tags" aria-label="Door policy tags">
+                                    {#each def.tags as tag}
+                                        <span class="dg-door-tag">{tag.short}</span>
+                                    {/each}
+                                </div>
+                                {#if state === "proving"}
+                                    <span class="dg-door-status">VERIFYING...</span>
+                                {:else if state === "correct"}
+                                    <span class="dg-door-status dg-status-correct">OPENED</span>
+                                {:else if state === "wrong"}
+                                    <span class="dg-door-status dg-status-wrong">SEALED</span>
+                                {/if}
+                                <div class="dg-door-glow" style="--door-color: {DOOR_COLORS[i]}"></div>
+                            </button>
+                        {/each}
+                    </div>
+                {/if}
+            </section>
+
+            <!-- Right: Notebook / log -->
+            <section class="dg-panel dg-panel-notebook" aria-label="Runner's Notebook">
+                <div class="dg-panel-head">RUNNER'S NOTEBOOK</div>
+                <div class="dg-notebook-art">
+                    <img class="dg-notebook-guardian" src={guardianArt} alt="" loading="lazy" />
+                    <img class="dg-notebook-badge" src={verifierBadgeArt} alt="" loading="lazy" />
+                </div>
+                <div class="dg-note-line">
+                    RUN ID: <span class="dg-mono">{runId ? runId.slice(0, 8) + "..." : "—"}</span>
+                </div>
+                <div class="dg-note-line">
+                    ENTRY STAMP: <span class="dg-mono">{entryStamp.status}</span>
+                    {#if entryStamp.txHash}
+                        <a class="dg-mini-link" href={txExplorerUrlMainnet(entryStamp.txHash)} target="_blank" rel="noreferrer">tx</a>
+                    {/if}
+                </div>
+                <div class="dg-note-line">
+                    WITHDRAWAL: <span class="dg-mono">{withdrawalStamp.status}</span>
+                    {#if withdrawalStamp.txHash}
+                        <a class="dg-mini-link" href={txExplorerUrlMainnet(withdrawalStamp.txHash)} target="_blank" rel="noreferrer">tx</a>
+                    {/if}
+                </div>
+
+                <div class="dg-panel-split"></div>
+                <div class="dg-run-log">
+                    <div class="dg-run-log-header">
+                        <span>RUN LOG</span>
+                        <span class="dg-run-log-count">{runLog.length}</span>
+                    </div>
+                    <div class="dg-run-log-entries">
+                        {#each runLog.toReversed() as entry}
+                            <div class="dg-log-entry dg-log-{entry.result}">
+                                {#if entry.floor === 0}
+                                    <span class="dg-log-text">Run initialized</span>
+                                {:else if entry.door === -1}
+                                    <span class="dg-log-text">Puzzle rooms cleared</span>
+                                {:else}
+                                    <span class="dg-log-floor">R{entry.floor}</span>
+                                    <span class="dg-log-door">D{entry.door + 1}</span>
+                                    <span class="dg-log-result">{entry.result === "correct" ? "OK" : "MISS"}</span>
+                                    <span class="dg-log-proof">{entry.proofType}</span>
+                                    {#if entry.verified}
+                                        <span class="dg-log-verified">ZK</span>
+                                    {/if}
+                                    {#if entry.provingTimeMs}
+                                        <span class="dg-log-time">{entry.provingTimeMs}ms</span>
+                                    {/if}
+                                {/if}
+                                <span class="dg-log-tx dg-log-tx-pending">--</span>
+                            </div>
+                        {/each}
+                    </div>
+                </div>
+
+                <div class="dg-panel-split"></div>
+                <p class="dg-hint">
+                    Rooms 2–3 use verified training credentials (real verifiers) unless live proving is added later.
+                </p>
+                <img class="dg-notebook-blueprint" src="/labs/zkdungeon/art/vault-blueprint-map.webp" alt="" loading="lazy" />
+            </section>
         </div>
     </div>
+</div>
 
-    <!-- Floor Content -->
-    <div class="dg-floor-area">
-        <div class="dg-floor-header">
-            <h2 class="dg-floor-name">POLICY: {floorDef.policyName}</h2>
-            <p class="dg-floor-desc">{floorDef.briefing}</p>
-            <div class="dg-floor-controls">
-                <label class="dg-toggle">
-                    <input type="checkbox" bind:checked={trainingMode} />
-                    <span>TRAINING MODE</span>
-                </label>
-                <span class="dg-hint-pill">CLEARANCE: TIER {effectiveTierId}</span>
+<!-- ── Ledger Chamber ──────────────────────────────────────────────── -->
+{:else if phase === "ledger"}
+<div class="dg-root dg-vault-screen dg-ledger">
+    <div class="dg-vault-bg" aria-hidden="true"></div>
+    <div class="dg-vault-shell">
+        <button class="dg-back-btn" onclick={resetGame}>&larr; BACK</button>
+
+        <div class="dg-vault-header">
+            <img class="dg-room-art" src={roomHeaderArt} alt="" loading="eager" />
+            <div class="dg-vault-roomtitle">
+                <p class="dg-eyebrow">THE KALE-SEED VAULT</p>
+                <h2 class="dg-lobby-title">{roomLore.roomTitle}</h2>
+                <p class="dg-subtitle">{roomLore.roomSubtitle}</p>
             </div>
         </div>
 
-        {#if lastForensics}
-        <div class="dg-forensics dg-forensics-{lastForensics.accepted ? 'ok' : 'no'}" aria-live="polite">
-            <p class="dg-forensics-outcome">
-                {lastForensics.accepted ? "ACCESS GRANTED" : "ACCESS DENIED"}
-            </p>
-            <p class="dg-forensics-why">
-                {lastForensics.reasonHuman}
-            </p>
-            <div class="dg-forensics-grid">
-                <div class="dg-forensics-item">
-                    <span class="k">Door Policy</span>
-                    <span class="v">{lastForensics.forensics.policyRule}</span>
-                </div>
-                <div class="dg-forensics-item">
-                    <span class="k">Your Credential</span>
-                    <span class="v">{lastForensics.forensics.yourCredentialSummary}</span>
-                </div>
-                <div class="dg-forensics-item">
-                    <span class="k">Mismatch</span>
-                    <span class="v">{lastForensics.forensics.mismatchExplanation}</span>
-                </div>
-                <div class="dg-forensics-item">
-                    <span class="k">Next Action</span>
-                    <span class="v">{lastForensics.forensics.nextAction}</span>
-                </div>
-            </div>
+        <div class="dg-vault-grid">
+            <section class="dg-panel dg-panel-lore" aria-label="Lore Scroll">
+                <div class="dg-panel-head">LORE SCROLL</div>
+                {#each roomLore.briefingMarkdown.split("\n\n") as para (para)}
+                    <p class="dg-lore-p">{para}</p>
+                {/each}
+            </section>
 
-            {#if trainingMode && lastForensics.debug}
-            <div class="dg-forensics-debug">
-                <p class="dg-debug-title">TRAINING: COMPARISON TRACE</p>
-                <ul class="dg-debug-list">
-                    {#each lastForensics.debug.comparisons as line}
-                        <li>{line}</li>
-                    {/each}
-                </ul>
-            </div>
-            {/if}
-        </div>
-        {/if}
+            <section class="dg-panel dg-panel-placard" aria-label="Protocol Placard">
+                <div class="dg-panel-head">PROTOCOL PLACARD</div>
+                <p class="dg-placard">{roomLore.protocolPlacard}</p>
+                <div class="dg-placard-sub">{roomLore.verifierExplainer}</div>
 
-        {#if gateWaiting}
-        <div class="dg-gate-overlay">
-            <div class="dg-gate-panel">
-                <p class="dg-gate-title">CO-OP GATE</p>
-                <p class="dg-gate-desc">Waiting for both seekers to reach this floor...</p>
-                <div class="dg-gate-spinner"></div>
-            </div>
-        </div>
-        {:else}
-        <!-- 4 Doors -->
-        <div class="dg-doors">
-            {#each doorStates as state, i}
-            {@const def = doorDef(i as any)}
-            <button
-                class="dg-door dg-door-{state}"
-                class:dg-door-suggested={trainingMode && doorWouldAccept(def)}
-                disabled={state !== "idle" || activeDoor !== null}
-                onclick={() => chooseDoor(i)}
-            >
-                <span class="dg-door-rune">{DOOR_SYMBOLS[i]}</span>
-                <span class="dg-door-label">DOOR {i + 1}</span>
-                <div class="dg-door-tags" aria-label="Door policy tags">
-                    {#each def.tags as tag}
-                        <span class="dg-door-tag">{tag.short}</span>
-                    {/each}
-                </div>
-                {#if state === "proving"}
-                    <span class="dg-door-status">PROVING...</span>
-                {:else if state === "correct"}
-                    <span class="dg-door-status dg-status-correct">OPENED</span>
-                {:else if state === "wrong"}
-                    <span class="dg-door-status dg-status-wrong">SEALED</span>
-                {/if}
-                <div class="dg-door-glow" style="--door-color: {DOOR_COLORS[i]}"></div>
-            </button>
-            {/each}
-        </div>
-        {/if}
-    </div>
-
-    <!-- Run Log -->
-    <div class="dg-run-log">
-        <div class="dg-run-log-header">
-            <span>RUN LOG</span>
-            <span class="dg-run-log-count">{runLog.length}</span>
-        </div>
-        <div class="dg-run-log-entries">
-            {#each runLog.toReversed() as entry}
-            <div class="dg-log-entry dg-log-{entry.result}">
-                {#if entry.floor === 0}
-                    <span class="dg-log-text">Run initialized (local)</span>
-                {:else if entry.door === -1}
-                    <span class="dg-log-text">Run completed (local)</span>
-                {:else}
-                    <span class="dg-log-floor">F{entry.floor}</span>
-                    <span class="dg-log-door">D{entry.door + 1}</span>
-                    <span class="dg-log-result">{entry.result === "correct" ? "OK" : "MISS"}</span>
-                    <span class="dg-log-proof">{entry.proofType}</span>
-                    {#if entry.verified}
-                        <span class="dg-log-verified">ZK</span>
+                <div class="dg-stamp-box">
+                    <div class="dg-stamp-title">WITHDRAWAL RECORD (MAINNET)</div>
+                    <div class="dg-stamp-status">STATUS: {withdrawalStamp.status.toUpperCase()}</div>
+                    {#if withdrawalStamp.txHash}
+                        <a class="dg-stamp-link" href={txExplorerUrlMainnet(withdrawalStamp.txHash)} target="_blank" rel="noreferrer">
+                            VIEW TX {withdrawalStamp.txHash.slice(0, 8)}...
+                        </a>
                     {/if}
-                    {#if entry.provingTimeMs}
-                        <span class="dg-log-time">{entry.provingTimeMs}ms</span>
+                    {#if withdrawalStamp.error}
+                        <div class="dg-stamp-error">{withdrawalStamp.error}</div>
                     {/if}
-                {/if}
-                {#if entry.txHash}
-                    <a class="dg-log-tx" href={txExplorerUrl(entry.txHash)} target="_blank" rel="noreferrer">tx</a>
-                {:else}
-                    <span class="dg-log-tx dg-log-tx-pending">--</span>
-                {/if}
-            </div>
-            {/each}
+
+                    {#if isConnected}
+                        <button
+                            class="dg-btn dg-btn-primary"
+                            disabled={withdrawalStamp.status === "simulating" || withdrawalStamp.status === "assembling" || withdrawalStamp.status === "signing"}
+                            onclick={() => stampOnChain("WITHDRAWAL")}
+                        >
+                            RECORD SEED WITHDRAWAL ON-CHAIN (PASSKEY)
+                        </button>
+                    {:else}
+                        <button class="dg-btn dg-btn-secondary" onclick={connectWallet}>CONNECT WALLET (PASSKEY)</button>
+                    {/if}
+                </div>
+
+                <div class="dg-vault-actions">
+                    <button class="dg-btn dg-btn-primary" onclick={finishRun}>
+                        FINISH RUN →
+                    </button>
+                    {#if withdrawalStamp.status !== "confirmed"}
+                        <p class="dg-hint">No completion stamp yet. Reviewer-proof run includes the withdrawal record.</p>
+                    {/if}
+                </div>
+            </section>
         </div>
     </div>
 </div>
@@ -869,12 +1212,12 @@
     <div class="dg-victory-content">
         <p class="dg-eyebrow">DUNGEON CLEARED</p>
         <h1 class="dg-victory-title">VICTORY</h1>
-        <p class="dg-victory-subtitle">All 10 floors cleared. Each door attempt generated a real proof locally (on-chain verify not wired yet).</p>
+        <p class="dg-victory-subtitle">Seed vault tour completed. Room verifiers are real; on-chain stamps are digest-only records signed with your passkey (if used).</p>
 
         <div class="dg-victory-stats">
             <div class="dg-stat">
                 <span class="dg-stat-value">{TOTAL_FLOORS}</span>
-                <span class="dg-stat-label">FLOORS</span>
+                <span class="dg-stat-label">ROOMS</span>
             </div>
             <div class="dg-stat">
                 <span class="dg-stat-value">{attempts}</span>
@@ -890,7 +1233,7 @@
             <p class="dg-victory-log-title">PROOF TYPES USED</p>
             <div class="dg-proof-types">
                 {#each [...new Set(runLog.filter(e => e.door >= 0).map(e => e.proofType))] as pt}
-                    <span class="dg-proof-badge {pt === 'Circom' ? 'dg-proof-circom' : pt === 'RISC Zero' ? 'dg-proof-risc0' : 'dg-proof-groth16'}">{pt}</span>
+                    <span class="dg-proof-badge">{pt}</span>
                 {/each}
             </div>
         </div>
@@ -1015,6 +1358,292 @@
         width: 280px;
         max-width: 90vw;
         outline: none;
+    }
+
+    /* ── Kale-Seed Vault Layout ─────────────────────────────────────── */
+    .dg-vault-screen {
+        position: relative;
+        min-height: 100vh;
+        background: radial-gradient(1200px 700px at 15% 10%, rgba(154, 230, 0, 0.10), transparent 60%),
+            radial-gradient(900px 600px at 80% 30%, rgba(74, 208, 255, 0.12), transparent 55%),
+            radial-gradient(900px 700px at 70% 90%, rgba(155, 123, 255, 0.10), transparent 60%),
+            #03060b;
+        overflow-x: hidden;
+        overflow-y: auto;
+    }
+
+    .dg-vault-bg {
+        position: absolute;
+        inset: 0;
+        background-image:
+            url("/labs/zkdungeon/art/texture-midnight-kale.webp"),
+            url("/labs/zkdungeon/art/vault-blueprint-map.webp");
+        background-size: 1024px 1024px, cover;
+        background-position: center, center;
+        opacity: 0.35;
+        filter: saturate(1.05) contrast(1.05);
+        pointer-events: none;
+    }
+
+    .dg-vault-shell {
+        position: relative;
+        max-width: 1500px;
+        margin: 0 auto;
+        padding: 24px;
+        display: flex;
+        flex-direction: column;
+        gap: 16px;
+    }
+
+    .dg-vault-header {
+        display: grid;
+        grid-template-columns: 1fr;
+        gap: 12px;
+    }
+
+    .dg-room-art {
+        width: 100%;
+        height: auto;
+        max-height: 260px;
+        object-fit: cover;
+        border-radius: 18px;
+        border: 1px solid rgba(255, 255, 255, 0.10);
+        box-shadow: 0 14px 60px rgba(0, 0, 0, 0.55);
+    }
+
+    @media (min-width: 1100px) {
+        /* Reduce vertical "hero" height so the Airlock primary action stays above the fold. */
+        .dg-vault-header {
+            grid-template-columns: 1.25fr 0.75fr;
+            align-items: end;
+            gap: 16px;
+        }
+        .dg-room-art {
+            max-height: 220px;
+        }
+    }
+
+    @media (max-height: 760px) {
+        .dg-room-art {
+            max-height: 190px;
+        }
+        .dg-vault-shell {
+            padding: 18px;
+        }
+    }
+
+    .dg-vault-grid,
+    .dg-room-grid {
+        display: grid;
+        grid-template-columns: 1.05fr 1.2fr 0.75fr;
+        gap: 16px;
+        align-items: start;
+    }
+
+    .dg-panel {
+        background: rgba(8, 12, 20, 0.78);
+        border: 1px solid rgba(255, 255, 255, 0.10);
+        border-radius: 18px;
+        backdrop-filter: blur(10px);
+        box-shadow: 0 18px 70px rgba(0, 0, 0, 0.40);
+        overflow: hidden;
+    }
+
+    .dg-panel-head {
+        padding: 12px 14px;
+        font-size: 11px;
+        letter-spacing: 0.18em;
+        text-transform: uppercase;
+        color: rgba(232, 240, 255, 0.70);
+        border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+        background-image: url("/labs/zkdungeon/art/texture-placard.webp");
+        background-size: 512px 512px;
+        background-repeat: repeat;
+    }
+
+    .dg-panel-lore {
+        padding-bottom: 12px;
+        background-image: url("/labs/zkdungeon/art/texture-midnight-kale.webp");
+        background-size: 1024px 1024px;
+        background-repeat: repeat;
+        background-color: rgba(8, 12, 20, 0.78);
+        background-blend-mode: overlay;
+    }
+
+    .dg-panel-doors {
+        padding-bottom: 18px;
+    }
+
+    .dg-panel-placard {
+        padding-bottom: 16px;
+    }
+
+    .dg-panel-notebook {
+        padding: 0 0 14px;
+    }
+
+    .dg-room-title {
+        padding: 12px 14px 0;
+        font-size: 18px;
+        font-weight: 700;
+        letter-spacing: 0.03em;
+    }
+
+    .dg-room-sub {
+        padding: 0 14px 10px;
+        font-size: 12px;
+        color: rgba(232, 240, 255, 0.65);
+        letter-spacing: 0.04em;
+        text-transform: uppercase;
+    }
+
+    .dg-lore-p {
+        padding: 0 14px;
+        margin: 10px 0;
+        line-height: 1.55;
+        color: rgba(232, 240, 255, 0.82);
+        font-size: 13px;
+    }
+
+    .dg-panel-split {
+        height: 1px;
+        background: rgba(255, 255, 255, 0.08);
+        margin: 12px 14px;
+    }
+
+    .dg-placard {
+        padding: 0 14px;
+        margin: 10px 0 0;
+        font-weight: 700;
+        letter-spacing: 0.02em;
+        color: rgba(232, 240, 255, 0.92);
+    }
+
+    .dg-placard-sub {
+        padding: 8px 14px 0;
+        font-size: 12px;
+        line-height: 1.45;
+        color: rgba(232, 240, 255, 0.68);
+    }
+
+    .dg-proof-note {
+        margin-left: 8px;
+        font-size: 10px;
+        letter-spacing: 0.12em;
+        text-transform: uppercase;
+        padding: 2px 6px;
+        border-radius: 999px;
+        border: 1px solid rgba(255, 255, 255, 0.12);
+        color: rgba(232, 240, 255, 0.72);
+    }
+
+    .dg-notebook-art {
+        display: grid;
+        grid-template-columns: 1fr;
+        gap: 10px;
+        padding: 14px;
+    }
+
+    .dg-notebook-guardian {
+        width: 100%;
+        height: auto;
+        border-radius: 14px;
+        border: 1px solid rgba(255, 255, 255, 0.10);
+    }
+
+    .dg-notebook-badge {
+        width: 76px;
+        height: 76px;
+        border-radius: 14px;
+        border: 1px solid rgba(255, 255, 255, 0.10);
+        background: rgba(0, 0, 0, 0.25);
+    }
+
+    .dg-notebook-blueprint {
+        width: calc(100% - 28px);
+        margin: 10px 14px 0;
+        border-radius: 14px;
+        border: 1px solid rgba(255, 255, 255, 0.10);
+        opacity: 0.85;
+    }
+
+    .dg-note-line {
+        padding: 0 14px;
+        margin: 8px 0;
+        font-size: 12px;
+        color: rgba(232, 240, 255, 0.75);
+        letter-spacing: 0.08em;
+        text-transform: uppercase;
+    }
+
+    .dg-mono {
+        font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+        letter-spacing: 0.03em;
+    }
+
+    .dg-mini-link {
+        margin-left: 8px;
+        color: rgba(74, 208, 255, 0.85);
+        text-decoration: none;
+    }
+
+    .dg-mini-link:hover {
+        text-decoration: underline;
+    }
+
+    /* Airlock + ledger */
+    .dg-stamp-box {
+        margin: 14px;
+        padding: 12px;
+        border-radius: 14px;
+        border: 1px solid rgba(255, 255, 255, 0.10);
+        background: rgba(0, 0, 0, 0.22);
+    }
+
+    .dg-stamp-title {
+        font-size: 12px;
+        letter-spacing: 0.14em;
+        text-transform: uppercase;
+        color: rgba(232, 240, 255, 0.88);
+        margin-bottom: 6px;
+    }
+
+    .dg-stamp-status {
+        font-size: 11px;
+        letter-spacing: 0.12em;
+        text-transform: uppercase;
+        color: rgba(232, 240, 255, 0.65);
+        margin-bottom: 8px;
+    }
+
+    .dg-stamp-link {
+        display: inline-block;
+        font-size: 12px;
+        color: rgba(74, 208, 255, 0.88);
+        text-decoration: none;
+        margin-bottom: 8px;
+    }
+
+    .dg-stamp-link:hover {
+        text-decoration: underline;
+    }
+
+    .dg-stamp-error {
+        margin-top: 8px;
+        font-size: 12px;
+        color: rgba(255, 196, 122, 0.92);
+    }
+
+    .dg-vault-actions {
+        padding: 0 14px 14px;
+    }
+
+    /* Responsive */
+    @media (max-width: 1100px) {
+        .dg-vault-grid,
+        .dg-room-grid {
+            grid-template-columns: 1fr;
+        }
     }
     .dg-input:focus {
         border-color: var(--dg-accent);
