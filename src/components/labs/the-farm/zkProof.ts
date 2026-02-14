@@ -27,7 +27,7 @@ import {
 import { normalizeCircomScalar } from "../../../lib/the-farm/circomInputs";
 
 // ============================================================================
-// Poseidon Hash (matches circuit's Poseidon(3) template)
+// Poseidon Hash (matches the circomlib Poseidon template used by our circuit)
 // ============================================================================
 
 export async function poseidonHash(inputs: bigint[]): Promise<bigint> {
@@ -57,25 +57,27 @@ const PROVING_KEY_PATH = `/zk/tier_proof.zkey?v=${ZK_VERSION}`;
  * @returns Proof and public signals
  */
 export async function generateTierProof(
-    addressHash: bigint,
     balance: bigint,
     salt: bigint,
-    tierId: number,
+    threshold: bigint,
 ): Promise<ProofResult> {
     // 1. Compute the Poseidon commitment that the circuit will verify
-    const commitment = await poseidonHash([addressHash, balance, salt]);
+    // Circuit: commitment = Poseidon(balance, salt)
+    const commitment = await poseidonHash([balance, salt]);
 
     // 2. Prepare inputs for the circuit
     const inputs: TierProofInputs = {
-        tier_id: normalizeCircomScalar(tierId, "tier_id"),
-        commitment_expected: commitment.toString(),
-        address_hash: addressHash.toString(),
         balance: balance.toString(),
         salt: salt.toString(),
+        threshold: normalizeCircomScalar(threshold, "threshold"),
+        commitment: commitment.toString(),
     };
 
     // 3. Generate the proof via snarkjs
-    console.log("[ZK] Generating Groth16 proof...", { tierId, commitment: commitment.toString() });
+    console.log("[ZK] Generating Groth16 proof...", {
+        threshold: threshold.toString(),
+        commitment: commitment.toString(),
+    });
 
     // @ts-ignore - snarkjs types (Robust fallback for production/Cloudflare)
     const snarkjs = (window as any).snarkjs || await import("snarkjs");
@@ -88,7 +90,7 @@ export async function generateTierProof(
             ]),
         );
         console.log("[ZK][CircomInputs] shape", shape, {
-            tier_id: { value: inputs.tier_id, type: typeof inputs.tier_id, isArray: Array.isArray(inputs.tier_id) },
+            threshold: { value: inputs.threshold, type: typeof inputs.threshold, isArray: Array.isArray(inputs.threshold) },
         });
     }
 

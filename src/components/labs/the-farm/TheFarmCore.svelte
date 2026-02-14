@@ -38,11 +38,10 @@
   } from "../../../stores/balance.svelte.ts";
   import { userState } from "../../../stores/user.svelte.ts";
   import { TIER_CONFIG, formatKaleBalance, getTierForBalance } from "./proof";
-  import { TIER_VERIFIER_CONTRACT_ID } from "./zkTypes";
+  import { TIER_THRESHOLDS, TIER_VERIFIER_CONTRACT_ID } from "./zkTypes";
   import {
     generateTierProof,
     submitProofToContract,
-    hashAddress,
     generateRandomSalt,
     serializeProof,
   } from "./zkProof";
@@ -223,21 +222,27 @@
     try {
       if (system === "circom") {
         setProcessing(system, true, "Generating ZK Proof...");
-        addLog("Computing Poseidon(Addr, Bal, Salt)...");
-
-        const addrHash = await hashAddress(userState.contractId!);
+        addLog("Computing Poseidon(Bal, Salt)...");
         const currentBalance = balance ?? 0n;
         const salt = generateRandomSalt();
         const tierId = getTierForBalance(currentBalance);
+        const threshold =
+          tierId === 0
+            ? TIER_THRESHOLDS.SPROUT
+            : tierId === 1
+              ? TIER_THRESHOLDS.GROWER
+              : tierId === 2
+                ? TIER_THRESHOLDS.HARVESTER
+                : TIER_THRESHOLDS.WHALE;
 
         addLog(`Tier identified: ${tierId} (${TIER_CONFIG[tierId].name})`);
+        addLog(`Tier threshold: ${threshold.toString()}`);
         addLog("Invoking snarkjs.groth16.fullProve...");
 
         const proofRes = await generateTierProof(
-          addrHash,
           currentBalance,
           salt,
-          tierId,
+          threshold,
         );
 
         addLog("Proof generated successfully (2048-bit R1CS)");
@@ -246,7 +251,7 @@
         const { buildPoseidon } = await import("circomlibjs");
         const poseidon = await buildPoseidon();
         const commitmentBigInt = BigInt(
-          poseidon.F.toString(poseidon([addrHash, currentBalance, salt])),
+          poseidon.F.toString(poseidon([currentBalance, salt])),
         );
         const commitmentBytes = new Uint8Array(32);
         let v = commitmentBigInt;
@@ -306,6 +311,16 @@
 
         if (!verifyResult.valid) {
           throw new Error(verifyResult.error || "Sample verification failed");
+        }
+
+        if (!FARM_ATTESTATIONS_CONTRACT_ID_MAINNET?.trim()) {
+          addLog("Sample witness verified (LOCAL).");
+          addLog("On-chain record is DISABLED: Missing PUBLIC_FARM_ATTESTATIONS_CONTRACT_ID_MAINNET.");
+          setAttestationResult(system, sample.tier, {
+            ok: true,
+            feeCharged: "Local Only",
+          });
+          return;
         }
 
         addLog("Sample witness verified. Publishing record...");

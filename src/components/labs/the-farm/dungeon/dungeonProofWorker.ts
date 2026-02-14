@@ -5,7 +5,7 @@
  * real, verifiable proofs for each door choice. The proof system:
  *
  * 1. Encodes door choice data into circuit-compatible inputs
- * 2. Generates a Poseidon commitment binding (player, floor, door, nonce, salt)
+ * 2. Generates a Poseidon commitment binding (balance, salt)
  * 3. Runs snarkjs Groth16 fullProve in the browser
  * 4. Returns proof + public signals + is_correct
  *
@@ -79,7 +79,7 @@ function computeCorrectDoor(floor: number, nonce: number): number {
 /**
  * Encode door choice data into the balance field.
  * The tier_proof circuit accepts a balance input and checks balance >= threshold.
- * Using tier_id=0 (Sprout, threshold=0), any non-negative balance passes.
+ * Using threshold=0, any non-negative balance passes.
  * We encode: floor * 1_000_000 + door * 10_000 + nonce
  * This makes each proof unique to the specific attempt.
  */
@@ -99,8 +99,8 @@ function proofTypeForFloor(floor: number): string {
  *
  * The proof proves:
  * - The prover knows a salt `s` and encoded balance `b`
- * - commitment = Poseidon(address_hash, b, s)
- * - b >= 0 (always true, meaning proof is always valid)
+ * - commitment = Poseidon(b, s)
+ * - b >= threshold (we set threshold=0 so it's always true)
  *
  * The `is_correct` flag is computed separately by comparing the
  * chosen door against the deterministic correct door.
@@ -119,7 +119,6 @@ export async function generateDoorProof(
     });
 
     // 1. Derive inputs
-    const addressHash = await hashToField(input.playerAddress || "anonymous");
     const salt = generateSalt();
     const encodedBalance = encodeDoorData(
         input.floor,
@@ -132,18 +131,17 @@ export async function generateDoorProof(
     const { buildPoseidon } = await import("circomlibjs");
     const poseidon = await buildPoseidon();
     const commitmentField = poseidon.F.toString(
-        poseidon([addressHash, encodedBalance, salt]),
+        poseidon([encodedBalance, salt]),
     );
     const commitment = BigInt(commitmentField);
 
     // 3. Prepare circuit inputs
-    // Using tier_id=0 (Sprout, threshold=0) so any balance passes
+    // Using threshold=0 so any non-negative encodedBalance passes.
     const circuitInputs = {
-        tier_id: "0",
-        commitment_expected: commitment.toString(),
-        address_hash: addressHash.toString(),
         balance: encodedBalance.toString(),
         salt: salt.toString(),
+        threshold: "0",
+        commitment: commitment.toString(),
     };
 
     // 4. Generate Groth16 proof via snarkjs
