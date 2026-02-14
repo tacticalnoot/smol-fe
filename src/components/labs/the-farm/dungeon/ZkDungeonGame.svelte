@@ -1,5 +1,7 @@
 <script lang="ts">
     import { userState } from "../../../../stores/user.svelte.ts";
+    import { evaluateDoorAttempt, type Mode as DungeonMode } from "../../../../lib/dungeon/evaluateDoorAttempt";
+    import { getFloorDefinition, type DoorDefinition, type DoorId } from "../../../../lib/dungeon/policies";
     import {
         attemptDoor as submitDoorAttempt,
         txExplorerUrl,
@@ -12,7 +14,6 @@
     type RelayStatus = "disconnected" | "connecting" | "connected" | "error";
 
     const TOTAL_FLOORS = 10;
-    const DOORS_PER_FLOOR = 4;
     const GATE_FLOORS = [1, 5];
 
     let phase = $state<GamePhase>("title");
@@ -30,8 +31,11 @@
     let fullscreen = $state<boolean>(false);
     let showHowItWorks = $state<boolean>(false);
     let floorTransition = $state<boolean>(false);
-    let trainingMode = $state<boolean>(true);
-    let hintDoor = $state<number | null>(null);
+    let trainingMode = $state<boolean>(false);
+    let attestedTierId = $state<number | null>(null);
+    let trainingTierOverride = $state<number>(0);
+    let credentialLoadError = $state<string | null>(null);
+    let lastForensics = $state<import("./dungeonService").DoorAttemptResult | null>(null);
 
     // Relay (real multiplayer presence via server state, Labs-only)
     type DungeonRosterEntry = {
@@ -73,36 +77,67 @@
         verified?: boolean;
         provingTimeMs?: number;
         commitment?: string | null;
+        reasonCode?: string;
     }
-
-    // Floor lore for atmosphere
-    const FLOOR_LORE: Record<number, { name: string; desc: string; proofType: string }> = {
-        1: { name: "Threshold of Binding", desc: "Co-op gate (lore). Proofs run locally in-browser.", proofType: "Groth16 (Circom)" },
-        2: { name: "Hall of Echoes", desc: "Rune doors whisper half-truths.", proofType: "Groth16 (Circom)" },
-        3: { name: "Cipher Chamber", desc: "Algebraic proof in the browser.", proofType: "Groth16 (Circom)" },
-        4: { name: "Phantom Corridor", desc: "Shadows shift. Trust your commitment.", proofType: "Groth16 (Circom)" },
-        5: { name: "Warden's Gate", desc: "Co-op gate (lore).", proofType: "Groth16 (Circom)" },
-        6: { name: "Vault of Secrets", desc: "Private inputs guard the path.", proofType: "Groth16 (Circom)" },
-        7: { name: "Merkle Depths", desc: "Hash trees grow deep here.", proofType: "Groth16 (Circom)" },
-        8: { name: "Nonce Forge", desc: "Each attempt brands a new seal.", proofType: "Groth16 (Circom)" },
-        9: { name: "Verifier's Sanctum", desc: "The final proof before the boss.", proofType: "Groth16 (Circom)" },
-        10: { name: "Zero Knowledge Throne", desc: "Boss floor (local verification).", proofType: "Groth16 (Circom)" },
-    };
 
     // ── Derived State ───────────────────────────────────────────────────
     let walletAddress = $derived(userState.contractId);
     let isConnected = $derived(!!userState.contractId && !!userState.keyId);
-    let currentLore = $derived(FLOOR_LORE[currentFloor] ?? FLOOR_LORE[1]);
     let isGateFloor = $derived(GATE_FLOORS.includes(currentFloor));
     let progressPct = $derived(((currentFloor - 1) / TOTAL_FLOORS) * 100);
     let walletLabel = $derived(
         walletAddress ? `${walletAddress.slice(0, 6)}...${walletAddress.slice(-4)}` : ""
     );
+    let floorDef = $derived(getFloorDefinition(currentFloor));
+    let effectiveTierId = $derived(attestedTierId !== null ? attestedTierId : trainingTierOverride);
+    let effectiveMode = $derived<DungeonMode>(trainingMode ? "training" : "normal");
     let hasOpponent = $derived(relayRoster.filter((r) => r.account !== walletAddress).length > 0);
     let allReady = $derived(relayRoster.length >= 2 && relayRoster.every((r) => r.ready));
     let opponentProgress = $derived(relayRoster.find((r) => r.account !== walletAddress) || null);
     let opponentReady = $derived(!!opponentProgress && opponentProgress.ready);
     let multiplayerEnabled = $derived(relayToken.length > 0 && relayRoster.length >= 2);
+
+    function doorDef(doorId: DoorId): DoorDefinition {
+        return floorDef.doors.find((d) => d.id === doorId) as DoorDefinition;
+    }
+
+    function doorWouldAccept(door: DoorDefinition): boolean {
+        const out = evaluateDoorAttempt({
+            floor: currentFloor,
+            doorId: door.id,
+            proofOk: true,
+            provenInputs: { tierId: effectiveTierId },
+            lobbyState: { enabled: false },
+            mode: effectiveMode,
+        });
+        return out.accepted;
+    }
+
+    $effect(() => {
+        attestedTierId = null;
+        credentialLoadError = null;
+
+        if (!isConnected || !walletAddress) return;
+
+        let cancelled = false;
+        (async () => {
+            const { readFarmAttestationTier } = await import("../../../../lib/dungeon/readFarmAttestationTier");
+            const res = await readFarmAttestationTier(walletAddress);
+            if (cancelled) return;
+            if (res.ok) {
+                attestedTierId = res.tierId;
+            } else {
+                credentialLoadError = res.reason;
+            }
+        })().catch((err) => {
+            if (cancelled) return;
+            credentialLoadError = err instanceof Error ? err.message : String(err);
+        });
+
+        return () => {
+            cancelled = true;
+        };
+    });
 
     // ── Actions ─────────────────────────────────────────────────────────
 
@@ -268,8 +303,8 @@
         attempts = 0;
         runLog = [];
         doorStates = ["idle", "idle", "idle", "idle"];
-        hintDoor = null;
         gateWaiting = false;
+        lastForensics = null;
         phase = "playing";
 
         addLogEntry({
@@ -319,27 +354,31 @@
             playerAddress: userState.contractId ?? "anonymous",
             keyId: userState.keyId ?? "",
             contractId: userState.contractId ?? "",
+            tierId: effectiveTierId,
+            mode: effectiveMode,
+            lobbyState: {
+                enabled: multiplayerEnabled,
+                waiting: gateWaiting,
+                reason: gateWaiting ? "Waiting for the other player to reach this floor" : undefined,
+            },
         });
 
-        const isCorrect = result.isCorrect;
-        if (!isCorrect && trainingMode && typeof result.correctDoor === "number") {
-            hintDoor = result.correctDoor;
-        } else {
-            hintDoor = null;
-        }
-        doorStates[doorIndex] = isCorrect ? "correct" : "wrong";
+        lastForensics = result;
+        const accepted = result.accepted;
+        doorStates[doorIndex] = accepted ? "correct" : "wrong";
 
         addLogEntry({
             floor: currentFloor,
             door: doorIndex,
             attempt: attempts,
-            result: isCorrect ? "correct" : "wrong",
+            result: accepted ? "correct" : "wrong",
             proofType: result.proofType,
             txHash: result.txHash,
             timestamp: Date.now(),
-            verified: result.verified,
+            verified: result.proofOk,
             provingTimeMs: result.provingTimeMs,
             commitment: result.commitment,
+            reasonCode: result.reasonCode,
         });
 
         // Progress event (keep roster attempts fresh even on wrong doors)
@@ -358,7 +397,7 @@
         // Animate then advance
         await new Promise((r) => setTimeout(r, 800));
 
-        if (isCorrect) {
+        if (accepted) {
             if (currentFloor >= TOTAL_FLOORS) {
                 addLogEntry({
                     floor: TOTAL_FLOORS,
@@ -379,6 +418,7 @@
                 doorStates = ["idle", "idle", "idle", "idle"];
                 activeDoor = null;
                 floorTransition = false;
+                lastForensics = null;
 
                 // Progress event (multiplayer presence)
                 if (relayToken && walletAddress) {
@@ -434,7 +474,7 @@
         runLog = [];
         gateWaiting = false;
         floorTransition = false;
-        hintDoor = null;
+        lastForensics = null;
     }
 
     function toggleFullscreen() {
@@ -515,6 +555,43 @@
                 </button>
                 <p class="dg-hint">2-player lobby uses a Labs-only relay (no SEP-10 auth yet).</p>
             {/if}
+        </div>
+
+        <div class="dg-cred-card" aria-live="polite">
+            <p class="dg-cred-line">
+                CLEARANCE: TIER {effectiveTierId}
+                {#if attestedTierId !== null}
+                    <span class="dg-cred-source">ON-CHAIN</span>
+                {:else}
+                    <span class="dg-cred-source dg-cred-source-demo">DEMO</span>
+                {/if}
+            </p>
+            {#if credentialLoadError}
+                <p class="dg-cred-warn">On-chain clearance unavailable: {credentialLoadError}</p>
+            {/if}
+
+            <div class="dg-cred-controls">
+                <label class="dg-toggle">
+                    <input type="checkbox" bind:checked={trainingMode} />
+                    <span>TRAINING MODE (SHOWS MECHANICS)</span>
+                </label>
+
+                {#if trainingMode && attestedTierId === null}
+                    <div class="dg-cred-override">
+                        <label class="dg-join-label" for="dg-demo-tier">DEMO TIER</label>
+                        <select
+                            id="dg-demo-tier"
+                            class="dg-select"
+                            bind:value={trainingTierOverride}
+                        >
+                            <option value={0}>0 (SPROUT)</option>
+                            <option value={1}>1 (GROWER)</option>
+                            <option value={2}>2 (HARVEST)</option>
+                            <option value={3}>3 (WHALE)</option>
+                        </select>
+                    </div>
+                {/if}
+            </div>
         </div>
 
         <button class="dg-link-btn" onclick={() => showHowItWorks = !showHowItWorks}>
@@ -635,7 +712,7 @@
     <div class="dg-hud">
         <div class="dg-hud-left">
             <span class="dg-hud-floor">FLOOR {currentFloor}/{TOTAL_FLOORS}</span>
-            <span class="dg-hud-proof-type">{currentLore.proofType}</span>
+            <span class="dg-hud-proof-type">GROTH16 (LOCAL)</span>
         </div>
         <div class="dg-hud-center">
             <div class="dg-progress-bar">
@@ -658,18 +735,56 @@
     <!-- Floor Content -->
     <div class="dg-floor-area">
         <div class="dg-floor-header">
-            <h2 class="dg-floor-name">{currentLore.name}</h2>
-            <p class="dg-floor-desc">{currentLore.desc}</p>
+            <h2 class="dg-floor-name">POLICY: {floorDef.policyName}</h2>
+            <p class="dg-floor-desc">{floorDef.briefing}</p>
             <div class="dg-floor-controls">
                 <label class="dg-toggle">
                     <input type="checkbox" bind:checked={trainingMode} />
                     <span>TRAINING MODE</span>
                 </label>
-                {#if hintDoor !== null && trainingMode}
-                    <span class="dg-hint-pill">HINT: DOOR {hintDoor + 1}</span>
-                {/if}
+                <span class="dg-hint-pill">CLEARANCE: TIER {effectiveTierId}</span>
             </div>
         </div>
+
+        {#if lastForensics}
+        <div class="dg-forensics dg-forensics-{lastForensics.accepted ? 'ok' : 'no'}" aria-live="polite">
+            <p class="dg-forensics-outcome">
+                {lastForensics.accepted ? "ACCESS GRANTED" : "ACCESS DENIED"}
+            </p>
+            <p class="dg-forensics-why">
+                {lastForensics.reasonHuman}
+            </p>
+            <div class="dg-forensics-grid">
+                <div class="dg-forensics-item">
+                    <span class="k">Door Policy</span>
+                    <span class="v">{lastForensics.forensics.policyRule}</span>
+                </div>
+                <div class="dg-forensics-item">
+                    <span class="k">Your Credential</span>
+                    <span class="v">{lastForensics.forensics.yourCredentialSummary}</span>
+                </div>
+                <div class="dg-forensics-item">
+                    <span class="k">Mismatch</span>
+                    <span class="v">{lastForensics.forensics.mismatchExplanation}</span>
+                </div>
+                <div class="dg-forensics-item">
+                    <span class="k">Next Action</span>
+                    <span class="v">{lastForensics.forensics.nextAction}</span>
+                </div>
+            </div>
+
+            {#if trainingMode && lastForensics.debug}
+            <div class="dg-forensics-debug">
+                <p class="dg-debug-title">TRAINING: COMPARISON TRACE</p>
+                <ul class="dg-debug-list">
+                    {#each lastForensics.debug.comparisons as line}
+                        <li>{line}</li>
+                    {/each}
+                </ul>
+            </div>
+            {/if}
+        </div>
+        {/if}
 
         {#if gateWaiting}
         <div class="dg-gate-overlay">
@@ -683,13 +798,20 @@
         <!-- 4 Doors -->
         <div class="dg-doors">
             {#each doorStates as state, i}
+            {@const def = doorDef(i as any)}
             <button
                 class="dg-door dg-door-{state}"
+                class:dg-door-suggested={trainingMode && doorWouldAccept(def)}
                 disabled={state !== "idle" || activeDoor !== null}
                 onclick={() => chooseDoor(i)}
             >
                 <span class="dg-door-rune">{DOOR_SYMBOLS[i]}</span>
                 <span class="dg-door-label">DOOR {i + 1}</span>
+                <div class="dg-door-tags" aria-label="Door policy tags">
+                    {#each def.tags as tag}
+                        <span class="dg-door-tag">{tag.short}</span>
+                    {/each}
+                </div>
                 {#if state === "proving"}
                     <span class="dg-door-status">PROVING...</span>
                 {:else if state === "correct"}
@@ -999,6 +1121,78 @@
         font-size: 11px;
         color: var(--dg-text-dim);
         margin: 0;
+    }
+
+    .dg-cred-card {
+        margin-top: 14px;
+        padding: 14px 14px;
+        border-radius: 12px;
+        border: 1px solid rgba(255,255,255,0.10);
+        background: rgba(255,255,255,0.03);
+        text-align: left;
+    }
+
+    .dg-cred-line {
+        margin: 0;
+        font-family: var(--dg-font-display);
+        font-size: 10px;
+        letter-spacing: 2px;
+        color: rgba(255,255,255,0.86);
+        text-transform: uppercase;
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        flex-wrap: wrap;
+    }
+
+    .dg-cred-source {
+        font-size: 9px;
+        padding: 6px 10px;
+        border-radius: 999px;
+        border: 1px solid rgba(74, 222, 128, 0.35);
+        background: rgba(74, 222, 128, 0.08);
+        color: rgba(74, 222, 128, 0.95);
+    }
+
+    .dg-cred-source-demo {
+        border-color: rgba(255, 196, 122, 0.35);
+        background: rgba(255, 196, 122, 0.08);
+        color: rgba(255, 196, 122, 0.95);
+    }
+
+    .dg-cred-warn {
+        margin: 10px 0 0;
+        font-size: 11px;
+        color: rgba(255, 196, 122, 0.85);
+        line-height: 1.35;
+    }
+
+    .dg-cred-controls {
+        margin-top: 12px;
+        display: flex;
+        gap: 10px;
+        align-items: center;
+        justify-content: space-between;
+        flex-wrap: wrap;
+    }
+
+    .dg-cred-override {
+        display: flex;
+        gap: 10px;
+        align-items: center;
+        flex-wrap: wrap;
+    }
+
+    .dg-select {
+        padding: 10px 12px;
+        border-radius: 10px;
+        border: 1px solid rgba(255,255,255,0.12);
+        background: rgba(255,255,255,0.04);
+        color: rgba(255,255,255,0.86);
+        font-family: var(--dg-font-display);
+        font-size: 10px;
+        letter-spacing: 1px;
+        text-transform: uppercase;
     }
 
     .dg-link-btn {
@@ -1422,6 +1616,102 @@
         color: rgba(255, 196, 122, 0.95);
     }
 
+    .dg-forensics {
+        width: min(820px, 96vw);
+        margin: -8px auto 18px;
+        padding: 16px 16px;
+        border-radius: 14px;
+        border: 1px solid rgba(255,255,255,0.10);
+        background: rgba(255,255,255,0.03);
+        text-align: left;
+    }
+
+    .dg-forensics-ok {
+        border-color: rgba(74, 222, 128, 0.25);
+        background: rgba(74, 222, 128, 0.06);
+    }
+
+    .dg-forensics-no {
+        border-color: rgba(248, 113, 113, 0.25);
+        background: rgba(248, 113, 113, 0.06);
+    }
+
+    .dg-forensics-outcome {
+        margin: 0 0 6px;
+        font-family: var(--dg-font-display);
+        font-size: 11px;
+        letter-spacing: 2px;
+        text-transform: uppercase;
+        color: rgba(255,255,255,0.92);
+    }
+
+    .dg-forensics-why {
+        margin: 0 0 12px;
+        font-size: 12px;
+        color: rgba(255,255,255,0.78);
+        line-height: 1.45;
+    }
+
+    .dg-forensics-grid {
+        display: grid;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap: 10px;
+    }
+
+    @media (max-width: 700px) {
+        .dg-forensics-grid {
+            grid-template-columns: 1fr;
+        }
+    }
+
+    .dg-forensics-item {
+        padding: 10px 12px;
+        border-radius: 12px;
+        border: 1px solid rgba(255,255,255,0.08);
+        background: rgba(0,0,0,0.15);
+        display: flex;
+        flex-direction: column;
+        gap: 6px;
+    }
+
+    .dg-forensics-item .k {
+        font-family: var(--dg-font-display);
+        font-size: 9px;
+        letter-spacing: 2px;
+        color: rgba(255,255,255,0.55);
+        text-transform: uppercase;
+    }
+
+    .dg-forensics-item .v {
+        font-size: 12px;
+        color: rgba(255,255,255,0.82);
+        line-height: 1.35;
+    }
+
+    .dg-forensics-debug {
+        margin-top: 12px;
+        padding-top: 12px;
+        border-top: 1px dashed rgba(255,255,255,0.12);
+    }
+
+    .dg-debug-title {
+        margin: 0 0 8px;
+        font-family: var(--dg-font-display);
+        font-size: 9px;
+        letter-spacing: 2px;
+        text-transform: uppercase;
+        color: rgba(255, 196, 122, 0.95);
+    }
+
+    .dg-debug-list {
+        margin: 0;
+        padding-left: 18px;
+        color: rgba(255,255,255,0.70);
+        font-family: "JetBrains Mono", monospace;
+        font-size: 11px;
+        line-height: 1.45;
+    }
+
     /* ── Doors ───────────────────────────────────────────────────── */
     .dg-doors {
         display: grid;
@@ -1482,6 +1772,32 @@
         font-size: 9px;
         letter-spacing: 2px;
         color: var(--dg-text-dim);
+    }
+
+    .dg-door-tags {
+        display: flex;
+        gap: 6px;
+        flex-wrap: wrap;
+        align-items: center;
+        justify-content: center;
+        margin-top: -2px;
+    }
+
+    .dg-door-tag {
+        font-family: var(--dg-font-display);
+        font-size: 8px;
+        letter-spacing: 1px;
+        padding: 4px 8px;
+        border-radius: 999px;
+        border: 1px solid rgba(255,255,255,0.10);
+        background: rgba(255,255,255,0.04);
+        color: rgba(255,255,255,0.70);
+        text-transform: uppercase;
+    }
+
+    .dg-door-suggested {
+        outline: 2px solid rgba(255, 196, 122, 0.25);
+        box-shadow: 0 0 0 6px rgba(255, 196, 122, 0.05);
     }
 
     .dg-door-status {

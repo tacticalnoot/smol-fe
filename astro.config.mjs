@@ -40,6 +40,10 @@ export default defineConfig({
     //   }
     // },
     optimizeDeps: {
+      // ZK dungeon uses snarkjs + circomlibjs in the browser. These are dynamically imported
+      // at runtime; without an explicit include, Vite may attempt on-demand optimization
+      // and temporarily serve a 504 "Outdated Optimize Dep" which breaks Playwright/e2e.
+      include: ['snarkjs', 'circomlibjs'],
       exclude: ['@aztec/bb.js'],
       // @aztec/bb.js (UltraHonk verifier) uses top-level await in its browser build.
       // Vite's default "modules" target includes browsers that don't support it,

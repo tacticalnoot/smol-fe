@@ -78,6 +78,49 @@ test('zkdungeon legacy routes redirect to /labs/the-farm/zkdungeon', async ({ pa
   await expect(page).toHaveURL(/\/labs\/the-farm\/zkdungeon/);
 });
 
+test('zkdungeon solo floors 1-3 are learnable from policy tags (no guessing)', async ({ page }) => {
+  test.setTimeout(240_000);
+
+  await page.goto('/labs/the-farm/zkdungeon', { waitUntil: 'domcontentloaded' });
+  await expect(page.getByRole('button', { name: 'PLAY SOLO' })).toBeVisible();
+  await page.getByRole('button', { name: 'PLAY SOLO' }).click();
+
+  // Floor 1: choose an intentionally wrong door and validate forensic mismatch.
+  await expect(page.locator('.dg-hud-floor')).toContainText('FLOOR 1/10');
+  const wrongDoor = page
+    .locator('.dg-doors .dg-door')
+    .filter({ has: page.locator('.dg-door-tag', { hasText: 'MIN ≥ 3' }) })
+    .first();
+  await wrongDoor.click();
+  await expect(page.locator('.dg-forensics-outcome')).toContainText('ACCESS DENIED');
+  await expect(page.locator('.dg-forensics-grid')).toContainText('Minimum Clearance');
+
+  // Floor 1: now choose the compatible door (Tier 0 demo -> MIN ≥ 0).
+  const f1Right = page
+    .locator('.dg-doors .dg-door')
+    .filter({ has: page.locator('.dg-door-tag', { hasText: 'MIN ≥ 0' }) })
+    .first();
+  await f1Right.click();
+  await expect(page.locator('.dg-hud-floor')).toContainText('FLOOR 2/10');
+
+  // Floor 2: exact tier match (ROLE = 0).
+  const f2Right = page
+    .locator('.dg-doors .dg-door')
+    .filter({ has: page.locator('.dg-door-tag', { hasText: 'ROLE = 0' }) })
+    .first();
+  await f2Right.click();
+  await expect(page.locator('.dg-hud-floor')).toContainText('FLOOR 3/10');
+
+  // Floor 3: two-factor (MIN ≥ 0 + EVEN) for Tier 0.
+  const f3Right = page
+    .locator('.dg-doors .dg-door')
+    .filter({ has: page.locator('.dg-door-tag', { hasText: 'MIN ≥ 0' }) })
+    .filter({ has: page.locator('.dg-door-tag', { hasText: 'EVEN' }) })
+    .first();
+  await f3Right.click();
+  await expect(page.locator('.dg-hud-floor')).toContainText('FLOOR 4/10');
+});
+
 test('labs crawl: /labs forward links are reachable', async ({ page }) => {
   // Block external API calls to avoid flaky dependencies.
   await page.route('**/api.smol.xyz/**', route => route.abort());

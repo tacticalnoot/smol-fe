@@ -7,13 +7,13 @@
  * 1. Encodes door choice data into circuit-compatible inputs
  * 2. Generates a Poseidon commitment binding (balance, salt)
  * 3. Runs snarkjs Groth16 fullProve in the browser
- * 4. Returns proof + public signals + is_correct
+ * 4. Returns proof + public signals (credential is the public `tier_id`)
  *
  * Architecture: This runs on the main thread with dynamic imports.
  * A true WebWorker version will follow when wasm-in-worker bundling is resolved.
  *
- * IMPORTANT: Wrong choices still generate valid proofs. The `is_correct` flag
- * is computed off-circuit but the commitment and proof are cryptographically real.
+ * IMPORTANT: Door acceptance is a policy decision evaluated separately.
+ * Proof generation + local verification are cryptographically real.
  */
 
 // ── Types ────────────────────────────────────────────────────────────────────
@@ -26,16 +26,16 @@ export interface DoorProofInput {
     doorChoice: number;
     attemptNonce: number;
     lobbyId: string;
+    tierId: number;
 }
 
 export interface DoorProofResult {
     proof: any;             // Groth16 proof object (pi_a, pi_b, pi_c)
     publicSignals: string[];
     commitment: string;     // Poseidon commitment hex
-    isCorrect: boolean;
-    correctDoor: number;
     proofType: string;      // "Groth16" | "Circom" | "RISC Zero"
     provingTimeMs: number;
+    tierId: number;
 }
 
 // ── Circuit Paths ────────────────────────────────────────────────────────────
@@ -44,6 +44,37 @@ const CIRCUIT_WASM = "/zk/tier_proof.wasm";
 const PROVING_KEY = "/zk/tier_proof.zkey";
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
+
+async function sleep(ms: number): Promise<void> {
+    await new Promise((r) => setTimeout(r, ms));
+}
+
+/**
+ * Vite can temporarily serve "Outdated Optimize Dep" (504) for dynamically imported deps
+ * while it re-optimizes. Browsers auto-reload; Playwright won't. Retry a few times.
+ */
+async function importWithRetry<T>(label: string, fn: () => Promise<T>): Promise<T> {
+    let lastErr: unknown = null;
+
+    for (let attempt = 1; attempt <= 4; attempt++) {
+        try {
+            return await fn();
+        } catch (err) {
+            lastErr = err;
+            const msg = String((err as any)?.message || err);
+            const isViteOutdated =
+                msg.includes("Outdated Optimize Dep") ||
+                msg.includes("Failed to fetch dynamically imported module") ||
+                msg.includes("net::ERR_ABORTED");
+
+            if (!isViteOutdated || attempt === 4) break;
+            // Small backoff to let Vite finish optimizing.
+            await sleep(150 * attempt);
+        }
+    }
+
+    throw lastErr instanceof Error ? lastErr : new Error(`${label} import failed: ${String(lastErr)}`);
+}
 
 /** Hash a string to a field element (first 31 bytes of SHA-256) */
 async function hashToField(input: string): Promise<bigint> {
@@ -65,17 +96,6 @@ function generateSalt(): bigint {
         salt = (salt << 8n) | BigInt(b);
     }
     return salt;
-}
-
-/**
- * Compute the correct door for a given floor + nonce (demo-only).
- *
- * This is deterministic game logic and is NOT proven by the ZK circuit.
- * The circuit simply produces a proof bound to the attempt parameters.
- */
-function computeCorrectDoor(floor: number, nonce: number): number {
-    const seed = floor * 1000 + nonce;
-    return (seed * 7 + 3) % 4;
 }
 
 /**
@@ -105,8 +125,7 @@ function proofTypeForFloor(floor: number): string {
  * - commitment_expected = Poseidon(address_hash, balance, salt)
  * - tier_id is a public hint (we use 0 for the dungeon)
  *
- * The `is_correct` flag is computed separately by comparing the
- * chosen door against the deterministic correct door.
+ * Door acceptance is evaluated separately by the policy engine.
  */
 export async function generateDoorProof(
     input: DoorProofInput,
@@ -129,11 +148,11 @@ export async function generateDoorProof(
         input.attemptNonce,
     );
     const addressHash = await hashToField(`${input.playerAddress}:${input.lobbyId}`);
-    const tierId = 0;
+    const tierId = input.tierId;
 
     // 2. Compute Poseidon commitment
     // @ts-ignore - circomlibjs lacks TS declarations
-    const { buildPoseidon } = await import("circomlibjs");
+    const { buildPoseidon } = await importWithRetry("circomlibjs", () => import("circomlibjs"));
     const poseidon = await buildPoseidon();
     const commitmentField = poseidon.F.toString(
         poseidon([addressHash, encodedBalance, salt]),
@@ -151,34 +170,28 @@ export async function generateDoorProof(
 
     // 4. Generate Groth16 proof via snarkjs
     // @ts-ignore - snarkjs types
-    const snarkjs = await import("snarkjs");
+    const snarkjs = await importWithRetry("snarkjs", () => import("snarkjs"));
     const { proof, publicSignals } = await snarkjs.groth16.fullProve(
         circuitInputs,
         CIRCUIT_WASM,
         PROVING_KEY,
     );
 
-    // 5. Determine correctness
-    const correctDoor = computeCorrectDoor(input.floor, input.attemptNonce);
-    const isCorrect = input.doorChoice === correctDoor;
-
     const provingTimeMs = Math.round(performance.now() - startTime);
 
     console.log("[DoorProof] Proof generated:", {
-        isCorrect,
-        correctDoor,
         provingTimeMs,
         commitment: commitment.toString().slice(0, 20) + "...",
+        tierId,
     });
 
     return {
         proof,
         publicSignals,
         commitment: commitment.toString(),
-        isCorrect,
-        correctDoor,
         proofType,
         provingTimeMs,
+        tierId,
     };
 }
 
@@ -194,6 +207,6 @@ export async function verifyDoorProofLocally(
     const vkey = await vkeyRes.json();
 
     // @ts-ignore
-    const snarkjs = await import("snarkjs");
+    const snarkjs = await importWithRetry("snarkjs", () => import("snarkjs"));
     return snarkjs.groth16.verify(vkey, publicSignals, proof);
 }

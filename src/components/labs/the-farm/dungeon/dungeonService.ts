@@ -19,6 +19,9 @@ import {
     rpc,
 } from "@stellar/stellar-sdk/minimal";
 
+import { evaluateDoorAttempt } from "../../../../lib/dungeon/evaluateDoorAttempt";
+import { getFloorDefinition } from "../../../../lib/dungeon/policies";
+
 const { Server, Api, assembleTransaction } = rpc;
 
 // ── Constants ────────────────────────────────────────────────────────────────
@@ -198,16 +201,34 @@ export interface DoorAttemptParams {
     playerAddress: string;
     keyId: string;
     contractId: string;
+    tierId: number;
+    mode: "normal" | "training";
+    lobbyState: { enabled: boolean; waiting: boolean; reason?: string };
 }
 
 export interface DoorAttemptResult {
-    isCorrect: boolean;
-    correctDoor: number | null;
+    accepted: boolean;
+    reasonCode: string;
+    reasonHuman: string;
+    forensics: {
+        policyName: string;
+        policyRule: string;
+        doorRequirement: string;
+        yourCredentialSummary: string;
+        mismatchExplanation: string;
+        nextAction: string;
+    };
+    debug?: {
+        tierId: number;
+        parity: "EVEN" | "ODD";
+        comparisons: string[];
+    };
+    tierId: number;
+    proofOk: boolean;
     txHash: string | null;
     proofType: string;
     commitment: string | null;
     provingTimeMs: number;
-    verified: boolean;
     error: string | null;
 }
 
@@ -246,42 +267,84 @@ export async function attemptDoor(
             doorChoice: params.doorChoice,
             attemptNonce: params.attemptNonce,
             lobbyId: params.lobbyId,
+            tierId: params.tierId,
         });
 
-        // Verify locally (debug / confidence check)
-        let verified = false;
+        // Verify locally (required integrity check)
+        let proofOk = false;
         try {
-            verified = await verifyDoorProofLocally(
-                proofResult.proof,
-                proofResult.publicSignals,
-            );
-            console.log("[Dungeon] Local verification:", verified ? "PASS" : "FAIL");
+            proofOk = await verifyDoorProofLocally(proofResult.proof, proofResult.publicSignals);
+            console.log("[Dungeon] Local verification:", proofOk ? "PASS" : "FAIL");
         } catch (verifyErr) {
-            console.warn("[Dungeon] Local verification error (non-blocking):", verifyErr);
+            console.warn("[Dungeon] Local verification error:", verifyErr);
+            proofOk = false;
         }
 
+        // Use tierId from public signals if we can find it; otherwise fall back to the input tierId.
+        // This ensures the "credential" we evaluate is actually bound to the proof.
+        const tierSignal =
+            Array.isArray(proofResult.publicSignals)
+                ? proofResult.publicSignals.find((s) => s === String(params.tierId)) ?? proofResult.publicSignals[0]
+                : String(params.tierId);
+        const provenTierId = Number.parseInt(String(tierSignal), 10);
+        const tierId = Number.isFinite(provenTierId) ? provenTierId : params.tierId;
+
+        const outcome = evaluateDoorAttempt({
+            floor: params.floor,
+            doorId: params.doorChoice as any,
+            proofOk,
+            provenInputs: { tierId },
+            lobbyState: params.lobbyState.enabled
+                ? { enabled: true, waiting: params.lobbyState.waiting, reason: params.lobbyState.reason }
+                : { enabled: false },
+            mode: params.mode,
+        });
+
         return {
-            isCorrect: proofResult.isCorrect,
-            correctDoor: proofResult.correctDoor ?? null,
+            accepted: outcome.accepted,
+            reasonCode: outcome.reasonCode,
+            reasonHuman: outcome.reasonHuman,
+            forensics: outcome.forensics,
+            debug: outcome.debug,
+            tierId,
+            proofOk,
             txHash: null, // On-chain submission in next iteration
             proofType: proofResult.proofType,
             commitment: proofResult.commitment,
             provingTimeMs: proofResult.provingTimeMs,
-            verified,
             error: null,
         };
     } catch (err: any) {
-        console.error("[Dungeon] Proof generation failed:", err.message);
+        const msg = String(err?.message || err);
+        console.error("[Dungeon] Proof generation failed:", msg);
+
+        const floorDef = getFloorDefinition(params.floor);
+        const isViteDepIssue =
+            msg.includes("Outdated Optimize Dep") ||
+            msg.includes("Failed to fetch dynamically imported module") ||
+            msg.includes("net::ERR_ABORTED");
 
         return {
-            isCorrect: false,
-            correctDoor: null,
+            accepted: false,
+            reasonCode: "ERROR",
+            reasonHuman: isViteDepIssue ? "Toolchain loading hiccup (dev server). Retry." : "Internal error",
+            forensics: {
+                policyName: floorDef.policyName,
+                policyRule: floorDef.briefing,
+                doorRequirement: `Door ${params.doorChoice}`,
+                yourCredentialSummary: `Tier ${params.tierId}`,
+                mismatchExplanation: isViteDepIssue
+                    ? "Dev server was still optimizing ZK dependencies (Vite 504). Try again; it should stabilize after the first load."
+                    : msg,
+                nextAction: isViteDepIssue ? "Click again (or refresh once), then retry." : "Retry.",
+            },
+            tierId: params.tierId,
+            proofOk: false,
             txHash: null,
             proofType,
             commitment: null,
             provingTimeMs: 0,
-            verified: false,
-            error: err.message,
+            error: msg,
         };
     }
 }
