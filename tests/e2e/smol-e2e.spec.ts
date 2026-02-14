@@ -131,7 +131,11 @@ test('the-farm noir verifier passes valid sample and fails tampered sample', asy
   await page.waitForLoadState('networkidle').catch(() => {});
   await page.waitForTimeout(250);
 
-  let results: { pass: { valid: boolean }; fail: { valid: boolean } } | null = null;
+  type NoirEvalResult =
+    | { ok: true; pass: { valid: boolean }; fail: { valid: boolean }; debugLogs: string[] }
+    | { ok: false; error: string; debugLogs: string[] };
+
+  let results: NoirEvalResult | null = null;
 
   for (let attempt = 0; attempt < 3; attempt += 1) {
     try {
@@ -250,8 +254,10 @@ test('the-farm noir verifier passes valid sample and fails tampered sample', asy
     throw new Error('Noir verifier eval did not complete (navigation kept resetting the page)');
   }
 
-  // At this point, results is the success shape.
-  // @ts-expect-error - see runtime guard above
+  if (!results.ok) {
+    throw new Error(`Noir verifier failed: ${results.error}`);
+  }
+
   const { pass, fail } = results;
 
   const expectedHydrationErrors = [...consoleErrors, ...pageErrors].filter((line) =>
@@ -267,4 +273,59 @@ test('the-farm noir verifier passes valid sample and fails tampered sample', asy
 
   expect(pass.valid).toBeTruthy();
   expect(fail.valid).toBeFalsy();
+});
+
+test('the-farm circom input tier_id is scalar (no array / no comma string)', async ({ page }) => {
+  test.setTimeout(60_000);
+
+  const consoleErrors: string[] = [];
+  page.on('console', (msg) => {
+    if (msg.type() === 'error') consoleErrors.push(msg.text());
+  });
+
+  await page.goto('/labs/the-farm', { waitUntil: 'domcontentloaded' });
+  await page.waitForTimeout(250);
+
+  const result = await page.evaluate(async () => {
+    // Avoid heavy Groth16 proving in e2e; we only validate the input shape passed to snarkjs.
+    // @ts-ignore - Set a lightweight stub for the proof engine.
+    window.snarkjs = {
+      groth16: {
+        fullProve: async (inputs: any) => {
+          const tier = inputs?.tier_id;
+          if (Array.isArray(tier)) throw new Error('tier_id must not be an array');
+          if (typeof tier !== 'string') throw new Error(`tier_id must be string, got ${typeof tier}`);
+          if (tier.includes(',')) throw new Error('tier_id must not contain commas');
+          if (!/^[0-9]+$/.test(tier)) throw new Error(`tier_id must be digits, got "${tier}"`);
+          return {
+            proof: {
+              pi_a: ['0', '0', '1'],
+              pi_b: [['0', '0'], ['0', '0'], ['1', '0']],
+              pi_c: ['0', '0', '1'],
+              protocol: 'groth16',
+              curve: 'bn254',
+            },
+            publicSignals: ['0', '0', '0'],
+          };
+        },
+      },
+    };
+
+    // @ts-ignore - Resolved by Vite in browser (dev server).
+    const mod = await import('/src/components/labs/the-farm/zkProof.ts');
+
+    // Small, deterministic inputs. We only care that the input builder passes a scalar tier_id.
+    const proofRes = await mod.generateTierProof(1n, 0n, 2n, 0);
+    return {
+      ok: true,
+      publicSignalsLen: proofRes.publicSignals?.length ?? 0,
+    };
+  });
+
+  expect(result.ok).toBeTruthy();
+
+  const circomInputErrors = consoleErrors.filter((line) =>
+    /Too many values for input signal tier_id/i.test(line),
+  );
+  expect(circomInputErrors).toEqual([]);
 });
