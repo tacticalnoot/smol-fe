@@ -24,6 +24,7 @@ import {
     type Groth16Proof,
     TIER_VERIFIER_CONTRACT_ID,
 } from "./zkTypes";
+import { normalizeCircomScalar } from "../../../lib/the-farm/circomInputs";
 
 // ============================================================================
 // Poseidon Hash (matches circuit's Poseidon(3) template)
@@ -66,7 +67,7 @@ export async function generateTierProof(
 
     // 2. Prepare inputs for the circuit
     const inputs: TierProofInputs = {
-        tier_id: tierId.toString(),
+        tier_id: normalizeCircomScalar(tierId, "tier_id"),
         commitment_expected: commitment.toString(),
         address_hash: addressHash.toString(),
         balance: balance.toString(),
@@ -78,6 +79,18 @@ export async function generateTierProof(
 
     // @ts-ignore - snarkjs types (Robust fallback for production/Cloudflare)
     const snarkjs = (window as any).snarkjs || await import("snarkjs");
+
+    if (import.meta.env.DEV) {
+        const shape = Object.fromEntries(
+            Object.entries(inputs).map(([key, value]) => [
+                key,
+                { type: typeof value, isArray: Array.isArray(value) },
+            ]),
+        );
+        console.log("[ZK][CircomInputs] shape", shape, {
+            tier_id: { value: inputs.tier_id, type: typeof inputs.tier_id, isArray: Array.isArray(inputs.tier_id) },
+        });
+    }
 
     const { proof, publicSignals } = await snarkjs.groth16.fullProve(
         inputs,

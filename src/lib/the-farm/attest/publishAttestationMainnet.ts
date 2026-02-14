@@ -3,6 +3,7 @@ import { Buffer } from "buffer";
 import { MAINNET_NETWORK_PASSPHRASE, MAINNET_RPC_URL, FARM_ATTESTATIONS_CONTRACT_ID_MAINNET } from "../../../config/farmAttestation";
 import { ensureBytes32Hex, hexToBytes } from "../digest";
 import type { AttestationResult, ProofSystem, Tier } from "../types";
+import { getRpcUrl } from "../../../utils/rpc";
 
 const { Api, Server, assembleTransaction } = rpc;
 const NULL_ACCOUNT = "GAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAWHF";
@@ -45,12 +46,26 @@ function symbolForTier(tier: Tier): string {
 }
 
 function ensureMainnetConfig(): void {
-  if (!MAINNET_RPC_URL.trim()) {
-    throw new Error("Missing PUBLIC_MAINNET_RPC_URL");
-  }
   if (!FARM_ATTESTATIONS_CONTRACT_ID_MAINNET.trim()) {
     throw new Error("Missing PUBLIC_FARM_ATTESTATIONS_CONTRACT_ID_MAINNET");
   }
+}
+
+function resolveSorobanRpcUrl(): string {
+  const fromEnv = MAINNET_RPC_URL.trim();
+  if (fromEnv) return fromEnv;
+
+  try {
+    const selected = (getRpcUrl?.() ?? "").trim();
+    if (selected) return selected;
+  } catch {
+    // Ignore selector errors and fall back to env-based config.
+  }
+
+  const fallback = (import.meta.env.PUBLIC_RPC_URL ?? "").trim();
+  if (fallback) return fallback;
+
+  return "";
 }
 
 function waitInterval(milliseconds: number): Promise<void> {
@@ -84,7 +99,13 @@ export async function publishAttestationMainnet(
 
     const statementHash = ensureBytes32Hex(input.statementHash);
     const verifierHash = ensureBytes32Hex(input.verifierHash);
-    const server = new Server(MAINNET_RPC_URL);
+
+    const rpcUrl = resolveSorobanRpcUrl();
+    if (!rpcUrl) {
+      throw new Error("Soroban RPC URL not configured. Set PUBLIC_RPC_URL (or PUBLIC_MAINNET_RPC_URL).");
+    }
+
+    const server = new Server(rpcUrl);
 
     const contract = new Contract(FARM_ATTESTATIONS_CONTRACT_ID_MAINNET);
     const operation = contract.call(
