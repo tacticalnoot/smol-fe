@@ -509,9 +509,21 @@ export async function submitProofToContract(
             throw new Error(result.error || "On-chain verification failed");
         }
 
+        const txHash =
+            result.transactionHash ||
+            result.result?.hash ||
+            result.result?.transactionHash ||
+            result.result?.txHash ||
+            result.result?.data?.hash ||
+            result.result?.data?.transactionHash;
+
+        if (!txHash) {
+            throw new Error(`Verification succeeded but no transaction hash was returned.`);
+        }
+
         return {
             success: true,
-            txHash: result.transactionHash,
+            txHash,
         };
 
     } catch (error: any) {

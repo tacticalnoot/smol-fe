@@ -148,7 +148,13 @@ export async function publishAttestationMainnet(
       throw new Error(result.error || "Mainnet attestation failed");
     }
 
-    const txHash = result.transactionHash || result.result?.hash || result.result?.transactionHash || result.result?.txHash;
+    const txHash =
+      result.transactionHash ||
+      result.result?.hash ||
+      result.result?.transactionHash ||
+      result.result?.txHash ||
+      result.result?.data?.hash ||
+      result.result?.data?.transactionHash;
     if (!txHash) {
       throw new Error(`Relayer success but no hash discovered in result: ${JSON.stringify(result.result)}`);
     }

@@ -183,7 +183,7 @@ export async function send<T>(txn: any /* AssembledTransaction<T> | Tx | string 
             console.log('[Relayer] Attempting DIRECT mode (OZ)...');
             try {
                 const result = await attemptSend(true);
-                console.log('[Relayer] DIRECT mode SUCCESS:', { hash: result.hash || result.transactionHash });
+                console.log('[Relayer] DIRECT mode SUCCESS:', { hash: result?.hash || result?.transactionHash || result?.data?.hash || result?.data?.transactionHash });
                 return result;
             } catch (err: any) {
                 // AI DEBUG: Log the exact failure reason
@@ -216,7 +216,7 @@ export async function send<T>(txn: any /* AssembledTransaction<T> | Tx | string 
         } else {
             console.log('[Relayer] Attempting PROXY mode (KaleFarm)...');
             const result = await attemptSend(false);
-            console.log('[Relayer] PROXY mode SUCCESS:', { hash: result.hash || result.transactionHash });
+            console.log('[Relayer] PROXY mode SUCCESS:', { hash: result?.hash || result?.transactionHash || result?.data?.hash || result?.data?.transactionHash });
             return result;
         }
     } catch (e: any) {

@@ -22,6 +22,32 @@ export interface SignAndSendResult {
     error?: string;
 }
 
+function extractHexTxHash(value: unknown): string | undefined {
+    if (typeof value !== "string") return undefined;
+    const normalized = value.startsWith("0x") ? value.slice(2) : value;
+    if (/^[0-9a-fA-F]{64}$/.test(normalized)) return normalized;
+    return undefined;
+}
+
+function extractTxHashFromRelayerResponse(result: any): string | undefined {
+    // Common shapes we see across relayers:
+    // 1) { hash: "..." }
+    // 2) { transactionHash: "..." }
+    // 3) { data: { hash: "..." } }  (OpenZeppelin Channels)
+    // 4) { data: { transactionHash: "..." } }
+    // Never treat UUID-like transactionId as a tx hash.
+    return (
+        extractHexTxHash(result?.hash) ||
+        extractHexTxHash(result?.transactionHash) ||
+        extractHexTxHash(result?.txHash) ||
+        extractHexTxHash(result?.transaction_hash) ||
+        extractHexTxHash(result?.data?.hash) ||
+        extractHexTxHash(result?.data?.transactionHash) ||
+        extractHexTxHash(result?.data?.txHash) ||
+        extractHexTxHash(result?.data?.transaction_hash)
+    );
+}
+
 /**
  * Simplified sign and send
  *
@@ -90,10 +116,10 @@ export async function signAndSend(
         }
 
         console.log('[SignAndSend] SUCCESS:', {
-            hash: result.hash || result.transactionHash,
+            hash: result?.hash || result?.transactionHash || result?.data?.hash || result?.data?.transactionHash,
         });
 
-        const txHash = result.hash || result.transactionHash || result.txHash || result.transactionId || result.transaction_hash;
+        const txHash = extractTxHashFromRelayerResponse(result);
 
         return {
             success: true,
