@@ -746,25 +746,25 @@
     font-family: "Press Start 2P";
     font-size: 0.55rem;
     letter-spacing: 2px;
-    color: rgba(204, 252, 203, 0.7);
+    color: rgba(232, 255, 200, 0.76);
     text-decoration: none;
-    border: 1px solid rgba(74, 222, 128, 0.25);
-    background: rgba(74, 222, 128, 0.06);
+    border: 1px solid rgba(154, 230, 0, 0.22);
+    background: rgba(154, 230, 0, 0.06);
     padding: 6px 10px;
     border-radius: 999px;
     transition: 0.2s;
   }
   .dungeon-link:hover {
     color: white;
-    border-color: rgba(74, 222, 128, 0.45);
-    background: rgba(74, 222, 128, 0.12);
+    border-color: rgba(154, 230, 0, 0.45);
+    background: rgba(154, 230, 0, 0.12);
   }
   .dungeon-link-cta {
     padding: 10px 14px;
-    border-color: rgba(74, 222, 128, 0.35);
-    background: linear-gradient(135deg, rgba(74, 222, 128, 0.95), rgba(74, 222, 128, 0.35));
+    border-color: rgba(154, 230, 0, 0.42);
+    background: linear-gradient(135deg, rgba(154, 230, 0, 0.98), rgba(154, 230, 0, 0.32));
     color: rgba(10, 16, 12, 0.92);
-    box-shadow: 0 10px 30px rgba(74, 222, 128, 0.22);
+    box-shadow: 0 10px 30px rgba(154, 230, 0, 0.22);
     position: relative;
     overflow: hidden;
   }
@@ -779,8 +779,8 @@
   }
   .dungeon-link-cta:hover {
     color: rgba(10, 16, 12, 0.95);
-    border-color: rgba(74, 222, 128, 0.55);
-    box-shadow: 0 14px 40px rgba(74, 222, 128, 0.32);
+    border-color: rgba(154, 230, 0, 0.62);
+    box-shadow: 0 14px 40px rgba(154, 230, 0, 0.34);
     transform: translateY(-1px);
   }
   .dungeon-link-cta:hover::before {

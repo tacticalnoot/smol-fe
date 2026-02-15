@@ -26,6 +26,9 @@
     type DoorState = "idle" | "proving" | "correct" | "wrong";
     type RelayStatus = "disconnected" | "connecting" | "connected" | "error";
 
+    const DOOR_COUNT = 8;
+    const emptyDoorStates = () => Array.from({ length: DOOR_COUNT }, () => "idle" as DoorState);
+
     const TOTAL_FLOORS = 3;
     const GATE_FLOORS = [1];
 
@@ -45,7 +48,7 @@
     let opponentName = $state<string>("");
     let currentFloor = $state<number>(1);
     let attempts = $state<number>(0);
-    let doorStates = $state<DoorState[]>(["idle", "idle", "idle", "idle"]);
+    let doorStates = $state<DoorState[]>(emptyDoorStates());
     let activeDoor = $state<number | null>(null);
     let runLog = $state<RunLogEntry[]>([]);
     let gateWaiting = $state<boolean>(false);
@@ -194,6 +197,52 @@
     }
     let localProverHealth = $state<{ ok: boolean; error?: string }>({ ok: false });
 
+    async function refreshLocalProverHealth(): Promise<void> {
+        // Do not probe same-origin `/api/*` in production (Cloudflare Pages may not have these routes).
+        // In DEV, if `PUBLIC_LOCAL_PROVER_URL` is set, this gives a quick "connected/offline" hint.
+        const local = (import.meta.env.PUBLIC_LOCAL_PROVER_URL ?? "").toString().trim();
+        const isDev = ((import.meta as any)?.env?.DEV ?? false) === true;
+        if (!isDev || !local) {
+            localProverHealth = { ok: false };
+            return;
+        }
+        try {
+            const res = await fetch(proverUrl("/health"), { method: "GET" });
+            const json = await res.json().catch(() => null);
+            localProverHealth = { ok: !!json?.ok };
+        } catch (e) {
+            localProverHealth = { ok: false, error: e instanceof Error ? e.message : String(e) };
+        }
+    }
+
+    async function pasteRoomCode(): Promise<void> {
+        try {
+            const text = await navigator.clipboard.readText();
+            const cleaned = (text || "")
+                .toUpperCase()
+                .replace(/[^A-Z0-9]/g, "")
+                .slice(0, 12);
+            if (cleaned.length >= 4) lobbyInput = cleaned;
+        } catch {}
+    }
+
+    function lobbyInviteLink(code: string): string {
+        try {
+            const url = new URL(window.location.href);
+            url.searchParams.set("room", code);
+            return url.toString();
+        } catch {
+            return "";
+        }
+    }
+
+    async function copyLobbyInviteLink(): Promise<void> {
+        try {
+            const link = lobbyInviteLink(lobbyCode);
+            if (link) await navigator.clipboard.writeText(link);
+        } catch {}
+    }
+
     function txExplorerUrlMainnet(txHash: string): string {
         return `https://stellar.expert/explorer/public/tx/${txHash}`;
     }
@@ -255,6 +304,22 @@
         return () => {
             cancelled = true;
         };
+    });
+
+    // One-click join: if the URL has `?room=XXXX`, prefill and auto-join once (wallet required for relay).
+    let autoJoinTried = false;
+    $effect(() => {
+        if (autoJoinTried) return;
+        if (phase !== "title") return;
+        if (!isConnected) return;
+        if (typeof window === "undefined") return;
+        const room = new URLSearchParams(window.location.search).get("room");
+        if (!room) return;
+        const cleaned = room.toUpperCase().replace(/[^A-Z0-9]/g, "").slice(0, 12);
+        if (cleaned.length < 4) return;
+        autoJoinTried = true;
+        lobbyInput = cleaned;
+        setTimeout(() => joinLobby(), 50);
     });
 
     async function waitForMainnetTx(hash: string): Promise<"success" | "failed" | "timeout"> {
@@ -450,19 +515,12 @@
         // Freeze policy seed + clearance snapshot for the run so doors don't reshuffle mid-session.
         if (!runPolicySeed) runPolicySeed = runId;
         runTierId = effectiveTierId;
-
-        try {
-            const res = await fetch(proverUrl("/health"), { method: "GET" });
-            const json = await res.json().catch(() => null);
-            localProverHealth = { ok: !!json?.ok };
-        } catch (e) {
-            localProverHealth = { ok: false, error: e instanceof Error ? e.message : String(e) };
-        }
+        await refreshLocalProverHealth();
 
         currentFloor = 1;
         attempts = 0;
         runLog = [];
-        doorStates = ["idle", "idle", "idle", "idle"];
+        doorStates = emptyDoorStates();
         gateWaiting = false;
         lastForensics = null;
         groth16OnChain = { status: "idle" };
@@ -554,7 +612,7 @@
                 provingTimeMs: 0,
                 error: msg,
             } as any;
-            doorStates = ["idle", "idle", "idle", "idle"];
+            doorStates = emptyDoorStates();
             activeDoor = null;
             return;
         }
@@ -609,7 +667,7 @@
                             nextAction: "Connect your passkey wallet and retry the door.",
                         },
                     };
-                    doorStates = ["idle", "idle", "idle", "idle"];
+                    doorStates = emptyDoorStates();
                     activeDoor = null;
                     return;
                 }
@@ -681,7 +739,7 @@
                             nextAction: "Retry the door. If RPC is flaky, wait a moment and retry.",
                         },
                     };
-                    doorStates = ["idle", "idle", "idle", "idle"];
+                    doorStates = emptyDoorStates();
                     activeDoor = null;
                     gateWaiting = false;
                     return;
@@ -710,13 +768,12 @@
                             nextAction: "Connect your passkey wallet and retry the door.",
                         },
                     };
-                    doorStates = ["idle", "idle", "idle", "idle"];
+                    doorStates = emptyDoorStates();
                     activeDoor = null;
                     return;
                 }
 
                 try {
-                    gateWaiting = true;
                     noirUltraHonkOnChain = { status: "simulating" };
 
                     // Generate a proof bound to this dungeon run (prover service via proxy; optional direct URL in DEV).
@@ -845,29 +902,10 @@
                         txHash: noirUltraHonkOnChain.txHash,
                     };
 
-                    // If the verifier bridge isn't configured yet, don't brick the run.
-                    // We surface the failure honestly in the Integrity UI and let the user proceed.
-                    if (message.includes("NotConfigured") || message.includes("UltraHonk") && message.includes("configured")) {
-                        console.warn("[Dungeon] Noir on-chain verifier bridge disabled:", message);
-                    } else {
-                        lastForensics = {
-                            ...result,
-                            accepted: false,
-                            reasonCode: "ONCHAIN_VERIFY_FAILED",
-                            reasonHuman: "Door policy matched, but on-chain UltraHonk verification failed",
-                            forensics: {
-                                ...result.forensics,
-                                mismatchExplanation: message || "On-chain UltraHonk verification failed.",
-                                nextAction:
-                                    "Retry the door. If RPC is flaky, wait a moment and retry.",
-                            },
-                        };
-                        doorStates = ["idle", "idle", "idle", "idle"];
-                        activeDoor = null;
-                        return;
-                    }
+                    // Never brick run progression for Room 2; record failure as non-blocking.
+                    console.warn("[Dungeon] Noir on-chain verify failed (non-blocking):", message);
                 } finally {
-                    gateWaiting = false;
+                    // Do not use gateWaiting for Room 2.
                 }
             }
 
@@ -890,13 +928,12 @@
                             nextAction: "Connect your passkey wallet and retry the door.",
                         },
                     };
-                    doorStates = ["idle", "idle", "idle", "idle"];
+                    doorStates = emptyDoorStates();
                     activeDoor = null;
                     return;
                 }
 
                 try {
-                    gateWaiting = true;
                     risc0Groth16OnChain = { status: "simulating" };
 
                     // Generate a Groth16 receipt proof bound to this dungeon run via the prover service.
@@ -1027,30 +1064,10 @@
                         txHash: risc0Groth16OnChain.txHash,
                     };
 
-                    // If the verifier contract isn't deployed/configured yet, don't brick the run.
-                    // We show the failure honestly in the Integrity UI and let the user proceed.
-                    if (message.includes("Missing PUBLIC_RISC0_GROTH16_VERIFIER_CONTRACT_ID_MAINNET")) {
-                        console.warn("[Dungeon] RISC0 on-chain verifier disabled:", message);
-                    } else {
-                        lastForensics = {
-                            ...result,
-                            accepted: false,
-                            reasonCode: "ONCHAIN_VERIFY_FAILED",
-                            reasonHuman: "Door policy matched, but on-chain receipt verification failed",
-                            forensics: {
-                                ...result.forensics,
-                                mismatchExplanation: message || "On-chain receipt verification failed.",
-                                nextAction:
-                                    "Retry the door. If RPC is flaky, wait a moment and retry.",
-                            },
-                        };
-                        doorStates = ["idle", "idle", "idle", "idle"];
-                        activeDoor = null;
-                        gateWaiting = false;
-                        return;
-                    }
+                    // Never brick run progression for Room 3; record failure as non-blocking.
+                    console.warn("[Dungeon] RISC0 on-chain verify failed (non-blocking):", message);
                 } finally {
-                    gateWaiting = false;
+                    // Do not use gateWaiting for Room 3.
                 }
             }
 
@@ -1071,7 +1088,7 @@
                 await new Promise((r) => setTimeout(r, 600));
                 const nextFloor = currentFloor + 1;
                 currentFloor = nextFloor;
-                doorStates = ["idle", "idle", "idle", "idle"];
+                doorStates = emptyDoorStates();
                 activeDoor = null;
                 floorTransition = false;
                 lastForensics = null;
@@ -1089,20 +1106,17 @@
                     } catch {}
                 }
 
-                // Gate floors: after clearing 1 and 5, wait for both players to reach the next floor.
-                if (GATE_FLOORS.includes(nextFloor - 1)) {
+                // Gate floors: only used for co-op sync. Solo should never be blocked by a gate overlay.
+                if (GATE_FLOORS.includes(nextFloor - 1) && multiplayerEnabled) {
                     gateWaiting = true;
-                    if (!multiplayerEnabled) {
-                        setTimeout(() => {
-                            gateWaiting = false;
-                        }, 1400);
-                    }
+                } else {
+                    gateWaiting = false;
                 }
             }
         } else {
             // Wrong door - reset door states after animation
             await new Promise((r) => setTimeout(r, 400));
-            doorStates = ["idle", "idle", "idle", "idle"];
+            doorStates = emptyDoorStates();
             activeDoor = null;
         }
     }
@@ -1125,7 +1139,7 @@
         stopRelayPolling();
         currentFloor = 1;
         attempts = 0;
-        doorStates = ["idle", "idle", "idle", "idle"];
+        doorStates = emptyDoorStates();
         activeDoor = null;
         runLog = [];
         gateWaiting = false;
@@ -1159,6 +1173,18 @@
     async function proceedFromAirlock() {
         // Gameplay begins after Room 0. (Room 0 can be recorded on-chain, but demo mode can proceed without it.)
         await startGameLocal();
+    }
+
+    async function stampEntryAndEnter() {
+        try {
+            await stampOnChain("ENTRY");
+            if (entryStamp.status === "confirmed") {
+                await proceedFromAirlock();
+            }
+        } catch (err) {
+            // stampOnChain already updates entryStamp status; keep this silent to avoid double-reporting.
+            console.warn("[Dungeon] Entry stamp failed:", err);
+        }
     }
 
     let zkWarmupStarted = false;
@@ -1264,15 +1290,7 @@
             risc0SaltByte = Number(bytes[0] || 22);
         }
 
-        // Best-effort healthcheck for the prover service.
-        // (Rooms 2/3 can still be played without it; on-chain verification will show a clear error.)
-        try {
-            const res = await fetch(proverUrl("/health"), { method: "GET" });
-            const json = await res.json().catch(() => null);
-            localProverHealth = { ok: !!json?.ok };
-        } catch (e) {
-            localProverHealth = { ok: false, error: e instanceof Error ? e.message : String(e) };
-        }
+        await refreshLocalProverHealth();
         entryStamp = { status: "idle" };
         withdrawalStamp = { status: "idle" };
         groth16OnChain = { status: "idle" };
@@ -1282,8 +1300,8 @@
     }
 
     // Door symbols
-    const DOOR_SYMBOLS = ["\u16B1", "\u16C7", "\u16A6", "\u16D2"]; // Elder Futhark-like runes
-    const DOOR_COLORS = ["#4ad0ff", "#9b7bff", "#ffc47a", "#7bffb0"];
+    const DOOR_SYMBOLS = ["\u16B1", "\u16C7", "\u16A6", "\u16D2", "\u16DF", "\u16DE", "\u16C9", "\u16BB"]; // 8 rune-like markers
+    const DOOR_COLORS = ["#4ad0ff", "#9b7bff", "#ffc47a", "#7bffb0", "#ff7bbd", "#9ae600", "#60a5fa", "#f97316"];
 </script>
 
 <!-- ── Title Screen ──────────────────────────────────────────────── -->
@@ -1317,6 +1335,7 @@
                             bind:value={lobbyInput}
                             onkeydown={(e) => e.key === "Enter" && joinLobby()}
                         />
+                        <button class="dg-btn dg-btn-secondary dg-btn-sm dg-btn-paste" onclick={pasteRoomCode}>PASTE</button>
                         <button class="dg-btn dg-btn-primary dg-btn-join" onclick={joinLobby}>JOIN LOBBY</button>
                     </div>
                 </div>
@@ -1342,7 +1361,7 @@
             {/if}
 
             <p class="dg-cred-line dg-cred-subline">
-                LOCAL PROVER: {localProverHealth.ok ? "CONNECTED" : "OFFLINE"}
+                LOCAL PROVER (DEV): {localProverHealth.ok ? "CONNECTED" : "OFFLINE"}
                 {#if !localProverHealth.ok && localProverHealth.error}
                     <span class="dg-cred-inline-warn">({localProverHealth.error})</span>
                 {/if}
@@ -1464,7 +1483,7 @@
                             disabled={entryStamp.status === "simulating" || entryStamp.status === "assembling" || entryStamp.status === "signing"}
                             onclick={() => stampOnChain("ENTRY")}
                         >
-                            STAMP ENTRY ON-CHAIN (PASSKEY)
+                            STAMP ENTRY ONLY (PASSKEY)
                         </button>
                     {:else}
                         <button class="dg-btn dg-btn-secondary" onclick={connectWallet}>CONNECT WALLET (PASSKEY)</button>
@@ -1472,10 +1491,17 @@
                 </div>
 
                 <div class="dg-vault-actions">
-                    <button class="dg-btn dg-btn-primary" onclick={proceedFromAirlock}>
-                        ENTER INTAKE WING →
-                    </button>
-                    {#if !isConnected}
+                    {#if isConnected}
+                        <button class="dg-btn dg-btn-primary dg-btn-kale" onclick={stampEntryAndEnter}>
+                            STAMP + ENTER INTAKE →
+                        </button>
+                        <button class="dg-btn dg-btn-secondary" onclick={proceedFromAirlock}>
+                            ENTER WITHOUT STAMP
+                        </button>
+                    {:else}
+                        <button class="dg-btn dg-btn-primary dg-btn-kale" onclick={proceedFromAirlock}>
+                            ENTER INTAKE WING →
+                        </button>
                         <p class="dg-hint">Demo mode: you can proceed without an on-chain entry stamp.</p>
                     {/if}
                 </div>
@@ -1501,6 +1527,7 @@
             <button class="dg-btn dg-btn-ghost dg-btn-sm" onclick={() => {
                 navigator.clipboard.writeText(lobbyCode);
             }}>COPY CODE</button>
+            <button class="dg-btn dg-btn-ghost dg-btn-sm" onclick={copyLobbyInviteLink}>COPY LINK</button>
         </div>
 
         <div class="dg-relay-status" aria-live="polite">
@@ -1640,7 +1667,9 @@
                                 This wing verifies UltraHonk locally in-browser. On-chain UltraHonk requires an external prover service (to generate a proof bound to your run).
                             </div>
                         {:else}
-                            <div class="dg-stamp-status">STATUS: {noirUltraHonkOnChain.status.toUpperCase()}</div>
+                            <div class="dg-stamp-status">
+                                STATUS: {noirUltraHonkOnChain.status.toUpperCase()}{noirUltraHonkOnChain.status === "error" ? " (NON-BLOCKING)" : ""}
+                            </div>
                             {#if noirUltraHonkOnChain.txHash}
                                 <a class="dg-stamp-link" href={txExplorerUrlMainnet(noirUltraHonkOnChain.txHash)} target="_blank" rel="noreferrer">
                                     VIEW TX {noirUltraHonkOnChain.txHash.slice(0, 8)}...
@@ -1669,7 +1698,9 @@
                                 This wing verifies a RISC0 receipt locally in-browser. On-chain receipt verification requires an external prover service plus a deployed verifier contract.
                             </div>
                         {:else}
-                            <div class="dg-stamp-status">STATUS: {risc0Groth16OnChain.status.toUpperCase()}</div>
+                            <div class="dg-stamp-status">
+                                STATUS: {risc0Groth16OnChain.status.toUpperCase()}{risc0Groth16OnChain.status === "error" ? " (NON-BLOCKING)" : ""}
+                            </div>
                             {#if risc0Groth16OnChain.txHash}
                                 <a class="dg-stamp-link" href={txExplorerUrlMainnet(risc0Groth16OnChain.txHash)} target="_blank" rel="noreferrer">
                                     VIEW TX {risc0Groth16OnChain.txHash.slice(0, 8)}...
@@ -1747,7 +1778,7 @@
                             <input type="checkbox" bind:checked={trainingMode} />
                             <span>TRAINING MODE</span>
                         </label>
-                        <label class="dg-toggle">
+                        <label class="dg-toggle dg-present">
                             <span>PRESENT</span>
                             <select
                                 class="dg-select"
@@ -1761,7 +1792,11 @@
                             </select>
                         </label>
                         <span class="dg-hint-pill">
-                            CREDENTIAL: {tierLabel(runTierId || effectiveTierId)} • {activeLane.name} • {(runTierId || effectiveTierId) % 2 === 0 ? "EVEN" : "ODD"}
+                            {#if trainingMode}
+                                CREDENTIAL: {tierLabel(runTierId || effectiveTierId)} • {activeLane.name} • {(runTierId || effectiveTierId) % 2 === 0 ? "EVEN" : "ODD"}
+                            {:else}
+                                CREDENTIAL: {tierLabel(runTierId || effectiveTierId)} • {(runTierId || effectiveTierId) % 2 === 0 ? "EVEN" : "ODD"}
+                            {/if}
                         </span>
                         {#if attestedTierId !== null}
                             <span class="dg-cred-source">ON-CHAIN</span>
@@ -1769,7 +1804,7 @@
                             <span class="dg-cred-source dg-cred-source-demo">LOCAL</span>
                         {/if}
                         {#if isConnected}
-                            <label class="dg-toggle">
+                            <label class="dg-toggle dg-advanced">
                                 <input type="checkbox" bind:checked={advancedOnChainGuards} />
                                 <span>ADVANCED ON-CHAIN</span>
                             </label>
@@ -2097,6 +2132,15 @@
         transform: translateY(-1px);
     }
 
+    .dg-btn-kale {
+        background: linear-gradient(135deg, rgba(154, 230, 0, 1), rgba(74, 222, 128, 1));
+        box-shadow: 0 6px 26px rgba(154, 230, 0, 0.18);
+        border-color: rgba(255,255,255,0.22);
+    }
+    .dg-btn-kale:hover {
+        box-shadow: 0 10px 36px rgba(154, 230, 0, 0.28);
+    }
+
     .dg-btn-secondary {
         background: rgba(255,255,255,0.06);
         color: var(--dg-text);
@@ -2122,6 +2166,10 @@
         font-size: 9px;
     }
 
+    .dg-btn-paste {
+        min-width: 92px;
+    }
+
     .dg-input {
         padding: 12px 16px;
         background: rgba(255,255,255,0.05);
@@ -2137,7 +2185,6 @@
         max-width: 90vw;
         outline: none;
     }
-
     /* ── Kale-Seed Vault Layout ─────────────────────────────────────── */
     .dg-vault-screen {
         position: relative;
@@ -2414,6 +2461,10 @@
 
     .dg-vault-actions {
         padding: 0 14px 14px;
+        display: flex;
+        flex-direction: column;
+        gap: 10px;
+        align-items: flex-start;
     }
 
     /* Responsive */
@@ -2424,8 +2475,8 @@
         }
     }
     .dg-input:focus {
-        border-color: var(--dg-accent);
-        box-shadow: 0 0 12px rgba(74,208,255,0.15);
+        border-color: rgba(154, 230, 0, 0.45);
+        box-shadow: 0 0 0 4px rgba(154, 230, 0, 0.10);
     }
     .dg-input::placeholder {
         color: rgba(255,255,255,0.2);
@@ -3018,9 +3069,9 @@
         align-items: center;
         padding: 8px 10px;
         border-radius: 999px;
-        border: 1px solid rgba(255,255,255,0.12);
-        background: rgba(255,255,255,0.04);
-        color: var(--dg-text-dim);
+        border: 1px solid rgba(154, 230, 0, 0.18);
+        background: rgba(0, 0, 0, 0.22);
+        color: rgba(255,255,255,0.84);
         font-family: var(--dg-font-display);
         font-size: 9px;
         letter-spacing: 1px;
@@ -3031,13 +3082,25 @@
     .dg-toggle input {
         width: 14px;
         height: 14px;
-        accent-color: var(--dg-accent);
+        accent-color: rgba(154, 230, 0, 0.95);
+    }
+
+    .dg-toggle:hover,
+    .dg-toggle:focus-within {
+        border-color: rgba(154, 230, 0, 0.40);
+        color: rgba(255,255,255,0.95);
+        box-shadow: 0 0 0 3px rgba(154, 230, 0, 0.08);
+    }
+
+    .dg-present {
+        border-color: rgba(154, 230, 0, 0.45);
+        background: rgba(154, 230, 0, 0.10);
     }
 
     .dg-select {
         appearance: none;
-        background: rgba(0,0,0,0.18);
-        border: 1px solid rgba(255,255,255,0.14);
+        background: rgba(6, 12, 8, 0.85);
+        border: 1px solid rgba(154, 230, 0, 0.45);
         color: rgba(255,255,255,0.86);
         border-radius: 999px;
         padding: 7px 10px;
@@ -3045,6 +3108,11 @@
         font-size: 9px;
         letter-spacing: 1px;
         cursor: pointer;
+        box-shadow: 0 0 0 3px rgba(154, 230, 0, 0.08);
+    }
+    .dg-select:focus {
+        outline: 2px solid rgba(154, 230, 0, 0.35);
+        outline-offset: 2px;
     }
     .dg-select:disabled {
         opacity: 0.6;

@@ -1,4 +1,4 @@
-export type DoorId = 0 | 1 | 2 | 3;
+export type DoorId = 0 | 1 | 2 | 3 | 4 | 5 | 6 | 7;
 
 export type DoorPolicyTag = {
   short: string; // Small label for the door card UI
@@ -112,7 +112,7 @@ export function laneCodeForSeed(seed: string, floor: number): VaultLaneCode {
 
 function shuffledDoorIds(seed: string): DoorId[] {
   const prng = mulberry32(fnv1a32(seed));
-  const ids: DoorId[] = [0, 1, 2, 3];
+  const ids: DoorId[] = [0, 1, 2, 3, 4, 5, 6, 7];
   for (let i = ids.length - 1; i > 0; i -= 1) {
     const j = Math.floor(prng() * (i + 1));
     const tmp = ids[i];
@@ -196,25 +196,42 @@ export function getFloorDefinition(
   const tierParity = parityForTier(tierId);
   const prng = mulberry32(fnv1a32(`${ctx.seed}:floor:${floor}`));
 
-  // Pick which physical doors share the current lane (one is correct, one is a decoy).
-  const [correctDoor, decoyDoor, wrong1, wrong2] = shuffledDoorIds(`${ctx.seed}:doors:${floor}`);
+  const ids = shuffledDoorIds(`${ctx.seed}:doors:${floor}`);
+  const correctDoor = ids[0]!;
+  const decoy1 = ids[1]!;
+  const decoy2 = ids[2]!;
+  const wrong1 = ids[3]!;
+  const wrong2 = ids[4]!;
+  const wrong3 = ids[5]!;
+  const wrong4 = ids[6]!;
+  const wrong5 = ids[7]!;
   const otherLanes: VaultLaneCode[] = ([0, 1, 2, 3].filter((c) => c !== lane) as VaultLaneCode[]);
   const wrongLane1 = otherLanes[0] ?? ((lane + 1) % 4 as VaultLaneCode);
   const wrongLane2 = otherLanes[1] ?? ((lane + 2) % 4 as VaultLaneCode);
+  const wrongLane3 = otherLanes[2] ?? ((lane + 3) % 4 as VaultLaneCode);
 
   const doorsById = new Map<DoorId, DoorDefinition>();
+  const allDoorIds: DoorId[] = [0, 1, 2, 3, 4, 5, 6, 7];
 
   if (floor === 1) {
     // Intake: clearance bar is low, but routing lanes prevent cross-contamination.
     // Correct door: lane match + min <= tier (always satisfiable).
-    // Decoy: lane match but min too high (teaches min vs lane).
+    // Decoys/wrongs: partial matches so the player must read both tags.
     const minOk = Math.max(0, tierId - (prng() > 0.6 ? 1 : 0));
     const minTooHigh = Math.min(3, tierId + 1);
+    const minWayTooHigh = Math.min(3, tierId + 2);
 
     doorsById.set(correctDoor, mkMinTierLaneDoor(correctDoor, minOk, lane));
-    doorsById.set(decoyDoor, mkMinTierLaneDoor(decoyDoor, minTooHigh, lane));
-    doorsById.set(wrong1, mkMinTierLaneDoor(wrong1, Math.max(0, tierId - 1), wrongLane1));
-    doorsById.set(wrong2, mkMinTierLaneDoor(wrong2, Math.min(3, tierId + 2), wrongLane2));
+    // Lane matches but tier requirement fails.
+    doorsById.set(decoy1, mkMinTierLaneDoor(decoy1, minTooHigh, lane));
+    doorsById.set(decoy2, mkMinTierLaneDoor(decoy2, minWayTooHigh, lane));
+    // Tier requirement can pass, but lane is wrong.
+    doorsById.set(wrong1, mkMinTierLaneDoor(wrong1, minOk, wrongLane1));
+    doorsById.set(wrong2, mkMinTierLaneDoor(wrong2, minOk, wrongLane2));
+    doorsById.set(wrong3, mkMinTierLaneDoor(wrong3, minOk, wrongLane3));
+    // Both wrong (keeps the grid non-trivial).
+    doorsById.set(wrong4, mkMinTierLaneDoor(wrong4, minTooHigh, wrongLane1));
+    doorsById.set(wrong5, mkMinTierLaneDoor(wrong5, minTooHigh, wrongLane2));
 
     return {
       floor,
@@ -223,18 +240,27 @@ export function getFloorDefinition(
       briefing:
         "Intake uses two constraints: a minimum clearance plus a routing lane. Read both tags; a valid credential can still be denied by lane mismatch.",
       verifierType: "GROTH16",
-      doors: [0, 1, 2, 3].map((id) => doorsById.get(id as DoorId)!) as DoorDefinition[],
+      doors: allDoorIds.map((id) => doorsById.get(id)!) as DoorDefinition[],
     };
   }
 
   if (floor === 2) {
     // Catalog: exact role + lane.
-    // Correct: exact tier + lane. Decoy: lane match, wrong tier.
+    // Correct: exact tier + lane. Decoys/wrongs are partial matches.
     const wrongTier = (tierId + 1) % 4;
+    const wrongTier2 = (tierId + 2) % 4;
+    const wrongTier3 = (tierId + 3) % 4;
     doorsById.set(correctDoor, mkExactTierLaneDoor(correctDoor, tierId, lane));
-    doorsById.set(decoyDoor, mkExactTierLaneDoor(decoyDoor, wrongTier, lane));
+    // Lane match but wrong role.
+    doorsById.set(decoy1, mkExactTierLaneDoor(decoy1, wrongTier, lane));
+    doorsById.set(decoy2, mkExactTierLaneDoor(decoy2, wrongTier2, lane));
+    // Role match but wrong lane.
     doorsById.set(wrong1, mkExactTierLaneDoor(wrong1, tierId, wrongLane1));
-    doorsById.set(wrong2, mkExactTierLaneDoor(wrong2, (tierId + 2) % 4, wrongLane2));
+    doorsById.set(wrong2, mkExactTierLaneDoor(wrong2, tierId, wrongLane2));
+    doorsById.set(wrong3, mkExactTierLaneDoor(wrong3, tierId, wrongLane3));
+    // Both wrong.
+    doorsById.set(wrong4, mkExactTierLaneDoor(wrong4, wrongTier3, wrongLane1));
+    doorsById.set(wrong5, mkExactTierLaneDoor(wrong5, wrongTier2, wrongLane2));
 
     return {
       floor,
@@ -243,21 +269,30 @@ export function getFloorDefinition(
       briefing:
         "Custody is strict: exact role plus custody lane. Read both tags; “close enough” does not open drawers.",
       verifierType: "NOIR_ULTRAHONK",
-      doors: [0, 1, 2, 3].map((id) => doorsById.get(id as DoorId)!) as DoorDefinition[],
+      doors: allDoorIds.map((id) => doorsById.get(id)!) as DoorDefinition[],
     };
   }
 
   if (floor === 3) {
     // Cold storage: multi-constraint (min + parity + lane).
-    // Correct: tier ok + parity ok + lane ok. Decoy: lane ok but parity flipped.
+    // Correct: tier ok + parity ok + lane ok. Decoys/wrongs are partial matches.
     const minOk = Math.max(0, tierId - (prng() > 0.5 ? 1 : 0));
     const minTooHigh = Math.min(3, tierId + 1);
+    const minWayTooHigh = Math.min(3, tierId + 2);
     const flippedParity: TierParity = tierParity === "EVEN" ? "ODD" : "EVEN";
 
     doorsById.set(correctDoor, mkMinTierParityLaneDoor(correctDoor, minOk, tierParity, lane));
-    doorsById.set(decoyDoor, mkMinTierParityLaneDoor(decoyDoor, minOk, flippedParity, lane));
-    doorsById.set(wrong1, mkMinTierParityLaneDoor(wrong1, minTooHigh, tierParity, wrongLane1));
-    doorsById.set(wrong2, mkMinTierParityLaneDoor(wrong2, minOk, flippedParity, wrongLane2));
+    // Lane match but parity wrong.
+    doorsById.set(decoy1, mkMinTierParityLaneDoor(decoy1, minOk, flippedParity, lane));
+    // Lane match but min too high (even with correct parity).
+    doorsById.set(decoy2, mkMinTierParityLaneDoor(decoy2, minTooHigh, tierParity, lane));
+    // Parity match but lane wrong.
+    doorsById.set(wrong1, mkMinTierParityLaneDoor(wrong1, minOk, tierParity, wrongLane1));
+    doorsById.set(wrong2, mkMinTierParityLaneDoor(wrong2, minOk, tierParity, wrongLane2));
+    doorsById.set(wrong3, mkMinTierParityLaneDoor(wrong3, minOk, tierParity, wrongLane3));
+    // Mixed wrongs.
+    doorsById.set(wrong4, mkMinTierParityLaneDoor(wrong4, minWayTooHigh, flippedParity, wrongLane1));
+    doorsById.set(wrong5, mkMinTierParityLaneDoor(wrong5, minTooHigh, flippedParity, wrongLane2));
 
     return {
       floor,
@@ -266,7 +301,7 @@ export function getFloorDefinition(
       briefing:
         "Incident response added two-factor: minimum clearance + parity + cold-chain lane. A credential can be valid and still fail policy.",
       verifierType: "RISC0_RECEIPT",
-      doors: [0, 1, 2, 3].map((id) => doorsById.get(id as DoorId)!) as DoorDefinition[],
+      doors: allDoorIds.map((id) => doorsById.get(id)!) as DoorDefinition[],
     };
   }
 
