@@ -7,6 +7,10 @@ import sharp from "sharp";
 // (https://github.com/openai/skills/blob/main/skills/.curated/imagegen/SKILL.md).
 // This repo pass generates cohesive placeholder art locally (SVG -> WEBP via sharp) so
 // the UI ships with themed assets without requiring external tooling.
+//
+// If you *do* have an imagegen-capable API key, you can generate richer art:
+//   OPENAI_API_KEY=... node scripts/generate_zkdungeon_art.mjs --provider=openai
+// This keeps the repo buildable without paid services, while still allowing high-quality assets.
 
 const OUT_DIR = path.join(process.cwd(), "public", "labs", "zkdungeon", "art");
 
@@ -21,6 +25,53 @@ const PALETTE = {
   amber: "#ffc47a",
   mint: "#7bffb0",
 };
+
+function parseArgs(argv) {
+  const out = { provider: "svg" };
+  for (const arg of argv.slice(2)) {
+    if (arg.startsWith("--provider=")) out.provider = arg.split("=", 2)[1] || "svg";
+  }
+  return out;
+}
+
+async function writeWebpFromPngBuffer(pngBuf, outPath, { w, h, q = 82 } = {}) {
+  await sharp(pngBuf)
+    .resize(w, h, { fit: "cover" })
+    .webp({ quality: q })
+    .toFile(outPath);
+}
+
+async function openaiImage(prompt, { size = "1024x1024" } = {}) {
+  const apiKey = process.env.OPENAI_API_KEY || "";
+  if (!apiKey) {
+    throw new Error("Missing OPENAI_API_KEY (required for --provider=openai)");
+  }
+
+  const model = process.env.OPENAI_IMAGE_MODEL || "gpt-image-1";
+  const resp = await fetch("https://api.openai.com/v1/images/generations", {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${apiKey}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({
+      model,
+      prompt,
+      size,
+      response_format: "b64_json",
+      n: 1,
+    }),
+  });
+
+  const json = await resp.json().catch(() => null);
+  if (!resp.ok) {
+    const msg = json?.error?.message || JSON.stringify(json) || `HTTP ${resp.status}`;
+    throw new Error(`OpenAI image generation failed: ${msg}`);
+  }
+  const b64 = json?.data?.[0]?.b64_json;
+  if (!b64) throw new Error("OpenAI image generation returned no image data");
+  return Buffer.from(b64, "base64");
+}
 
 function svgHeader(w, h) {
   return `<?xml version="1.0" encoding="UTF-8"?>
@@ -234,6 +285,7 @@ async function writeWebpFromSvg(svg, outPath, { w, h, q = 82 } = {}) {
 }
 
 async function main() {
+  const args = parseArgs(process.argv);
   await fs.mkdir(OUT_DIR, { recursive: true });
 
   const assets = [
@@ -360,8 +412,29 @@ async function main() {
   for (const a of assets) {
     const outPath = path.join(OUT_DIR, a.name);
     // eslint-disable-next-line no-console
-    console.log("render", a.name);
-    await writeWebpFromSvg(a.svg, outPath, { w: a.w, h: a.h, q: 82 });
+    console.log("render", a.name, `(provider=${args.provider})`);
+
+    if (args.provider === "openai") {
+      // Cozy "midnight kale" pixel-farm vibes (Stardew/Harvest Moon energy).
+      // We still resize to the exact output dimensions expected by the UI.
+      const prompt =
+        a.name === "vault-blueprint-map.webp"
+          ? "Top-down map of a highly protected kale-seed vault, cozy pixel art (16-bit), midnight palette, labeled rooms: Airlock, Intake Wing, Catalog Hall, Cold Storage, Ledger Chamber. Subtle stars, neat readable layout, not scary."
+          : a.name.startsWith("room-")
+            ? `Cozy pixel art scene header for "${a.name.replace("room-", "").replace(".webp", "")}" inside a kale-seed vault at night, gentle glow, farming vibe, stardew valley / harvest moon mood, subtle blueprint overlay, no text.`
+            : a.name.startsWith("guardian-")
+              ? `Cozy pixel art portrait of a guardian for "${a.name.replace("guardian-", "").replace(".webp", "")}" verifier, midnight kale theme, friendly but serious, clean silhouette, no text.`
+              : a.name.startsWith("badge-")
+                ? "Small high-contrast pixel icon badge: kale leaf + cryptography glyph, midnight palette, readable at small sizes, no text."
+                : a.name.includes("texture-midnight-kale")
+                  ? "Seamless texture, midnight kale leaf pattern, subtle stars and grid, cozy pixel style."
+                  : "Seamless subtle laminated placard texture, midnight palette, cozy pixel style, faint scuffs.";
+
+      const png = await openaiImage(prompt, { size: "1024x1024" });
+      await writeWebpFromPngBuffer(png, outPath, { w: a.w, h: a.h, q: 84 });
+    } else {
+      await writeWebpFromSvg(a.svg, outPath, { w: a.w, h: a.h, q: 82 });
+    }
   }
 
   // eslint-disable-next-line no-console

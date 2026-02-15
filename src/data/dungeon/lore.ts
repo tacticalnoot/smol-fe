@@ -52,14 +52,14 @@ export const dungeonLore: Record<DungeonRoomId, RoomLore> = {
         "Read the placard, read the door tags, and treat the credential like a clearance badge. A valid proof can still be denied if you choose a door whose policy your credential does not satisfy.",
       ].join("\n\n"),
     protocolPlacard:
-      "Policy: Minimum Clearance. Door opens iff your proven tier_id >= the door’s MIN requirement.",
+      "Policy: Intake Routing. Door opens iff (tier_id >= MIN) AND (Lane matches). Read both tags.",
     verifierExplainer:
       "Verifier: Groth16 (Circom / BN254). The dungeon generates a real proof and verifies it locally. If your passkey wallet is connected, this wing also performs real on-chain verification via Tier Verifier (verify_and_attest).",
     failureExplainersByReasonCode: {
       PROOF_INVALID:
         "Credential invalid: the Groth16 verifier rejected the proof. This is not a policy mismatch. Regenerate and retry.",
       POLICY_MISMATCH:
-        "Credential valid, but you chose a door whose MIN requirement is above your tier_id. Pick a door with MIN at or below your tier.",
+        "Credential valid, but you chose a door whose MIN or LANE does not match your credential. Intake denies cross-lane access to prevent mixups.",
     },
     successExplainer:
       "Intake cleared. Your credential satisfies the minimum-clearance policy. Proceed to catalog custody.",
@@ -76,14 +76,14 @@ export const dungeonLore: Record<DungeonRoomId, RoomLore> = {
         "In the dungeon, Noir verification is cryptographically real. If you are in training mode, the credential may be a verified training artifact rather than a proof generated from your live wallet inputs. The difference is stated plainly in the UI.",
       ].join("\n\n"),
     protocolPlacard:
-      "Policy: Role-Based Access. Door opens iff your proven tier_id exactly matches the door’s ROLE requirement.",
+      "Policy: Role-Based + Custody Lane. Door opens iff (tier_id matches ROLE) AND (Lane matches).",
     verifierExplainer:
       "Verifier: UltraHonk (Noir). The dungeon can verify locally in the browser, and (when the local prover service is running) it can also submit a real mainnet on-chain verification via farm-attestations → ultrahonk-verifier (VK_ID NOIR_ROLE_V1), signed with your passkey.",
     failureExplainersByReasonCode: {
       PROOF_INVALID:
         "Credential invalid: the UltraHonk verifier rejected the proof artifact. This is a cryptographic failure, not a policy mismatch.",
       POLICY_MISMATCH:
-        "Credential valid, but the ROLE does not match your tier_id. In custody, “close enough” is not allowed.",
+        "Credential valid, but the ROLE or LANE does not match. In custody, “close enough” is not allowed.",
     },
     successExplainer:
       "Custody cleared. Your credential satisfies role-based access. Proceed to deep freeze storage.",
@@ -100,14 +100,14 @@ export const dungeonLore: Record<DungeonRoomId, RoomLore> = {
         "In this room, the second factor is deterministic and visible: parity. It’s not magical security, it’s a teachable example of multi-constraint policy. Your credential can be valid and still fail the parity requirement.",
       ].join("\n\n"),
     protocolPlacard:
-      "Policy: Two-Factor. Door opens iff (tier_id >= MIN) AND (tier_id parity matches EVEN/ODD).",
+      "Policy: Two-Factor + Cold-Chain Lane. Door opens iff (tier_id >= MIN) AND (parity matches) AND (Lane matches).",
     verifierExplainer:
       "Verifier: RISC0 receipt verifier (WASM). The dungeon verifies receipts locally, and (when the local prover service is running) it can also submit a real mainnet on-chain Groth16 verification of the receipt via farm-attestations (VK_ID R0G16V1), signed with your passkey.",
     failureExplainersByReasonCode: {
       PROOF_INVALID:
         "Credential invalid: the receipt verifier rejected the artifact. Retry with a valid receipt artifact.",
       POLICY_MISMATCH:
-        "Credential valid, but you failed one or both constraints (MIN tier and parity). Read both tags.",
+        "Credential valid, but you failed one or more constraints (MIN tier, parity, lane). Read all tags.",
     },
     successExplainer:
       "Cold storage cleared. Your credential satisfies the two-factor policy. Proceed to the ledger chamber.",

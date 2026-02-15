@@ -202,6 +202,7 @@ export interface DoorAttemptParams {
     playerAddress: string;
     keyId: string;
     contractId: string;
+    policySeed: string;
     tierId: number;
     balance: bigint;
     mode: "normal" | "training";
@@ -265,7 +266,7 @@ export async function attemptDoor(
     const proofType = getProofTypeForFloor(params.floor);
 
     try {
-        const floorDef = getFloorDefinition(params.floor);
+        const floorDef = getFloorDefinition(params.floor, { seed: params.policySeed || "demo", tierId: params.tierId });
 
         let proofOk = false;
         let tierId = params.tierId;
@@ -334,6 +335,7 @@ export async function attemptDoor(
         const outcome = evaluateDoorAttempt({
             floor: params.floor,
             doorId: params.doorChoice as any,
+            policySeed: params.policySeed || "demo",
             proofOk,
             provenInputs: { tierId },
             lobbyState: params.lobbyState.enabled
@@ -363,7 +365,7 @@ export async function attemptDoor(
         const msg = String(err?.message || err);
         console.error("[Dungeon] Proof generation failed:", msg);
 
-        const floorDef = getFloorDefinition(params.floor);
+        const floorDef = getFloorDefinition(params.floor, { seed: params.policySeed || "demo", tierId: params.tierId });
         const isViteDepIssue =
             msg.includes("Outdated Optimize Dep") ||
             msg.includes("Failed to fetch dynamically imported module") ||

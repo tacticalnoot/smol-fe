@@ -1,5 +1,5 @@
-import type { DoorId, TierParity } from "./policies";
-import { getDoorDefinition } from "./policies";
+import type { DoorId, TierParity, VaultLaneCode } from "./policies";
+import { getDoorDefinition, laneCodeForSeed, tierLabel, vaultLaneFromCode } from "./policies";
 
 export type Mode = "normal" | "training";
 
@@ -30,6 +30,7 @@ export type DoorOutcome = {
   debug?: {
     tierId: number;
     parity: TierParity;
+    lane: VaultLaneCode;
     comparisons: string[];
   };
 };
@@ -41,14 +42,17 @@ function parityForTier(tierId: number): TierParity {
 export function evaluateDoorAttempt(params: {
   floor: number;
   doorId: DoorId;
+  policySeed: string;
   proofOk: boolean;
   provenInputs: ProvenInputs;
   lobbyState: LobbyState;
   mode: Mode;
 }): DoorOutcome {
-  const door = getDoorDefinition(params.floor, params.doorId);
   const tierId = params.provenInputs.tierId;
   const parity = parityForTier(tierId);
+  const lane = laneCodeForSeed(params.policySeed || "demo", params.floor);
+  const laneMeta = vaultLaneFromCode(lane);
+  const door = getDoorDefinition(params.floor, params.doorId, { seed: params.policySeed || "demo", tierId });
 
   const comparisons: string[] = [];
 
@@ -61,13 +65,13 @@ export function evaluateDoorAttempt(params: {
         policyName: door.policyName,
         policyRule: `${door.policyName} (${door.tags.map((t) => t.long).join(", ")})`,
         doorRequirement: door.tags.map((t) => t.long).join(" + "),
-        yourCredentialSummary: `Tier ${tierId} (${parity})`,
+        yourCredentialSummary: `Tier ${tierLabel(tierId)} (${tierId}) • ${parity} • Lane ${laneMeta.name}`,
         mismatchExplanation: "The cryptographic verifier rejected the credential.",
         nextAction: "Regenerate the credential and retry the same door.",
       },
       debug:
         params.mode === "training"
-          ? { tierId, parity, comparisons: ["proofOk === false"] }
+          ? { tierId, parity, lane, comparisons: ["proofOk === false"] }
           : undefined,
     };
   }
@@ -81,13 +85,13 @@ export function evaluateDoorAttempt(params: {
         policyName: "Dual-Control Gate",
         policyRule: "Both auditors must be present at the gate",
         doorRequirement: params.lobbyState.reason || "Waiting for the other player",
-        yourCredentialSummary: `Tier ${tierId} (${parity})`,
+        yourCredentialSummary: `Tier ${tierLabel(tierId)} (${tierId}) • ${parity} • Lane ${laneMeta.name}`,
         mismatchExplanation: "This is not a policy mismatch; it is a synchronization gate.",
         nextAction: "Wait for Player 2 to reach the same floor (or switch to Solo).",
       },
       debug:
         params.mode === "training"
-          ? { tierId, parity, comparisons: ["lobbyState.waiting === true"] }
+          ? { tierId, parity, lane, comparisons: ["lobbyState.waiting === true"] }
           : undefined,
     };
   }
@@ -98,41 +102,47 @@ export function evaluateDoorAttempt(params: {
   let mismatch = "";
   let next = "";
 
-  if (door.policy.kind === "min-tier") {
-    const pass = tierId >= door.policy.requiredTierMin;
-    comparisons.push(`${tierId} >= ${door.policy.requiredTierMin} => ${pass}`);
-    accepted = pass;
-    rule = `Minimum Clearance ≥ ${door.policy.requiredTierMin}`;
-    mismatch = pass
-      ? ""
-      : `Door requires Tier ≥ ${door.policy.requiredTierMin}. Your credential proves Tier ${tierId}.`;
-    next = pass
-      ? "Proceed to the next checkpoint."
-      : "Choose a door with MIN ≤ your tier, or increase your clearance tier.";
-  } else if (door.policy.kind === "exact-tier") {
-    const pass = tierId === door.policy.requiredTierExact;
-    comparisons.push(`${tierId} === ${door.policy.requiredTierExact} => ${pass}`);
-    accepted = pass;
-    rule = `Role = ${door.policy.requiredTierExact}`;
-    mismatch = pass
-      ? ""
-      : `Door requires exactly Tier ${door.policy.requiredTierExact}. Your credential proves Tier ${tierId}.`;
-    next = pass
-      ? "Proceed to the next checkpoint."
-      : "Choose the door whose ROLE matches your tier.";
-  } else if (door.policy.kind === "min-tier+parity") {
+  if (door.policy.kind === "min-tier+lane") {
     const passTier = tierId >= door.policy.requiredTierMin;
-    const passParity = parity === door.policy.requiredParity;
+    const passLane = lane === door.policy.requiredLane;
     comparisons.push(`${tierId} >= ${door.policy.requiredTierMin} => ${passTier}`);
-    comparisons.push(`${parity} === ${door.policy.requiredParity} => ${passParity}`);
-    accepted = passTier && passParity;
-    rule = `Minimum Clearance ≥ ${door.policy.requiredTierMin} AND Parity = ${door.policy.requiredParity}`;
+    comparisons.push(`${laneMeta.name} === ${vaultLaneFromCode(door.policy.requiredLane).name} => ${passLane}`);
+    accepted = passTier && passLane;
+    rule = `Minimum Clearance ≥ ${tierLabel(door.policy.requiredTierMin)} (${door.policy.requiredTierMin}) AND Lane = ${vaultLaneFromCode(door.policy.requiredLane).name}`;
     mismatch = accepted
       ? ""
-      : `Door requires (Tier ≥ ${door.policy.requiredTierMin}) and (Parity = ${door.policy.requiredParity}). Your credential is Tier ${tierId} (${parity}).`;
+      : `Door requires (Tier ≥ ${door.policy.requiredTierMin}) and (Lane = ${vaultLaneFromCode(door.policy.requiredLane).name}). Your credential is Tier ${tierId} (${parity}) in Lane ${laneMeta.name}.`;
     next = accepted
       ? "Proceed to the next checkpoint."
-      : "Choose a door whose MIN and PARITY both match your credential.";
+      : "Choose a door whose MIN and LANE both match your credential.";
+  } else if (door.policy.kind === "exact-tier+lane") {
+    const passTier = tierId === door.policy.requiredTierExact;
+    const passLane = lane === door.policy.requiredLane;
+    comparisons.push(`${tierId} === ${door.policy.requiredTierExact} => ${passTier}`);
+    comparisons.push(`${laneMeta.name} === ${vaultLaneFromCode(door.policy.requiredLane).name} => ${passLane}`);
+    accepted = passTier && passLane;
+    rule = `Role = ${tierLabel(door.policy.requiredTierExact)} (${door.policy.requiredTierExact}) AND Lane = ${vaultLaneFromCode(door.policy.requiredLane).name}`;
+    mismatch = accepted
+      ? ""
+      : `Door requires (ROLE = ${door.policy.requiredTierExact}) and (Lane = ${vaultLaneFromCode(door.policy.requiredLane).name}). Your credential is Tier ${tierId} (${parity}) in Lane ${laneMeta.name}.`;
+    next = accepted
+      ? "Proceed to the next checkpoint."
+      : "Choose a door whose ROLE and LANE both match your credential.";
+  } else if (door.policy.kind === "min-tier+parity+lane") {
+    const passTier = tierId >= door.policy.requiredTierMin;
+    const passParity = parity === door.policy.requiredParity;
+    const passLane = lane === door.policy.requiredLane;
+    comparisons.push(`${tierId} >= ${door.policy.requiredTierMin} => ${passTier}`);
+    comparisons.push(`${parity} === ${door.policy.requiredParity} => ${passParity}`);
+    comparisons.push(`${laneMeta.name} === ${vaultLaneFromCode(door.policy.requiredLane).name} => ${passLane}`);
+    accepted = passTier && passParity && passLane;
+    rule = `Minimum Clearance ≥ ${tierLabel(door.policy.requiredTierMin)} (${door.policy.requiredTierMin}) AND Parity = ${door.policy.requiredParity} AND Lane = ${vaultLaneFromCode(door.policy.requiredLane).name}`;
+    mismatch = accepted
+      ? ""
+      : `Door requires (Tier ≥ ${door.policy.requiredTierMin}), (Parity = ${door.policy.requiredParity}), and (Lane = ${vaultLaneFromCode(door.policy.requiredLane).name}). Your credential is Tier ${tierId} (${parity}) in Lane ${laneMeta.name}.`;
+    next = accepted
+      ? "Proceed to the next checkpoint."
+      : "Choose a door whose MIN, PARITY, and LANE all match your credential.";
   } else {
     // Exhaustiveness guard
     const _never: never = door.policy;
@@ -148,11 +158,11 @@ export function evaluateDoorAttempt(params: {
         policyName: door.policyName,
         policyRule: rule,
         doorRequirement: door.tags.map((t) => t.long).join(" + "),
-        yourCredentialSummary: `Tier ${tierId} (${parity})`,
+        yourCredentialSummary: `Tier ${tierLabel(tierId)} (${tierId}) • ${parity} • Lane ${laneMeta.name}`,
         mismatchExplanation: "None.",
         nextAction: "Proceed to the next floor.",
       },
-      debug: params.mode === "training" ? { tierId, parity, comparisons } : undefined,
+      debug: params.mode === "training" ? { tierId, parity, lane, comparisons } : undefined,
     };
   }
 
@@ -164,11 +174,10 @@ export function evaluateDoorAttempt(params: {
       policyName: door.policyName,
       policyRule: rule,
       doorRequirement: door.tags.map((t) => t.long).join(" + "),
-      yourCredentialSummary: `Tier ${tierId} (${parity})`,
+      yourCredentialSummary: `Tier ${tierLabel(tierId)} (${tierId}) • ${parity} • Lane ${laneMeta.name}`,
       mismatchExplanation: mismatch,
       nextAction: next,
     },
-    debug: params.mode === "training" ? { tierId, parity, comparisons } : undefined,
+    debug: params.mode === "training" ? { tierId, parity, lane, comparisons } : undefined,
   };
 }
-

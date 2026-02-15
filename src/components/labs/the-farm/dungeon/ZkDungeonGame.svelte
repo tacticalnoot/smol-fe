@@ -2,7 +2,14 @@
     import { userState } from "../../../../stores/user.svelte.ts";
     import { balanceState, updateContractBalance } from "../../../../stores/balance.svelte.ts";
     import { evaluateDoorAttempt, type Mode as DungeonMode } from "../../../../lib/dungeon/evaluateDoorAttempt";
-    import { getFloorDefinition, type DoorDefinition, type DoorId } from "../../../../lib/dungeon/policies";
+    import {
+        getFloorDefinition,
+        laneCodeForSeed,
+        tierLabel,
+        vaultLaneFromCode,
+        type DoorDefinition,
+        type DoorId,
+    } from "../../../../lib/dungeon/policies";
     import { dungeonLore, type DungeonRoomId } from "../../../../data/dungeon/lore";
     import { publishDungeonStampMainnet, type DungeonStampKind } from "../../../../lib/dungeon/publishDungeonStampMainnet";
     import { sha256Hex, sha256HexOfJson } from "../../../../lib/the-farm/digest";
@@ -49,6 +56,9 @@
     let trainingTierOverride = $state<number>(0);
     let credentialLoadError = $state<string | null>(null);
     let lastForensics = $state<import("./dungeonService").DoorAttemptResult | null>(null);
+    // Freeze the credential snapshot + policy seed at run start so door policies remain stable.
+    let runTierId = $state<number>(0);
+    let runPolicySeed = $state<string>("");
     let groth16OnChain = $state<{ status: "idle" | "simulating" | "assembling" | "signing" | "submitted" | "confirmed" | "error"; txHash?: string; error?: string }>(
         { status: "idle" }
     );
@@ -115,7 +125,6 @@
     let walletLabel = $derived(
         walletAddress ? `${walletAddress.slice(0, 6)}...${walletAddress.slice(-4)}` : ""
     );
-    let floorDef = $derived(getFloorDefinition(currentFloor));
     let tierFromBalance = $derived(balanceState.balance !== null ? getTierForBalance(balanceState.balance) : null);
     let effectiveTierId = $derived(
         trainingMode && !isConnected
@@ -126,6 +135,10 @@
                     ? attestedTierId
                     : trainingTierOverride
     );
+    let policySeed = $derived((runPolicySeed || runId || walletAddress || "demo").toString());
+    let activeLaneCode = $derived(laneCodeForSeed(policySeed, currentFloor));
+    let activeLane = $derived(vaultLaneFromCode(activeLaneCode));
+    let floorDef = $derived(getFloorDefinition(currentFloor, { seed: policySeed, tierId: runTierId || effectiveTierId }));
     let effectiveMode = $derived<DungeonMode>(trainingMode ? "training" : "normal");
     let hasOpponent = $derived(relayRoster.filter((r) => r.account !== walletAddress).length > 0);
     let allReady = $derived(relayRoster.length >= 2 && relayRoster.every((r) => r.ready));
@@ -189,8 +202,9 @@
         const out = evaluateDoorAttempt({
             floor: currentFloor,
             doorId: door.id,
+            policySeed,
             proofOk: true,
-            provenInputs: { tierId: effectiveTierId },
+            provenInputs: { tierId: runTierId || effectiveTierId },
             lobbyState: { enabled: false },
             mode: effectiveMode,
         });
@@ -417,6 +431,11 @@
                 risc0SaltByte = Number(bytes[0] || 22);
             }
         }
+
+        // Freeze policy seed + clearance snapshot for the run so doors don't reshuffle mid-session.
+        if (!runPolicySeed) runPolicySeed = runId;
+        runTierId = effectiveTierId;
+
         try {
             const res = await fetch(proverUrl("/health"), { method: "GET" });
             const json = await res.json().catch(() => null);
@@ -483,7 +502,8 @@
             playerAddress: userState.contractId ?? "anonymous",
             keyId: userState.keyId ?? "",
             contractId: userState.contractId ?? "",
-            tierId: effectiveTierId,
+            policySeed,
+            tierId: runTierId || effectiveTierId,
             balance: balanceState.balance ?? 0n,
             mode: effectiveMode,
             lobbyState: {
@@ -655,9 +675,9 @@
 
                     // Generate a proof bound to this dungeon run (prover service via proxy; optional direct URL in DEV).
                     const requiredRole =
-                        floorDef?.doors?.[doorIndex]?.policy?.kind === "exact-tier"
+                        floorDef?.doors?.[doorIndex]?.policy?.kind === "exact-tier+lane"
                             ? floorDef.doors[doorIndex].policy.requiredTierExact
-                            : effectiveTierId;
+                            : (runTierId || effectiveTierId);
 
                     const { noirUltraHonkRoleLegacyBundle, noirUltraHonkRoleLegacyVkDigestHex } = await import(
                         "../../../../data/dungeon/noirUltraHonkRoleLegacyBundle"
@@ -672,7 +692,7 @@
                             headers: { "content-type": "application/json" },
                             body: JSON.stringify({
                                 requiredRole,
-                                role: effectiveTierId,
+                                role: runTierId || effectiveTierId,
                                 salt: noirRoleSalt || "0",
                             }),
                         });
@@ -836,7 +856,7 @@
                     // Generate a Groth16 receipt proof bound to this dungeon run via the prover service.
                     const door = floorDef?.doors?.[doorIndex];
                     const requiredTierMin =
-                        door?.policy?.kind === "min-tier+parity" ? door.policy.requiredTierMin : 0;
+                        door?.policy?.kind === "min-tier+parity+lane" ? door.policy.requiredTierMin : 0;
                     const thresholdWhole = Number(TIER_CONFIG[requiredTierMin]?.min ?? 0);
                     const balanceWhole = Number((balanceState.balance ?? 0n) / 10_000_000n);
 
@@ -856,7 +876,7 @@
                             method: "POST",
                             headers: { "content-type": "application/json" },
                             body: JSON.stringify({
-                                tierIndex: effectiveTierId,
+                                tierIndex: runTierId || effectiveTierId,
                                 threshold: thresholdWhole,
                                 balance: balanceWhole,
                                 saltByte: risc0SaltByte || 22,
@@ -1189,6 +1209,8 @@
         // Initialize a new run and enter the Airlock (Room 0) before gameplay.
         runId = crypto.randomUUID();
         runStartedAt = Date.now();
+        runPolicySeed = runId;
+        runTierId = effectiveTierId;
         // Generate stable per-run salts for the WSL-based prover endpoints.
         {
             const bytes = crypto.getRandomValues(new Uint8Array(4));
@@ -1262,11 +1284,11 @@
 
         <div class="dg-cred-card" aria-live="polite">
             <p class="dg-cred-line">
-                CLEARANCE: TIER {effectiveTierId}
+                CLEARANCE: {tierLabel(effectiveTierId)} <span class="dg-cred-tiny">(T{effectiveTierId})</span>
                 {#if attestedTierId !== null}
                     <span class="dg-cred-source">ON-CHAIN</span>
                 {:else}
-                    <span class="dg-cred-source dg-cred-source-demo">DEMO</span>
+                    <span class="dg-cred-source dg-cred-source-demo">LOCAL</span>
                 {/if}
             </p>
             {#if credentialLoadError}
@@ -1294,10 +1316,10 @@
                             class="dg-select"
                             bind:value={trainingTierOverride}
                         >
-                            <option value={0}>0 (SPROUT)</option>
-                            <option value={1}>1 (GROWER)</option>
-                            <option value={2}>2 (HARVEST)</option>
-                            <option value={3}>3 (WHALE)</option>
+                            <option value={0}>SPROUT (T0)</option>
+                            <option value={1}>GROWER (T1)</option>
+                            <option value={2}>HARVEST (T2)</option>
+                            <option value={3}>WHALE (T3)</option>
                         </select>
                     </div>
                 {/if}
@@ -1670,11 +1692,13 @@
                             <input type="checkbox" bind:checked={trainingMode} />
                             <span>TRAINING MODE</span>
                         </label>
-                        <span class="dg-hint-pill">CLEARANCE: TIER {effectiveTierId}</span>
+                        <span class="dg-hint-pill">
+                            CREDENTIAL: {tierLabel(runTierId || effectiveTierId)} • {activeLane.name} • {(runTierId || effectiveTierId) % 2 === 0 ? "EVEN" : "ODD"}
+                        </span>
                         {#if attestedTierId !== null}
                             <span class="dg-cred-source">ON-CHAIN</span>
                         {:else}
-                            <span class="dg-cred-source dg-cred-source-demo">DEMO</span>
+                            <span class="dg-cred-source dg-cred-source-demo">LOCAL</span>
                         {/if}
                     </div>
                 </div>
@@ -1757,6 +1781,12 @@
                 </div>
                 <div class="dg-note-line">
                     RUN ID: <span class="dg-mono">{runId ? runId.slice(0, 8) + "..." : "—"}</span>
+                </div>
+                <div class="dg-note-line">
+                    CREDENTIAL: <span class="dg-mono">{tierLabel(runTierId || effectiveTierId)} (T{runTierId || effectiveTierId})</span>
+                </div>
+                <div class="dg-note-line">
+                    LANE: <span class="dg-mono" style="color: {activeLane.color}">{activeLane.name}</span>
                 </div>
                 <div class="dg-note-line">
                     ENTRY STAMP: <span class="dg-mono">{entryStamp.status}</span>
@@ -2446,6 +2476,14 @@
         align-items: center;
         gap: 10px;
         flex-wrap: wrap;
+    }
+
+    .dg-cred-tiny {
+        font-family: var(--dg-font-body);
+        font-size: 10px;
+        letter-spacing: 0.4px;
+        color: rgba(232, 240, 255, 0.55);
+        text-transform: none;
     }
 
     .dg-cred-subline {
