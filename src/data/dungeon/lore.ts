@@ -78,7 +78,7 @@ export const dungeonLore: Record<DungeonRoomId, RoomLore> = {
     protocolPlacard:
       "Policy: Role-Based Access. Door opens iff your proven tier_id exactly matches the door’s ROLE requirement.",
     verifierExplainer:
-      "Verifier: UltraHonk (Noir / bb.js). The dungeon runs a real verifier against a credential artifact. If the credential is training-only, the UI will say so.",
+      "Verifier: UltraHonk (Noir). The dungeon can verify locally in the browser, and (when the local prover service is running) it can also submit a real mainnet on-chain verification via farm-attestations → ultrahonk-verifier (VK_ID NOIR_ROLE_V1), signed with your passkey.",
     failureExplainersByReasonCode: {
       PROOF_INVALID:
         "Credential invalid: the UltraHonk verifier rejected the proof artifact. This is a cryptographic failure, not a policy mismatch.",
@@ -102,7 +102,7 @@ export const dungeonLore: Record<DungeonRoomId, RoomLore> = {
     protocolPlacard:
       "Policy: Two-Factor. Door opens iff (tier_id >= MIN) AND (tier_id parity matches EVEN/ODD).",
     verifierExplainer:
-      "Verifier: RISC0 receipt verifier (WASM). The dungeon runs a real receipt verifier against a credential artifact. Training credentials are labeled.",
+      "Verifier: RISC0 receipt verifier (WASM). The dungeon verifies receipts locally, and (when the local prover service is running) it can also submit a real mainnet on-chain Groth16 verification of the receipt via farm-attestations (VK_ID R0G16V1), signed with your passkey.",
     failureExplainersByReasonCode: {
       PROOF_INVALID:
         "Credential invalid: the receipt verifier rejected the artifact. Retry with a valid receipt artifact.",

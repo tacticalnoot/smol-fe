@@ -685,7 +685,25 @@
                         throw new Error("Local Noir prover returned an invalid proof payload");
                     }
 
-                    const { noirUltraHonkRoleLegacyVkDigestHex } = await import("../../../../data/dungeon/noirUltraHonkRoleLegacyBundle");
+                    // Integrity: locally verify the returned proof against this room's VK before submitting on-chain.
+                    const { noirUltraHonkRoleLegacyBundle, noirUltraHonkRoleLegacyVkDigestHex } = await import("../../../../data/dungeon/noirUltraHonkRoleLegacyBundle");
+                    const { verifyUltraHonkProofWithVk } = await import("../../../../lib/dungeon/verifiers/noirUltraHonkVk");
+                    const localVerify = await verifyUltraHonkProofWithVk({
+                        vkBase64: noirUltraHonkRoleLegacyBundle.verifier.vkBase64,
+                        oracleHash: noirUltraHonkRoleLegacyBundle.verifier.oracleHash,
+                        proofBase64: proofOverride.proofBase64,
+                        publicInputs: proofOverride.publicInputs,
+                    });
+                    if (!localVerify.valid) {
+                        throw new Error(localVerify.error || "Local UltraHonk verification failed");
+                    }
+
+                    // Replace any training-only verifier labels with the live proof identity.
+                    result.proofOk = true;
+                    result.trainingOnly = false;
+                    result.proofType = "UltraHonk (Noir)";
+                    result.verifierType = "NOIR_ULTRAHONK";
+
                     const { publishNoirUltraHonkVerifyMainnet } = await import("../../../../lib/dungeon/publishNoirUltraHonkVerifyMainnet");
                     const submitRes = await publishNoirUltraHonkVerifyMainnet({
                         owner: userState.contractId,
@@ -835,6 +853,12 @@
                     if (!localVerify.valid) {
                         throw new Error(localVerify.error || "Local RISC0 receipt verification failed");
                     }
+
+                    // Replace any training-only verifier labels with the live proof identity.
+                    result.proofOk = true;
+                    result.trainingOnly = false;
+                    result.proofType = "RISC0 Receipt (zkVM)";
+                    result.verifierType = "RISC0_RECEIPT";
 
                     const { publishRisc0Groth16VerifyMainnet } = await import("../../../../lib/dungeon/publishRisc0Groth16VerifyMainnet");
                     const submitRes = await publishRisc0Groth16VerifyMainnet({
