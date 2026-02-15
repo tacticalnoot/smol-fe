@@ -1,5 +1,6 @@
 import type { DoorId, TierParity, VaultLaneCode } from "./policies";
 import { getDoorDefinition, laneCodeForSeed, tierLabel, vaultLaneFromCode } from "./policies";
+import type { VerifierType } from "./verifyCredential";
 
 export type Mode = "normal" | "training";
 
@@ -16,6 +17,7 @@ export type DoorOutcome = {
   reasonCode:
     | "ACCEPTED"
     | "PROOF_INVALID"
+    | "WRONG_CREDENTIAL_FORMAT"
     | "POLICY_MISMATCH"
     | "LOBBY_WAITING_FOR_OTHER_PLAYER";
   reasonHuman: string;
@@ -47,6 +49,8 @@ export function evaluateDoorAttempt(params: {
   provenInputs: ProvenInputs;
   lobbyState: LobbyState;
   mode: Mode;
+  expectedVerifierType?: VerifierType;
+  presentedVerifierType?: VerifierType;
 }): DoorOutcome {
   const tierId = params.provenInputs.tierId;
   const parity = parityForTier(tierId);
@@ -72,6 +76,39 @@ export function evaluateDoorAttempt(params: {
       debug:
         params.mode === "training"
           ? { tierId, parity, lane, comparisons: ["proofOk === false"] }
+          : undefined,
+    };
+  }
+
+  // Optional gate: some rooms require a specific credential format (proof system).
+  // This is distinct from "proof invalid" and from policy mismatch.
+  if (
+    params.expectedVerifierType &&
+    params.presentedVerifierType &&
+    params.expectedVerifierType !== params.presentedVerifierType
+  ) {
+    const expected = params.expectedVerifierType;
+    const presented = params.presentedVerifierType;
+    return {
+      accepted: false,
+      reasonCode: "WRONG_CREDENTIAL_FORMAT",
+      reasonHuman: "Credential valid, but the format is not accepted in this wing.",
+      forensics: {
+        policyName: "Format Gate",
+        policyRule: `This wing expects ${expected}.`,
+        doorRequirement: `Expected verifier: ${expected}`,
+        yourCredentialSummary: `Tier ${tierLabel(tierId)} (${tierId}) • ${parity} • Lane ${laneMeta.name}`,
+        mismatchExplanation: `You presented ${presented}, but this room's verifier only accepts ${expected}.`,
+        nextAction: `Switch your credential presentation to ${expected} and retry.`,
+      },
+      debug:
+        params.mode === "training"
+          ? {
+              tierId,
+              parity,
+              lane,
+              comparisons: [`presentedVerifierType=${presented}`, `expectedVerifierType=${expected}`],
+            }
           : undefined,
     };
   }

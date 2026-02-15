@@ -14,6 +14,7 @@
     import { publishDungeonStampMainnet, type DungeonStampKind } from "../../../../lib/dungeon/publishDungeonStampMainnet";
     import { sha256Hex, sha256HexOfJson } from "../../../../lib/the-farm/digest";
     import { getTierForBalance, TIER_CONFIG } from "../proof";
+    import type { VerifierType } from "../../../../lib/dungeon/verifyCredential";
     import {
         attemptDoor as submitDoorAttempt,
         txExplorerUrl,
@@ -52,6 +53,9 @@
     let showHowItWorks = $state<boolean>(false);
     let floorTransition = $state<boolean>(false);
     let trainingMode = $state<boolean>(false);
+    let presentedVerifierType = $state<VerifierType>("GROTH16");
+    let presentedTouched = $state<boolean>(false);
+    let advancedOnChainGuards = $state<boolean>(false);
     let attestedTierId = $state<number | null>(null);
     let trainingTierOverride = $state<number>(0);
     let credentialLoadError = $state<string | null>(null);
@@ -210,6 +214,17 @@
         });
         return out.accepted;
     }
+
+    // Reset the presented verifier to the expected wing verifier when the floor changes.
+    // (Players can override to see a truthful "wrong format" forensic.)
+    let lastFloorSeen = 0;
+    $effect(() => {
+        if (currentFloor !== lastFloorSeen) {
+            lastFloorSeen = currentFloor;
+            presentedTouched = false;
+            presentedVerifierType = floorDef.verifierType as VerifierType;
+        }
+    });
 
     $effect(() => {
         attestedTierId = null;
@@ -493,25 +508,56 @@
         doorStates[doorIndex] = "proving";
         attempts++;
 
-        // Submit door attempt via dungeon service (generates real Groth16 proof)
-        const result = await submitDoorAttempt({
-            lobbyId: lobbyCode || "SOLO",
-            floor: currentFloor,
-            doorChoice: doorIndex,
-            attemptNonce: attempts,
-            playerAddress: userState.contractId ?? "anonymous",
-            keyId: userState.keyId ?? "",
-            contractId: userState.contractId ?? "",
-            policySeed,
-            tierId: runTierId || effectiveTierId,
-            balance: balanceState.balance ?? 0n,
-            mode: effectiveMode,
-            lobbyState: {
-                enabled: multiplayerEnabled,
-                waiting: gateWaiting,
-                reason: gateWaiting ? "Waiting for the other player to reach this floor" : undefined,
-            },
-        });
+        let result: import("./dungeonService").DoorAttemptResult;
+        try {
+            // Submit door attempt via dungeon service (local proof gen + local verify)
+            result = await submitDoorAttempt({
+                lobbyId: lobbyCode || "SOLO",
+                floor: currentFloor,
+                doorChoice: doorIndex,
+                attemptNonce: attempts,
+                playerAddress: userState.contractId ?? "anonymous",
+                keyId: userState.keyId ?? "",
+                contractId: userState.contractId ?? "",
+                policySeed,
+                tierId: runTierId || effectiveTierId,
+                balance: balanceState.balance ?? 0n,
+                mode: effectiveMode,
+                lobbyState: {
+                    enabled: multiplayerEnabled,
+                    waiting: gateWaiting,
+                    reason: gateWaiting ? "Waiting for the other player to reach this floor" : undefined,
+                },
+                presentedVerifierType,
+            });
+        } catch (err) {
+            const msg = err instanceof Error ? err.message : String(err);
+            console.error("[Dungeon] submitDoorAttempt failed:", msg);
+            lastForensics = {
+                accepted: false,
+                reasonCode: "ERROR",
+                reasonHuman: "Internal error",
+                forensics: {
+                    policyName: floorDef.policyName,
+                    policyRule: floorDef.briefing,
+                    doorRequirement: `Door ${doorIndex + 1}`,
+                    yourCredentialSummary: `Tier ${tierLabel(runTierId || effectiveTierId)} (T${runTierId || effectiveTierId})`,
+                    mismatchExplanation: msg,
+                    nextAction: "Retry. If it keeps happening, refresh the page.",
+                },
+                tierId: runTierId || effectiveTierId,
+                proofOk: false,
+                txHash: null,
+                proofType: "Unknown",
+                verifierType: floorDef.verifierType,
+                commitment: null,
+                provingTimeMs: 0,
+                error: msg,
+            } as any;
+            doorStates = ["idle", "idle", "idle", "idle"];
+            activeDoor = null;
+            return;
+        }
 
         lastForensics = result;
         const accepted = result.accepted;
@@ -651,7 +697,7 @@
             // Production: proof generation requires an external prover service (proxied via /api/dungeon/prover/*).
             // If the prover is unavailable, we fall back to a bundled training proof (still cryptographically real),
             // and we label it as training-only.
-            if (currentFloor === 2 && isConnected) {
+            if (currentFloor === 2 && isConnected && advancedOnChainGuards) {
                 if (!userState.contractId || !userState.keyId) {
                     lastForensics = {
                         ...result,
@@ -831,7 +877,7 @@
             // Production: proof generation requires an external prover service (proxied via /api/dungeon/prover/*).
             // If the prover is unavailable, we fall back to bundled training receipt + bundled Groth16 wrapper proof,
             // and we label it as training-only.
-            if (currentFloor === 3 && isConnected) {
+            if (currentFloor === 3 && isConnected && advancedOnChainGuards) {
                 if (!userState.contractId || !userState.keyId) {
                     lastForensics = {
                         ...result,
@@ -1585,8 +1631,15 @@
 
                 {#if floorDef.verifierType === "NOIR_ULTRAHONK"}
                     <div class="dg-stamp-box">
-                        <div class="dg-stamp-title">ON-CHAIN ULTRAHONK VERIFY (MAINNET)</div>
-                        {#if isConnected}
+                        <div class="dg-stamp-title">ON-CHAIN ULTRAHONK (MAINNET)</div>
+                        {#if !isConnected}
+                            <div class="dg-stamp-status">STATUS: DISABLED (WALLET NOT CONNECTED)</div>
+                        {:else if !advancedOnChainGuards}
+                            <div class="dg-stamp-status">STATUS: DISABLED (ADVANCED MODE OFF)</div>
+                            <div class="dg-placard-sub">
+                                This wing verifies UltraHonk locally in-browser. On-chain UltraHonk requires an external prover service (to generate a proof bound to your run).
+                            </div>
+                        {:else}
                             <div class="dg-stamp-status">STATUS: {noirUltraHonkOnChain.status.toUpperCase()}</div>
                             {#if noirUltraHonkOnChain.txHash}
                                 <a class="dg-stamp-link" href={txExplorerUrlMainnet(noirUltraHonkOnChain.txHash)} target="_blank" rel="noreferrer">
@@ -1598,19 +1651,24 @@
                             {/if}
                             {#if currentFloor === 2 && noirUltraHonkOnChain.status === "idle"}
                                 <div class="dg-placard-sub">
-                                    Tip: clearing the correct door will trigger a real UltraHonk verification tx (passkey-signed) via farm-attestations' verifier bridge.
+                                    Tip: clearing the correct door will attempt an on-chain UltraHonk verification tx (passkey-signed) via the verifier bridge.
                                 </div>
                             {/if}
-                        {:else}
-                            <div class="dg-stamp-status">STATUS: DISABLED (WALLET NOT CONNECTED)</div>
                         {/if}
                     </div>
                 {/if}
 
                 {#if floorDef.verifierType === "RISC0_RECEIPT"}
                     <div class="dg-stamp-box">
-                        <div class="dg-stamp-title">ON-CHAIN RECEIPT VERIFY (MAINNET)</div>
-                        {#if isConnected}
+                        <div class="dg-stamp-title">ON-CHAIN RECEIPT (MAINNET)</div>
+                        {#if !isConnected}
+                            <div class="dg-stamp-status">STATUS: DISABLED (WALLET NOT CONNECTED)</div>
+                        {:else if !advancedOnChainGuards}
+                            <div class="dg-stamp-status">STATUS: DISABLED (ADVANCED MODE OFF)</div>
+                            <div class="dg-placard-sub">
+                                This wing verifies a RISC0 receipt locally in-browser. On-chain receipt verification requires an external prover service plus a deployed verifier contract.
+                            </div>
+                        {:else}
                             <div class="dg-stamp-status">STATUS: {risc0Groth16OnChain.status.toUpperCase()}</div>
                             {#if risc0Groth16OnChain.txHash}
                                 <a class="dg-stamp-link" href={txExplorerUrlMainnet(risc0Groth16OnChain.txHash)} target="_blank" rel="noreferrer">
@@ -1622,12 +1680,9 @@
                             {/if}
                             {#if currentFloor === 3 && risc0Groth16OnChain.status === "idle"}
                                 <div class="dg-placard-sub">
-                                    Tip: clearing the correct door will trigger a real RISC0 Groth16 receipt pairing-check tx (passkey-signed),
-                                    if the verifier contract is deployed + configured.
+                                    Tip: clearing the correct door will attempt an on-chain receipt verification tx (passkey-signed) if the verifier contract is deployed + configured.
                                 </div>
                             {/if}
-                        {:else}
-                            <div class="dg-stamp-status">STATUS: DISABLED (WALLET NOT CONNECTED)</div>
                         {/if}
                     </div>
                 {/if}
@@ -1692,6 +1747,19 @@
                             <input type="checkbox" bind:checked={trainingMode} />
                             <span>TRAINING MODE</span>
                         </label>
+                        <label class="dg-toggle">
+                            <span>PRESENT</span>
+                            <select
+                                class="dg-select"
+                                bind:value={presentedVerifierType}
+                                onchange={() => (presentedTouched = true)}
+                                disabled={activeDoor !== null}
+                            >
+                                <option value="GROTH16">Groth16 (BN254)</option>
+                                <option value="NOIR_ULTRAHONK">Noir (UltraHonk)</option>
+                                <option value="RISC0_RECEIPT">RISC0 Receipt</option>
+                            </select>
+                        </label>
                         <span class="dg-hint-pill">
                             CREDENTIAL: {tierLabel(runTierId || effectiveTierId)} • {activeLane.name} • {(runTierId || effectiveTierId) % 2 === 0 ? "EVEN" : "ODD"}
                         </span>
@@ -1699,6 +1767,12 @@
                             <span class="dg-cred-source">ON-CHAIN</span>
                         {:else}
                             <span class="dg-cred-source dg-cred-source-demo">LOCAL</span>
+                        {/if}
+                        {#if isConnected}
+                            <label class="dg-toggle">
+                                <input type="checkbox" bind:checked={advancedOnChainGuards} />
+                                <span>ADVANCED ON-CHAIN</span>
+                            </label>
                         {/if}
                     </div>
                 </div>
@@ -2958,6 +3032,23 @@
         width: 14px;
         height: 14px;
         accent-color: var(--dg-accent);
+    }
+
+    .dg-select {
+        appearance: none;
+        background: rgba(0,0,0,0.18);
+        border: 1px solid rgba(255,255,255,0.14);
+        color: rgba(255,255,255,0.86);
+        border-radius: 999px;
+        padding: 7px 10px;
+        font-family: var(--dg-font-display);
+        font-size: 9px;
+        letter-spacing: 1px;
+        cursor: pointer;
+    }
+    .dg-select:disabled {
+        opacity: 0.6;
+        cursor: default;
     }
 
     .dg-hint-pill {

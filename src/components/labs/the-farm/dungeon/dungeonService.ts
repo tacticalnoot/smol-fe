@@ -22,6 +22,7 @@ import {
 import { evaluateDoorAttempt } from "../../../../lib/dungeon/evaluateDoorAttempt";
 import { getFloorDefinition } from "../../../../lib/dungeon/policies";
 import { verifyCredential } from "../../../../lib/dungeon/verifyCredential";
+import type { VerifierType } from "../../../../lib/dungeon/verifyCredential";
 
 const { Server, Api, assembleTransaction } = rpc;
 
@@ -207,6 +208,13 @@ export interface DoorAttemptParams {
     balance: bigint;
     mode: "normal" | "training";
     lobbyState: { enabled: boolean; waiting: boolean; reason?: string };
+    /**
+     * Optional: what the player claims to present at the door (used to teach that
+     * different rooms accept different credential formats).
+     *
+     * If omitted, defaults to the room's expected verifierType.
+     */
+    presentedVerifierType?: VerifierType;
 }
 
 export interface DoorAttemptResult {
@@ -273,11 +281,12 @@ export async function attemptDoor(
         let commitment: string | null = null;
         let provingTimeMs = 0;
         let trainingOnly = false;
-        let verifierType = floorDef.verifierType;
+        const expectedVerifierType = floorDef.verifierType;
+        const verifierType: VerifierType = (params.presentedVerifierType ?? expectedVerifierType) as VerifierType;
         let proofTypeLabel = proofType;
         let groth16Bundle: DoorAttemptResult["groth16"] | undefined;
 
-        if (floorDef.verifierType === "GROTH16") {
+        if (verifierType === "GROTH16") {
             // Generate real Groth16 proof (per attempt)
             const { generateDoorProof, verifyDoorProofLocally } = await import("./dungeonProofWorker");
 
@@ -319,16 +328,22 @@ export async function attemptDoor(
         } else {
             // Noir / RISC0: verify a training credential artifact (cryptographically real verifier),
             // selected by tierId. This is explicitly labeled as training-only in the UI.
-            const cred = await verifyCredential({ verifierType: floorDef.verifierType, tierId: params.tierId });
+            const cred = await verifyCredential({ verifierType, tierId: params.tierId });
             proofOk = cred.ok;
             tierId = cred.tierId;
             provingTimeMs = cred.durationMs;
             trainingOnly = cred.trainingOnly;
 
-            if (floorDef.verifierType === "NOIR_ULTRAHONK") {
+            if (verifierType === "NOIR_ULTRAHONK") {
                 proofTypeLabel = "UltraHonk (Noir)";
-            } else if (floorDef.verifierType === "RISC0_RECEIPT") {
+                if (import.meta.env.DEV) {
+                    console.debug(`[Dungeon] Noir verifier ${proofOk ? "PASS" : "FAIL"} (${provingTimeMs}ms)`);
+                }
+            } else if (verifierType === "RISC0_RECEIPT") {
                 proofTypeLabel = "RISC0 Receipt (zkVM)";
+                if (import.meta.env.DEV) {
+                    console.debug(`[Dungeon] RISC0 verifier ${proofOk ? "PASS" : "FAIL"} (${provingTimeMs}ms)`);
+                }
             }
         }
 
@@ -342,6 +357,8 @@ export async function attemptDoor(
                 ? { enabled: true, waiting: params.lobbyState.waiting, reason: params.lobbyState.reason }
                 : { enabled: false },
             mode: params.mode,
+            expectedVerifierType,
+            presentedVerifierType: verifierType,
         });
 
             return {
