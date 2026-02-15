@@ -1,4 +1,5 @@
 import http from "node:http";
+import crypto from "node:crypto";
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
 import path from "node:path";
@@ -88,17 +89,23 @@ async function handleRisc0Groth16(body) {
 
   const rootWsl = windowsPathToWslPath(rootDir);
   const risc0Dir = `${rootWsl}/zk/risc0-tier/host`;
+  // IMPORTANT: the RISC0 Groth16 shrink-wrap step uses Docker bind-mounts.
+  // When the Docker engine is not running inside the same WSL distro, bind-mounting
+  // WSL-only paths (like /tmp) can appear empty inside the container. To make this
+  // reliable, we force the work dir to a Windows-mounted path under the repo.
+  const workDir = `${rootWsl}/.tmp/risc0_groth16_work/${crypto.randomUUID()}`;
   // Avoid `cargo run` every time: build once then execute the binary.
   // This dramatically reduces per-request latency after the first run.
   const cmd = [
+    `mkdir -p ${bashSingleQuote(workDir)}`,
     `cd ${bashSingleQuote(risc0Dir)}`,
     // Force a stable target dir under this package (avoids workspace-level target paths).
     `if [ ! -x target/release/prove_groth16 ]; then RISC0_DEV_MODE=0 cargo build --quiet --release --bin prove_groth16 --target-dir target; fi`,
-    `RISC0_DEV_MODE=0 ./target/release/prove_groth16 ${tierIndex} ${threshold} ${balance} ${saltByte}`,
+    `RISC0_WORK_DIR=${bashSingleQuote(workDir)} RISC0_DEV_MODE=0 ./target/release/prove_groth16 ${tierIndex} ${threshold} ${balance} ${saltByte}`,
   ].join(" && ");
 
   const { stdout } = await execFileAsync("wsl", ["bash", "-lc", cmd], {
-    timeout: 12 * 60 * 1000,
+    timeout: Number(process.env.RISC0_PROVER_TIMEOUT_MS || String(45 * 60 * 1000)),
     maxBuffer: 20 * 1024 * 1024,
   });
 
