@@ -12,6 +12,7 @@
     "test:e2e": "playwright test",
     "check": "svelte-check --tsconfig ./tsconfig.json",
     "check:watch": "svelte-check --tsconfig ./tsconfig.json --watch",
+    "prover": "node scripts/local-prover-server.mjs",
     "audit:swaps": "node scripts/swap-audit/audit.js",
     "docs:check": "node scripts/check-docs.js",
     "docs:xref": "node scripts/docs/build_xref.mjs",
