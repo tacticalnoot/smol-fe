@@ -88,9 +88,12 @@ async function handleRisc0Groth16(body) {
 
   const rootWsl = windowsPathToWslPath(rootDir);
   const risc0Dir = `${rootWsl}/zk/risc0-tier/host`;
+  // Avoid `cargo run` every time: build once then execute the binary.
+  // This dramatically reduces per-request latency after the first run.
   const cmd = [
     `cd ${bashSingleQuote(risc0Dir)}`,
-    `RISC0_DEV_MODE=0 cargo run --quiet --bin prove_groth16 -- ${tierIndex} ${threshold} ${balance} ${saltByte}`,
+    `if [ ! -x target/release/prove_groth16 ]; then RISC0_DEV_MODE=0 cargo build --quiet --release --bin prove_groth16; fi`,
+    `RISC0_DEV_MODE=0 ./target/release/prove_groth16 ${tierIndex} ${threshold} ${balance} ${saltByte}`,
   ].join(" && ");
 
   const { stdout } = await execFileAsync("wsl", ["bash", "-lc", cmd], {
