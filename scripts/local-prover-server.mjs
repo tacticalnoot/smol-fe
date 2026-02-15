@@ -21,6 +21,11 @@ function windowsPathToWslPath(p) {
   return `/mnt/${drive}/${rest}`;
 }
 
+function bashSingleQuote(s) {
+  // Safest simple quoting for bash -lc strings.
+  return `'${String(s).replace(/'/g, `'\\''`)}'`;
+}
+
 function sendJson(res, status, obj, origin) {
   const body = JSON.stringify(obj);
   res.statusCode = status;
@@ -56,9 +61,10 @@ async function handleNoirRole(body) {
   }
 
   const rootWsl = windowsPathToWslPath(rootDir);
+  const noirDir = `${rootWsl}/zk/noir-dungeon-role-legacy`;
   const cmd = [
-    `cd ${rootWsl}/zk/noir-dungeon-role-legacy`,
-    `bash scripts/prove_one_wsl.sh ${requiredRole} ${role} ${salt}`,
+    `cd ${bashSingleQuote(noirDir)}`,
+    `bash scripts/prove_one_wsl.sh ${requiredRole} ${role} ${bashSingleQuote(salt)}`,
   ].join(" && ");
 
   const { stdout } = await execFileAsync("wsl", ["bash", "-lc", cmd], {
@@ -81,8 +87,9 @@ async function handleRisc0Groth16(body) {
   if (!Number.isFinite(saltByte) || saltByte < 0 || saltByte > 255) throw new Error("Invalid saltByte");
 
   const rootWsl = windowsPathToWslPath(rootDir);
+  const risc0Dir = `${rootWsl}/zk/risc0-tier/host`;
   const cmd = [
-    `cd ${rootWsl}/zk/risc0-tier/host`,
+    `cd ${bashSingleQuote(risc0Dir)}`,
     `RISC0_DEV_MODE=0 cargo run --quiet --bin prove_groth16 -- ${tierIndex} ${threshold} ${balance} ${saltByte}`,
   ].join(" && ");
 
@@ -138,4 +145,3 @@ server.listen(PORT, () => {
   console.log("  POST /noir-ultrahonk-role");
   console.log("  POST /risc0-groth16");
 });
-
