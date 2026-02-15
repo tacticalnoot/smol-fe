@@ -38,10 +38,15 @@ export function getProverEnv(locals: unknown): ProverEnv {
 
 export async function proverFetch(env: ProverEnv, path: string, init: RequestInit): Promise<Response> {
   if (!env.url) {
-    return new Response(JSON.stringify({ ok: false, error: "Prover service not configured (missing PROVER_URL)" }), {
-      status: 503,
+    // Return 200 so browser fetches don't spam the console with 5xx "Failed to load resource"
+    // on deployments that intentionally omit the prover service (contest-friendly mode).
+    return new Response(
+      JSON.stringify({ ok: false, disabled: true, error: "Prover service not configured (missing PROVER_URL)" }),
+      {
+        status: 200,
       headers: { "Content-Type": "application/json" },
-    });
+      },
+    );
   }
 
   const controller = new AbortController();
@@ -67,4 +72,3 @@ export async function proverFetch(env: ProverEnv, path: string, init: RequestIni
     clearTimeout(timeout);
   }
 }
-
