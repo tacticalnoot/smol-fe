@@ -92,7 +92,8 @@ async function handleRisc0Groth16(body) {
   // This dramatically reduces per-request latency after the first run.
   const cmd = [
     `cd ${bashSingleQuote(risc0Dir)}`,
-    `if [ ! -x target/release/prove_groth16 ]; then RISC0_DEV_MODE=0 cargo build --quiet --release --bin prove_groth16; fi`,
+    // Force a stable target dir under this package (avoids workspace-level target paths).
+    `if [ ! -x target/release/prove_groth16 ]; then RISC0_DEV_MODE=0 cargo build --quiet --release --bin prove_groth16 --target-dir target; fi`,
     `RISC0_DEV_MODE=0 ./target/release/prove_groth16 ${tierIndex} ${threshold} ${balance} ${saltByte}`,
   ].join(" && ");
 
