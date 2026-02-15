@@ -164,11 +164,17 @@
 
     // DEV-only local prover service (Node + WSL). This is intentionally out-of-band from
     // the Cloudflare adapter build, so the frontend stays deployable.
-    // Set PUBLIC_LOCAL_PROVER_URL (e.g. http://localhost:8788) if not using the default.
-    let localProverBaseUrl = $derived<string>(
-        (import.meta.env.PUBLIC_LOCAL_PROVER_URL ?? "").toString().trim() ||
-        (((import.meta as any)?.env?.DEV ?? false) ? "http://localhost:8788" : "")
-    );
+    // In production, the browser calls same-origin `/api/dungeon/prover/*` which proxies to a configured prover service.
+    // In local dev, you can optionally bypass the proxy by setting PUBLIC_LOCAL_PROVER_URL.
+    function proverUrl(path: string): string {
+        const local = (import.meta.env.PUBLIC_LOCAL_PROVER_URL ?? "").toString().trim();
+        const isDev = ((import.meta as any)?.env?.DEV ?? false) === true;
+        if (isDev && local) {
+            const base = local.endsWith("/") ? local.slice(0, -1) : local;
+            return `${base}${path.startsWith("/") ? path : `/${path}`}`;
+        }
+        return `/api/dungeon/prover${path.startsWith("/") ? path : `/${path}`}`;
+    }
     let localProverHealth = $state<{ ok: boolean; error?: string }>({ ok: false });
 
     function txExplorerUrlMainnet(txHash: string): string {
@@ -411,16 +417,12 @@
                 risc0SaltByte = Number(bytes[0] || 22);
             }
         }
-        if (localProverBaseUrl) {
-            try {
-                const res = await fetch(`${localProverBaseUrl}/health`, { method: "GET" });
-                const json = await res.json().catch(() => null);
-                localProverHealth = { ok: !!json?.ok };
-            } catch (e) {
-                localProverHealth = { ok: false, error: e instanceof Error ? e.message : String(e) };
-            }
-        } else {
-            localProverHealth = { ok: false, error: "PUBLIC_LOCAL_PROVER_URL not set" };
+        try {
+            const res = await fetch(proverUrl("/health"), { method: "GET" });
+            const json = await res.json().catch(() => null);
+            localProverHealth = { ok: !!json?.ok };
+        } catch (e) {
+            localProverHealth = { ok: false, error: e instanceof Error ? e.message : String(e) };
         }
 
         currentFloor = 1;
@@ -650,16 +652,13 @@
                     gateWaiting = true;
                     noirUltraHonkOnChain = { status: "simulating" };
 
-                    // Generate a proof bound to this dungeon run (DEV-only local prover via WSL).
-                    if (!localProverBaseUrl) {
-                        throw new Error("Local prover not configured. Set PUBLIC_LOCAL_PROVER_URL and run scripts/local-prover-server.mjs.");
-                    }
+                    // Generate a proof bound to this dungeon run (prover service via proxy; optional direct URL in DEV).
                     const requiredRole =
                         floorDef?.doors?.[doorIndex]?.policy?.kind === "exact-tier"
                             ? floorDef.doors[doorIndex].policy.requiredTierExact
                             : effectiveTierId;
 
-                    const proverResp = await fetch(`${localProverBaseUrl}/noir-ultrahonk-role`, {
+                    const proverResp = await fetch(proverUrl("/noir-ultrahonk-role"), {
                         method: "POST",
                         headers: { "content-type": "application/json" },
                         body: JSON.stringify({
@@ -815,17 +814,14 @@
                     gateWaiting = true;
                     risc0Groth16OnChain = { status: "simulating" };
 
-                    // Generate a Groth16 receipt proof bound to this dungeon run (DEV-only local prover via WSL).
-                    if (!localProverBaseUrl) {
-                        throw new Error("Local prover not configured. Set PUBLIC_LOCAL_PROVER_URL and run scripts/local-prover-server.mjs.");
-                    }
+                    // Generate a Groth16 receipt proof bound to this dungeon run via the prover service.
                     const door = floorDef?.doors?.[doorIndex];
                     const requiredTierMin =
                         door?.policy?.kind === "min-tier+parity" ? door.policy.requiredTierMin : 0;
                     const thresholdWhole = Number(TIER_CONFIG[requiredTierMin]?.min ?? 0);
                     const balanceWhole = Number((balanceState.balance ?? 0n) / 10_000_000n);
 
-                    const proverResp = await fetch(`${localProverBaseUrl}/risc0-groth16`, {
+                    const proverResp = await fetch(proverUrl("/risc0-groth16"), {
                         method: "POST",
                         headers: { "content-type": "application/json" },
                         body: JSON.stringify({
@@ -1157,18 +1153,14 @@
             risc0SaltByte = Number(bytes[0] || 22);
         }
 
-        // Best-effort healthcheck for the optional local prover service.
+        // Best-effort healthcheck for the prover service.
         // (Rooms 2/3 can still be played without it; on-chain verification will show a clear error.)
-        if (localProverBaseUrl) {
-            try {
-                const res = await fetch(`${localProverBaseUrl}/health`, { method: "GET" });
-                const json = await res.json().catch(() => null);
-                localProverHealth = { ok: !!json?.ok };
-            } catch (e) {
-                localProverHealth = { ok: false, error: e instanceof Error ? e.message : String(e) };
-            }
-        } else {
-            localProverHealth = { ok: false, error: "PUBLIC_LOCAL_PROVER_URL not set" };
+        try {
+            const res = await fetch(proverUrl("/health"), { method: "GET" });
+            const json = await res.json().catch(() => null);
+            localProverHealth = { ok: !!json?.ok };
+        } catch (e) {
+            localProverHealth = { ok: false, error: e instanceof Error ? e.message : String(e) };
         }
         entryStamp = { status: "idle" };
         withdrawalStamp = { status: "idle" };

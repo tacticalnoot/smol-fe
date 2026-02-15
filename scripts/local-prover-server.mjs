@@ -12,6 +12,9 @@ const __dirname = path.dirname(__filename);
 const rootDir = path.resolve(__dirname, "..");
 
 const PORT = Number(process.env.PROVER_PORT || "8788");
+const BIND = String(process.env.PROVER_BIND || "127.0.0.1");
+const API_KEY = String(process.env.PROVER_API_KEY || "").trim();
+const IS_WIN = process.platform === "win32";
 
 function windowsPathToWslPath(p) {
   // C:\Users\Jeff\Mixtape Auto\smol-fe -> /mnt/c/Users/Jeff/Mixtape Auto/smol-fe
@@ -31,10 +34,10 @@ function sendJson(res, status, obj, origin) {
   const body = JSON.stringify(obj);
   res.statusCode = status;
   res.setHeader("content-type", "application/json");
-  // Basic CORS for local dev.
+  // Basic CORS for local dev (this server is intended to be called via same-origin proxy in prod).
   res.setHeader("access-control-allow-origin", origin || "*");
   res.setHeader("access-control-allow-methods", "GET,POST,OPTIONS");
-  res.setHeader("access-control-allow-headers", "content-type");
+  res.setHeader("access-control-allow-headers", "content-type,authorization");
   res.end(body);
 }
 
@@ -61,14 +64,16 @@ async function handleNoirRole(body) {
     throw new Error("Invalid salt");
   }
 
-  const rootWsl = windowsPathToWslPath(rootDir);
-  const noirDir = `${rootWsl}/zk/noir-dungeon-role-legacy`;
+  const rootFs = IS_WIN ? windowsPathToWslPath(rootDir) : rootDir;
+  const noirDir = IS_WIN ? `${rootFs}/zk/noir-dungeon-role-legacy` : path.join(rootFs, "zk", "noir-dungeon-role-legacy");
   const cmd = [
     `cd ${bashSingleQuote(noirDir)}`,
-    `bash scripts/prove_one_wsl.sh ${requiredRole} ${role} ${bashSingleQuote(salt)}`,
+    IS_WIN
+      ? `bash scripts/prove_one_wsl.sh ${requiredRole} ${role} ${bashSingleQuote(salt)}`
+      : `bash scripts/prove_one.sh ${requiredRole} ${role} ${bashSingleQuote(salt)}`,
   ].join(" && ");
 
-  const { stdout } = await execFileAsync("wsl", ["bash", "-lc", cmd], {
+  const { stdout } = await execFileAsync(IS_WIN ? "wsl" : "bash", IS_WIN ? ["bash", "-lc", cmd] : ["-lc", cmd], {
     timeout: 6 * 60 * 1000,
     maxBuffer: 10 * 1024 * 1024,
   });
@@ -87,13 +92,15 @@ async function handleRisc0Groth16(body) {
   if (!Number.isFinite(balance) || balance < 0 || balance > Number.MAX_SAFE_INTEGER) throw new Error("Invalid balance");
   if (!Number.isFinite(saltByte) || saltByte < 0 || saltByte > 255) throw new Error("Invalid saltByte");
 
-  const rootWsl = windowsPathToWslPath(rootDir);
-  const risc0Dir = `${rootWsl}/zk/risc0-tier/host`;
+  const rootFs = IS_WIN ? windowsPathToWslPath(rootDir) : rootDir;
+  const risc0Dir = IS_WIN ? `${rootFs}/zk/risc0-tier/host` : path.join(rootFs, "zk", "risc0-tier", "host");
   // IMPORTANT: the RISC0 Groth16 shrink-wrap step uses Docker bind-mounts.
   // When the Docker engine is not running inside the same WSL distro, bind-mounting
   // WSL-only paths (like /tmp) can appear empty inside the container. To make this
   // reliable, we force the work dir to a Windows-mounted path under the repo.
-  const workDir = `${rootWsl}/.tmp/risc0_groth16_work/${crypto.randomUUID()}`;
+  const workDir = IS_WIN
+    ? `${rootFs}/.tmp/risc0_groth16_work/${crypto.randomUUID()}`
+    : path.join(rootFs, ".tmp", "risc0_groth16_work", crypto.randomUUID());
   // Avoid `cargo run` every time: build once then execute the binary.
   // This dramatically reduces per-request latency after the first run.
   const cmd = [
@@ -104,7 +111,7 @@ async function handleRisc0Groth16(body) {
     `RISC0_WORK_DIR=${bashSingleQuote(workDir)} RISC0_DEV_MODE=0 ./target/release/prove_groth16 ${tierIndex} ${threshold} ${balance} ${saltByte}`,
   ].join(" && ");
 
-  const { stdout } = await execFileAsync("wsl", ["bash", "-lc", cmd], {
+  const { stdout } = await execFileAsync(IS_WIN ? "wsl" : "bash", IS_WIN ? ["bash", "-lc", cmd] : ["-lc", cmd], {
     timeout: Number(process.env.RISC0_PROVER_TIMEOUT_MS || String(45 * 60 * 1000)),
     maxBuffer: 20 * 1024 * 1024,
   });
@@ -118,12 +125,20 @@ const server = http.createServer(async (req, res) => {
     res.statusCode = 204;
     res.setHeader("access-control-allow-origin", origin || "*");
     res.setHeader("access-control-allow-methods", "GET,POST,OPTIONS");
-    res.setHeader("access-control-allow-headers", "content-type");
+    res.setHeader("access-control-allow-headers", "content-type,authorization");
     res.end();
     return;
   }
 
   try {
+    if (API_KEY) {
+      const auth = String(req.headers.authorization || "");
+      if (auth !== `Bearer ${API_KEY}`) {
+        sendJson(res, 401, { ok: false, error: "unauthorized" }, origin);
+        return;
+      }
+    }
+
     if (req.method === "GET" && req.url === "/health") {
       sendJson(res, 200, { ok: true }, origin);
       return;
@@ -149,8 +164,9 @@ const server = http.createServer(async (req, res) => {
   }
 });
 
-server.listen(PORT, () => {
-  console.log(`[prover] listening on http://localhost:${PORT}`);
+server.listen(PORT, BIND, () => {
+  console.log(`[prover] listening on http://${BIND}:${PORT}`);
+  if (API_KEY) console.log("[prover] auth: Authorization: Bearer <PROVER_API_KEY> required");
   console.log("[prover] routes:");
   console.log("  GET  /health");
   console.log("  POST /noir-ultrahonk-role");
