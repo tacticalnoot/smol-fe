@@ -88,6 +88,8 @@ Stellar TX status:
 - Noir/RISC0 "publish record" uses a real Soroban tx to `farm-attestations.attest` (digest-only statement record).
 - ZK Dungeon Room 2 (Noir) and Room 3 (RISC0) can also perform **real mainnet on-chain verification** when the local prover service is running:
   - Run local prover: `node scripts/local-prover-server.mjs` (uses WSL toolchains to generate proofs bound to the run inputs).
+    - Env: set `PUBLIC_LOCAL_PROVER_URL=http://localhost:8788` (optional in DEV; defaults to localhost).
+    - Requirements: WSL + Docker + Rust toolchain in WSL. First-time RISC0 Groth16 proving can take several minutes (it builds and runs a Dockerized prover).
   - Room 2: `farm-attestations.verify_ultrahonk_vk_and_attest` (VK_ID `NOIR_ROLE_V1`), passkey-signed.
   - Room 3: `farm-attestations.verify_groth16_and_attest` (VK_ID `R0G16V1`), passkey-signed.
 
