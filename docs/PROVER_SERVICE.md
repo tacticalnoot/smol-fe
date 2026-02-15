@@ -20,6 +20,13 @@ Set server-side env vars (not `PUBLIC_*`):
 - `PROVER_API_KEY` (recommended)
 - `PROVER_TIMEOUT_MS` (optional, default 300000)
 
+Helper script (runs `wrangler pages secret put` for you):
+
+```powershell
+pnpm i
+pwsh -File scripts/prover/set-pages-prover-secrets.ps1 -ProjectName smol-fe -ProverUrl "https://<your-prover-host>:8788" -ProverApiKey "<token>"
+```
+
 ## Prover Service Config
 
 On the prover host, run:
@@ -45,3 +52,16 @@ node scripts/local-prover-server.mjs
 
 - `GET /api/dungeon/prover/health` should return `{ "ok": true }` when configured.
 
+## VM Bootstrap (Recommended)
+
+There is a turnkey Ubuntu bootstrap + systemd unit in:
+
+- `infra/prover/bootstrap-ubuntu.sh`
+- `infra/prover/smol-prover.service`
+- `infra/prover/smol-prover.env.example`
+
+And an optional SSH deploy helper:
+
+```powershell
+pwsh -File scripts/prover/deploy-prover-ssh.ps1 -Host "<vm-ip-or-dns>" -User ubuntu -ProverApiKey "<token>"
+```
