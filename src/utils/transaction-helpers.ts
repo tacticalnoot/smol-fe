@@ -113,7 +113,37 @@ export async function signAndSend(
         });
         console.log('[SignAndSend] Transaction signed, sending to relayer...');
 
-        const result = await send(signedTx, turnstileToken);
+        // Retry *sending* a signed transaction when the relayer is transiently overloaded.
+        // This avoids extra passkey prompts on 503 bursts.
+        const sendWithRetries = async () => {
+            const isRetryable = (msg: string) =>
+                msg.includes("temporarily unavailable") ||
+                msg.includes("503") ||
+                msg.includes("502") ||
+                msg.includes("gateway") ||
+                msg.includes("timeout");
+
+            let lastErr: any = null;
+            for (let attempt = 0; attempt < 3; attempt += 1) {
+                try {
+                    return await send(signedTx, turnstileToken);
+                } catch (e: any) {
+                    lastErr = e;
+                    const msg = String(e?.message || e);
+                    if (!isRetryable(msg) || attempt === 2) throw e;
+                    const waitMs = 750 * 2 ** attempt + Math.floor(Math.random() * 200);
+                    console.warn("[SignAndSend] Relayer send failed, retrying without re-sign...", {
+                        attempt: attempt + 1,
+                        waitMs,
+                        message: msg.slice(0, 160),
+                    });
+                    await new Promise<void>((resolve) => setTimeout(resolve, waitMs));
+                }
+            }
+            throw lastErr;
+        };
+
+        const result = await sendWithRetries();
 
         if (updateBalance && contractId) {
             console.log('[SignAndSend] Updating all balances...');
