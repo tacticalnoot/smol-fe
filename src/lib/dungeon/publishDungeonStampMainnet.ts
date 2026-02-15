@@ -129,13 +129,11 @@ export async function publishDungeonStampMainnet(input: {
       throw new Error(result.error || "Dungeon stamp failed");
     }
 
+    const { extractTxHashFromRelayerResponse } = await import("../../utils/transaction-helpers");
     const txHash =
       result.transactionHash ||
-      result.result?.hash ||
-      result.result?.transactionHash ||
-      result.result?.txHash ||
-      result.result?.data?.hash ||
-      result.result?.data?.transactionHash;
+      extractTxHashFromRelayerResponse(result.result) ||
+      extractTxHashFromRelayerResponse(result);
     if (!txHash) {
       throw new Error(`Relayer success but no hash discovered in result: ${JSON.stringify(result.result)}`);
     }

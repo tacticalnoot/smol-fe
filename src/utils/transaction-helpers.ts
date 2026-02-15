@@ -29,7 +29,7 @@ function extractHexTxHash(value: unknown): string | undefined {
     return undefined;
 }
 
-function extractTxHashFromRelayerResponse(result: any, depth = 0): string | undefined {
+export function extractTxHashFromRelayerResponse(result: any, depth = 0): string | undefined {
     if (!result || depth > 3) return undefined;
     // Common shapes we see across relayers:
     // 1) { hash: "..." }

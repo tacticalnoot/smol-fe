@@ -235,6 +235,73 @@ impl FarmAttestations {
         Ok(attestation_id)
     }
 
+    /// Verify an UltraHonk proof via the configured verifier contract *and* a specific `vk_id`,
+    /// then store an attestation record.
+    ///
+    /// This is the multi-circuit-friendly variant: it targets `ultrahonk-verifier.verify_proof_vk`.
+    pub fn verify_ultrahonk_vk_and_attest(
+        env: Env,
+        owner: Address,
+        system: Symbol,
+        tier: Symbol,
+        statement_hash: BytesN<32>,
+        verifier_hash: BytesN<32>,
+        vk_id: Symbol,
+        public_inputs: Bytes,
+        proof_bytes: Bytes,
+    ) -> Result<u64, UltraHonkError> {
+        owner.require_auth();
+
+        let verifier: Address = env
+            .storage()
+            .instance()
+            .get(&DataKey::UltraHonkVerifier)
+            .ok_or(UltraHonkError::NotConfigured)?;
+
+        // Signature: verify_proof_vk(vk_id: Symbol, public_inputs: Bytes, proof_bytes: Bytes) -> bool
+        let mut args: Vec<Val> = Vec::new(&env);
+        args.push_back(vk_id.into_val(&env));
+        args.push_back(public_inputs.into_val(&env));
+        args.push_back(proof_bytes.into_val(&env));
+
+        let ok: bool = env.invoke_contract(
+            &verifier,
+            &Symbol::new(&env, "verify_proof_vk"),
+            args,
+        );
+
+        if !ok {
+            return Err(UltraHonkError::VerificationFailed);
+        }
+
+        let attestation_id = Self::next_nonce(&env);
+        let ledger = env.ledger().sequence();
+        let timestamp = env.ledger().timestamp();
+
+        let record = AttestationRecord {
+            owner: owner.clone(),
+            system: system.clone(),
+            tier: tier.clone(),
+            statement_hash: statement_hash.clone(),
+            verifier_hash: verifier_hash.clone(),
+            ledger,
+            timestamp,
+            attestation_id,
+        };
+
+        let key = DataKey::Entry((owner.clone(), system.clone(), tier.clone()));
+        env.storage().persistent().set(&key, &record);
+        Self::bump_persistent_key_ttl(&env, &key);
+        Self::bump_instance_ttl(&env);
+
+        env.events().publish(
+            (symbol_short!("attest"), owner, system, tier),
+            (statement_hash, verifier_hash, ledger, timestamp, attestation_id),
+        );
+
+        Ok(attestation_id)
+    }
+
     /// Verify Groth16 proof against registered VK, without storing anything.
     pub fn verify_groth16(
         env: Env,

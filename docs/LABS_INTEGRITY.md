@@ -57,7 +57,9 @@ ZK status:
   - Local: generated in-browser via `snarkjs` (and can be verified locally with the vkey).
   - On-chain: YES. Calls `tier-verifier.verify_and_attest` which runs BN254 pairing checks on-chain.
 - Noir (UltraHonk): local verification only (bb.js).
-  - On-chain: YES (when configured). Uses `farm-attestations.verify_ultrahonk_and_attest`, which delegates proof verification to an upgradeable `ultrahonk-verifier` Soroban contract (VK stored on-chain). If the bridge contract isn't deployed/configured, the app must not claim on-chain verification and will surface an "on-chain disabled" state.
+  - On-chain: YES (when configured). Uses `farm-attestations.verify_ultrahonk_and_attest` (or `verify_ultrahonk_vk_and_attest`), which delegates proof verification to an upgradeable `ultrahonk-verifier` Soroban contract (VK stored on-chain).
+    - Current constraint: the Soroban verifier supports the legacy `bb v0.87.0` UltraHonk proof/VK format. The dungeon’s Room 2 on-chain demo uses legacy training artifacts from `src/data/dungeon/noir_ultrahonk_legacy_bundle.json`.
+    - Local verification in the Farm UI uses modern `@aztec/bb.js` and is still cryptographically real, but those proofs are not currently on-chain verifiable by the legacy Soroban verifier.
   - Optional on-chain record: YES (digest-only record in `farm-attestations`, not cryptographic verification).
 - RISC0 receipt: local verification only (WASM verifier).
   - On-chain: YES (Groth16 bridge) for ZK Dungeon Room 3.

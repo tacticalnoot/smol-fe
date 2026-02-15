@@ -3,10 +3,13 @@ import { Buffer } from "buffer";
 import { FARM_ATTESTATIONS_CONTRACT_ID_MAINNET, MAINNET_NETWORK_PASSPHRASE, MAINNET_RPC_URL } from "../../config/farmAttestation";
 import { ensureBytes32Hex, hexToBytes } from "../the-farm/digest";
 import { getRpcUrl } from "../../utils/rpc";
-import { noirSamples } from "../../data/the-farm/noirBundle";
+import { noirUltraHonkLegacySamples, noirUltraHonkLegacyVkDigestHex } from "../../data/dungeon/noirUltraHonkLegacyBundle";
 
 const { Api, Server, assembleTransaction } = rpc;
 const NULL_ACCOUNT = "GAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAWHF";
+
+// Keep <= 32 chars for Soroban Symbol.
+const NOIR_ULTRAHONK_VK_ID = "NOIR_TIER_V1";
 
 export type NoirUltraHonkOnchainResult =
   | { ok: true; txHash: string; ledger?: number }
@@ -72,7 +75,7 @@ function concatPublicInputsBytes(publicInputsHex: string[]): Buffer {
  * Mainnet passkey-signed, *on-chain proof verification* for Noir UltraHonk proofs.
  *
  * IMPORTANT:
- * - Uses a training sample proof artifact (cryptographically real), not yet bound to the live dungeon run inputs.
+ * - Uses a legacy-format training sample proof artifact (cryptographically real), not yet bound to the live dungeon run inputs.
  * - Verification is performed on-chain via: farm-attestations -> (configured) ultrahonk-verifier contract.
  */
 export async function publishNoirUltraHonkVerifyMainnet(input: {
@@ -94,8 +97,8 @@ export async function publishNoirUltraHonkVerifyMainnet(input: {
 
     const tier = tierIdToSampleTier(input.tierId);
     const sample =
-      noirSamples.find((s) => s.tier === tier && s.expectedValid) ??
-      noirSamples.find((s) => s.expectedValid);
+      noirUltraHonkLegacySamples.find((s) => s.tier === tier && s.expectedValid) ??
+      noirUltraHonkLegacySamples.find((s) => s.expectedValid);
     if (!sample) {
       throw new Error("No Noir sample proof available");
     }
@@ -115,7 +118,7 @@ export async function publishNoirUltraHonkVerifyMainnet(input: {
     }
 
     const statementHash = ensureBytes32Hex(String((sample as any)?.commitmentDigest ?? publicInputsHex[1] ?? ""));
-    const verifierHash = ensureBytes32Hex(String((sample as any)?.verifierDigest ?? ""));
+    const verifierHash = ensureBytes32Hex(noirUltraHonkLegacyVkDigestHex);
 
     const proofBytes = Buffer.from(proofBase64, "base64");
     const publicInputsBytes = concatPublicInputsBytes(publicInputsHex);
@@ -123,7 +126,21 @@ export async function publishNoirUltraHonkVerifyMainnet(input: {
     const server = new Server(rpcUrl);
     const farm = new Contract(farmId);
 
-    const op = farm.call(
+    // Prefer the multi-VK entrypoint when available (farm-attestations v2+).
+    // If the on-chain contract hasn't been upgraded yet, we fall back to the legacy method.
+    const opPreferred = farm.call(
+      "verify_ultrahonk_vk_and_attest",
+      new Address(input.owner).toScVal(),
+      symbol("NOIR"),
+      symbol(tier.toUpperCase()),
+      xdr.ScVal.scvBytes(Buffer.from(hexToBytes(statementHash))),
+      xdr.ScVal.scvBytes(Buffer.from(hexToBytes(verifierHash))),
+      symbol(NOIR_ULTRAHONK_VK_ID),
+      xdr.ScVal.scvBytes(publicInputsBytes),
+      xdr.ScVal.scvBytes(proofBytes),
+    );
+
+    const opLegacy = farm.call(
       "verify_ultrahonk_and_attest",
       new Address(input.owner).toScVal(),
       symbol("NOIR"),
@@ -134,16 +151,23 @@ export async function publishNoirUltraHonkVerifyMainnet(input: {
       xdr.ScVal.scvBytes(proofBytes),
     );
 
-    const tx = new TransactionBuilder(new Account(NULL_ACCOUNT, "0"), {
-      fee: "10000000",
-      networkPassphrase: MAINNET_NETWORK_PASSPHRASE || Networks.PUBLIC,
-    })
-      .addOperation(op)
-      .setTimeout(TimeoutInfinite)
-      .build();
+    const makeTx = (op: any) =>
+      new TransactionBuilder(new Account(NULL_ACCOUNT, "0"), {
+        fee: "10000000",
+        networkPassphrase: MAINNET_NETWORK_PASSPHRASE || Networks.PUBLIC,
+      })
+        .addOperation(op)
+        .setTimeout(TimeoutInfinite)
+        .build();
+
+    const txPreferred = makeTx(opPreferred);
+    const txLegacy = makeTx(opLegacy);
 
     input.onStage?.("simulating");
-    const sim = await server.simulateTransaction(tx);
+    const simPreferred = await server.simulateTransaction(txPreferred);
+    const tx = Api.isSimulationError(simPreferred) ? txLegacy : txPreferred;
+    const sim = Api.isSimulationError(simPreferred) ? await server.simulateTransaction(txLegacy) : simPreferred;
+
     if (Api.isSimulationError(sim)) {
       throw new Error(`Simulation failed: ${sim.error}`);
     }
@@ -164,13 +188,11 @@ export async function publishNoirUltraHonkVerifyMainnet(input: {
       throw new Error(result.error || "Noir UltraHonk on-chain verification failed");
     }
 
+    const { extractTxHashFromRelayerResponse } = await import("../../utils/transaction-helpers");
     const txHash =
       result.transactionHash ||
-      result.result?.hash ||
-      result.result?.transactionHash ||
-      result.result?.txHash ||
-      result.result?.data?.hash ||
-      result.result?.data?.transactionHash;
+      extractTxHashFromRelayerResponse(result.result) ||
+      extractTxHashFromRelayerResponse(result);
     if (!txHash) {
       throw new Error(`Relayer success but no hash discovered in result: ${JSON.stringify(result.result)}`);
     }
@@ -187,4 +209,3 @@ export async function publishNoirUltraHonkVerifyMainnet(input: {
     return { ok: false, error: e instanceof Error ? e.message : "Noir UltraHonk on-chain verification failed" };
   }
 }
-

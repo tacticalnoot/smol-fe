@@ -36,7 +36,11 @@ const CONTRACT_DIR = "contracts/ultrahonk-verifier";
 const WASM_SOURCE = `${CONTRACT_DIR}/target/wasm32v1-none/release/ultrahonk_verifier.wasm`;
 const WASM_OPTIMIZED = `${CONTRACT_DIR}/target/wasm32v1-none/release/ultrahonk_verifier.optimized.wasm`;
 
-const VK_PATH = process.env.NOIR_VK_PATH || "zk/noir-tier/artifacts/vk";
+// Default to the legacy UltraHonk VK format that the on-chain verifier supports.
+// This must match the proof artifacts used by `publishNoirUltraHonkVerifyMainnet`.
+const VK_PATH = process.env.NOIR_VK_PATH || "zk/noir-tier-legacy/artifacts/vk";
+// Keep <= 32 chars for Soroban Symbol.
+const VK_ID = process.env.NOIR_VK_ID || "NOIR_TIER_V1";
 
 function run(cmd, opts = {}) {
   console.log(`\n$ ${cmd}`);
@@ -220,16 +224,26 @@ async function main() {
   // 6) Set VK
   const vkBytes = fs.readFileSync(vkAbs);
   const account4 = await server.getAccount(kp.publicKey());
-  const setVkOp = verifier.call("set_vk", xdr.ScVal.scvBytes(vkBytes));
+  // Prefer the multi-circuit VK registry. Also set the legacy single VK key for backwards-compat.
+  const setVkByIdOp = verifier.call(
+    "set_vk_by_id",
+    xdr.ScVal.scvSymbol(VK_ID),
+    xdr.ScVal.scvBytes(vkBytes),
+  );
+  const setDefaultVkOp = verifier.call("set_default_vk_id", xdr.ScVal.scvSymbol(VK_ID));
+  const setLegacyVkOp = verifier.call("set_vk", xdr.ScVal.scvBytes(vkBytes));
+
   const setVkTx = new TransactionBuilder(account4, {
     fee: "10000000",
     networkPassphrase: NETWORK_PASSPHRASE || Networks.PUBLIC,
   })
-    .addOperation(setVkOp)
+    .addOperation(setVkByIdOp)
+    .addOperation(setDefaultVkOp)
+    .addOperation(setLegacyVkOp)
     .setTimeout(60)
     .build();
 
-  console.log("\nSetting verifier VK...");
+  console.log(`\nSetting verifier VK (vk_id=${VK_ID})...`);
   const preparedSetVk = await server.prepareTransaction(setVkTx);
   await sendPreparedTx({ server, tx: preparedSetVk, kp });
 

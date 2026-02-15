@@ -515,13 +515,12 @@ export async function submitProofToContract(
             throw new Error(result.error || "On-chain verification failed");
         }
 
+        // Extract tx hash robustly across relayer response shapes.
+        const { extractTxHashFromRelayerResponse } = await import("../../../utils/transaction-helpers");
         const txHash =
             result.transactionHash ||
-            result.result?.hash ||
-            result.result?.transactionHash ||
-            result.result?.txHash ||
-            result.result?.data?.hash ||
-            result.result?.data?.transactionHash;
+            extractTxHashFromRelayerResponse(result.result) ||
+            extractTxHashFromRelayerResponse(result);
 
         if (!txHash) {
             throw new Error(`Verification succeeded but no transaction hash was returned.`);

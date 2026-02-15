@@ -7,7 +7,12 @@ use ultrahonk_rust_verifier::{UltraHonkVerifier, PROOF_BYTES};
 #[contracttype]
 pub enum DataKey {
     Admin,
+    // Legacy single VK (kept for backwards compatibility with already-deployed instances).
     Vk,
+    // Appended (do not reorder): VK registry for multi-circuit support.
+    VkById(soroban_sdk::Symbol),
+    // Appended (do not reorder): optional default vk_id for `verify_proof`.
+    DefaultVkId,
 }
 
 #[contract]
@@ -57,8 +62,44 @@ impl UltraHonkVerifierUpgradeable {
         Self::bump_instance_ttl(&env);
     }
 
+    /// Register or replace a verification key under a stable `vk_id` (multi-circuit support). Admin-only.
+    ///
+    /// This keeps the contract upgradeable without forcing redeploys per circuit: callers can select the
+    /// key by id using `verify_proof_vk`.
+    pub fn set_vk_by_id(env: Env, vk_id: soroban_sdk::Symbol, vk_bytes: Bytes) {
+        let admin = Self::admin(env.clone());
+        admin.require_auth();
+
+        env.storage()
+            .instance()
+            .set(&DataKey::VkById(vk_id.clone()), &vk_bytes);
+
+        // If no default is set yet, set it (so `verify_proof` has a stable target).
+        if !env.storage().instance().has(&DataKey::DefaultVkId) {
+            env.storage().instance().set(&DataKey::DefaultVkId, &vk_id);
+        }
+
+        Self::bump_instance_ttl(&env);
+    }
+
+    /// Set the default `vk_id` used by `verify_proof`. Admin-only.
+    pub fn set_default_vk_id(env: Env, vk_id: soroban_sdk::Symbol) {
+        let admin = Self::admin(env.clone());
+        admin.require_auth();
+        env.storage().instance().set(&DataKey::DefaultVkId, &vk_id);
+        Self::bump_instance_ttl(&env);
+    }
+
+    pub fn default_vk_id(env: Env) -> Option<soroban_sdk::Symbol> {
+        env.storage().instance().get(&DataKey::DefaultVkId)
+    }
+
     pub fn has_vk(env: Env) -> bool {
         env.storage().instance().has(&DataKey::Vk)
+    }
+
+    pub fn has_vk_id(env: Env, vk_id: soroban_sdk::Symbol) -> bool {
+        env.storage().instance().has(&DataKey::VkById(vk_id))
     }
 
     /// Verify an UltraHonk proof using the stored VK.
@@ -69,15 +110,35 @@ impl UltraHonkVerifierUpgradeable {
             return false;
         }
 
-        let vk_bytes: Option<Bytes> = env.storage().instance().get(&DataKey::Vk);
-        let Some(vk_bytes) = vk_bytes else {
-            return false;
+        // Prefer registry default if present; fall back to legacy single VK key.
+        let vk_bytes: Option<Bytes> = match env.storage().instance().get::<_, soroban_sdk::Symbol>(&DataKey::DefaultVkId) {
+            Some(vk_id) => env.storage().instance().get(&DataKey::VkById(vk_id)),
+            None => env.storage().instance().get(&DataKey::Vk),
         };
+
+        let Some(vk_bytes) = vk_bytes else { return false; };
 
         let verifier = UltraHonkVerifier::new(&env, &vk_bytes);
         let Ok(verifier) = verifier else {
             return false;
         };
+
+        verifier.verify(&proof_bytes, &public_inputs).is_ok()
+    }
+
+    /// Verify an UltraHonk proof using a VK registered under `vk_id`.
+    ///
+    /// NOTE: This is the stable interface for multi-circuit verification.
+    pub fn verify_proof_vk(env: Env, vk_id: soroban_sdk::Symbol, public_inputs: Bytes, proof_bytes: Bytes) -> bool {
+        if proof_bytes.len() as usize != PROOF_BYTES {
+            return false;
+        }
+
+        let vk_bytes: Option<Bytes> = env.storage().instance().get(&DataKey::VkById(vk_id));
+        let Some(vk_bytes) = vk_bytes else { return false; };
+
+        let verifier = UltraHonkVerifier::new(&env, &vk_bytes);
+        let Ok(verifier) = verifier else { return false; };
 
         verifier.verify(&proof_bytes, &public_inputs).is_ok()
     }
