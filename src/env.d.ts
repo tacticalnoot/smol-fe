@@ -15,6 +15,7 @@ interface ImportMetaEnv {
   readonly PUBLIC_MAINNET_RPC_URL?: string;
   readonly PUBLIC_MAINNET_NETWORK_PASSPHRASE?: string;
   readonly PUBLIC_FARM_ATTESTATIONS_CONTRACT_ID_MAINNET?: string;
+  readonly PUBLIC_LOCAL_PROVER_URL?: string;
   // OpenZeppelin Channels (not currently implemented - using KaleFarm relayer instead)
   // readonly PUBLIC_CHANNELS_BASE_URL?: string;  // defaults to https://channels.openzeppelin.com
   // readonly PUBLIC_CHANNELS_API_KEY?: string;

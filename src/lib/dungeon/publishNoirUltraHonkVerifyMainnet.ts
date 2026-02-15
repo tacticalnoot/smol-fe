@@ -9,7 +9,7 @@ const { Api, Server, assembleTransaction } = rpc;
 const NULL_ACCOUNT = "GAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAWHF";
 
 // Keep <= 32 chars for Soroban Symbol.
-const NOIR_ULTRAHONK_VK_ID = "NOIR_TIER_V1";
+const DEFAULT_NOIR_ULTRAHONK_VK_ID = "NOIR_TIER_V1";
 
 export type NoirUltraHonkOnchainResult =
   | { ok: true; txHash: string; ledger?: number }
@@ -81,7 +81,14 @@ function concatPublicInputsBytes(publicInputsHex: string[]): Buffer {
 export async function publishNoirUltraHonkVerifyMainnet(input: {
   owner: string; // passkey smart account contractId
   keyId: string; // passkey keyId (base64)
-  tierId: number; // selects training artifact
+  tierId: number; // selects training artifact (unless `proofOverride` is provided)
+  // Optional: use a caller-provided proof/public inputs (binds to live dungeon inputs).
+  proofOverride?: { proofBase64: string; publicInputs: string[] };
+  // Optional: override VK routing + verifier hash stored on-chain.
+  // vkId must match what was registered in ultrahonk-verifier via set_vk_by_id.
+  vkId?: string;
+  verifierHashHex?: string; // 0x-prefixed bytes32
+  tierTag?: string; // <= 32 chars; stored in attestations as the `tier` Symbol (pure label)
   onStage?: (stage: "simulating" | "assembling" | "signing" | "submitted" | "confirmed") => void;
 }): Promise<NoirUltraHonkOnchainResult> {
   try {
@@ -96,18 +103,20 @@ export async function publishNoirUltraHonkVerifyMainnet(input: {
     }
 
     const tier = tierIdToSampleTier(input.tierId);
-    const sample =
-      noirUltraHonkLegacySamples.find((s) => s.tier === tier && s.expectedValid) ??
-      noirUltraHonkLegacySamples.find((s) => s.expectedValid);
-    if (!sample) {
-      throw new Error("No Noir sample proof available");
-    }
+    const tierTag = (input.tierTag ?? tier).toString().toUpperCase().slice(0, 32);
 
-    const proofBase64 = String((sample as any)?.proof?.proofBase64 ?? "");
-    const publicInputsHex: string[] = Array.isArray((sample as any)?.proof?.publicInputs)
-      ? ((sample as any).proof.publicInputs as string[])
-      : Array.isArray((sample as any)?.publicInputs)
-        ? ((sample as any).publicInputs as string[])
+    const override = input.proofOverride;
+    const sample =
+      override ??
+      (noirUltraHonkLegacySamples.find((s) => s.tier === tier && s.expectedValid) ??
+        noirUltraHonkLegacySamples.find((s) => s.expectedValid));
+    if (!sample) throw new Error("No Noir proof available");
+
+    const proofBase64 = String((sample as any)?.proofBase64 ?? (sample as any)?.proof?.proofBase64 ?? "");
+    const publicInputsHex: string[] = Array.isArray((sample as any)?.publicInputs)
+      ? ((sample as any).publicInputs as string[])
+      : Array.isArray((sample as any)?.proof?.publicInputs)
+        ? ((sample as any).proof.publicInputs as string[])
         : [];
 
     if (!proofBase64) {
@@ -118,7 +127,8 @@ export async function publishNoirUltraHonkVerifyMainnet(input: {
     }
 
     const statementHash = ensureBytes32Hex(String((sample as any)?.commitmentDigest ?? publicInputsHex[1] ?? ""));
-    const verifierHash = ensureBytes32Hex(noirUltraHonkLegacyVkDigestHex);
+    const verifierHash = ensureBytes32Hex(input.verifierHashHex ?? noirUltraHonkLegacyVkDigestHex);
+    const vkId = (input.vkId ?? DEFAULT_NOIR_ULTRAHONK_VK_ID).toString().slice(0, 32);
 
     const proofBytes = Buffer.from(proofBase64, "base64");
     const publicInputsBytes = concatPublicInputsBytes(publicInputsHex);
@@ -132,10 +142,10 @@ export async function publishNoirUltraHonkVerifyMainnet(input: {
       "verify_ultrahonk_vk_and_attest",
       new Address(input.owner).toScVal(),
       symbol("NOIR"),
-      symbol(tier.toUpperCase()),
+      symbol(tierTag),
       xdr.ScVal.scvBytes(Buffer.from(hexToBytes(statementHash))),
       xdr.ScVal.scvBytes(Buffer.from(hexToBytes(verifierHash))),
-      symbol(NOIR_ULTRAHONK_VK_ID),
+      symbol(vkId),
       xdr.ScVal.scvBytes(publicInputsBytes),
       xdr.ScVal.scvBytes(proofBytes),
     );
@@ -144,7 +154,7 @@ export async function publishNoirUltraHonkVerifyMainnet(input: {
       "verify_ultrahonk_and_attest",
       new Address(input.owner).toScVal(),
       symbol("NOIR"),
-      symbol(tier.toUpperCase()),
+      symbol(tierTag),
       xdr.ScVal.scvBytes(Buffer.from(hexToBytes(statementHash))),
       xdr.ScVal.scvBytes(Buffer.from(hexToBytes(verifierHash))),
       xdr.ScVal.scvBytes(publicInputsBytes),

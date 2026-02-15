@@ -72,6 +72,12 @@ async function waitForTransaction(server: rpc.Server, hash: string): Promise<rpc
 export async function publishRisc0Groth16VerifyMainnet(input: {
   owner: string; // passkey smart account contractId
   keyId: string; // passkey keyId (base64)
+  // Optional: caller-provided Groth16 receipt proof (binds to live dungeon inputs).
+  proofOverride?: {
+    claim_digest_hex: string;
+    public_inputs_hex: string[];
+    proof: { pi_a_b64: string; pi_b_b64: string; pi_c_b64: string };
+  };
   onStage?: (stage: "simulating" | "assembling" | "signing" | "submitted" | "confirmed") => void;
 }): Promise<Risc0Groth16VerifyResult> {
   try {
@@ -80,7 +86,7 @@ export async function publishRisc0Groth16VerifyMainnet(input: {
       throw new Error("Soroban RPC URL not configured. Set PUBLIC_RPC_URL (or PUBLIC_MAINNET_RPC_URL).");
     }
 
-    const sample: any = risc0Groth16Sample as any;
+    const sample: any = (input.proofOverride ?? (risc0Groth16Sample as any)) as any;
     const claimDigestHex = ensureBytes32Hex(String(sample.claim_digest_hex ?? ""));
     const publicInputsHex: string[] = Array.isArray(sample.public_inputs_hex) ? sample.public_inputs_hex : [];
     if (publicInputsHex.length !== 5) {

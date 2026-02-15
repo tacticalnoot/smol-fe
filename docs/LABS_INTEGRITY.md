@@ -58,7 +58,9 @@ ZK status:
   - On-chain: YES. Calls `tier-verifier.verify_and_attest` which runs BN254 pairing checks on-chain.
 - Noir (UltraHonk): local verification only (bb.js).
   - On-chain: YES (when configured). Uses `farm-attestations.verify_ultrahonk_and_attest` (or `verify_ultrahonk_vk_and_attest`), which delegates proof verification to an upgradeable `ultrahonk-verifier` Soroban contract (VK stored on-chain).
-    - Current constraint: the Soroban verifier supports the legacy `bb v0.87.0` UltraHonk proof/VK format. The dungeon’s Room 2 on-chain demo uses legacy training artifacts from `src/data/dungeon/noir_ultrahonk_legacy_bundle.json`.
+    - Current constraint: the Soroban verifier supports the legacy `bb v0.87.0` UltraHonk proof/VK format.
+      - ZK Dungeon Room 2 uses a legacy Noir circuit at `zk/noir-dungeon-role-legacy` and (in DEV) a local prover service (`scripts/local-prover-server.mjs`) to generate proofs bound to the run inputs.
+      - The VK digest and sample bundle live at `src/data/dungeon/noir_ultrahonk_role_legacy_bundle.json` (VK_ID `NOIR_ROLE_V1`).
     - Local verification in the Farm UI uses modern `@aztec/bb.js` and is still cryptographically real, but those proofs are not currently on-chain verifiable by the legacy Soroban verifier.
   - Optional on-chain record: YES (digest-only record in `farm-attestations`, not cryptographic verification).
 - RISC0 receipt: local verification only (WASM verifier).
@@ -84,6 +86,10 @@ Stellar TX status:
   - Assemble: `rpc.assembleTransaction()`
   - Sign + send: `src/utils/transaction-helpers.ts` (PasskeyKit + relayer)
 - Noir/RISC0 "publish record" uses a real Soroban tx to `farm-attestations.attest` (digest-only statement record).
+- ZK Dungeon Room 2 (Noir) and Room 3 (RISC0) can also perform **real mainnet on-chain verification** when the local prover service is running:
+  - Run local prover: `node scripts/local-prover-server.mjs` (uses WSL toolchains to generate proofs bound to the run inputs).
+  - Room 2: `farm-attestations.verify_ultrahonk_vk_and_attest` (VK_ID `NOIR_ROLE_V1`), passkey-signed.
+  - Room 3: `farm-attestations.verify_groth16_and_attest` (VK_ID `R0G16V1`), passkey-signed.
 
 ### 2) THE VIP
 

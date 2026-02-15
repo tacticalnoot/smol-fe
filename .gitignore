@@ -59,4 +59,5 @@ deployed-*-id.txt
 zk/**/.risc0_work/
 
 .agent/_reports/
+.tmp/
 
