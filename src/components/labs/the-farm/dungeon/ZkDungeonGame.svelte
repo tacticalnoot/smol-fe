@@ -9,6 +9,7 @@
         vaultLaneFromCode,
         type DoorDefinition,
         type DoorId,
+        type VaultLaneName,
     } from "../../../../lib/dungeon/policies";
     import { dungeonLore, type DungeonRoomId } from "../../../../data/dungeon/lore";
     import { publishDungeonStampMainnet, type DungeonStampKind } from "../../../../lib/dungeon/publishDungeonStampMainnet";
@@ -254,6 +255,7 @@
     let roomId = $derived<DungeonRoomId>(
         phase === "airlock" ? "airlock" : phase === "ledger" || phase === "victory" ? "ledger" : floorDef.roomId
     );
+    let roomThemeClass = $derived(`dg-room-${roomId}`);
     let roomLore = $derived(dungeonLore[roomId]);
     let roomHeaderArt = $derived<string>(
         roomId === "airlock"
@@ -1401,6 +1403,16 @@
     // Door symbols
     const DOOR_SYMBOLS = ["\u16B1", "\u16C7", "\u16A6", "\u16D2", "\u16DF", "\u16DE", "\u16C9", "\u16BB"]; // 8 rune-like markers
     const DOOR_COLORS = ["#4ad0ff", "#9b7bff", "#ffc47a", "#7bffb0", "#ff7bbd", "#9ae600", "#60a5fa", "#f97316"];
+    const LANE_BADGE_STYLES: Record<VaultLaneName, string> = {
+        INDIGO: "color:#9eddff;border-color:rgba(74,208,255,0.5);background:rgba(74,208,255,0.14)",
+        AMBER: "color:#ffe4ba;border-color:rgba(255,196,122,0.5);background:rgba(255,196,122,0.15)",
+        MINT: "color:#c9ffe1;border-color:rgba(123,255,176,0.5);background:rgba(123,255,176,0.14)",
+        ROSE: "color:#ffd3e6;border-color:rgba(255,123,189,0.5);background:rgba(255,123,189,0.14)",
+    };
+    function laneTagStyle(tagShort: string): string | undefined {
+        const laneName = tagShort.replace(/^LANE:\s*/i, "").trim().toUpperCase() as VaultLaneName;
+        return LANE_BADGE_STYLES[laneName];
+    }
 </script>
 
 <!-- ── Title Screen ──────────────────────────────────────────────── -->
@@ -1537,7 +1549,7 @@
 
 <!-- ── Lobby ──────────────────────────────────────────────────────── -->
 {:else if phase === "airlock"}
-<div class="dg-root dg-vault-screen dg-airlock">
+<div class={`dg-root dg-vault-screen dg-airlock ${roomThemeClass}`}>
     <div class="dg-vault-bg" aria-hidden="true"></div>
     <div class="dg-vault-shell">
         <button class="dg-back-btn" onclick={resetGame}>&larr; BACK</button>
@@ -1577,15 +1589,11 @@
                     {/if}
 
                     {#if isConnected}
-                        <button
-                            class="dg-btn dg-btn-primary"
-                            disabled={entryStamp.status === "simulating" || entryStamp.status === "assembling" || entryStamp.status === "signing"}
-                            onclick={() => stampOnChain("ENTRY")}
-                        >
-                            STAMP ENTRY ONLY (PASSKEY)
-                        </button>
+                        <div class="dg-placard-sub">
+                            Entry stamping is bundled into <strong>STAMP + ENTER INTAKE</strong> below.
+                        </div>
                     {:else}
-                        <button class="dg-btn dg-btn-secondary" onclick={connectWallet}>CONNECT WALLET (PASSKEY)</button>
+                        <button class="dg-btn dg-btn-secondary" onclick={connectWallet}>CONNECT WALLET TO ENABLE STAMP + ENTER</button>
                     {/if}
                 </div>
 
@@ -1611,7 +1619,7 @@
 
 <!-- ── Lobby ──────────────────────────────────────────────────────── -->
 {:else if phase === "lobby"}
-<div class="dg-root dg-lobby-screen">
+<div class={`dg-root dg-lobby-screen ${roomThemeClass}`}>
     <div class="dg-stars"></div>
     <div class="dg-lobby-content">
         <button class="dg-back-btn" onclick={resetGame}>&larr; BACK</button>
@@ -1678,7 +1686,7 @@
 
 <!-- ── Playing ────────────────────────────────────────────────────── -->
 {:else if phase === "playing"}
-<div class="dg-root dg-vault-screen dg-game" class:dg-floor-transition={floorTransition}>
+<div class={`dg-root dg-vault-screen dg-game ${roomThemeClass}`} class:dg-floor-transition={floorTransition}>
     <div class="dg-vault-bg" aria-hidden="true"></div>
     <div class="dg-vault-shell">
         <!-- HUD -->
@@ -1963,7 +1971,14 @@
                                 <span class="dg-door-label">DOOR {i + 1}</span>
                                 <div class="dg-door-tags" aria-label="Door policy tags">
                                     {#each def.tags as tag}
-                                        <span class="dg-door-tag">{tag.short}</span>
+                                        {@const laneStyle = laneTagStyle(tag.short)}
+                                        <span
+                                            class="dg-door-tag"
+                                            class:dg-door-tag-lane={!!laneStyle}
+                                            style={laneStyle}
+                                        >
+                                            {tag.short}
+                                        </span>
                                     {/each}
                                 </div>
                                 {#if state === "proving"}
@@ -1994,7 +2009,10 @@
                     CREDENTIAL: <span class="dg-mono">{tierLabel(runTierId || effectiveTierId)} (T{runTierId || effectiveTierId})</span>
                 </div>
                 <div class="dg-note-line">
-                    LANE: <span class="dg-mono" style="color: {activeLane.color}">{activeLane.name}</span>
+                    LANE:
+                    <span class="dg-mono dg-lane-chip" style={laneTagStyle(`LANE: ${activeLane.name}`)}>
+                        {activeLane.name}
+                    </span>
                 </div>
                 <div class="dg-note-line">
                     ENTRY STAMP: <span class="dg-mono">{entryStamp.status}</span>
@@ -2058,7 +2076,7 @@
 
 <!-- ── Ledger Chamber ──────────────────────────────────────────────── -->
 {:else if phase === "ledger"}
-<div class="dg-root dg-vault-screen dg-ledger">
+<div class={`dg-root dg-vault-screen dg-ledger ${roomThemeClass}`}>
     <div class="dg-vault-bg" aria-hidden="true"></div>
     <div class="dg-vault-shell">
         <button class="dg-back-btn" onclick={resetGame}>&larr; BACK</button>
@@ -2174,12 +2192,42 @@
                 </div>
             {/if}
         </section>
+
+        <section class="dg-panel dg-panel-comingsoon" aria-label="Sealed Door Room Five">
+            <div class="dg-panel-head">SEALED VAULT DOOR: ROOM 5</div>
+            <div class="dg-comingsoon-wrap">
+                <div class="dg-comingsoon-seal" aria-hidden="true">V</div>
+                <div class="dg-comingsoon-copy">
+                    <p class="dg-comingsoon-title">Beyond This Chamber: The Root Genome Annex</p>
+                    <p class="dg-comingsoon-text">
+                        Your run established a verified trail through intake, custody, and cold storage. The next sealed wing is designed as a
+                        cross-system proving gauntlet where one audit flow composes Groth16, UltraHonk, and RISC0 evidence into a single
+                        compliance narrative.
+                    </p>
+                    <p class="dg-comingsoon-text">
+                        This door stays locked for now, but your ledger trail is preserved and can be used as the preflight context for the
+                        next release.
+                    </p>
+                    <div class="dg-comingsoon-list">
+                        <span>• Composite verifier chain: Groth16 → Noir → RISC0 in one mission</span>
+                        <span>• Deeper policy graph: tier, lane, parity, and custody continuity</span>
+                        <span>• Expanded science board with attempt-level forensic timelines</span>
+                    </div>
+                    <div class="dg-comingsoon-actions">
+                        <button class="dg-btn dg-btn-secondary" type="button" disabled>
+                            BREACH ROOM 5 (COMING SOON)
+                        </button>
+                        <span class="dg-comingsoon-tag">PREPARED FOR NEXT DEPLOYMENT</span>
+                    </div>
+                </div>
+            </div>
+        </section>
     </div>
 </div>
 
 <!-- ── Victory ────────────────────────────────────────────────────── -->
 {:else if phase === "victory"}
-<div class="dg-root dg-victory-screen">
+<div class={`dg-root dg-victory-screen ${roomThemeClass}`}>
     <div class="dg-stars"></div>
     <div class="dg-victory-content">
         <p class="dg-eyebrow">DUNGEON CLEARED</p>
@@ -2229,8 +2277,36 @@
         --dg-accent: #4ad0ff;
         --dg-accent-2: #9b7bff;
         --dg-accent-3: #ffc47a;
+        --dg-accent-glow: rgba(74, 208, 255, 0.32);
         --dg-correct: #4ade80;
         --dg-wrong: #f87171;
+        --dg-room-glow-1: rgba(154, 230, 0, 0.10);
+        --dg-room-glow-2: rgba(74, 208, 255, 0.12);
+        --dg-room-glow-3: rgba(155, 123, 255, 0.10);
+        --dg-room-ambient: #03060b;
+        --dg-vault-bg-opacity: 0.35;
+        --dg-vault-bg-filter: saturate(1.05) contrast(1.05);
+        --dg-panel-bg: rgba(8, 12, 20, 0.78);
+        --dg-panel-border: rgba(255, 255, 255, 0.10);
+        --dg-panel-head-text: rgba(232, 240, 255, 0.70);
+        --dg-hud-bg: rgba(4, 6, 11, 0.9);
+        --dg-proof-chip-border: rgba(155, 123, 255, 0.30);
+        --dg-proof-chip-bg: transparent;
+        --dg-btn-primary-a: rgba(54, 72, 45, 0.96);
+        --dg-btn-primary-b: rgba(34, 48, 30, 0.98);
+        --dg-btn-primary-text: rgba(236, 248, 220, 0.96);
+        --dg-btn-primary-border: rgba(154, 230, 0, 0.28);
+        --dg-btn-primary-hover-border: rgba(154, 230, 0, 0.40);
+        --dg-btn-kale-a: rgba(86, 118, 52, 0.98);
+        --dg-btn-kale-b: rgba(58, 84, 39, 0.98);
+        --dg-btn-kale-text: rgba(248, 255, 235, 0.97);
+        --dg-btn-kale-border: rgba(172, 236, 84, 0.46);
+        --dg-btn-kale-hover-border: rgba(194, 246, 122, 0.62);
+        --dg-btn-secondary-bg: rgba(23, 32, 20, 0.82);
+        --dg-btn-secondary-text: rgba(220, 234, 203, 0.94);
+        --dg-btn-secondary-border: rgba(126, 161, 92, 0.36);
+        --dg-btn-secondary-hover-bg: rgba(30, 42, 26, 0.92);
+        --dg-btn-secondary-hover-border: rgba(154, 230, 0, 0.34);
         --dg-font-display: "Press Start 2P", "JetBrains Mono", monospace;
         --dg-font-body: "Inter", system-ui, -apple-system, sans-serif;
     }
@@ -2244,6 +2320,109 @@
         display: flex;
         flex-direction: column;
         overflow: hidden;
+        transition: background 240ms ease, color 240ms ease;
+    }
+
+    .dg-room-airlock {
+        --dg-accent: #8de7ff;
+        --dg-accent-2: #a9b9ff;
+        --dg-accent-3: #ffd5a8;
+        --dg-accent-glow: rgba(141, 231, 255, 0.34);
+        --dg-room-glow-1: rgba(113, 188, 214, 0.16);
+        --dg-room-glow-2: rgba(109, 149, 255, 0.13);
+        --dg-room-glow-3: rgba(185, 203, 255, 0.11);
+        --dg-room-ambient: #04070f;
+        --dg-panel-bg: rgba(9, 15, 26, 0.80);
+        --dg-btn-primary-a: rgba(53, 79, 87, 0.95);
+        --dg-btn-primary-b: rgba(34, 55, 62, 0.98);
+        --dg-btn-primary-border: rgba(141, 231, 255, 0.34);
+        --dg-btn-primary-hover-border: rgba(141, 231, 255, 0.52);
+        --dg-btn-kale-a: rgba(66, 104, 113, 0.97);
+        --dg-btn-kale-b: rgba(41, 72, 79, 0.98);
+        --dg-btn-kale-border: rgba(170, 230, 244, 0.48);
+        --dg-btn-kale-hover-border: rgba(191, 241, 252, 0.64);
+    }
+
+    .dg-room-intake {
+        --dg-accent: #9ae600;
+        --dg-accent-2: #7fd3ff;
+        --dg-accent-3: #ffe28f;
+        --dg-accent-glow: rgba(154, 230, 0, 0.34);
+        --dg-room-glow-1: rgba(154, 230, 0, 0.18);
+        --dg-room-glow-2: rgba(89, 200, 142, 0.14);
+        --dg-room-glow-3: rgba(127, 211, 255, 0.12);
+        --dg-room-ambient: #04080a;
+        --dg-panel-bg: rgba(10, 16, 11, 0.80);
+        --dg-btn-primary-a: rgba(73, 106, 38, 0.97);
+        --dg-btn-primary-b: rgba(49, 73, 29, 0.98);
+        --dg-btn-primary-border: rgba(178, 241, 84, 0.42);
+        --dg-btn-primary-hover-border: rgba(196, 247, 112, 0.58);
+        --dg-btn-kale-a: rgba(94, 131, 44, 0.98);
+        --dg-btn-kale-b: rgba(66, 96, 35, 0.99);
+        --dg-btn-kale-border: rgba(196, 247, 112, 0.52);
+        --dg-btn-kale-hover-border: rgba(216, 255, 150, 0.68);
+    }
+
+    .dg-room-catalog {
+        --dg-accent: #ffcf86;
+        --dg-accent-2: #9bd1ff;
+        --dg-accent-3: #caa7ff;
+        --dg-accent-glow: rgba(255, 207, 134, 0.34);
+        --dg-room-glow-1: rgba(255, 178, 95, 0.14);
+        --dg-room-glow-2: rgba(126, 195, 255, 0.15);
+        --dg-room-glow-3: rgba(202, 167, 255, 0.12);
+        --dg-room-ambient: #08070b;
+        --dg-panel-bg: rgba(16, 13, 17, 0.80);
+        --dg-btn-primary-a: rgba(103, 78, 44, 0.97);
+        --dg-btn-primary-b: rgba(74, 55, 33, 0.98);
+        --dg-btn-primary-border: rgba(255, 207, 134, 0.42);
+        --dg-btn-primary-hover-border: rgba(255, 221, 161, 0.58);
+        --dg-btn-kale-a: rgba(119, 89, 50, 0.98);
+        --dg-btn-kale-b: rgba(82, 60, 35, 0.99);
+        --dg-btn-kale-border: rgba(255, 214, 148, 0.50);
+        --dg-btn-kale-hover-border: rgba(255, 227, 180, 0.66);
+        --dg-btn-secondary-bg: rgba(29, 23, 17, 0.84);
+        --dg-btn-secondary-border: rgba(182, 140, 95, 0.36);
+    }
+
+    .dg-room-cold {
+        --dg-accent: #82eaff;
+        --dg-accent-2: #9cb8ff;
+        --dg-accent-3: #b5ffe8;
+        --dg-accent-glow: rgba(130, 234, 255, 0.34);
+        --dg-room-glow-1: rgba(94, 189, 255, 0.14);
+        --dg-room-glow-2: rgba(156, 184, 255, 0.13);
+        --dg-room-glow-3: rgba(181, 255, 232, 0.11);
+        --dg-room-ambient: #03070d;
+        --dg-panel-bg: rgba(9, 14, 24, 0.82);
+        --dg-btn-primary-a: rgba(45, 83, 103, 0.97);
+        --dg-btn-primary-b: rgba(29, 58, 75, 0.98);
+        --dg-btn-primary-border: rgba(130, 234, 255, 0.40);
+        --dg-btn-primary-hover-border: rgba(160, 242, 255, 0.56);
+        --dg-btn-kale-a: rgba(62, 99, 119, 0.98);
+        --dg-btn-kale-b: rgba(40, 72, 90, 0.99);
+        --dg-btn-kale-border: rgba(160, 242, 255, 0.48);
+        --dg-btn-kale-hover-border: rgba(190, 248, 255, 0.64);
+    }
+
+    .dg-room-ledger {
+        --dg-accent: #d9ff93;
+        --dg-accent-2: #ffcf86;
+        --dg-accent-3: #93d6ff;
+        --dg-accent-glow: rgba(217, 255, 147, 0.32);
+        --dg-room-glow-1: rgba(217, 255, 147, 0.15);
+        --dg-room-glow-2: rgba(255, 207, 134, 0.12);
+        --dg-room-glow-3: rgba(147, 214, 255, 0.11);
+        --dg-room-ambient: #0a0906;
+        --dg-panel-bg: rgba(18, 15, 10, 0.80);
+        --dg-btn-primary-a: rgba(90, 107, 45, 0.97);
+        --dg-btn-primary-b: rgba(63, 75, 33, 0.98);
+        --dg-btn-primary-border: rgba(217, 255, 147, 0.40);
+        --dg-btn-primary-hover-border: rgba(228, 255, 176, 0.56);
+        --dg-btn-kale-a: rgba(104, 121, 56, 0.98);
+        --dg-btn-kale-b: rgba(72, 84, 38, 0.99);
+        --dg-btn-kale-border: rgba(230, 255, 184, 0.48);
+        --dg-btn-kale-hover-border: rgba(236, 255, 205, 0.64);
     }
 
     .dg-stars {
@@ -2284,17 +2463,17 @@
     .dg-btn-primary {
         background: linear-gradient(
             145deg,
-            rgba(54, 72, 45, 0.96),
-            rgba(34, 48, 30, 0.98)
+            var(--dg-btn-primary-a),
+            var(--dg-btn-primary-b)
         );
-        color: rgba(236, 248, 220, 0.96);
-        border-color: rgba(154, 230, 0, 0.28);
+        color: var(--dg-btn-primary-text);
+        border-color: var(--dg-btn-primary-border);
         box-shadow:
             0 8px 24px rgba(8, 12, 8, 0.55),
             inset 0 1px 0 rgba(220, 255, 170, 0.08);
     }
     .dg-btn-primary:hover {
-        border-color: rgba(154, 230, 0, 0.40);
+        border-color: var(--dg-btn-primary-hover-border);
         box-shadow:
             0 12px 34px rgba(8, 12, 8, 0.62),
             inset 0 1px 0 rgba(220, 255, 170, 0.12);
@@ -2304,30 +2483,30 @@
     .dg-btn-kale {
         background: linear-gradient(
             145deg,
-            rgba(86, 118, 52, 0.98),
-            rgba(58, 84, 39, 0.98)
+            var(--dg-btn-kale-a),
+            var(--dg-btn-kale-b)
         );
-        color: rgba(248, 255, 235, 0.97);
+        color: var(--dg-btn-kale-text);
         box-shadow:
             0 10px 28px rgba(12, 20, 10, 0.58),
             inset 0 1px 0 rgba(223, 255, 183, 0.14);
-        border-color: rgba(172, 236, 84, 0.46);
+        border-color: var(--dg-btn-kale-border);
     }
     .dg-btn-kale:hover {
-        border-color: rgba(194, 246, 122, 0.62);
+        border-color: var(--dg-btn-kale-hover-border);
         box-shadow:
             0 14px 40px rgba(10, 18, 9, 0.66),
             inset 0 1px 0 rgba(231, 255, 200, 0.22);
     }
 
     .dg-btn-secondary {
-        background: rgba(23, 32, 20, 0.82);
-        color: rgba(220, 234, 203, 0.94);
-        border-color: rgba(126, 161, 92, 0.36);
+        background: var(--dg-btn-secondary-bg);
+        color: var(--dg-btn-secondary-text);
+        border-color: var(--dg-btn-secondary-border);
     }
     .dg-btn-secondary:hover {
-        background: rgba(30, 42, 26, 0.92);
-        border-color: rgba(154, 230, 0, 0.34);
+        background: var(--dg-btn-secondary-hover-bg);
+        border-color: var(--dg-btn-secondary-hover-border);
     }
 
     .dg-btn-ghost {
@@ -2383,12 +2562,13 @@
     .dg-vault-screen {
         position: relative;
         min-height: 100vh;
-        background: radial-gradient(1200px 700px at 15% 10%, rgba(154, 230, 0, 0.10), transparent 60%),
-            radial-gradient(900px 600px at 80% 30%, rgba(74, 208, 255, 0.12), transparent 55%),
-            radial-gradient(900px 700px at 70% 90%, rgba(155, 123, 255, 0.10), transparent 60%),
-            #03060b;
+        background: radial-gradient(1200px 700px at 15% 10%, var(--dg-room-glow-1), transparent 60%),
+            radial-gradient(900px 600px at 80% 30%, var(--dg-room-glow-2), transparent 55%),
+            radial-gradient(900px 700px at 70% 90%, var(--dg-room-glow-3), transparent 60%),
+            var(--dg-room-ambient);
         overflow-x: hidden;
         overflow-y: auto;
+        transition: background 320ms ease;
     }
 
     .dg-vault-bg {
@@ -2399,9 +2579,10 @@
             url("/labs/zkdungeon/art/vault-blueprint-map.webp");
         background-size: 1024px 1024px, cover;
         background-position: center, center;
-        opacity: 0.35;
-        filter: saturate(1.05) contrast(1.05);
+        opacity: var(--dg-vault-bg-opacity);
+        filter: var(--dg-vault-bg-filter);
         pointer-events: none;
+        transition: opacity 260ms ease, filter 260ms ease;
     }
 
     .dg-vault-shell {
@@ -2460,12 +2641,13 @@
     }
 
     .dg-panel {
-        background: rgba(8, 12, 20, 0.78);
-        border: 1px solid rgba(255, 255, 255, 0.10);
+        background: var(--dg-panel-bg);
+        border: 1px solid var(--dg-panel-border);
         border-radius: 18px;
         backdrop-filter: blur(10px);
         box-shadow: 0 18px 70px rgba(0, 0, 0, 0.40);
         overflow: hidden;
+        transition: background 240ms ease, border-color 240ms ease;
     }
 
     .dg-panel-head {
@@ -2473,7 +2655,7 @@
         font-size: 11px;
         letter-spacing: 0.18em;
         text-transform: uppercase;
-        color: rgba(232, 240, 255, 0.70);
+        color: var(--dg-panel-head-text);
         border-bottom: 1px solid rgba(255, 255, 255, 0.08);
         background-image: url("/labs/zkdungeon/art/texture-placard.webp");
         background-size: 512px 512px;
@@ -2600,6 +2782,17 @@
         letter-spacing: 0.03em;
     }
 
+    .dg-lane-chip {
+        display: inline-flex;
+        align-items: center;
+        padding: 3px 8px;
+        border-radius: 999px;
+        border: 1px solid rgba(255, 255, 255, 0.14);
+        margin-left: 6px;
+        font-size: 11px;
+        letter-spacing: 0.06em;
+    }
+
     .dg-mini-link {
         margin-left: 8px;
         color: rgba(74, 208, 255, 0.85);
@@ -2664,6 +2857,79 @@
     .dg-panel-txscience {
         margin-top: 14px;
         border-style: solid;
+    }
+
+    .dg-panel-comingsoon {
+        margin-top: 14px;
+        border-style: dashed;
+    }
+
+    .dg-comingsoon-wrap {
+        display: grid;
+        grid-template-columns: auto 1fr;
+        gap: 14px;
+        align-items: start;
+        padding: 14px;
+    }
+
+    .dg-comingsoon-seal {
+        width: 54px;
+        height: 54px;
+        border-radius: 12px;
+        display: grid;
+        place-items: center;
+        font-family: var(--dg-font-display);
+        font-size: 20px;
+        letter-spacing: 1px;
+        color: rgba(255,255,255,0.92);
+        border: 1px solid var(--dg-btn-primary-hover-border);
+        background: linear-gradient(140deg, rgba(255,255,255,0.08), rgba(255,255,255,0.02));
+        box-shadow: 0 10px 24px rgba(0, 0, 0, 0.35);
+    }
+
+    .dg-comingsoon-title {
+        margin: 0;
+        font-family: var(--dg-font-display);
+        font-size: 10px;
+        letter-spacing: 1.3px;
+        color: rgba(255,255,255,0.94);
+        text-transform: uppercase;
+    }
+
+    .dg-comingsoon-text {
+        margin: 10px 0 0;
+        color: rgba(255,255,255,0.78);
+        font-size: 12px;
+        line-height: 1.5;
+        max-width: 90ch;
+    }
+
+    .dg-comingsoon-list {
+        margin-top: 10px;
+        display: grid;
+        gap: 5px;
+        color: rgba(232, 240, 255, 0.82);
+        font-size: 12px;
+    }
+
+    .dg-comingsoon-actions {
+        margin-top: 12px;
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        flex-wrap: wrap;
+    }
+
+    .dg-comingsoon-tag {
+        font-family: var(--dg-font-display);
+        font-size: 8px;
+        letter-spacing: 1.2px;
+        padding: 7px 10px;
+        border-radius: 999px;
+        border: 1px solid rgba(255,255,255,0.16);
+        color: rgba(255,255,255,0.75);
+        background: rgba(255,255,255,0.06);
+        text-transform: uppercase;
     }
 
     .dg-tx-stats {
@@ -2783,6 +3049,9 @@
         .dg-room-grid {
             grid-template-columns: 1fr;
         }
+        .dg-comingsoon-wrap {
+            grid-template-columns: 1fr;
+        }
         .dg-tx-grid {
             grid-template-columns: 1fr;
         }
@@ -2886,9 +3155,9 @@
         color: var(--dg-accent);
         margin: 0 0 8px;
         padding: 6px 12px;
-        border: 1px solid rgba(74,208,255,0.2);
+        border: 1px solid var(--dg-accent-glow);
         border-radius: 999px;
-        background: rgba(74,208,255,0.05);
+        background: rgba(255, 255, 255, 0.06);
     }
 
     .dg-hint {
@@ -3142,7 +3411,7 @@
         letter-spacing: 8px;
         color: var(--dg-accent);
         margin: 0 0 12px;
-        text-shadow: 0 0 20px rgba(74,208,255,0.3);
+        text-shadow: 0 0 20px var(--dg-accent-glow);
     }
 
     .dg-relay-status {
@@ -3262,10 +3531,11 @@
         justify-content: space-between;
         padding: 12px 20px;
         border-bottom: 1px solid var(--dg-border);
-        background: rgba(4,6,11,0.9);
+        background: var(--dg-hud-bg);
         backdrop-filter: blur(8px);
         z-index: 10;
         flex-shrink: 0;
+        transition: background 240ms ease;
     }
 
     .dg-hud-left, .dg-hud-right {
@@ -3290,7 +3560,8 @@
         font-size: 10px;
         color: var(--dg-accent-2);
         padding: 3px 8px;
-        border: 1px solid rgba(155,123,255,0.3);
+        border: 1px solid var(--dg-proof-chip-border);
+        background: var(--dg-proof-chip-bg);
         border-radius: 4px;
         font-family: var(--dg-font-display);
         letter-spacing: 0.5px;
@@ -3385,7 +3656,7 @@
         align-items: center;
         padding: 8px 10px;
         border-radius: 999px;
-        border: 1px solid rgba(154, 230, 0, 0.18);
+        border: 1px solid var(--dg-btn-primary-border);
         background: rgba(0, 0, 0, 0.22);
         color: rgba(255,255,255,0.84);
         font-family: var(--dg-font-display);
@@ -3398,25 +3669,25 @@
     .dg-toggle input {
         width: 14px;
         height: 14px;
-        accent-color: rgba(154, 230, 0, 0.95);
+        accent-color: var(--dg-accent);
     }
 
     .dg-toggle:hover,
     .dg-toggle:focus-within {
-        border-color: rgba(154, 230, 0, 0.40);
+        border-color: var(--dg-btn-primary-hover-border);
         color: rgba(255,255,255,0.95);
-        box-shadow: 0 0 0 3px rgba(154, 230, 0, 0.08);
+        box-shadow: 0 0 0 3px rgba(255, 255, 255, 0.06);
     }
 
     .dg-present {
-        border-color: rgba(154, 230, 0, 0.45);
-        background: rgba(154, 230, 0, 0.10);
+        border-color: var(--dg-btn-primary-hover-border);
+        background: rgba(255, 255, 255, 0.08);
     }
 
     .dg-select {
         appearance: none;
         background: rgba(6, 12, 8, 0.85);
-        border: 1px solid rgba(154, 230, 0, 0.45);
+        border: 1px solid var(--dg-btn-primary-hover-border);
         color: rgba(255,255,255,0.86);
         border-radius: 999px;
         padding: 7px 10px;
@@ -3424,10 +3695,10 @@
         font-size: 9px;
         letter-spacing: 1px;
         cursor: pointer;
-        box-shadow: 0 0 0 3px rgba(154, 230, 0, 0.08);
+        box-shadow: 0 0 0 3px rgba(255, 255, 255, 0.06);
     }
     .dg-select:focus {
-        outline: 2px solid rgba(154, 230, 0, 0.35);
+        outline: 2px solid var(--dg-btn-primary-border);
         outline-offset: 2px;
     }
     .dg-select:disabled {
@@ -3623,6 +3894,11 @@
         background: rgba(255,255,255,0.04);
         color: rgba(255,255,255,0.70);
         text-transform: uppercase;
+    }
+
+    .dg-door-tag-lane {
+        border-width: 1px;
+        box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.06);
     }
 
     .dg-door-suggested {
