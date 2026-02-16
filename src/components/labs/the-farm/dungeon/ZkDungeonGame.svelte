@@ -36,6 +36,7 @@
     let phase = $state<GamePhase>("title");
     let runId = $state<string>("");
     let runStartedAt = $state<number>(0);
+    let entryClearanceGranted = $state<boolean>(false);
     let entryStamp = $state<{ status: "idle" | "simulating" | "assembling" | "signing" | "submitted" | "confirmed" | "error"; txHash?: string; error?: string }>(
         { status: "idle" }
     );
@@ -1245,6 +1246,7 @@
         doorStates = emptyDoorStates();
         activeDoor = null;
         runLog = [];
+        entryClearanceGranted = false;
         gateWaiting = false;
         floorTransition = false;
         lastForensics = null;
@@ -1281,9 +1283,6 @@
     async function stampEntryAndEnter() {
         try {
             await stampOnChain("ENTRY");
-            if (entryStamp.status === "confirmed") {
-                await proceedFromAirlock();
-            }
         } catch (err) {
             // stampOnChain already updates entryStamp status; keep this silent to avoid double-reporting.
             console.warn("[Dungeon] Entry stamp failed:", err);
@@ -1331,6 +1330,7 @@
 
         const target = kind === "ENTRY" ? entryStamp : withdrawalStamp;
         if (target.status === "simulating" || target.status === "assembling" || target.status === "signing") return;
+        if (kind === "ENTRY" && entryClearanceGranted) return;
 
         if (kind === "ENTRY") entryStamp = { status: "simulating" };
         else withdrawalStamp = { status: "simulating" };
@@ -1360,7 +1360,10 @@
             return;
         }
 
-        if (kind === "ENTRY") entryStamp = { status: "confirmed", txHash: res.txHash };
+        if (kind === "ENTRY") {
+            entryStamp = { status: "confirmed", txHash: res.txHash };
+            entryClearanceGranted = true;
+        }
         else withdrawalStamp = { status: "confirmed", txHash: res.txHash };
     }
 
@@ -1395,6 +1398,7 @@
 
         await refreshLocalProverHealth();
         entryStamp = { status: "idle" };
+        entryClearanceGranted = false;
         withdrawalStamp = { status: "idle" };
         groth16OnChain = { status: "idle" };
         noirUltraHonkOnChain = { status: "idle" };
@@ -1581,6 +1585,9 @@
                 <div class="dg-stamp-box">
                     <div class="dg-stamp-title">ENTRY STAMP (MAINNET)</div>
                     <div class="dg-stamp-status">STATUS: {entryStamp.status.toUpperCase()}</div>
+                    <div class="dg-stamp-status">
+                        CLEARANCE: {entryClearanceGranted ? "GRANTED" : "LOCKED"}
+                    </div>
                     {#if entryStamp.txHash}
                         <a class="dg-stamp-link" href={txExplorerUrlMainnet(entryStamp.txHash)} target="_blank" rel="noreferrer">
                             VIEW TX {entryStamp.txHash.slice(0, 8)}...
@@ -1591,9 +1598,19 @@
                     {/if}
 
                     {#if isConnected}
-                        <div class="dg-placard-sub">
-                            Entry stamping is bundled into <strong>STAMP + ENTER INTAKE</strong> below.
-                        </div>
+                        {#if entryClearanceGranted}
+                            <div class="dg-placard-sub">
+                                Entry stamp confirmed. Clearance is active for this run.
+                            </div>
+                        {:else}
+                            <button
+                                class="dg-btn dg-btn-primary"
+                                disabled={entryStamp.status === "simulating" || entryStamp.status === "assembling" || entryStamp.status === "signing"}
+                                onclick={stampEntryAndEnter}
+                            >
+                                STAMP ENTRY TO GRANT CLEARANCE
+                            </button>
+                        {/if}
                     {:else}
                         <button class="dg-btn dg-btn-secondary" onclick={connectWallet}>CONNECT WALLET TO ENABLE STAMP + ENTER</button>
                     {/if}
@@ -1601,12 +1618,18 @@
 
                 <div class="dg-vault-actions">
                     {#if isConnected}
-                        <button class="dg-btn dg-btn-primary dg-btn-kale" onclick={stampEntryAndEnter}>
-                            STAMP + ENTER INTAKE →
-                        </button>
-                        <button class="dg-btn dg-btn-secondary" onclick={proceedFromAirlock}>
-                            ENTER WITHOUT STAMP
-                        </button>
+                        {#if entryClearanceGranted}
+                            <button class="dg-btn dg-btn-primary dg-btn-kale" onclick={proceedFromAirlock}>
+                                ENTER INTAKE (CLEARANCE GRANTED) →
+                            </button>
+                        {:else}
+                            <button class="dg-btn dg-btn-secondary" disabled>
+                                ENTER LOCKED - STAMP REQUIRED
+                            </button>
+                            <button class="dg-btn dg-btn-secondary" onclick={proceedFromAirlock}>
+                                ENTER WITHOUT STAMP (DEMO)
+                            </button>
+                        {/if}
                     {:else}
                         <button class="dg-btn dg-btn-primary dg-btn-kale" onclick={proceedFromAirlock}>
                             ENTER INTAKE WING →
