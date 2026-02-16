@@ -2278,46 +2278,81 @@
         cursor: pointer;
         transition: all 0.2s ease;
         text-decoration: none;
+        backdrop-filter: blur(2px);
     }
 
     .dg-btn-primary {
-        background: linear-gradient(135deg, var(--dg-accent), var(--dg-accent-2));
-        color: #0a0c16;
-        border-color: rgba(255,255,255,0.2);
-        box-shadow: 0 4px 20px rgba(74, 208, 255, 0.25);
+        background: linear-gradient(
+            145deg,
+            rgba(54, 72, 45, 0.96),
+            rgba(34, 48, 30, 0.98)
+        );
+        color: rgba(236, 248, 220, 0.96);
+        border-color: rgba(154, 230, 0, 0.28);
+        box-shadow:
+            0 8px 24px rgba(8, 12, 8, 0.55),
+            inset 0 1px 0 rgba(220, 255, 170, 0.08);
     }
     .dg-btn-primary:hover {
-        box-shadow: 0 6px 30px rgba(74, 208, 255, 0.4);
+        border-color: rgba(154, 230, 0, 0.40);
+        box-shadow:
+            0 12px 34px rgba(8, 12, 8, 0.62),
+            inset 0 1px 0 rgba(220, 255, 170, 0.12);
         transform: translateY(-1px);
     }
 
     .dg-btn-kale {
-        background: linear-gradient(135deg, rgba(154, 230, 0, 1), rgba(74, 222, 128, 1));
-        box-shadow: 0 6px 26px rgba(154, 230, 0, 0.18);
-        border-color: rgba(255,255,255,0.22);
+        background: linear-gradient(
+            145deg,
+            rgba(86, 118, 52, 0.98),
+            rgba(58, 84, 39, 0.98)
+        );
+        color: rgba(248, 255, 235, 0.97);
+        box-shadow:
+            0 10px 28px rgba(12, 20, 10, 0.58),
+            inset 0 1px 0 rgba(223, 255, 183, 0.14);
+        border-color: rgba(172, 236, 84, 0.46);
     }
     .dg-btn-kale:hover {
-        box-shadow: 0 10px 36px rgba(154, 230, 0, 0.28);
+        border-color: rgba(194, 246, 122, 0.62);
+        box-shadow:
+            0 14px 40px rgba(10, 18, 9, 0.66),
+            inset 0 1px 0 rgba(231, 255, 200, 0.22);
     }
 
     .dg-btn-secondary {
-        background: rgba(255,255,255,0.06);
-        color: var(--dg-text);
-        border-color: rgba(255,255,255,0.15);
+        background: rgba(23, 32, 20, 0.82);
+        color: rgba(220, 234, 203, 0.94);
+        border-color: rgba(126, 161, 92, 0.36);
     }
     .dg-btn-secondary:hover {
-        background: rgba(255,255,255,0.12);
+        background: rgba(30, 42, 26, 0.92);
+        border-color: rgba(154, 230, 0, 0.34);
     }
 
     .dg-btn-ghost {
         background: transparent;
-        color: var(--dg-text-dim);
-        border-color: transparent;
+        color: rgba(166, 191, 139, 0.86);
+        border-color: rgba(106, 134, 84, 0.24);
         font-size: 10px;
         padding: 10px 20px;
     }
     .dg-btn-ghost:hover {
-        color: var(--dg-text);
+        color: rgba(223, 243, 201, 0.95);
+        border-color: rgba(154, 230, 0, 0.34);
+        background: rgba(21, 30, 18, 0.6);
+    }
+
+    .dg-btn:focus-visible {
+        outline: 2px solid rgba(187, 245, 110, 0.65);
+        outline-offset: 2px;
+    }
+
+    .dg-btn:disabled {
+        opacity: 0.52;
+        cursor: not-allowed;
+        transform: none;
+        box-shadow: none;
     }
 
     .dg-btn-sm {
