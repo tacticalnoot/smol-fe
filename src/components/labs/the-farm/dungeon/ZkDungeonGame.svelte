@@ -124,6 +124,105 @@
         reasonCode?: string;
     }
 
+    interface TxScienceEvent {
+        id: string;
+        hash: string;
+        txKind: "PROOF_VERIFY" | "AUDIT_RECORD";
+        roomLabel: string;
+        actionLabel: string;
+        proofSystem: string;
+        timestamp: number;
+        learningNote: string;
+    }
+
+    function proofSystemLabel(proofType: string): string {
+        if (proofType.includes("UltraHonk") || proofType.includes("Noir")) return "Noir UltraHonk";
+        if (proofType.includes("RISC0")) return "RISC0 Receipt/Groth16";
+        if (proofType.includes("Groth16")) return "Groth16 BN254";
+        return "Soroban Contract Tx";
+    }
+
+    function txKindBadge(kind: TxScienceEvent["txKind"]): string {
+        return kind === "PROOF_VERIFY" ? "ON-CHAIN VERIFY" : "AUDIT RECORD";
+    }
+
+    let txScienceEvents = $derived(
+        (() => {
+            const out: TxScienceEvent[] = [];
+            const seen = new Set<string>();
+
+            const add = (event: TxScienceEvent) => {
+                if (!event.hash || seen.has(event.hash)) return;
+                seen.add(event.hash);
+                out.push(event);
+            };
+
+            if (entryStamp.txHash) {
+                add({
+                    id: `entry:${entryStamp.txHash}`,
+                    hash: entryStamp.txHash,
+                    txKind: "AUDIT_RECORD",
+                    roomLabel: "ROOM 0 AIRLOCK",
+                    actionLabel: "ENTRY STAMP",
+                    proofSystem: "Passkey + Soroban Record",
+                    timestamp: runStartedAt || 0,
+                    learningNote: "Digest-only audit marker. Proves run start without exposing private room data.",
+                });
+            }
+
+            for (const entry of runLog) {
+                if (!entry.txHash) continue;
+                const proofSystem = proofSystemLabel(entry.proofType);
+                const txKind: TxScienceEvent["txKind"] =
+                    entry.reasonCode === "ONCHAIN_VERIFIED" ? "PROOF_VERIFY" : "AUDIT_RECORD";
+
+                add({
+                    id: `${entry.timestamp}:${entry.txHash}`,
+                    hash: entry.txHash,
+                    txKind,
+                    roomLabel: entry.door >= 0 ? `ROOM ${entry.floor} DOOR ${entry.door + 1}` : `ROOM ${entry.floor}`,
+                    actionLabel: txKind === "PROOF_VERIFY" ? "VERIFIER ACCEPTED PROOF" : "RUN EVENT",
+                    proofSystem,
+                    timestamp: entry.timestamp,
+                    learningNote:
+                        txKind === "PROOF_VERIFY"
+                            ? "The contract accepted verifier inputs after simulate -> assemble -> passkey sign/send."
+                            : "Run metadata recorded on-chain using passkey auth.",
+                });
+            }
+
+            if (withdrawalStamp.txHash) {
+                add({
+                    id: `withdrawal:${withdrawalStamp.txHash}`,
+                    hash: withdrawalStamp.txHash,
+                    txKind: "AUDIT_RECORD",
+                    roomLabel: "ROOM 4 LEDGER",
+                    actionLabel: "WITHDRAWAL RECORD",
+                    proofSystem: "Passkey + Soroban Record",
+                    timestamp: runLog[runLog.length - 1]?.timestamp ?? runStartedAt ?? 0,
+                    learningNote: "Digest-only completion record for reviewer/audit traceability.",
+                });
+            }
+
+            out.sort((a, b) => a.timestamp - b.timestamp);
+            return out;
+        })(),
+    );
+
+    let txScienceStats = $derived(
+        (() => {
+            const total = txScienceEvents.length;
+            const verifies = txScienceEvents.filter((e) => e.txKind === "PROOF_VERIFY").length;
+            const records = txScienceEvents.filter((e) => e.txKind === "AUDIT_RECORD").length;
+            const proofSamples = runLog.filter((e) => e.door >= 0 && typeof e.provingTimeMs === "number" && e.provingTimeMs > 0);
+            const avgProofMs =
+                proofSamples.length > 0
+                    ? Math.round(proofSamples.reduce((sum, e) => sum + Number(e.provingTimeMs || 0), 0) / proofSamples.length)
+                    : 0;
+            return { total, verifies, records, avgProofMs };
+        })(),
+    );
+
     // ── Derived State ───────────────────────────────────────────────────
     let walletAddress = $derived(userState.contractId);
     let isConnected = $derived(!!userState.contractId && !!userState.keyId);
@@ -1935,7 +2034,13 @@
                                         <span class="dg-log-time">{entry.provingTimeMs}ms</span>
                                     {/if}
                                 {/if}
-                                <span class="dg-log-tx dg-log-tx-pending">--</span>
+                                {#if entry.txHash}
+                                    <a class="dg-log-tx" href={txExplorerUrlMainnet(entry.txHash)} target="_blank" rel="noreferrer">
+                                        {entry.txHash.slice(0, 8)}...
+                                    </a>
+                                {:else}
+                                    <span class="dg-log-tx dg-log-tx-pending">--</span>
+                                {/if}
                             </div>
                         {/each}
                     </div>
@@ -2015,6 +2120,60 @@
                 </div>
             </section>
         </div>
+
+        <section class="dg-panel dg-panel-txscience" aria-label="Transaction Science Board">
+            <div class="dg-panel-head">TRANSACTION SCIENCE BOARD</div>
+            <p class="dg-placard-sub">
+                Every row below is a real transaction emitted in this run. Use it to learn what was verified on-chain vs what was recorded as an audit digest.
+            </p>
+
+            <div class="dg-tx-stats">
+                <div class="dg-tx-stat">
+                    <span class="dg-tx-stat-value">{txScienceStats.total}</span>
+                    <span class="dg-tx-stat-label">TOTAL TX</span>
+                </div>
+                <div class="dg-tx-stat">
+                    <span class="dg-tx-stat-value">{txScienceStats.verifies}</span>
+                    <span class="dg-tx-stat-label">ON-CHAIN VERIFY</span>
+                </div>
+                <div class="dg-tx-stat">
+                    <span class="dg-tx-stat-value">{txScienceStats.records}</span>
+                    <span class="dg-tx-stat-label">AUDIT RECORDS</span>
+                </div>
+                <div class="dg-tx-stat">
+                    <span class="dg-tx-stat-value">{txScienceStats.avgProofMs}ms</span>
+                    <span class="dg-tx-stat-label">AVG LOCAL PROOF</span>
+                </div>
+            </div>
+
+            <div class="dg-tx-flow-pill">
+                SCIENTIFIC FLOW: simulate -> assemble -> passkey sign/send -> contract result
+            </div>
+
+            {#if txScienceEvents.length === 0}
+                <p class="dg-hint">No on-chain transactions yet in this run.</p>
+            {:else}
+                <div class="dg-tx-grid">
+                    {#each txScienceEvents as tx, idx}
+                        <article class="dg-tx-card">
+                            <div class="dg-tx-card-head">
+                                <span class="dg-tx-step">TX {idx + 1}</span>
+                                <span class="dg-tx-kind">{txKindBadge(tx.txKind)}</span>
+                            </div>
+                            <div class="dg-tx-title">{tx.roomLabel} • {tx.actionLabel}</div>
+                            <div class="dg-tx-meta">
+                                <span>SYSTEM: {tx.proofSystem}</span>
+                                <span>HASH: {tx.hash.slice(0, 10)}...{tx.hash.slice(-8)}</span>
+                            </div>
+                            <p class="dg-tx-note">{tx.learningNote}</p>
+                            <a class="dg-stamp-link" href={txExplorerUrlMainnet(tx.hash)} target="_blank" rel="noreferrer">
+                                OPEN IN STELLAR EXPERT
+                            </a>
+                        </article>
+                    {/each}
+                </div>
+            {/if}
+        </section>
     </div>
 </div>
 
@@ -2467,11 +2626,133 @@
         align-items: flex-start;
     }
 
+    .dg-panel-txscience {
+        margin-top: 14px;
+        border-style: solid;
+    }
+
+    .dg-tx-stats {
+        margin-top: 12px;
+        display: grid;
+        grid-template-columns: repeat(4, minmax(0, 1fr));
+        gap: 10px;
+    }
+
+    .dg-tx-stat {
+        border: 1px solid rgba(255,255,255,0.10);
+        background: rgba(255,255,255,0.03);
+        border-radius: 10px;
+        padding: 10px 10px;
+        display: flex;
+        flex-direction: column;
+        gap: 4px;
+    }
+
+    .dg-tx-stat-value {
+        font-family: var(--dg-font-display);
+        font-size: 12px;
+        color: rgba(154, 230, 0, 0.95);
+        letter-spacing: 1px;
+    }
+
+    .dg-tx-stat-label {
+        font-family: var(--dg-font-display);
+        font-size: 8px;
+        letter-spacing: 1.2px;
+        color: var(--dg-text-dim);
+    }
+
+    .dg-tx-flow-pill {
+        margin-top: 10px;
+        font-family: var(--dg-font-display);
+        font-size: 8px;
+        letter-spacing: 1.2px;
+        text-transform: uppercase;
+        color: rgba(255,255,255,0.85);
+        border: 1px dashed rgba(154, 230, 0, 0.28);
+        background: rgba(154, 230, 0, 0.08);
+        border-radius: 999px;
+        padding: 8px 10px;
+        display: inline-flex;
+        align-items: center;
+    }
+
+    .dg-tx-grid {
+        margin-top: 12px;
+        display: grid;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap: 10px;
+    }
+
+    .dg-tx-card {
+        border: 1px solid rgba(255,255,255,0.12);
+        border-radius: 12px;
+        padding: 12px;
+        background: rgba(5, 10, 16, 0.65);
+        display: flex;
+        flex-direction: column;
+        gap: 8px;
+    }
+
+    .dg-tx-card-head {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 8px;
+    }
+
+    .dg-tx-step {
+        font-family: var(--dg-font-display);
+        font-size: 8px;
+        letter-spacing: 1.2px;
+        color: var(--dg-text-dim);
+    }
+
+    .dg-tx-kind {
+        font-family: var(--dg-font-display);
+        font-size: 8px;
+        letter-spacing: 1.2px;
+        color: rgba(154, 230, 0, 0.95);
+        border: 1px solid rgba(154, 230, 0, 0.30);
+        border-radius: 999px;
+        padding: 3px 8px;
+        background: rgba(154, 230, 0, 0.06);
+    }
+
+    .dg-tx-title {
+        font-family: var(--dg-font-display);
+        font-size: 9px;
+        letter-spacing: 1px;
+        color: rgba(255,255,255,0.94);
+        text-transform: uppercase;
+    }
+
+    .dg-tx-meta {
+        display: grid;
+        gap: 4px;
+        color: var(--dg-text-dim);
+        font-size: 11px;
+        font-family: "JetBrains Mono", monospace;
+    }
+
+    .dg-tx-note {
+        margin: 0;
+        color: rgba(255,255,255,0.78);
+        font-size: 12px;
+        line-height: 1.45;
+    }
+
     /* Responsive */
     @media (max-width: 1100px) {
         .dg-vault-grid,
         .dg-room-grid {
             grid-template-columns: 1fr;
+        }
+        .dg-tx-grid {
+            grid-template-columns: 1fr;
+        }
+        .dg-tx-stats {
+            grid-template-columns: repeat(2, minmax(0, 1fr));
         }
     }
     .dg-input:focus {
