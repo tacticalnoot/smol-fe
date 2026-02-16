@@ -135,7 +135,7 @@ function mkMinTierLaneDoor(
     policy: { kind: "min-tier+lane", requiredTierMin, requiredLane },
     tags: [
       {
-        short: `MIN ≥ ${tierLabel(requiredTierMin)}`,
+        short: `MIN ≥ T${requiredTierMin}`,
         long: `Minimum Clearance ≥ ${tierLabel(requiredTierMin)} (${requiredTierMin})`,
       },
       { short: `LANE: ${lane.name}`, long: `Routing Lane = ${lane.name}` },
@@ -156,7 +156,7 @@ function mkExactTierLaneDoor(
     policy: { kind: "exact-tier+lane", requiredTierExact, requiredLane },
     tags: [
       {
-        short: `ROLE = ${tierLabel(requiredTierExact)}`,
+        short: `ROLE = T${requiredTierExact}`,
         long: `Role = ${tierLabel(requiredTierExact)} (${requiredTierExact})`,
       },
       { short: `LANE: ${lane.name}`, long: `Custody Lane = ${lane.name}` },
@@ -178,10 +178,10 @@ function mkMinTierParityLaneDoor(
     policy: { kind: "min-tier+parity+lane", requiredTierMin, requiredParity, requiredLane },
     tags: [
       {
-        short: `MIN ≥ ${tierLabel(requiredTierMin)}`,
+        short: `MIN ≥ T${requiredTierMin}`,
         long: `Minimum Clearance ≥ ${tierLabel(requiredTierMin)} (${requiredTierMin})`,
       },
-      { short: requiredParity, long: `Parity = ${requiredParity}` },
+      { short: `PARITY: ${requiredParity}`, long: `Parity = ${requiredParity}` },
       { short: `LANE: ${lane.name}`, long: `Cold-Chain Lane = ${lane.name}` },
     ],
   };

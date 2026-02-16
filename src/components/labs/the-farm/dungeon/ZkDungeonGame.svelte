@@ -247,6 +247,8 @@
     let activeLane = $derived(vaultLaneFromCode(activeLaneCode));
     let floorDef = $derived(getFloorDefinition(currentFloor, { seed: policySeed, tierId: runTierId || effectiveTierId }));
     let effectiveMode = $derived<DungeonMode>(trainingMode ? "training" : "normal");
+    let shownTierId = $derived(runTierId || effectiveTierId);
+    let shownTierParity = $derived(shownTierId % 2 === 0 ? "EVEN" : "ODD");
     let hasOpponent = $derived(relayRoster.filter((r) => r.account !== walletAddress).length > 0);
     let allReady = $derived(relayRoster.length >= 2 && relayRoster.every((r) => r.ready));
     let opponentProgress = $derived(relayRoster.find((r) => r.account !== walletAddress) || null);
@@ -1900,9 +1902,9 @@
                         </label>
                         <span class="dg-hint-pill">
                             {#if trainingMode}
-                                CREDENTIAL: {tierLabel(runTierId || effectiveTierId)} • {activeLane.name} • {(runTierId || effectiveTierId) % 2 === 0 ? "EVEN" : "ODD"}
+                                CREDENTIAL: T{shownTierId} ({tierLabel(shownTierId)}) • PARITY {shownTierParity} • LANE {activeLane.name}
                             {:else}
-                                CREDENTIAL: {tierLabel(runTierId || effectiveTierId)} • {(runTierId || effectiveTierId) % 2 === 0 ? "EVEN" : "ODD"}
+                                CREDENTIAL: T{shownTierId} ({tierLabel(shownTierId)}) • PARITY {shownTierParity}
                             {/if}
                         </span>
                         {#if attestedTierId !== null}
