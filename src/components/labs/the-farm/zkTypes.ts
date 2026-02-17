@@ -7,6 +7,13 @@
 export const TIER_VERIFIER_CONTRACT_ID = "CAU7NET7FXSFBBRMLM6X7CJMVAIHMG7RC4YPCXG6G4YOYG6C3CVGR25M";
 export const STELLAR_NETWORK = "stellar-mainnet" as const;
 
+// ── Testnet (hackathon mode) ────────────────────────────────────────────────
+const envTierVerifierTestnet = import.meta.env.PUBLIC_TIER_VERIFIER_CONTRACT_ID_TESTNET;
+export const TIER_VERIFIER_CONTRACT_ID_TESTNET =
+    typeof envTierVerifierTestnet === "string" && envTierVerifierTestnet.trim().length > 0
+        ? envTierVerifierTestnet.trim()
+        : "";
+
 export interface TierDef {
     name: string;
     icon: string;

@@ -24,6 +24,7 @@ import {
     type Groth16Proof,
     TIER_VERIFIER_CONTRACT_ID,
 } from "./zkTypes";
+import type { DungeonNetworkConfig } from "../../../lib/dungeon/networkConfig";
 import { normalizeCircomScalar } from "../../../lib/the-farm/circomInputs";
 
 // ============================================================================
@@ -392,15 +393,20 @@ export async function submitProofToContract(
     keyId?: string, // New optional argument
     opts?: {
         onStage?: (stage: "simulating" | "assembling" | "signing" | "submitted") => void;
+        net?: DungeonNetworkConfig;
     },
 ): Promise<{ success: boolean; txHash?: string; error?: string }> {
     try {
-        console.log("[ZK] Submitting proof to mainnet contract for on-chain verification...", {
-            contract: TIER_VERIFIER_CONTRACT_ID,
+        const net = opts?.net;
+        const contractId = net ? net.tierVerifierContractId : TIER_VERIFIER_CONTRACT_ID;
+
+        console.log("[ZK] Submitting proof to contract for on-chain verification...", {
+            contract: contractId,
+            network: net?.network ?? "mainnet",
             farmer: farmerAddress,
             tier: tierId,
         });
-        console.log("[ZK] DEBUG: Using Contract ID:", TIER_VERIFIER_CONTRACT_ID);
+        console.log("[ZK] DEBUG: Using Contract ID:", contractId);
         validateProofShape(proof);
 
         if (import.meta.env.DEV && Array.isArray(publicSignals) && publicSignals.length > 0) {
@@ -414,9 +420,8 @@ export async function submitProofToContract(
 
         const { Contract, Address, nativeToScVal, xdr, TransactionBuilder, rpc, Account, Networks } = await import("@stellar/stellar-sdk/minimal");
         const NULL_ACCOUNT = "GAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAWHF";
-        const { signAndSend } = await import("../../../utils/transaction-helpers");
 
-        const contractObj = new Contract(TIER_VERIFIER_CONTRACT_ID);
+        const contractObj = new Contract(contractId);
 
         const buildProofStruct = (serialized: {
             pi_a: Uint8Array;
@@ -438,6 +443,8 @@ export async function submitProofToContract(
                 }),
             ]);
 
+        const networkPassphrase = net ? net.networkPassphrase : Networks.PUBLIC;
+
         const buildTx = (proofStruct: any) => {
             const op = contractObj.call(
                 "verify_and_attest",
@@ -449,7 +456,7 @@ export async function submitProofToContract(
             const sourceAccount = new Account(NULL_ACCOUNT, "0");
             return new TransactionBuilder(sourceAccount, {
                 fee: "10000000", // 1 XLM max
-                networkPassphrase: Networks.PUBLIC,
+                networkPassphrase,
             })
                 .addOperation(op)
                 .setTimeout(300)
@@ -459,8 +466,14 @@ export async function submitProofToContract(
         const capProof = serializeProofWithMode(proof, "cap0074");
         const legacyProof = serializeProofWithMode(proof, "legacy");
 
-        const { getBestRpcUrl } = await import("../../../utils/rpc");
-        const server = new rpc.Server(getBestRpcUrl());
+        let rpcUrl: string;
+        if (net) {
+            rpcUrl = net.rpcUrl;
+        } else {
+            const { getBestRpcUrl } = await import("../../../utils/rpc");
+            rpcUrl = getBestRpcUrl();
+        }
+        const server = new rpc.Server(rpcUrl);
 
         const simulateMode = async (mode: G2EncodingMode) => {
             opts?.onStage?.("simulating");
@@ -502,28 +515,35 @@ export async function submitProofToContract(
         opts?.onStage?.("assembling");
         const preparedTx = rpc.assembleTransaction(tx, sim).build();
 
-        // Use unified signAndSend which handles relayer, connectivity, and retries
         opts?.onStage?.("signing");
-        const result = await signAndSend(preparedTx, {
-            keyId: keyId || kit?.wallet?.keyId || "",
-            contractId: farmerAddress,
-            turnstileToken: "",
-            updateBalance: true,
-        });
 
-        if (!result.success) {
-            throw new Error(result.error || "On-chain verification failed");
-        }
+        let txHash: string;
+        if (net) {
+            // Network-aware path (hackathon testnet).
+            txHash = await net.signAndSubmit(preparedTx, { keyId, contractId: farmerAddress });
+        } else {
+            // Legacy mainnet passkey path.
+            const { signAndSend } = await import("../../../utils/transaction-helpers");
+            const result = await signAndSend(preparedTx, {
+                keyId: keyId || kit?.wallet?.keyId || "",
+                contractId: farmerAddress,
+                turnstileToken: "",
+                updateBalance: true,
+            });
 
-        // Extract tx hash robustly across relayer response shapes.
-        const { extractTxHashFromRelayerResponse } = await import("../../../utils/transaction-helpers");
-        const txHash =
-            result.transactionHash ||
-            extractTxHashFromRelayerResponse(result.result) ||
-            extractTxHashFromRelayerResponse(result);
+            if (!result.success) {
+                throw new Error(result.error || "On-chain verification failed");
+            }
 
-        if (!txHash) {
-            throw new Error(`Verification succeeded but no transaction hash was returned.`);
+            const { extractTxHashFromRelayerResponse } = await import("../../../utils/transaction-helpers");
+            txHash =
+                result.transactionHash ||
+                extractTxHashFromRelayerResponse(result.result) ||
+                extractTxHashFromRelayerResponse(result);
+
+            if (!txHash) {
+                throw new Error(`Verification succeeded but no transaction hash was returned.`);
+            }
         }
 
         opts?.onStage?.("submitted");
