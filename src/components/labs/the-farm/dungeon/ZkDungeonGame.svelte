@@ -18,7 +18,6 @@
     import type { VerifierType } from "../../../../lib/dungeon/verifyCredential";
     import {
         attemptDoor as submitDoorAttempt,
-        txExplorerUrl,
     } from "./dungeonService";
     import {
         connectTestnetWallet,
@@ -29,6 +28,7 @@
         hubEndGame,
         HUB_CONTRACT_ID as TESTNET_HUB_CONTRACT,
     } from "./dungeonTestnetWallet";
+    import { testnetConfig, type DungeonNetworkConfig } from "../../../../lib/dungeon/networkConfig";
 
     // ── Game State ──────────────────────────────────────────────────────
     type GamePhase = "title" | "lobby" | "airlock" | "playing" | "ledger" | "victory" | "defeat";
@@ -100,6 +100,12 @@
     let hubEndTxHash = $state<string | null>(null);
     let hubStatus = $state<"idle" | "connecting" | "starting" | "started" | "ending" | "ended" | "error">("idle");
     let hubError = $state<string | null>(null);
+
+    /** When hackathon mode is active and testnet wallet connected, returns testnet config; otherwise undefined (mainnet default). */
+    function getHackathonNet(): DungeonNetworkConfig | undefined {
+        if (hackathonMode && testnetAddress) return testnetConfig();
+        return undefined;
+    }
 
     // Relay (real multiplayer presence via server state, Labs-only)
     type DungeonRosterEntry = {
@@ -178,6 +184,8 @@
                 out.push(event);
             };
 
+            const verifyNetwork: "mainnet" | "testnet" | undefined = (hackathonMode && testnetAddress) ? "testnet" : undefined;
+
             if (entryStamp.txHash) {
                 add({
                     id: `entry:${entryStamp.txHash}`,
@@ -185,9 +193,10 @@
                     txKind: "AUDIT_RECORD",
                     roomLabel: "ROOM 0 AIRLOCK",
                     actionLabel: "ENTRY STAMP",
-                    proofSystem: "Passkey + Soroban Record",
+                    proofSystem: verifyNetwork === "testnet" ? "SWK/Freighter + Soroban Record" : "Passkey + Soroban Record",
                     timestamp: runStartedAt || 0,
                     learningNote: "Digest-only audit marker. Proves run start without exposing private room data.",
+                    network: verifyNetwork,
                 });
             }
 
@@ -207,8 +216,9 @@
                     timestamp: entry.timestamp,
                     learningNote:
                         txKind === "PROOF_VERIFY"
-                            ? "The contract accepted verifier inputs after simulate -> assemble -> passkey sign/send."
-                            : "Run metadata recorded on-chain using passkey auth.",
+                            ? "The contract accepted verifier inputs after simulate -> assemble -> sign/send."
+                            : "Run metadata recorded on-chain.",
+                    network: verifyNetwork,
                 });
             }
 
@@ -219,9 +229,10 @@
                     txKind: "AUDIT_RECORD",
                     roomLabel: "ROOM 4 LEDGER",
                     actionLabel: "WITHDRAWAL RECORD",
-                    proofSystem: "Passkey + Soroban Record",
+                    proofSystem: verifyNetwork === "testnet" ? "SWK/Freighter + Soroban Record" : "Passkey + Soroban Record",
                     timestamp: runLog[runLog.length - 1]?.timestamp ?? runStartedAt ?? 0,
                     learningNote: "Digest-only completion record for reviewer/audit traceability.",
+                    network: verifyNetwork,
                 });
             }
 
@@ -402,9 +413,10 @@
         return `https://stellar.expert/explorer/testnet/tx/${txHash}`;
     }
 
-    /** Returns the correct explorer URL based on whether the tx is a hub (testnet) tx. */
+    /** Returns the correct explorer URL — uses testnet explorer when hackathon mode is active. */
     function txExplorerUrl(txHash: string, isTestnet?: boolean): string {
-        return isTestnet
+        const useTestnet = isTestnet ?? (hackathonMode && !!testnetAddress);
+        return useTestnet
             ? txExplorerUrlTestnet(txHash)
             : txExplorerUrlMainnet(txHash);
     }
@@ -446,7 +458,7 @@
         let cancelled = false;
         (async () => {
             const { readFarmAttestationTier } = await import("../../../../lib/dungeon/readFarmAttestationTier");
-            const res = await readFarmAttestationTier(walletAddress);
+            const res = await readFarmAttestationTier(walletAddress, getHackathonNet());
             if (cancelled) return;
             if (res.ok) {
                 attestedTierId = res.tierId;
@@ -839,10 +851,11 @@
         await new Promise((r) => setTimeout(r, 800));
 
         if (accepted) {
-            // Room 1 (Groth16 wing): if a passkey wallet is connected, require real on-chain
-            // proof verification on mainnet via Tier Verifier before advancing.
-            if (currentFloor === 1 && isConnected) {
-                if (!result.groth16 || !userState.contractId || !userState.keyId) {
+            // Room 1 (Groth16 wing): if a passkey wallet is connected (or testnet wallet in hackathon mode),
+            // require real on-chain proof verification via Tier Verifier before advancing.
+            const hackathonNet = getHackathonNet();
+            if (currentFloor === 1 && (isConnected || hackathonNet)) {
+                if (!result.groth16 || (!hackathonNet && (!userState.contractId || !userState.keyId))) {
                     lastForensics = {
                         ...result,
                         accepted: false,
@@ -867,13 +880,14 @@
                     const submitRes = await submitProofToContract(
                         // @ts-ignore
                         (window as any).passkeyKit,
-                        userState.contractId,
+                        hackathonNet ? testnetAddress! : userState.contractId,
                         result.tierId,
                         result.groth16.commitmentBytes,
                         result.groth16.proof,
                         result.groth16.publicSignals,
                         userState.keyId,
                         {
+                            net: hackathonNet,
                             onStage: (stage) => {
                                 if (stage === "simulating") groth16OnChain = { status: "simulating" };
                                 if (stage === "assembling") groth16OnChain = { status: "assembling" };
@@ -1031,15 +1045,17 @@
                     result.proofType = usedTrainingNoir ? "UltraHonk (Noir) [training]" : "UltraHonk (Noir)";
                     result.verifierType = "NOIR_ULTRAHONK";
 
+                    const noirNet = getHackathonNet();
                     const { publishNoirUltraHonkVerifyMainnet } = await import("../../../../lib/dungeon/publishNoirUltraHonkVerifyMainnet");
                     const submitRes = await publishNoirUltraHonkVerifyMainnet({
-                        owner: userState.contractId,
+                        owner: noirNet ? testnetAddress! : userState.contractId,
                         keyId: userState.keyId,
                         tierId: effectiveTierId,
                         proofOverride,
                         vkId: "NOIR_ROLE_V1",
                         verifierHashHex: noirUltraHonkRoleLegacyVkDigestHex,
                         tierTag: `ROLE${requiredRole}`,
+                        net: noirNet,
                         onStage: (stage) => {
                             if (stage === "simulating") noirUltraHonkOnChain = { status: "simulating" };
                             if (stage === "assembling") noirUltraHonkOnChain = { status: "assembling" };
@@ -1197,11 +1213,13 @@
                     result.proofType = usedTrainingRisc0 ? "RISC0 Receipt (zkVM) [training]" : "RISC0 Receipt (zkVM)";
                     result.verifierType = "RISC0_RECEIPT";
 
+                    const risc0Net = getHackathonNet();
                     const { publishRisc0Groth16VerifyMainnet } = await import("../../../../lib/dungeon/publishRisc0Groth16VerifyMainnet");
                     const submitRes = await publishRisc0Groth16VerifyMainnet({
-                        owner: userState.contractId,
+                        owner: risc0Net ? testnetAddress! : userState.contractId,
                         keyId: userState.keyId,
                         proofOverride,
+                        net: risc0Net,
                         onStage: (stage) => {
                             if (stage === "simulating") risc0Groth16OnChain = { status: "simulating" };
                             if (stage === "assembling") risc0Groth16OnChain = { status: "assembling" };
@@ -1424,12 +1442,14 @@
         if (kind === "ENTRY") entryStamp = { status: "simulating" };
         else withdrawalStamp = { status: "simulating" };
 
+        const net = getHackathonNet();
         const res = await publishDungeonStampMainnet({
-            owner: userState.contractId,
+            owner: net ? testnetAddress! : userState.contractId,
             keyId: userState.keyId,
             kind,
             statementHash,
             verifierHash,
+            net,
             onStage: (stage) => {
                 const update = (tx: typeof entryStamp) => {
                     if (kind === "ENTRY") entryStamp = tx;
@@ -1750,7 +1770,7 @@
                         CLEARANCE: {entryClearanceGranted ? "GRANTED" : "LOCKED"}
                     </div>
                     {#if entryStamp.txHash}
-                        <a class="dg-stamp-link" href={txExplorerUrlMainnet(entryStamp.txHash)} target="_blank" rel="noreferrer">
+                        <a class="dg-stamp-link" href={txExplorerUrl(entryStamp.txHash)} target="_blank" rel="noreferrer">
                             VIEW TX {entryStamp.txHash.slice(0, 8)}...
                         </a>
                     {/if}
@@ -1936,7 +1956,7 @@
                         {#if isConnected}
                             <div class="dg-stamp-status">STATUS: {groth16OnChain.status.toUpperCase()}</div>
                             {#if groth16OnChain.txHash}
-                                <a class="dg-stamp-link" href={txExplorerUrlMainnet(groth16OnChain.txHash)} target="_blank" rel="noreferrer">
+                                <a class="dg-stamp-link" href={txExplorerUrl(groth16OnChain.txHash)} target="_blank" rel="noreferrer">
                                     VIEW TX {groth16OnChain.txHash.slice(0, 8)}...
                                 </a>
                             {/if}
@@ -1969,7 +1989,7 @@
                                 STATUS: {noirUltraHonkOnChain.status.toUpperCase()}{noirUltraHonkOnChain.status === "error" ? " (NON-BLOCKING)" : ""}
                             </div>
                             {#if noirUltraHonkOnChain.txHash}
-                                <a class="dg-stamp-link" href={txExplorerUrlMainnet(noirUltraHonkOnChain.txHash)} target="_blank" rel="noreferrer">
+                                <a class="dg-stamp-link" href={txExplorerUrl(noirUltraHonkOnChain.txHash)} target="_blank" rel="noreferrer">
                                     VIEW TX {noirUltraHonkOnChain.txHash.slice(0, 8)}...
                                 </a>
                             {/if}
@@ -2000,7 +2020,7 @@
                                 STATUS: {risc0Groth16OnChain.status.toUpperCase()}{risc0Groth16OnChain.status === "error" ? " (NON-BLOCKING)" : ""}
                             </div>
                             {#if risc0Groth16OnChain.txHash}
-                                <a class="dg-stamp-link" href={txExplorerUrlMainnet(risc0Groth16OnChain.txHash)} target="_blank" rel="noreferrer">
+                                <a class="dg-stamp-link" href={txExplorerUrl(risc0Groth16OnChain.txHash)} target="_blank" rel="noreferrer">
                                     VIEW TX {risc0Groth16OnChain.txHash.slice(0, 8)}...
                                 </a>
                             {/if}
@@ -2120,7 +2140,7 @@
                                 </p>
                                 <p class="dg-gate-desc">STATUS: {groth16OnChain.status.toUpperCase()}</p>
                                 {#if groth16OnChain.txHash}
-                                    <a class="dg-stamp-link" href={txExplorerUrlMainnet(groth16OnChain.txHash)} target="_blank" rel="noreferrer">
+                                    <a class="dg-stamp-link" href={txExplorerUrl(groth16OnChain.txHash)} target="_blank" rel="noreferrer">
                                         VIEW TX {groth16OnChain.txHash.slice(0, 8)}...
                                     </a>
                                 {/if}
@@ -2134,7 +2154,7 @@
                                 </p>
                                 <p class="dg-gate-desc">STATUS: {risc0Groth16OnChain.status.toUpperCase()}</p>
                                 {#if risc0Groth16OnChain.txHash}
-                                    <a class="dg-stamp-link" href={txExplorerUrlMainnet(risc0Groth16OnChain.txHash)} target="_blank" rel="noreferrer">
+                                    <a class="dg-stamp-link" href={txExplorerUrl(risc0Groth16OnChain.txHash)} target="_blank" rel="noreferrer">
                                         VIEW TX {risc0Groth16OnChain.txHash.slice(0, 8)}...
                                     </a>
                                 {/if}
@@ -2208,13 +2228,13 @@
                 <div class="dg-note-line">
                     ENTRY STAMP: <span class="dg-mono">{entryStamp.status}</span>
                     {#if entryStamp.txHash}
-                        <a class="dg-mini-link" href={txExplorerUrlMainnet(entryStamp.txHash)} target="_blank" rel="noreferrer">tx</a>
+                        <a class="dg-mini-link" href={txExplorerUrl(entryStamp.txHash)} target="_blank" rel="noreferrer">tx</a>
                     {/if}
                 </div>
                 <div class="dg-note-line">
                     WITHDRAWAL: <span class="dg-mono">{withdrawalStamp.status}</span>
                     {#if withdrawalStamp.txHash}
-                        <a class="dg-mini-link" href={txExplorerUrlMainnet(withdrawalStamp.txHash)} target="_blank" rel="noreferrer">tx</a>
+                        <a class="dg-mini-link" href={txExplorerUrl(withdrawalStamp.txHash)} target="_blank" rel="noreferrer">tx</a>
                     {/if}
                 </div>
 
@@ -2244,7 +2264,7 @@
                                     {/if}
                                 {/if}
                                 {#if entry.txHash}
-                                    <a class="dg-log-tx" href={txExplorerUrlMainnet(entry.txHash)} target="_blank" rel="noreferrer">
+                                    <a class="dg-log-tx" href={txExplorerUrl(entry.txHash)} target="_blank" rel="noreferrer">
                                         {entry.txHash.slice(0, 8)}...
                                     </a>
                                 {:else}
@@ -2298,7 +2318,7 @@
                     <div class="dg-stamp-title">WITHDRAWAL RECORD (MAINNET)</div>
                     <div class="dg-stamp-status">STATUS: {withdrawalStamp.status.toUpperCase()}</div>
                     {#if withdrawalStamp.txHash}
-                        <a class="dg-stamp-link" href={txExplorerUrlMainnet(withdrawalStamp.txHash)} target="_blank" rel="noreferrer">
+                        <a class="dg-stamp-link" href={txExplorerUrl(withdrawalStamp.txHash)} target="_blank" rel="noreferrer">
                             VIEW TX {withdrawalStamp.txHash.slice(0, 8)}...
                         </a>
                     {/if}
@@ -2393,7 +2413,7 @@
                                 <span>HASH: {tx.hash.slice(0, 10)}...{tx.hash.slice(-8)}</span>
                             </div>
                             <p class="dg-tx-note">{tx.learningNote}</p>
-                            <a class="dg-stamp-link" href={tx.network === "testnet" ? txExplorerUrlTestnet(tx.hash) : txExplorerUrlMainnet(tx.hash)} target="_blank" rel="noreferrer">
+                            <a class="dg-stamp-link" href={txExplorerUrl(tx.hash, tx.network === "testnet")} target="_blank" rel="noreferrer">
                                 OPEN IN STELLAR EXPERT {tx.network === "testnet" ? "(TESTNET)" : ""}
                             </a>
                         </article>

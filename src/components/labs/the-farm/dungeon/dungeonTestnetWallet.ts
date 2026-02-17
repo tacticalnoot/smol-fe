@@ -93,7 +93,7 @@ export function disconnectTestnetWallet(): void {
  * Build + simulate a Soroban contract call on testnet using the connected
  * SWK wallet as the source account.
  */
-async function buildAndSimulateSwk(
+export async function buildAndSimulateSwk(
     contractId: string,
     method: string,
     args: any[],
@@ -131,7 +131,7 @@ async function buildAndSimulateSwk(
 /**
  * Sign a testnet transaction via SWK (Freighter) and submit it.
  */
-async function signAndSubmitSwk(assembled: any): Promise<string> {
+export async function signAndSubmitSwk(assembled: any): Promise<string> {
     if (!_swkKit || !_publicKey) throw new Error("Testnet wallet not connected");
 
     // SWK signTransaction expects base64 XDR and returns signed base64 XDR
