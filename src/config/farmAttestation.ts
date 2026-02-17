@@ -17,3 +17,16 @@ export const FARM_ATTESTATIONS_CONTRACT_ID_MAINNET =
         : DEFAULT_FARM_ATTESTATIONS_CONTRACT_ID_MAINNET;
 
 export const isMainnetConfigured = (): boolean => MAINNET_RPC_URL.trim().length > 0 && FARM_ATTESTATIONS_CONTRACT_ID_MAINNET.trim().length > 0;
+
+// ── Testnet equivalents (hackathon mode) ────────────────────────────────────
+
+export const TESTNET_RPC_URL = "https://soroban-testnet.stellar.org";
+export const TESTNET_NETWORK_PASSPHRASE = 'Test SDF Network ; September 2015';
+
+const envFarmAttestationsContractIdTestnet = import.meta.env.PUBLIC_FARM_ATTESTATIONS_CONTRACT_ID_TESTNET;
+export const FARM_ATTESTATIONS_CONTRACT_ID_TESTNET =
+    typeof envFarmAttestationsContractIdTestnet === "string" && envFarmAttestationsContractIdTestnet.trim().length > 0
+        ? envFarmAttestationsContractIdTestnet
+        : "";
+
+export const isTestnetConfigured = (): boolean => FARM_ATTESTATIONS_CONTRACT_ID_TESTNET.trim().length > 0;

@@ -5,6 +5,7 @@ import { FARM_ATTESTATIONS_CONTRACT_ID_MAINNET } from "../../config/farmAttestat
 import { RISC0_GROTH16_VERIFIER_CONTRACT_ID_MAINNET } from "../../config/risc0Groth16Verifier";
 import { ensureBytes32Hex, hexToBytes } from "../the-farm/digest";
 import { getRpcUrl } from "../../utils/rpc";
+import type { DungeonNetworkConfig } from "./networkConfig";
 
 // Generated offline (WSL + Docker) via: `zk/risc0-tier/host` exporter.
 import risc0Groth16Sample from "../../data/dungeon/risc0_groth16_sample.json";
@@ -62,29 +63,29 @@ async function waitForTransaction(server: rpc.Server, hash: string): Promise<rpc
 }
 
 /**
- * Mainnet passkey-signed, *on-chain proof verification* for a RISC0 Groth16 receipt.
+ * On-chain proof verification for a RISC0 Groth16 receipt.
  *
- * IMPORTANT:
- * - This uses a training sample proof artifact (cryptographically real), not yet bound
- *   to the live dungeon run inputs.
- * - The on-chain contract performs BN254 Groth16 pairing checks (Protocol 25 host fns).
+ * When `net` is provided the call routes to that network (testnet for hackathon mode).
  */
 export async function publishRisc0Groth16VerifyMainnet(input: {
-  owner: string; // passkey smart account contractId
-  keyId: string; // passkey keyId (base64)
-  // Optional: caller-provided Groth16 receipt proof (binds to live dungeon inputs).
+  owner: string;
+  keyId: string;
   proofOverride?: {
     claim_digest_hex: string;
     public_inputs_hex: string[];
     proof: { pi_a_b64: string; pi_b_b64: string; pi_c_b64: string };
   };
+  net?: DungeonNetworkConfig;
   onStage?: (stage: "simulating" | "assembling" | "signing" | "submitted" | "confirmed") => void;
 }): Promise<Risc0Groth16VerifyResult> {
   try {
-    const rpcUrl = resolveSorobanRpcUrl();
+    const net = input.net;
+    const rpcUrl = net ? net.rpcUrl : resolveSorobanRpcUrl();
     if (!rpcUrl) {
       throw new Error("Soroban RPC URL not configured. Set PUBLIC_RPC_URL (or PUBLIC_MAINNET_RPC_URL).");
     }
+
+    const passphrase = net ? net.networkPassphrase : (MAINNET_NETWORK_PASSPHRASE || Networks.PUBLIC);
 
     const sample: any = (input.proofOverride ?? (risc0Groth16Sample as any)) as any;
     const claimDigestHex = ensureBytes32Hex(String(sample.claim_digest_hex ?? ""));
@@ -120,12 +121,11 @@ export async function publishRisc0Groth16VerifyMainnet(input: {
     );
 
     // Prefer the "universal" verifier path via farm-attestations (VK registry).
-    // This avoids needing a new contract per verifier, as long as the proof is Groth16/BN254.
     const tryUniversalFirst = async (): Promise<{
       tx: any;
       contractLabel: string;
     } | null> => {
-      const farmId = FARM_ATTESTATIONS_CONTRACT_ID_MAINNET.trim();
+      const farmId = net ? net.farmAttestationsContractId.trim() : FARM_ATTESTATIONS_CONTRACT_ID_MAINNET.trim();
       if (!farmId) return null;
 
       const farm = new Contract(farmId);
@@ -143,7 +143,7 @@ export async function publishRisc0Groth16VerifyMainnet(input: {
 
       const tx = new TransactionBuilder(new Account(NULL_ACCOUNT, "0"), {
         fee: "10000000",
-        networkPassphrase: MAINNET_NETWORK_PASSPHRASE || Networks.PUBLIC,
+        networkPassphrase: passphrase,
       })
         .addOperation(op)
         .setTimeout(TimeoutInfinite)
@@ -159,10 +159,10 @@ export async function publishRisc0Groth16VerifyMainnet(input: {
     };
 
     const buildDedicated = (): { tx: any; contractLabel: string } => {
-      const contractId = RISC0_GROTH16_VERIFIER_CONTRACT_ID_MAINNET.trim();
+      const contractId = net ? net.risc0Groth16VerifierContractId.trim() : RISC0_GROTH16_VERIFIER_CONTRACT_ID_MAINNET.trim();
       if (!contractId) {
         throw new Error(
-          "RISC0 on-chain verification unavailable: farm-attestations Groth16 registry is not ready and PUBLIC_RISC0_GROTH16_VERIFIER_CONTRACT_ID_MAINNET is missing.",
+          `RISC0 on-chain verification unavailable: farm-attestations Groth16 registry is not ready and RISC0 verifier contract ID is missing (${net?.network ?? "mainnet"}).`,
         );
       }
 
@@ -177,7 +177,7 @@ export async function publishRisc0Groth16VerifyMainnet(input: {
 
       const tx = new TransactionBuilder(new Account(NULL_ACCOUNT, "0"), {
         fee: "10000000",
-        networkPassphrase: MAINNET_NETWORK_PASSPHRASE || Networks.PUBLIC,
+        networkPassphrase: passphrase,
       })
         .addOperation(op)
         .setTimeout(TimeoutInfinite)
@@ -198,26 +198,32 @@ export async function publishRisc0Groth16VerifyMainnet(input: {
     input.onStage?.("assembling");
     const preparedTx = assembleTransaction(tx, sim).build();
 
-    const { signAndSend } = await import("../../utils/transaction-helpers");
     input.onStage?.("signing");
-    const result = await signAndSend(preparedTx, {
-      keyId: input.keyId,
-      contractId: input.owner,
-      turnstileToken: "",
-      updateBalance: true,
-    });
 
-    if (!result.success) {
-      throw new Error(result.error || `RISC0 Groth16 on-chain verification failed (${contractLabel})`);
-    }
+    let txHash: string;
+    if (net) {
+      txHash = await net.signAndSubmit(preparedTx, { keyId: input.keyId, contractId: input.owner });
+    } else {
+      const { signAndSend } = await import("../../utils/transaction-helpers");
+      const result = await signAndSend(preparedTx, {
+        keyId: input.keyId,
+        contractId: input.owner,
+        turnstileToken: "",
+        updateBalance: true,
+      });
 
-    const { extractTxHashFromRelayerResponse } = await import("../../utils/transaction-helpers");
-    const txHash =
-      result.transactionHash ||
-      extractTxHashFromRelayerResponse(result.result) ||
-      extractTxHashFromRelayerResponse(result);
-    if (!txHash) {
-      throw new Error(`Relayer success but no hash discovered in result: ${JSON.stringify(result.result)}`);
+      if (!result.success) {
+        throw new Error(result.error || `RISC0 Groth16 on-chain verification failed (${contractLabel})`);
+      }
+
+      const { extractTxHashFromRelayerResponse } = await import("../../utils/transaction-helpers");
+      txHash =
+        result.transactionHash ||
+        extractTxHashFromRelayerResponse(result.result) ||
+        extractTxHashFromRelayerResponse(result);
+      if (!txHash) {
+        throw new Error(`Relayer success but no hash discovered in result: ${JSON.stringify(result.result)}`);
+      }
     }
 
     input.onStage?.("submitted");

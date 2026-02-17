@@ -4,6 +4,7 @@ import { FARM_ATTESTATIONS_CONTRACT_ID_MAINNET, MAINNET_NETWORK_PASSPHRASE, MAIN
 import { ensureBytes32Hex, hexToBytes } from "../the-farm/digest";
 import { getRpcUrl } from "../../utils/rpc";
 import { noirUltraHonkLegacySamples, noirUltraHonkLegacyVkDigestHex } from "../../data/dungeon/noirUltraHonkLegacyBundle";
+import type { DungeonNetworkConfig } from "./networkConfig";
 
 const { Api, Server, assembleTransaction } = rpc;
 const NULL_ACCOUNT = "GAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAWHF";
@@ -72,35 +73,34 @@ function concatPublicInputsBytes(publicInputsHex: string[]): Buffer {
 }
 
 /**
- * Mainnet passkey-signed, *on-chain proof verification* for Noir UltraHonk proofs.
+ * On-chain proof verification for Noir UltraHonk proofs.
  *
- * IMPORTANT:
- * - Uses a legacy-format training sample proof artifact (cryptographically real), not yet bound to the live dungeon run inputs.
- * - Verification is performed on-chain via: farm-attestations -> (configured) ultrahonk-verifier contract.
+ * When `net` is provided the call routes to that network (testnet for hackathon mode).
  */
 export async function publishNoirUltraHonkVerifyMainnet(input: {
-  owner: string; // passkey smart account contractId
-  keyId: string; // passkey keyId (base64)
-  tierId: number; // selects training artifact (unless `proofOverride` is provided)
-  // Optional: use a caller-provided proof/public inputs (binds to live dungeon inputs).
+  owner: string;
+  keyId: string;
+  tierId: number;
   proofOverride?: { proofBase64: string; publicInputs: string[] };
-  // Optional: override VK routing + verifier hash stored on-chain.
-  // vkId must match what was registered in ultrahonk-verifier via set_vk_by_id.
   vkId?: string;
-  verifierHashHex?: string; // 0x-prefixed bytes32
-  tierTag?: string; // <= 32 chars; stored in attestations as the `tier` Symbol (pure label)
+  verifierHashHex?: string;
+  tierTag?: string;
+  net?: DungeonNetworkConfig;
   onStage?: (stage: "simulating" | "assembling" | "signing" | "submitted" | "confirmed") => void;
 }): Promise<NoirUltraHonkOnchainResult> {
   try {
-    const rpcUrl = resolveSorobanRpcUrl();
+    const net = input.net;
+    const rpcUrl = net ? net.rpcUrl : resolveSorobanRpcUrl();
     if (!rpcUrl) {
       throw new Error("Soroban RPC URL not configured. Set PUBLIC_RPC_URL (or PUBLIC_MAINNET_RPC_URL).");
     }
 
-    const farmId = FARM_ATTESTATIONS_CONTRACT_ID_MAINNET.trim();
+    const farmId = net ? net.farmAttestationsContractId.trim() : FARM_ATTESTATIONS_CONTRACT_ID_MAINNET.trim();
     if (!farmId) {
-      throw new Error("Missing Farm Attestations contract ID (mainnet)");
+      throw new Error(`Missing Farm Attestations contract ID (${net?.network ?? "mainnet"})`);
     }
+
+    const passphrase = net ? net.networkPassphrase : (MAINNET_NETWORK_PASSPHRASE || Networks.PUBLIC);
 
     const tier = tierIdToSampleTier(input.tierId);
     const tierTag = (input.tierTag ?? tier).toString().toUpperCase().slice(0, 32);
@@ -164,7 +164,7 @@ export async function publishNoirUltraHonkVerifyMainnet(input: {
     const makeTx = (op: any) =>
       new TransactionBuilder(new Account(NULL_ACCOUNT, "0"), {
         fee: "10000000",
-        networkPassphrase: MAINNET_NETWORK_PASSPHRASE || Networks.PUBLIC,
+        networkPassphrase: passphrase,
       })
         .addOperation(op)
         .setTimeout(TimeoutInfinite)
@@ -185,26 +185,32 @@ export async function publishNoirUltraHonkVerifyMainnet(input: {
     input.onStage?.("assembling");
     const preparedTx = assembleTransaction(tx, sim).build();
 
-    const { signAndSend } = await import("../../utils/transaction-helpers");
     input.onStage?.("signing");
-    const result = await signAndSend(preparedTx, {
-      keyId: input.keyId,
-      contractId: input.owner,
-      turnstileToken: "",
-      updateBalance: true,
-    });
 
-    if (!result.success) {
-      throw new Error(result.error || "Noir UltraHonk on-chain verification failed");
-    }
+    let txHash: string;
+    if (net) {
+      txHash = await net.signAndSubmit(preparedTx, { keyId: input.keyId, contractId: input.owner });
+    } else {
+      const { signAndSend } = await import("../../utils/transaction-helpers");
+      const result = await signAndSend(preparedTx, {
+        keyId: input.keyId,
+        contractId: input.owner,
+        turnstileToken: "",
+        updateBalance: true,
+      });
 
-    const { extractTxHashFromRelayerResponse } = await import("../../utils/transaction-helpers");
-    const txHash =
-      result.transactionHash ||
-      extractTxHashFromRelayerResponse(result.result) ||
-      extractTxHashFromRelayerResponse(result);
-    if (!txHash) {
-      throw new Error(`Relayer success but no hash discovered in result: ${JSON.stringify(result.result)}`);
+      if (!result.success) {
+        throw new Error(result.error || "Noir UltraHonk on-chain verification failed");
+      }
+
+      const { extractTxHashFromRelayerResponse } = await import("../../utils/transaction-helpers");
+      txHash =
+        result.transactionHash ||
+        extractTxHashFromRelayerResponse(result.result) ||
+        extractTxHashFromRelayerResponse(result);
+      if (!txHash) {
+        throw new Error(`Relayer success but no hash discovered in result: ${JSON.stringify(result.result)}`);
+      }
     }
 
     input.onStage?.("submitted");
