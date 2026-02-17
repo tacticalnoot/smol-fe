@@ -3,6 +3,7 @@ import { Buffer } from "buffer";
 import { FARM_ATTESTATIONS_CONTRACT_ID_MAINNET, MAINNET_NETWORK_PASSPHRASE, MAINNET_RPC_URL } from "../../config/farmAttestation";
 import { ensureBytes32Hex, hexToBytes } from "../the-farm/digest";
 import { getRpcUrl } from "../../utils/rpc";
+import type { DungeonNetworkConfig } from "./networkConfig";
 
 const { Api, Server, assembleTransaction } = rpc;
 const NULL_ACCOUNT = "GAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAWHF";
@@ -56,31 +57,35 @@ async function waitForTransaction(server: rpc.Server, hash: string): Promise<rpc
 }
 
 /**
- * Mainnet passkey-signed audit stamp, recorded to the existing Farm Attestations contract.
+ * Passkey-signed audit stamp, recorded to the Farm Attestations contract.
  *
  * This is a digest-only record: it does NOT claim on-chain proof verification.
  *
- * Tx pipeline: simulate -> assemble -> passkey sign/send via the repo's canonical `signAndSend`
- * helper (same flow used by other Labs tx UIs like Kale-or-Fail / tip paths).
+ * Tx pipeline: simulate -> assemble -> sign/send.
+ * When `net` is provided the call routes to that network (testnet for hackathon mode).
  */
 export async function publishDungeonStampMainnet(input: {
-  owner: string; // passkey smart account contractId
-  keyId: string; // passkey keyId (base64)
+  owner: string; // passkey smart account contractId (mainnet) or testnet public key
+  keyId: string; // passkey keyId (base64) — unused for testnet
   kind: DungeonStampKind;
   statementHash: string; // 32-byte hex
   verifierHash: string; // 32-byte hex
+  net?: DungeonNetworkConfig;
   onStage?: (stage: "simulating" | "assembling" | "signing" | "submitted" | "confirmed") => void;
 }): Promise<DungeonStampResult> {
   try {
-    const contractId = FARM_ATTESTATIONS_CONTRACT_ID_MAINNET.trim();
+    const net = input.net;
+    const contractId = net ? net.farmAttestationsContractId.trim() : FARM_ATTESTATIONS_CONTRACT_ID_MAINNET.trim();
     if (!contractId) {
-      throw new Error("Missing Farm Attestations contract ID (mainnet)");
+      throw new Error(`Missing Farm Attestations contract ID (${net?.network ?? "mainnet"})`);
     }
 
-    const rpcUrl = resolveSorobanRpcUrl();
+    const rpcUrl = net ? net.rpcUrl : resolveSorobanRpcUrl();
     if (!rpcUrl) {
       throw new Error("Soroban RPC URL not configured. Set PUBLIC_RPC_URL (or PUBLIC_MAINNET_RPC_URL).");
     }
+
+    const passphrase = net ? net.networkPassphrase : (MAINNET_NETWORK_PASSPHRASE || Networks.PUBLIC);
 
     const statementHash = ensureBytes32Hex(input.statementHash);
     const verifierHash = ensureBytes32Hex(input.verifierHash);
@@ -99,8 +104,8 @@ export async function publishDungeonStampMainnet(input: {
     );
 
     const tx = new TransactionBuilder(new Account(NULL_ACCOUNT, "0"), {
-      fee: "10000000", // 1 XLM max for mainnet reliability
-      networkPassphrase: MAINNET_NETWORK_PASSPHRASE || Networks.PUBLIC,
+      fee: "10000000",
+      networkPassphrase: passphrase,
     })
       .addOperation(operation)
       .setTimeout(TimeoutInfinite)
@@ -115,27 +120,34 @@ export async function publishDungeonStampMainnet(input: {
     input.onStage?.("assembling");
     const preparedTx = assembleTransaction(tx, sim).build();
 
-    // Reuse canonical PasskeyKit relayer flow.
-    const { signAndSend } = await import("../../utils/transaction-helpers");
     input.onStage?.("signing");
-    const result = await signAndSend(preparedTx, {
-      keyId: input.keyId,
-      contractId: input.owner,
-      turnstileToken: "",
-      updateBalance: true,
-    });
 
-    if (!result.success) {
-      throw new Error(result.error || "Dungeon stamp failed");
-    }
+    let txHash: string;
+    if (net) {
+      // Network-aware path (hackathon testnet or future multi-network).
+      txHash = await net.signAndSubmit(preparedTx, { keyId: input.keyId, contractId: input.owner });
+    } else {
+      // Legacy mainnet passkey path.
+      const { signAndSend } = await import("../../utils/transaction-helpers");
+      const result = await signAndSend(preparedTx, {
+        keyId: input.keyId,
+        contractId: input.owner,
+        turnstileToken: "",
+        updateBalance: true,
+      });
 
-    const { extractTxHashFromRelayerResponse } = await import("../../utils/transaction-helpers");
-    const txHash =
-      result.transactionHash ||
-      extractTxHashFromRelayerResponse(result.result) ||
-      extractTxHashFromRelayerResponse(result);
-    if (!txHash) {
-      throw new Error(`Relayer success but no hash discovered in result: ${JSON.stringify(result.result)}`);
+      if (!result.success) {
+        throw new Error(result.error || "Dungeon stamp failed");
+      }
+
+      const { extractTxHashFromRelayerResponse } = await import("../../utils/transaction-helpers");
+      txHash =
+        result.transactionHash ||
+        extractTxHashFromRelayerResponse(result.result) ||
+        extractTxHashFromRelayerResponse(result);
+      if (!txHash) {
+        throw new Error(`Relayer success but no hash discovered in result: ${JSON.stringify(result.result)}`);
+      }
     }
 
     input.onStage?.("submitted");
