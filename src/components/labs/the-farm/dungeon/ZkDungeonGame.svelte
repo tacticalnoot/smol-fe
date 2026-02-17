@@ -2339,6 +2339,7 @@
     .dg-root {
         position: fixed;
         inset: 0;
+        height: 100dvh;
         background: var(--dg-bg);
         color: var(--dg-text);
         font-family: var(--dg-font-body);
@@ -2586,13 +2587,18 @@
     /* ── Kale-Seed Vault Layout ─────────────────────────────────────── */
     .dg-vault-screen {
         position: relative;
-        min-height: 100vh;
+        flex: 1 1 auto;
+        min-height: 0;
+        height: 100%;
+        max-height: 100%;
         background: radial-gradient(1200px 700px at 15% 10%, var(--dg-room-glow-1), transparent 60%),
             radial-gradient(900px 600px at 80% 30%, var(--dg-room-glow-2), transparent 55%),
             radial-gradient(900px 700px at 70% 90%, var(--dg-room-glow-3), transparent 60%),
             var(--dg-room-ambient);
         overflow-x: hidden;
         overflow-y: auto;
+        overscroll-behavior: contain;
+        -webkit-overflow-scrolling: touch;
         transition: background 320ms ease;
     }
 
@@ -2615,9 +2621,14 @@
         max-width: 1500px;
         margin: 0 auto;
         padding: 24px;
+        padding-bottom: calc(24px + env(safe-area-inset-bottom));
         display: flex;
         flex-direction: column;
         gap: 16px;
+    }
+
+    .dg-ledger .dg-vault-shell {
+        padding-bottom: calc(48px + env(safe-area-inset-bottom));
     }
 
     .dg-vault-header {
