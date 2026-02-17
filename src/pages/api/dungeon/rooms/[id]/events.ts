@@ -4,6 +4,7 @@ import {
   getBearerToken,
   getDungeonRoom,
   getDungeonSession,
+  pruneStaleRoster,
   type DungeonEvent,
 } from "../../../../../lib/dungeon/server/state";
 
@@ -36,6 +37,9 @@ export const GET: APIRoute = async (ctx) => {
 
   const url = new URL(request.url);
   const cursor = parseCursor(url.searchParams.get("cursor"));
+
+  // Prune stale players before returning roster
+  pruneStaleRoster(roomId);
 
   const state = getDungeonRoom(roomId);
   const events = state.events.filter((evt) => evt.seq > cursor);

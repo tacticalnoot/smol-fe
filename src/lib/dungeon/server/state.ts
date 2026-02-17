@@ -136,3 +136,31 @@ export function getBearerToken(request: Request): string | null {
   return match?.[1]?.trim() || null;
 }
 
+/**
+ * Mark stale roster entries as disconnected.
+ * A player is considered stale if their lastSeenAt is older than `staleMs` ago.
+ * Stale players are removed from the roster so the remaining player isn't blocked.
+ */
+const STALE_THRESHOLD_MS = 30_000; // 30 seconds
+
+export function pruneStaleRoster(roomId: string): string[] {
+  const room = getDungeonRoom(roomId);
+  const now = Date.now();
+  const pruned: string[] = [];
+
+  for (const [account, entry] of Object.entries(room.rosterByAccount)) {
+    if (now - entry.lastSeenAt > STALE_THRESHOLD_MS) {
+      delete room.rosterByAccount[account];
+      pruned.push(account);
+
+      addDungeonEvent(roomId, {
+        kind: "system",
+        message: `${entry.name} disconnected (stale)`,
+        ts: now,
+      }, { maxEvents: 200 });
+    }
+  }
+
+  return pruned;
+}
+

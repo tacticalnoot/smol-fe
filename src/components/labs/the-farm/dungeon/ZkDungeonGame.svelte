@@ -20,6 +20,15 @@
         attemptDoor as submitDoorAttempt,
         txExplorerUrl,
     } from "./dungeonService";
+    import {
+        connectTestnetWallet,
+        disconnectTestnetWallet,
+        getTestnetPublicKey,
+        isTestnetConnected,
+        hubStartGame,
+        hubEndGame,
+        HUB_CONTRACT_ID as TESTNET_HUB_CONTRACT,
+    } from "./dungeonTestnetWallet";
 
     // ── Game State ──────────────────────────────────────────────────────
     type GamePhase = "title" | "lobby" | "airlock" | "playing" | "ledger" | "victory" | "defeat";
@@ -83,6 +92,15 @@
     let noirRoleSalt = $state<string>("");
     let risc0SaltByte = $state<number>(0);
 
+    // ── Hackathon Mode (Testnet Game Hub via SWK/Freighter) ─────────
+    let hackathonMode = $state<boolean>(false);
+    let testnetAddress = $state<string | null>(null);
+    let hackathonSessionId = $state<number>(0);
+    let hubStartTxHash = $state<string | null>(null);
+    let hubEndTxHash = $state<string | null>(null);
+    let hubStatus = $state<"idle" | "connecting" | "starting" | "started" | "ending" | "ended" | "error">("idle");
+    let hubError = $state<string | null>(null);
+
     // Relay (real multiplayer presence via server state, Labs-only)
     type DungeonRosterEntry = {
         id: string;
@@ -135,6 +153,7 @@
         proofSystem: string;
         timestamp: number;
         learningNote: string;
+        network?: "mainnet" | "testnet";
     }
 
     function proofSystemLabel(proofType: string): string {
@@ -203,6 +222,34 @@
                     proofSystem: "Passkey + Soroban Record",
                     timestamp: runLog[runLog.length - 1]?.timestamp ?? runStartedAt ?? 0,
                     learningNote: "Digest-only completion record for reviewer/audit traceability.",
+                });
+            }
+
+            // Hackathon Mode: game hub contract calls (testnet)
+            if (hubStartTxHash) {
+                add({
+                    id: `hub-start:${hubStartTxHash}`,
+                    hash: hubStartTxHash,
+                    txKind: "AUDIT_RECORD",
+                    roomLabel: "GAME HUB",
+                    actionLabel: "start_game()",
+                    proofSystem: "Testnet Hub (SWK/Freighter)",
+                    timestamp: runStartedAt || 0,
+                    learningNote: "Registers game session with the hackathon game hub contract on Stellar Testnet.",
+                    network: "testnet",
+                });
+            }
+            if (hubEndTxHash) {
+                add({
+                    id: `hub-end:${hubEndTxHash}`,
+                    hash: hubEndTxHash,
+                    txKind: "AUDIT_RECORD",
+                    roomLabel: "GAME HUB",
+                    actionLabel: "end_game()",
+                    proofSystem: "Testnet Hub (SWK/Freighter)",
+                    timestamp: runLog[runLog.length - 1]?.timestamp ?? runStartedAt ?? 0,
+                    learningNote: "Finalizes game session with the hackathon game hub contract on Stellar Testnet.",
+                    network: "testnet",
                 });
             }
 
@@ -349,6 +396,17 @@
 
     function txExplorerUrlMainnet(txHash: string): string {
         return `https://stellar.expert/explorer/public/tx/${txHash}`;
+    }
+
+    function txExplorerUrlTestnet(txHash: string): string {
+        return `https://stellar.expert/explorer/testnet/tx/${txHash}`;
+    }
+
+    /** Returns the correct explorer URL based on whether the tx is a hub (testnet) tx. */
+    function txExplorerUrl(txHash: string, isTestnet?: boolean): string {
+        return isTestnet
+            ? txExplorerUrlTestnet(txHash)
+            : txExplorerUrlMainnet(txHash);
     }
 
     function doorDef(doorId: DoorId): DoorDefinition {
@@ -630,6 +688,31 @@
         groth16OnChain = { status: "idle" };
         noirUltraHonkOnChain = { status: "idle" };
         risc0Groth16OnChain = { status: "idle" };
+
+        // ── Hackathon Mode: call start_game() on testnet hub ────────
+        if (hackathonMode && testnetAddress) {
+            try {
+                hubStatus = "starting";
+                hubError = null;
+                hackathonSessionId = Math.floor(Math.random() * 0x7fffffff);
+                const txHash = await hubStartGame({
+                    gameId: TESTNET_HUB_CONTRACT,
+                    sessionId: hackathonSessionId,
+                    player1: testnetAddress,
+                    player2: opponentName ? (relayRoster.find(r => r.account !== testnetAddress)?.account || testnetAddress) : undefined,
+                });
+                hubStartTxHash = txHash;
+                hubStatus = "started";
+                console.log("[HackathonMode] start_game() tx:", txHash);
+            } catch (err) {
+                const msg = err instanceof Error ? err.message : String(err);
+                console.error("[HackathonMode] start_game() failed:", msg);
+                hubError = msg;
+                hubStatus = "error";
+                // Don't block gameplay — the ZK proof flow still works
+            }
+        }
+
         phase = "playing";
 
         addLogEntry({
@@ -1253,6 +1336,12 @@
         groth16OnChain = { status: "idle" };
         noirUltraHonkOnChain = { status: "idle" };
         risc0Groth16OnChain = { status: "idle" };
+        // Reset hackathon hub state (keep hackathonMode + testnetAddress for next run)
+        hackathonSessionId = 0;
+        hubStartTxHash = null;
+        hubEndTxHash = null;
+        hubStatus = "idle";
+        hubError = null;
     }
 
     function toggleFullscreen() {
@@ -1367,7 +1456,27 @@
         else withdrawalStamp = { status: "confirmed", txHash: res.txHash };
     }
 
-    function finishRun() {
+    async function finishRun() {
+        // If hackathon mode is active, call end_game() on the testnet hub
+        if (hackathonMode && testnetAddress && hackathonSessionId) {
+            try {
+                hubStatus = "ending";
+                hubError = null;
+                const txHash = await hubEndGame({
+                    sessionId: hackathonSessionId,
+                    player1Won: true,
+                });
+                hubEndTxHash = txHash;
+                hubStatus = "ended";
+                console.log("[HackathonMode] end_game() tx:", txHash);
+            } catch (err) {
+                const msg = err instanceof Error ? err.message : String(err);
+                console.error("[HackathonMode] end_game() failed:", msg);
+                hubError = msg;
+                hubStatus = "error";
+                // Don't block the victory screen
+            }
+        }
         phase = "victory";
     }
 
@@ -1506,6 +1615,58 @@
                     </div>
                 {/if}
             </div>
+        </div>
+
+        <!-- ── Hackathon Mode (Testnet Game Hub) ──────────────────── -->
+        <div class="dg-cred-card dg-hackathon-card" aria-live="polite">
+            <div class="dg-cred-controls">
+                <label class="dg-toggle">
+                    <input type="checkbox" bind:checked={hackathonMode} onchange={() => { if (!hackathonMode) { disconnectTestnetWallet(); testnetAddress = null; hubStatus = "idle"; hubError = null; } }} />
+                    <span>HACKATHON MODE (TESTNET GAME HUB)</span>
+                </label>
+            </div>
+
+            {#if hackathonMode}
+                <p class="dg-cred-line dg-cred-subline" style="margin-top:0.5rem">
+                    Calls <code>start_game()</code> and <code>end_game()</code> on the game hub contract via Freighter (Stellar Testnet).
+                </p>
+                <p class="dg-cred-line dg-cred-subline" style="font-size:0.55rem;opacity:0.6">
+                    HUB: {TESTNET_HUB_CONTRACT.slice(0, 8)}...{TESTNET_HUB_CONTRACT.slice(-4)}
+                </p>
+
+                {#if testnetAddress}
+                    <p class="dg-wallet-badge" style="margin-top:0.5rem">
+                        TESTNET: {testnetAddress.slice(0, 6)}...{testnetAddress.slice(-4)}
+                    </p>
+                    <button class="dg-btn dg-btn-secondary dg-btn-sm" onclick={() => { disconnectTestnetWallet(); testnetAddress = null; hubStatus = "idle"; }}>
+                        DISCONNECT TESTNET WALLET
+                    </button>
+                {:else}
+                    <button
+                        class="dg-btn dg-btn-primary"
+                        style="margin-top:0.5rem"
+                        disabled={hubStatus === "connecting"}
+                        onclick={async () => {
+                            try {
+                                hubStatus = "connecting";
+                                hubError = null;
+                                const addr = await connectTestnetWallet();
+                                testnetAddress = addr;
+                                hubStatus = "idle";
+                            } catch (err) {
+                                hubError = err instanceof Error ? err.message : String(err);
+                                hubStatus = "error";
+                            }
+                        }}
+                    >
+                        {hubStatus === "connecting" ? "CONNECTING..." : "CONNECT TESTNET WALLET (FREIGHTER)"}
+                    </button>
+                {/if}
+
+                {#if hubError}
+                    <p class="dg-cred-warn" style="margin-top:0.3rem">{hubError}</p>
+                {/if}
+            {/if}
         </div>
 
         <button class="dg-link-btn" onclick={() => showHowItWorks = !showHowItWorks}>
@@ -1746,6 +1907,11 @@
                 <button class="dg-hud-btn" onclick={toggleFullscreen}>
                     {fullscreen ? "EXIT FS" : "FS"}
                 </button>
+                {#if hackathonMode}
+                    <span class="dg-hud-hub" style="font-size:0.5rem;padding:0.15rem 0.4rem;border:1px solid {hubStatus === 'started' ? 'rgba(154,230,0,0.5)' : hubStatus === 'error' ? 'rgba(255,100,100,0.5)' : 'rgba(255,255,255,0.2)'};border-radius:4px;color:{hubStatus === 'started' ? '#9ae600' : hubStatus === 'error' ? '#ff6464' : 'rgba(255,255,255,0.5)'}">
+                        HUB: {hubStatus === "started" ? "ACTIVE" : hubStatus === "starting" ? "CALLING..." : hubStatus === "error" ? "ERR" : "IDLE"}
+                    </span>
+                {/if}
             </div>
         </div>
 
@@ -2153,11 +2319,29 @@
                     {/if}
                 </div>
 
+                {#if hackathonMode}
+                    <div class="dg-stamp-box" style="border-color:rgba(154,230,0,0.3);background:rgba(154,230,0,0.04)">
+                        <div class="dg-stamp-title" style="color:#9ae600">GAME HUB (TESTNET)</div>
+                        <div class="dg-stamp-status">
+                            STATUS: {hubStatus === "started" ? "GAME REGISTERED" : hubStatus.toUpperCase()}
+                            {#if hubStartTxHash}
+                                <a class="dg-stamp-link" href={txExplorerUrlTestnet(hubStartTxHash)} target="_blank" rel="noreferrer" style="display:inline;margin-left:0.5rem">
+                                    start_game() TX
+                                </a>
+                            {/if}
+                        </div>
+                        {#if hubError}
+                            <div class="dg-stamp-error">{hubError}</div>
+                        {/if}
+                        <p class="dg-hint" style="margin-top:0.3rem">Clicking FINISH RUN will call <code>end_game()</code> on the testnet hub contract.</p>
+                    </div>
+                {/if}
+
                 <div class="dg-vault-actions">
                     <button class="dg-btn dg-btn-primary" onclick={finishRun}>
-                        FINISH RUN →
+                        {hackathonMode && testnetAddress ? "FINISH RUN + end_game() →" : "FINISH RUN →"}
                     </button>
-                    {#if withdrawalStamp.status !== "confirmed"}
+                    {#if withdrawalStamp.status !== "confirmed" && !hackathonMode}
                         <p class="dg-hint">No completion stamp yet. Reviewer-proof run includes the withdrawal record.</p>
                     {/if}
                 </div>
@@ -2209,8 +2393,8 @@
                                 <span>HASH: {tx.hash.slice(0, 10)}...{tx.hash.slice(-8)}</span>
                             </div>
                             <p class="dg-tx-note">{tx.learningNote}</p>
-                            <a class="dg-stamp-link" href={txExplorerUrlMainnet(tx.hash)} target="_blank" rel="noreferrer">
-                                OPEN IN STELLAR EXPERT
+                            <a class="dg-stamp-link" href={tx.network === "testnet" ? txExplorerUrlTestnet(tx.hash) : txExplorerUrlMainnet(tx.hash)} target="_blank" rel="noreferrer">
+                                OPEN IN STELLAR EXPERT {tx.network === "testnet" ? "(TESTNET)" : ""}
                             </a>
                         </article>
                     {/each}
@@ -2282,6 +2466,28 @@
                 {/each}
             </div>
         </div>
+
+        {#if hackathonMode && (hubStartTxHash || hubEndTxHash)}
+            <div class="dg-victory-hub" style="margin-top:1.5rem;padding:1rem;border:1px solid rgba(154,230,0,0.3);border-radius:8px;background:rgba(154,230,0,0.06);text-align:left;max-width:32rem;margin-left:auto;margin-right:auto">
+                <p style="font-size:0.65rem;letter-spacing:0.15em;color:#9ae600;margin-bottom:0.5rem">TESTNET GAME HUB TRANSACTIONS</p>
+                <p style="font-size:0.55rem;opacity:0.6;margin-bottom:0.5rem">Contract: {TESTNET_HUB_CONTRACT}</p>
+                {#if hubStartTxHash}
+                    <p style="font-size:0.6rem;margin-bottom:0.25rem">
+                        <span style="color:#9ae600">start_game()</span> TX:
+                        <a href="https://stellar.expert/explorer/testnet/tx/{hubStartTxHash}" target="_blank" rel="noreferrer" style="color:#4ad0ff;text-decoration:underline">{hubStartTxHash.slice(0, 12)}...{hubStartTxHash.slice(-8)}</a>
+                    </p>
+                {/if}
+                {#if hubEndTxHash}
+                    <p style="font-size:0.6rem;margin-bottom:0.25rem">
+                        <span style="color:#9ae600">end_game()</span> TX:
+                        <a href="https://stellar.expert/explorer/testnet/tx/{hubEndTxHash}" target="_blank" rel="noreferrer" style="color:#4ad0ff;text-decoration:underline">{hubEndTxHash.slice(0, 12)}...{hubEndTxHash.slice(-8)}</a>
+                    </p>
+                {/if}
+                {#if hackathonSessionId}
+                    <p style="font-size:0.55rem;opacity:0.5;margin-top:0.3rem">Session ID: {hackathonSessionId}</p>
+                {/if}
+            </div>
+        {/if}
 
         <div class="dg-victory-actions">
             <button class="dg-btn dg-btn-primary" onclick={resetGame}>PLAY AGAIN</button>
@@ -3209,6 +3415,10 @@
         border: 1px solid rgba(255,255,255,0.10);
         background: rgba(255,255,255,0.03);
         text-align: left;
+    }
+    .dg-hackathon-card {
+        border-color: rgba(154, 230, 0, 0.2);
+        background: rgba(154, 230, 0, 0.03);
     }
 
     .dg-cred-line {
