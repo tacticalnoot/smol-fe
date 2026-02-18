@@ -509,7 +509,7 @@ async function _submitProofToContractOnce(
 
     const networkPassphrase = net ? net.networkPassphrase : Networks.PUBLIC;
 
-    const buildTx = (proofStruct: any) => {
+    const buildTx = async (proofStruct: any) => {
         const op = contractObj.call(
             "verify_and_attest",
             new Address(farmerAddress).toScVal(),
@@ -517,7 +517,24 @@ async function _submitProofToContractOnce(
             nativeToScVal(Buffer.from(commitment), { type: "bytes" }),
             proofStruct,
         );
-        const sourceAccount = new Account(NULL_ACCOUNT, "0");
+
+        let sourceAccount: InstanceType<typeof Account>;
+
+        if (net) {
+            // For testnet/freighter, we MUST use the real account as source
+            // so that require_auth works and fees are paid by the user.
+            try {
+                // We reuse the server instance created below
+                sourceAccount = await server.getAccount(farmerAddress);
+            } catch (e) {
+                console.warn("[ZK] Could not fetch account info, falling back to 0 sequence (might fail):", e);
+                sourceAccount = new Account(farmerAddress, "0");
+            }
+        } else {
+            // For passkey kit, we use NULL_ACCOUNT as the kit handles the inner tx
+            sourceAccount = new Account(NULL_ACCOUNT, "0");
+        }
+
         return new TransactionBuilder(sourceAccount, {
             fee: "10000000", // 1 XLM max
             networkPassphrase,
@@ -542,7 +559,7 @@ async function _submitProofToContractOnce(
     const simulateMode = async (mode: G2EncodingMode) => {
         opts?.onStage?.("simulating");
         const serialized = mode === "cap0074" ? capProof : legacyProof;
-        const nextTx = buildTx(buildProofStruct(serialized));
+        const nextTx = await buildTx(buildProofStruct(serialized));
         const nextSim = await server.simulateTransaction(nextTx);
         return { mode, tx: nextTx, sim: nextSim };
     };
