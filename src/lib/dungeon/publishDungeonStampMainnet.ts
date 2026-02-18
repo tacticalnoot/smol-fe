@@ -1,4 +1,4 @@
-import { Account, Address, Contract, Networks, TransactionBuilder, TimeoutInfinite, rpc, xdr } from "@stellar/stellar-sdk/minimal";
+import { Account, Address, Contract, Networks, StrKey, TransactionBuilder, TimeoutInfinite, rpc, xdr } from "@stellar/stellar-sdk/minimal";
 import { Buffer } from "buffer";
 import { FARM_ATTESTATIONS_CONTRACT_ID_MAINNET, MAINNET_NETWORK_PASSPHRASE, MAINNET_RPC_URL } from "../../config/farmAttestation";
 import { ensureBytes32Hex, hexToBytes } from "../the-farm/digest";
@@ -92,6 +92,14 @@ export async function publishDungeonStampMainnet(input: {
 
     const server = new Server(rpcUrl);
     const contract = new Contract(contractId);
+    const sourceAccount = net
+      ? await (() => {
+          if (!StrKey.isValidEd25519PublicKey(input.owner)) {
+            throw new Error("Hackathon mode requires owner to be a testnet account address (G...).");
+          }
+          return server.getAccount(input.owner);
+        })()
+      : new Account(NULL_ACCOUNT, "0");
 
     // We store dungeon stamps as: system="DUNGEON", tier="ENTRY"|"WITHDRAW".
     const operation = contract.call(
@@ -103,7 +111,7 @@ export async function publishDungeonStampMainnet(input: {
       xdr.ScVal.scvBytes(Buffer.from(hexToBytes(verifierHash))),
     );
 
-    const tx = new TransactionBuilder(new Account(NULL_ACCOUNT, "0"), {
+    const tx = new TransactionBuilder(sourceAccount, {
       fee: "10000000",
       networkPassphrase: passphrase,
     })

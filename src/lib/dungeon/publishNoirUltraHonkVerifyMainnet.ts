@@ -1,4 +1,4 @@
-import { Account, Address, Contract, Networks, TransactionBuilder, TimeoutInfinite, rpc, xdr } from "@stellar/stellar-sdk/minimal";
+import { Account, Address, Contract, Networks, StrKey, TransactionBuilder, TimeoutInfinite, rpc, xdr } from "@stellar/stellar-sdk/minimal";
 import { Buffer } from "buffer";
 import { FARM_ATTESTATIONS_CONTRACT_ID_MAINNET, MAINNET_NETWORK_PASSPHRASE, MAINNET_RPC_URL } from "../../config/farmAttestation";
 import { ensureBytes32Hex, hexToBytes } from "../the-farm/digest";
@@ -135,6 +135,14 @@ export async function publishNoirUltraHonkVerifyMainnet(input: {
 
     const server = new Server(rpcUrl);
     const farm = new Contract(farmId);
+    const sourceAccount = net
+      ? await (() => {
+          if (!StrKey.isValidEd25519PublicKey(input.owner)) {
+            throw new Error("Hackathon mode requires owner to be a testnet account address (G...).");
+          }
+          return server.getAccount(input.owner);
+        })()
+      : new Account(NULL_ACCOUNT, "0");
 
     // Prefer the multi-VK entrypoint when available (farm-attestations v2+).
     // If the on-chain contract hasn't been upgraded yet, we fall back to the legacy method.
@@ -162,7 +170,7 @@ export async function publishNoirUltraHonkVerifyMainnet(input: {
     );
 
     const makeTx = (op: any) =>
-      new TransactionBuilder(new Account(NULL_ACCOUNT, "0"), {
+      new TransactionBuilder(sourceAccount, {
         fee: "10000000",
         networkPassphrase: passphrase,
       })

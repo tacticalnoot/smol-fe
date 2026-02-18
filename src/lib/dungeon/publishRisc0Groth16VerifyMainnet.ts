@@ -1,4 +1,4 @@
-import { Account, Address, Contract, Networks, TransactionBuilder, TimeoutInfinite, rpc, xdr } from "@stellar/stellar-sdk/minimal";
+import { Account, Address, Contract, Networks, StrKey, TransactionBuilder, TimeoutInfinite, rpc, xdr } from "@stellar/stellar-sdk/minimal";
 import { Buffer } from "buffer";
 import { MAINNET_NETWORK_PASSPHRASE, MAINNET_RPC_URL } from "../../config/farmAttestation";
 import { FARM_ATTESTATIONS_CONTRACT_ID_MAINNET } from "../../config/farmAttestation";
@@ -109,6 +109,14 @@ export async function publishRisc0Groth16VerifyMainnet(input: {
     }
 
     const server = new Server(rpcUrl);
+    const sourceAccount = net
+      ? await (() => {
+          if (!StrKey.isValidEd25519PublicKey(input.owner)) {
+            throw new Error("Hackathon mode requires owner to be a testnet account address (G...).");
+          }
+          return server.getAccount(input.owner);
+        })()
+      : new Account(NULL_ACCOUNT, "0");
 
     const proofStruct = xdr.ScVal.scvMap([
       new xdr.ScMapEntry({ key: symbol("pi_a"), val: xdr.ScVal.scvBytes(piA) }),
@@ -141,7 +149,7 @@ export async function publishRisc0Groth16VerifyMainnet(input: {
         proofStruct,
       );
 
-      const tx = new TransactionBuilder(new Account(NULL_ACCOUNT, "0"), {
+      const tx = new TransactionBuilder(sourceAccount, {
         fee: "10000000",
         networkPassphrase: passphrase,
       })
@@ -175,7 +183,7 @@ export async function publishRisc0Groth16VerifyMainnet(input: {
         proofStruct,
       );
 
-      const tx = new TransactionBuilder(new Account(NULL_ACCOUNT, "0"), {
+      const tx = new TransactionBuilder(sourceAccount, {
         fee: "10000000",
         networkPassphrase: passphrase,
       })
