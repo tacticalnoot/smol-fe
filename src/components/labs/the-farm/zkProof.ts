@@ -396,169 +396,224 @@ export async function submitProofToContract(
         net?: DungeonNetworkConfig;
     },
 ): Promise<{ success: boolean; txHash?: string; error?: string }> {
-    try {
-        const net = opts?.net;
-        const contractId = net ? net.tierVerifierContractId : TIER_VERIFIER_CONTRACT_ID;
+    const MAX_RETRIES = 3;
+    let lastError: any;
 
-        console.log("[ZK] Submitting proof to contract for on-chain verification...", {
-            contract: contractId,
-            network: net?.network ?? "mainnet",
-            farmer: farmerAddress,
-            tier: tierId,
-        });
-        console.log("[ZK] DEBUG: Using Contract ID:", contractId);
-        validateProofShape(proof);
-
-        if (import.meta.env.DEV && Array.isArray(publicSignals) && publicSignals.length > 0) {
-            try {
-                const localOk = await verifyProofLocally(proof, publicSignals);
-                console.log(`[ZK] Local groth16.verify: ${localOk ? "PASS" : "FAIL"}`);
-            } catch (e) {
-                console.warn("[ZK] Local groth16.verify failed to run:", e);
+    for (let attempt = 1; attempt <= MAX_RETRIES; attempt++) {
+        try {
+            if (attempt > 1) {
+                console.log(`[ZK] Retry attempt ${attempt}/${MAX_RETRIES} for verify_and_attest...`);
+                // Jitter delay
+                await new Promise(r => setTimeout(r, 1000 + Math.random() * 500));
             }
-        }
 
-        const { Contract, Address, nativeToScVal, xdr, TransactionBuilder, rpc, Account, Networks } = await import("@stellar/stellar-sdk/minimal");
-        const NULL_ACCOUNT = "GAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAWHF";
-
-        const contractObj = new Contract(contractId);
-
-        const buildProofStruct = (serialized: {
-            pi_a: Uint8Array;
-            pi_b: Uint8Array;
-            pi_c: Uint8Array;
-        }) =>
-            xdr.ScVal.scvMap([
-                new xdr.ScMapEntry({
-                    key: xdr.ScVal.scvSymbol("pi_a"),
-                    val: nativeToScVal(Buffer.from(serialized.pi_a), { type: "bytes" }),
-                }),
-                new xdr.ScMapEntry({
-                    key: xdr.ScVal.scvSymbol("pi_b"),
-                    val: nativeToScVal(Buffer.from(serialized.pi_b), { type: "bytes" }),
-                }),
-                new xdr.ScMapEntry({
-                    key: xdr.ScVal.scvSymbol("pi_c"),
-                    val: nativeToScVal(Buffer.from(serialized.pi_c), { type: "bytes" }),
-                }),
-            ]);
-
-        const networkPassphrase = net ? net.networkPassphrase : Networks.PUBLIC;
-
-        const buildTx = (proofStruct: any) => {
-            const op = contractObj.call(
-                "verify_and_attest",
-                new Address(farmerAddress).toScVal(),
-                nativeToScVal(tierId, { type: "u32" }),
-                nativeToScVal(Buffer.from(commitment), { type: "bytes" }),
-                proofStruct,
+            return await _submitProofToContractOnce(
+                kit, farmerAddress, tierId, commitment, proof, publicSignals, keyId, opts
             );
-            const sourceAccount = new Account(NULL_ACCOUNT, "0");
-            return new TransactionBuilder(sourceAccount, {
-                fee: "10000000", // 1 XLM max
-                networkPassphrase,
-            })
-                .addOperation(op)
-                .setTimeout(300)
-                .build();
-        };
 
-        const capProof = serializeProofWithMode(proof, "cap0074");
-        const legacyProof = serializeProofWithMode(proof, "legacy");
+        } catch (error: any) {
+            lastError = error;
+            const msg = error.message || JSON.stringify(error);
 
-        let rpcUrl: string;
-        if (net) {
-            rpcUrl = net.rpcUrl;
-        } else {
-            const { getBestRpcUrl } = await import("../../../utils/rpc");
-            rpcUrl = getBestRpcUrl();
-        }
-        const server = new rpc.Server(rpcUrl);
+            // Check for Bad Sequence error (txBadSeq / -5)
+            const isBadSeq =
+                msg.includes("txBadSeq") ||
+                msg.includes("Value: -5") ||
+                (error.response?.data?.extras?.result_codes?.transaction === "tx_bad_seq") ||
+                (typeof error === 'string' && error.includes("txBadSeq"));
 
-        const simulateMode = async (mode: G2EncodingMode) => {
-            opts?.onStage?.("simulating");
-            const serialized = mode === "cap0074" ? capProof : legacyProof;
-            const nextTx = buildTx(buildProofStruct(serialized));
-            const nextSim = await server.simulateTransaction(nextTx);
-            return { mode, tx: nextTx, sim: nextSim };
-        };
-
-        // CAP-0074 vs legacy limb ordering varies between toolchains/emitters.
-        // We try cap0074 first, and if it fails we also try legacy. This prevents
-        // "InvalidProof" failures caused purely by G2 limb order when the point still
-        // decodes as on-curve.
-        let { mode: selectedMode, tx, sim } = await simulateMode("cap0074");
-
-        if (!rpc.Api.isSimulationSuccess(sim)) {
-            const primary = summarizeFailure(sim);
-            console.warn(`[ZK] cap0074 simulation failed (${primary}). Trying legacy G2 encoding...`);
-            const legacyAttempt = await simulateMode("legacy");
-            if (rpc.Api.isSimulationSuccess(legacyAttempt.sim)) {
-                selectedMode = legacyAttempt.mode;
-                tx = legacyAttempt.tx;
-                sim = legacyAttempt.sim;
-            } else {
-                const secondary = summarizeFailure(legacyAttempt.sim);
-                throw new Error(
-                    `Simulation failed for verify_and_attest (cap0074): ${primary} | (legacy): ${secondary}`,
-                );
-            }
-        }
-
-        if (!rpc.Api.isSimulationSuccess(sim)) {
-            throw new Error("Simulation failed for verify_and_attest: " + summarizeFailure(sim));
-        }
-
-        console.log(`[ZK] Simulation succeeded using ${selectedMode} G2 encoding.`);
-
-        // Prepare transaction with simulation data
-        opts?.onStage?.("assembling");
-        const preparedTx = rpc.assembleTransaction(tx, sim).build();
-
-        opts?.onStage?.("signing");
-
-        let txHash: string;
-        if (net) {
-            // Network-aware path (hackathon testnet).
-            txHash = await net.signAndSubmit(preparedTx, { keyId, contractId: farmerAddress });
-        } else {
-            // Legacy mainnet passkey path.
-            const { signAndSend } = await import("../../../utils/transaction-helpers");
-            const result = await signAndSend(preparedTx, {
-                keyId: keyId || kit?.wallet?.keyId || "",
-                contractId: farmerAddress,
-                turnstileToken: "",
-                updateBalance: true,
-            });
-
-            if (!result.success) {
-                throw new Error(result.error || "On-chain verification failed");
+            if (isBadSeq) {
+                console.warn(`[ZK] Encountered txBadSeq on verify_and_attest. Retrying...`);
+                continue;
             }
 
-            const { extractTxHashFromRelayerResponse } = await import("../../../utils/transaction-helpers");
-            txHash =
-                result.transactionHash ||
-                extractTxHashFromRelayerResponse(result.result) ||
-                extractTxHashFromRelayerResponse(result);
-
-            if (!txHash) {
-                throw new Error(`Verification succeeded but no transaction hash was returned.`);
-            }
+            // Return failure immediately for non-retriable errors
+            console.error("[ZK] Failed to submit verify_and_attest transaction:", error);
+            return {
+                success: false,
+                error: error.message || "Unknown error",
+            };
         }
-
-        opts?.onStage?.("submitted");
-        return {
-            success: true,
-            txHash,
-        };
-
-    } catch (error: any) {
-        console.error("[ZK] Failed to submit verify_and_attest transaction:", error);
-        return {
-            success: false,
-            error: error.message || "Unknown error",
-        };
     }
+
+    // If retries exhausted
+    console.error("[ZK] Retry exhausted for verify_and_attest:", lastError);
+    return {
+        success: false,
+        error: lastError?.message || "Transaction failed after retries",
+    };
+}
+
+/**
+ * Internal single-attempt worker for submitProofToContract.
+ */
+async function _submitProofToContractOnce(
+    kit: any,
+    farmerAddress: string,
+    tierId: number,
+    commitment: Uint8Array,
+    proof: Groth16Proof,
+    publicSignals?: string[],
+    keyId?: string,
+    opts?: {
+        onStage?: (stage: "simulating" | "assembling" | "signing" | "submitted") => void;
+        net?: DungeonNetworkConfig;
+    },
+): Promise<{ success: boolean; txHash?: string; error?: string }> {
+    const net = opts?.net;
+    const contractId = net ? net.tierVerifierContractId : TIER_VERIFIER_CONTRACT_ID;
+
+    console.log("[ZK] Submitting proof to contract for on-chain verification...", {
+        contract: contractId,
+        network: net?.network ?? "mainnet",
+        farmer: farmerAddress,
+        tier: tierId,
+    });
+    console.log("[ZK] DEBUG: Using Contract ID:", contractId);
+    validateProofShape(proof);
+
+    if (import.meta.env.DEV && Array.isArray(publicSignals) && publicSignals.length > 0) {
+        try {
+            const localOk = await verifyProofLocally(proof, publicSignals);
+            console.log(`[ZK] Local groth16.verify: ${localOk ? "PASS" : "FAIL"}`);
+        } catch (e) {
+            console.warn("[ZK] Local groth16.verify failed to run:", e);
+        }
+    }
+
+    const { Contract, Address, nativeToScVal, xdr, TransactionBuilder, rpc, Account, Networks } = await import("@stellar/stellar-sdk/minimal");
+    const NULL_ACCOUNT = "GAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAWHF";
+
+    const contractObj = new Contract(contractId);
+
+    const buildProofStruct = (serialized: {
+        pi_a: Uint8Array;
+        pi_b: Uint8Array;
+        pi_c: Uint8Array;
+    }) =>
+        xdr.ScVal.scvMap([
+            new xdr.ScMapEntry({
+                key: xdr.ScVal.scvSymbol("pi_a"),
+                val: nativeToScVal(Buffer.from(serialized.pi_a), { type: "bytes" }),
+            }),
+            new xdr.ScMapEntry({
+                key: xdr.ScVal.scvSymbol("pi_b"),
+                val: nativeToScVal(Buffer.from(serialized.pi_b), { type: "bytes" }),
+            }),
+            new xdr.ScMapEntry({
+                key: xdr.ScVal.scvSymbol("pi_c"),
+                val: nativeToScVal(Buffer.from(serialized.pi_c), { type: "bytes" }),
+            }),
+        ]);
+
+    const networkPassphrase = net ? net.networkPassphrase : Networks.PUBLIC;
+
+    const buildTx = (proofStruct: any) => {
+        const op = contractObj.call(
+            "verify_and_attest",
+            new Address(farmerAddress).toScVal(),
+            nativeToScVal(tierId, { type: "u32" }),
+            nativeToScVal(Buffer.from(commitment), { type: "bytes" }),
+            proofStruct,
+        );
+        const sourceAccount = new Account(NULL_ACCOUNT, "0");
+        return new TransactionBuilder(sourceAccount, {
+            fee: "10000000", // 1 XLM max
+            networkPassphrase,
+        })
+            .addOperation(op)
+            .setTimeout(300)
+            .build();
+    };
+
+    const capProof = serializeProofWithMode(proof, "cap0074");
+    const legacyProof = serializeProofWithMode(proof, "legacy");
+
+    let rpcUrl: string;
+    if (net) {
+        rpcUrl = net.rpcUrl;
+    } else {
+        const { getBestRpcUrl } = await import("../../../utils/rpc");
+        rpcUrl = getBestRpcUrl();
+    }
+    const server = new rpc.Server(rpcUrl);
+
+    const simulateMode = async (mode: G2EncodingMode) => {
+        opts?.onStage?.("simulating");
+        const serialized = mode === "cap0074" ? capProof : legacyProof;
+        const nextTx = buildTx(buildProofStruct(serialized));
+        const nextSim = await server.simulateTransaction(nextTx);
+        return { mode, tx: nextTx, sim: nextSim };
+    };
+
+    // CAP-0074 vs legacy limb ordering varies between toolchains/emitters.
+    // We try cap0074 first, and if it fails we also try legacy. This prevents
+    // "InvalidProof" failures caused purely by G2 limb order when the point still
+    // decodes as on-curve.
+    let { mode: selectedMode, tx, sim } = await simulateMode("cap0074");
+
+    if (!rpc.Api.isSimulationSuccess(sim)) {
+        const primary = summarizeFailure(sim);
+        console.warn(`[ZK] cap0074 simulation failed (${primary}). Trying legacy G2 encoding...`);
+        const legacyAttempt = await simulateMode("legacy");
+        if (rpc.Api.isSimulationSuccess(legacyAttempt.sim)) {
+            selectedMode = legacyAttempt.mode;
+            tx = legacyAttempt.tx;
+            sim = legacyAttempt.sim;
+        } else {
+            const secondary = summarizeFailure(legacyAttempt.sim);
+            throw new Error(
+                `Simulation failed for verify_and_attest (cap0074): ${primary} | (legacy): ${secondary}`,
+            );
+        }
+    }
+
+    if (!rpc.Api.isSimulationSuccess(sim)) {
+        throw new Error("Simulation failed for verify_and_attest: " + summarizeFailure(sim));
+    }
+
+    console.log(`[ZK] Simulation succeeded using ${selectedMode} G2 encoding.`);
+
+    // Prepare transaction with simulation data
+    opts?.onStage?.("assembling");
+    const preparedTx = rpc.assembleTransaction(tx, sim).build();
+
+    opts?.onStage?.("signing");
+
+    let txHash: string;
+    if (net) {
+        // Network-aware path (hackathon testnet).
+        txHash = await net.signAndSubmit(preparedTx, { keyId, contractId: farmerAddress });
+    } else {
+        // Legacy mainnet passkey path.
+        const { signAndSend } = await import("../../../utils/transaction-helpers");
+        const result = await signAndSend(preparedTx, {
+            keyId: keyId || kit?.wallet?.keyId || "",
+            contractId: farmerAddress,
+            turnstileToken: "",
+            updateBalance: true,
+        });
+
+        if (!result.success) {
+            throw new Error(result.error || "On-chain verification failed");
+        }
+
+        const { extractTxHashFromRelayerResponse } = await import("../../../utils/transaction-helpers");
+        txHash =
+            result.transactionHash ||
+            extractTxHashFromRelayerResponse(result.result) ||
+            extractTxHashFromRelayerResponse(result);
+
+        if (!txHash) {
+            throw new Error(`Verification succeeded but no transaction hash was returned.`);
+        }
+    }
+
+    opts?.onStage?.("submitted");
+    return {
+        success: true,
+        txHash,
+    };
 }
 
 // ============================================================================
