@@ -75,17 +75,29 @@ export async function connectTestnetWallet(): Promise<string> {
         },
     });
 
-    try {
-        const { address } = await _swkKit.getAddress();
-        _publicKey = address;
-        console.log("[HackathonMode] Connected testnet wallet:", address);
-        return address;
-    } catch (err: any) {
-        if (err?.message?.includes("set the wallet first")) {
-            throw new Error("Wallet connection cancelled");
+    // Retry getting address for a short period to allow setWallet to propagate
+    for (let attempt = 0; attempt < 5; attempt++) {
+        try {
+            const { address } = await _swkKit.getAddress();
+            _publicKey = address;
+            console.log("[HackathonMode] Connected testnet wallet:", address);
+            return address;
+        } catch (err: any) {
+            // Only retry if it's the specific "set wallet first" error
+            // AND we are not on the last attempt
+            const isSetWalletError = err?.message?.includes("set the wallet first");
+            if (isSetWalletError && attempt < 4) {
+                await new Promise(r => setTimeout(r, 200));
+                continue;
+            }
+
+            if (isSetWalletError) {
+                throw new Error("Wallet connection cancelled");
+            }
+            throw err;
         }
-        throw err;
     }
+    throw new Error("Wallet connection failed");
 }
 
 export function disconnectTestnetWallet(): void {
