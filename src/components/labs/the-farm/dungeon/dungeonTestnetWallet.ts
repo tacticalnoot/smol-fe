@@ -75,11 +75,17 @@ export async function connectTestnetWallet(): Promise<string> {
         },
     });
 
-    const { address } = await _swkKit.getAddress();
-    _publicKey = address;
-
-    console.log("[HackathonMode] Connected testnet wallet:", address);
-    return address;
+    try {
+        const { address } = await _swkKit.getAddress();
+        _publicKey = address;
+        console.log("[HackathonMode] Connected testnet wallet:", address);
+        return address;
+    } catch (err: any) {
+        if (err?.message?.includes("set the wallet first")) {
+            throw new Error("Wallet connection cancelled");
+        }
+        throw err;
+    }
 }
 
 export function disconnectTestnetWallet(): void {
