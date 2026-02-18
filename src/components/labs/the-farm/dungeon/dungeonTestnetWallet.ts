@@ -176,6 +176,56 @@ export async function signAndSubmitSwk(assembled: any): Promise<string> {
     return hash;
 }
 
+// ── Generic Retry Helper ────────────────────────────────────────────────────
+
+/**
+ * Execute a hub contract call with automatic retries for `txBadSeq` errors.
+ * This is necessary because `server.getAccount` can sometimes return a stale
+ * sequence number if the RPC node is lagging behind a recent transaction.
+ */
+async function executeHubCall(
+    method: string,
+    args: any[],
+    paramsContext: any
+): Promise<string> {
+    const MAX_RETRIES = 3;
+    let lastError: any;
+
+    for (let attempt = 1; attempt <= MAX_RETRIES; attempt++) {
+        try {
+            if (attempt > 1) {
+                console.log(`[HackathonMode] Retry attempt ${attempt}/${MAX_RETRIES} for ${method}...`);
+                // Add a small jitter delay to allow RPC to catch up
+                await new Promise(r => setTimeout(r, 1000 + Math.random() * 500));
+            }
+
+            const { assembled } = await buildAndSimulateSwk(HUB_CONTRACT_ID, method, args);
+            return await signAndSubmitSwk(assembled);
+
+        } catch (err: any) {
+            lastError = err;
+            const msg = err.message || JSON.stringify(err);
+
+            // Check for Bad Sequence error (txBadSeq / -5)
+            // It can appear in various forms depending on where it was caught
+            const isBadSeq =
+                msg.includes("txBadSeq") ||
+                msg.includes("Value: -5") ||
+                (err.response?.data?.extras?.result_codes?.transaction === "tx_bad_seq");
+
+            if (isBadSeq) {
+                console.warn(`[HackathonMode] Encountered txBadSeq on ${method}. Retrying...`);
+                continue; // Loop to rebuild transaction with fresh sequence number
+            }
+
+            // If it's not a bad seq error, throw immediately (e.g. user declined sign)
+            throw err;
+        }
+    }
+
+    throw lastError;
+}
+
 // ── Game Hub Calls ──────────────────────────────────────────────────────────
 
 export interface HubStartGameParams {
@@ -207,8 +257,7 @@ export async function hubStartGame(params: HubStartGameParams): Promise<string> 
         nativeToScVal(params.player2Points ?? 0n, { type: "i128" }),
     ];
 
-    const { assembled } = await buildAndSimulateSwk(HUB_CONTRACT_ID, "start_game", args);
-    return signAndSubmitSwk(assembled);
+    return executeHubCall("start_game", args, params);
 }
 
 export interface HubEndGameParams {
@@ -230,6 +279,5 @@ export async function hubEndGame(params: HubEndGameParams): Promise<string> {
         nativeToScVal(params.player1Won, { type: "bool" }),
     ];
 
-    const { assembled } = await buildAndSimulateSwk(HUB_CONTRACT_ID, "end_game", args);
-    return signAndSubmitSwk(assembled);
+    return executeHubCall("end_game", args, params);
 }
