@@ -80,7 +80,16 @@ export async function connectTestnetWallet(): Promise<string> {
         },
     });
 
-    // If the modal closed without a selection, bail early
+    // If the modal closed without a selection, it might be a race condition where
+    // the callback hasn't fired yet. Give it a moment.
+    if (!walletSelected) {
+        for (let i = 0; i < 10; i++) {
+            await new Promise(r => setTimeout(r, 100));
+            if (walletSelected) break;
+        }
+    }
+
+    // If still no selection after grace period, bail
     if (!walletSelected) {
         console.warn("[HackathonMode] Modal closed without wallet selection");
         throw new Error("No wallet selected — please try again");
