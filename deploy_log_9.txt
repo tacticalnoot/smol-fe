@@ -1,0 +1,77 @@
+≡ƒÜÇ Starting TESTNET Bundle Deployment...
+Using secret from deployer_secret_testnet.txt
+Identity: GABMLE4MQR6XFKMHLR46TZFSFPDZVEUGXKK75MGGR5PYTWAGYINEO5Y6
+Funding with Friendbot...
+Friendbot response: {
+  successful: true,
+  hash: 'a8965fc02510388ad9fc93e40630068dc98f19835deb0715ad4a28a7454c481b',
+  envelope_xdr: 'AAAAAgAAAAAt/u8mjizeiL1zual9uF1ph0EhE9gh8FUrZSO3rnWhtAAPQkAAAAE8AAABxgAAAAEAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAEAAAABAAAAABB90WssODNIgi6BHveqzxTRmIpvAFRyVNM+Hm2GVuCcAAAAAQAAAAACxZOMhH1yqYdceenksivHmpKGupX+sMaPX4nYBsIaRwAAAAAAAAAXSHboAAAAAAAAAAACrnWhtAAAAEDJU/tEWofxpnq2+DbvXHN0dW1KZkr2tdnrQLwscU+R972SYGE/iU7Dk8RU64UwTxU/SNU3fGTW1aFwuRvvuvAJhlbgnAAAAEBCi8r8kBCYatyNa7gpUWnklqSCNTWIJYMoGhrhk8/7nsYduivBn1fLU2bysMhQZWLN2a1ELlFxxuhc5WcGEYsB'
+}
+
+≡ƒî╛ Deploying Farm Attestations...
+
+> cargo build --target wasm32v1-none --release
+
+
+> stellar contract optimize --wasm "contracts/farm-attestations/target/wasm32v1-none/release/farm_attestations.wasm" --wasm-out "contracts/farm-attestations/target/wasm32v1-none/release/farm_attestations.optimized.wasm"
+Reading: contracts/farm-attestations/target/wasm32v1-none/release/farm_attestations.wasm (15713 bytes)
+Optimized: contracts/farm-attestations/target/wasm32v1-none/release/farm_attestations.optimized.wasm (13577 bytes)
+
+
+> stellar contract upload --wasm "contracts/farm-attestations/target/wasm32v1-none/release/farm_attestations.optimized.wasm" --source SCNADS76AWKQ4TKEYQNQYCYZPVV3S5ZIJLGC2CBCZM76YSGP3ZE35XRZ --network testnet
+
+> stellar contract deploy --wasm-hash 50907cd027a8b23a2c506244b8f31bfeebc5cfdbf1c14a0dd65596de2ec0d61f --source SCNADS76AWKQ4TKEYQNQYCYZPVV3S5ZIJLGC2CBCZM76YSGP3ZE35XRZ --network testnet
+> ID: CCZIYZUY4GDT4SZ66THR6KJBYECG7PVCMWFDESL4STYROOEJICIQB4JT
+> Initializing Farm Attestations (init_admin)...
+
+> stellar contract invoke --id CCZIYZUY4GDT4SZ66THR6KJBYECG7PVCMWFDESL4STYROOEJICIQB4JT --source SCNADS76AWKQ4TKEYQNQYCYZPVV3S5ZIJLGC2CBCZM76YSGP3ZE35XRZ --network testnet -- init_admin --admin GABMLE4MQR6XFKMHLR46TZFSFPDZVEUGXKK75MGGR5PYTWAGYINEO5Y6
+
+
+
+≡ƒñû Deploying RISC0 Verifier...
+
+> cargo build --target wasm32v1-none --release
+
+
+> stellar contract optimize --wasm "contracts/risc0-groth16-verifier/target/wasm32v1-none/release/risc0_groth16_verifier.wasm" --wasm-out "contracts/risc0-groth16-verifier/target/wasm32v1-none/release/risc0_groth16_verifier.optimized.wasm"
+Reading: contracts/risc0-groth16-verifier/target/wasm32v1-none/release/risc0_groth16_verifier.wasm (5674 bytes)
+Optimized: contracts/risc0-groth16-verifier/target/wasm32v1-none/release/risc0_groth16_verifier.optimized.wasm (4981 bytes)
+
+
+> stellar contract upload --wasm "contracts/risc0-groth16-verifier/target/wasm32v1-none/release/risc0_groth16_verifier.optimized.wasm" --source SCNADS76AWKQ4TKEYQNQYCYZPVV3S5ZIJLGC2CBCZM76YSGP3ZE35XRZ --network testnet
+
+> stellar contract deploy --wasm-hash 29ebaaace0c436c7430047ba41bb9bc5c2bce633d670fd1d79c235583c533513 --source SCNADS76AWKQ4TKEYQNQYCYZPVV3S5ZIJLGC2CBCZM76YSGP3ZE35XRZ --network testnet
+> ID: CDQCOSAQTGZLBOJ3OQSYVIFSLPMHIQPUJWS6RYKCEJUGDQGZNPIFVWLJ
+> Initializing RISC0 Verifier (init_admin)...
+
+> stellar contract invoke --id CDQCOSAQTGZLBOJ3OQSYVIFSLPMHIQPUJWS6RYKCEJUGDQGZNPIFVWLJ --source SCNADS76AWKQ4TKEYQNQYCYZPVV3S5ZIJLGC2CBCZM76YSGP3ZE35XRZ --network testnet -- init_admin --admin GABMLE4MQR6XFKMHLR46TZFSFPDZVEUGXKK75MGGR5PYTWAGYINEO5Y6
+
+
+
+≡ƒ¢í∩╕Å Deploying Tier Verifier...
+
+> cargo build --target wasm32v1-none --release
+
+
+> stellar contract optimize --wasm "contracts/tier-verifier/target/wasm32v1-none/release/tier_verifier.wasm" --wasm-out "contracts/tier-verifier/target/wasm32v1-none/release/tier_verifier.optimized.wasm"
+Reading: contracts/tier-verifier/target/wasm32v1-none/release/tier_verifier.wasm (10104 bytes)
+Optimized: contracts/tier-verifier/target/wasm32v1-none/release/tier_verifier.optimized.wasm (8787 bytes)
+
+
+> stellar contract upload --wasm "contracts/tier-verifier/target/wasm32v1-none/release/tier_verifier.optimized.wasm" --source SCNADS76AWKQ4TKEYQNQYCYZPVV3S5ZIJLGC2CBCZM76YSGP3ZE35XRZ --network testnet
+
+> stellar contract deploy --wasm-hash cf2657a69f3fdf347631f155353bc100d4a4274254f76e9e72b943bba1429c4e --source SCNADS76AWKQ4TKEYQNQYCYZPVV3S5ZIJLGC2CBCZM76YSGP3ZE35XRZ --network testnet
+> ID: CDPACZDP7LZ4BEHVG64EAEOOGNTJS5V4WB2JGMZ4I6FK2GCAYVO7LRCC
+> Initializing Tier Verifier with VKEY...
+  Simulating Tier init...
+  Submitting Tier init...
+  Tier Verifier Initialized.
+
+
+Γ£à DEPLOYMENT COMPLETE
+----------------------------------------
+PUBLIC_FARM_ATTESTATIONS_CONTRACT_ID_TESTNET="CCZIYZUY4GDT4SZ66THR6KJBYECG7PVCMWFDESL4STYROOEJICIQB4JT"
+PUBLIC_TIER_VERIFIER_CONTRACT_ID_TESTNET="CDPACZDP7LZ4BEHVG64EAEOOGNTJS5V4WB2JGMZ4I6FK2GCAYVO7LRCC"
+PUBLIC_RISC0_GROTH16_VERIFIER_CONTRACT_ID_TESTNET="CDQCOSAQTGZLBOJ3OQSYVIFSLPMHIQPUJWS6RYKCEJUGDQGZNPIFVWLJ"
+----------------------------------------
+Values saved to .env.testnet.generated

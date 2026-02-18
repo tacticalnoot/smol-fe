@@ -1,0 +1,48 @@
+≡ƒÜÇ Starting TESTNET Bundle Deployment...
+Using secret from deployer_secret_testnet.txt
+Identity: GABMLE4MQR6XFKMHLR46TZFSFPDZVEUGXKK75MGGR5PYTWAGYINEO5Y6
+Funding with Friendbot...
+Friendbot response: {
+  type: 'https://stellar.org/friendbot-errors/bad_request',
+  title: 'Bad Request',
+  status: 400,
+  detail: 'account already funded to starting balance'
+}
+
+> stellar keys add temp_deployer --secret SCNADS76AWKQ4TKEYQNQYCYZPVV3S5ZIJLGC2CBCZM76YSGP3ZE35XRZ
+
+≡ƒî╛ Deploying Farm Attestations...
+
+> cargo build --target wasm32v1-none --release
+
+
+> stellar contract optimize --wasm "contracts/farm-attestations/target/wasm32v1-none/release/farm_attestations.wasm" --wasm-out "contracts/farm-attestations/target/wasm32v1-none/release/farm_attestations.optimized.wasm"
+Reading: contracts/farm-attestations/target/wasm32v1-none/release/farm_attestations.wasm (15713 bytes)
+Optimized: contracts/farm-attestations/target/wasm32v1-none/release/farm_attestations.optimized.wasm (13577 bytes)
+
+
+> stellar contract install --wasm "contracts/farm-attestations/target/wasm32v1-none/release/farm_attestations.optimized.wasm" --source temp_deployer --network testnet
+FAILED: Error: Command failed: stellar contract install --wasm "contracts/farm-attestations/target/wasm32v1-none/release/farm_attestations.optimized.wasm" --source temp_deployer --network testnet
+ΓÜá∩╕Å  `stellar contract install` is deprecated and will be removed in future versions of the CLI. Use `stellar contract upload` instead.
+Γ¥î error: Failed to find config identity for temp_deployer
+
+    at genericNodeError (node:internal/errors:983:15)
+    at wrappedFn (node:internal/errors:537:14)
+    at checkExecSyncError (node:child_process:916:11)
+    at execSync (node:child_process:988:15)
+    at run (file:///C:/Users/Jeff/Mixtape%20Auto/smol-fe/scripts/deploy-testnet-bundle.mjs:43:12)
+    at main (file:///C:/Users/Jeff/Mixtape%20Auto/smol-fe/scripts/deploy-testnet-bundle.mjs:288:20)
+    at process.processTicksAndRejections (node:internal/process/task_queues:105:5) {
+  status: 1,
+  signal: null,
+  output: [
+    null,
+    '',
+    'ΓÜá∩╕Å  `stellar contract install` is deprecated and will be removed in future versions of the CLI. Use `stellar contract upload` instead.\n' +
+      'Γ¥î error: Failed to find config identity for temp_deployer\n'
+  ],
+  pid: 35432,
+  stdout: '',
+  stderr: 'ΓÜá∩╕Å  `stellar contract install` is deprecated and will be removed in future versions of the CLI. Use `stellar contract upload` instead.\n' +
+    'Γ¥î error: Failed to find config identity for temp_deployer\n'
+}

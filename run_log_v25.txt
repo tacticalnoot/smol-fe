@@ -1,0 +1,2764 @@
+🚀 Starting Mixea Automation v16 (Adaptive)...
+   📂 Browser Profile: C:\Users\Jeff\Mixtape Auto\smol-fe\scripts\mixea_browser_data
+Navigating to Mixea...
+
+⚠️  PLEASE LOG IN TO DISTROKID/MIXEA IN THE BROWSER WINDOW ⚠️
+⏳ Waiting for interface load (Upload or Mastered List)...
+✅ Interface detected!
+
+🎧 Processing: 01 - STARLACE.mp3
+   - Checking if already mastered with target settings...
+   - 📤 Starting upload flow for: 01 - STARLACE.mp3
+   - File uploaded. Waiting for processing/editor UI...
+   - ✅ Editor UI ready.
+   - Starting rigorous intensity discovery (Step-by-Step Security)...
+     Slider Box: {"x":258.15313720703125,"y":603.6035766601562,"width":334.279296875,"height":37.9954833984375}
+     Clicking Position 0 at (292, 623)...
+       -> Result: My mastered tracks
+Master a new track
+Mastered
+Original
+01 - STARLACE.mp3
+0:00 / 3:50
+
+Intensity
+
+Low
+High
+
+EQ Options
+
+Brighter
+Warmer
+Download mastered track
+     Clicking Position 1 at (358, 623)...
+       -> Result: My mastered tracks
+Master a new track
+Mastered
+Original
+01 - STARLACE.mp3
+0:00 / 3:50
+
+Intensity
+
+Low
+High
+
+EQ Options
+
+Brighter
+Warmer
+Download mastered track
+     Clicking Position 2 at (425, 623)...
+       -> Result: My mastered tracks
+Master a new track
+Mastered
+Original
+01 - STARLACE.mp3
+0:00 / 3:50
+
+Intensity
+
+Low
+High
+
+EQ Options
+
+Brighter
+Warmer
+Download mastered track
+     Clicking Position 3 at (492, 623)...
+       -> Result: My mastered tracks
+Master a new track
+Mastered
+Original
+01 - STARLACE.mp3
+0:00 / 3:50
+
+Intensity
+
+Low
+High
+
+EQ Options
+
+Brighter
+Warmer
+Download mastered track
+     Clicking Position 4 at (559, 623)...
+       -> Result: My mastered tracks
+Master a new track
+Mastered
+Original
+01 - STARLACE.mp3
+0:00 / 3:50
+
+Intensity
+
+Low
+High
+
+EQ Options
+
+Brighter
+Warmer
+Download mastered track
+   🎯 Selected Position: 4 | EQ: PRESERVED (Don't touch)
+   - Applying final target: Position 4
+   ✅ Confirmed: My mastered tracks
+Master a new track
+Mastered
+Original
+01 - STARLACE.mp3
+0:00 / 3:50
+
+Intensity
+
+Low
+High
+
+EQ Options
+
+Brighter
+Warmer
+Download mastered track | My mastered tracks
+Master a new track
+Mastered
+Original
+01 - STARLACE.mp3
+0:00 / 3:50
+
+Intensity
+
+Low
+High
+
+EQ Options
+
+Brighter
+Warmer
+Download mastered track
+   - Waiting for mastering process (0% -> 100%)...
+   - ✨ Mastering complete!
+   - Initiating Download sequence...
+   - Clicking Download dropdown...
+   - Looking for 'Ultra HD' option...
+   - Found Ultra HD element: DIV | href=none | onclick=no
+   - Setting up download capture (3 strategies)...
+   - Clicking Ultra HD...
+   - All 3 strategies timed out. Checking for direct download links...
+   - Found direct WAV link: https://distrokid.com/mixea/finishedtracks/download/?mixeaSongUUID=2B17405190E26ACDCC4322E86CD5BEB7&quality=hd-wav
+   ✅ Saved from direct link: C:\Users\Jeff\Desktop\1OF1 - Solstice\Mastered\01 - STARLACE.wav (66228604 bytes)
+   - Returning to main list...
+
+🎧 Processing: 02 - MOONLIT CIRCUITS.mp3
+   - Checking if already mastered with target settings...
+   - 📤 Starting upload flow for: 02 - MOONLIT CIRCUITS.mp3
+   - File uploaded. Waiting for processing/editor UI...
+   - ✅ Editor UI ready.
+   - Starting rigorous intensity discovery (Step-by-Step Security)...
+     Slider Box: {"x":258.15313720703125,"y":603.6035766601562,"width":334.279296875,"height":37.9954833984375}
+     Clicking Position 0 at (292, 623)...
+       -> Result: My mastered tracks
+Master a new track
+Mastered
+Original
+02 - MOONLIT CIRCUITS.mp3
+0:00 / 2:45
+
+Intensity
+
+Low
+High
+
+EQ Options
+
+Brighter
+Warmer
+Download mastered track
+     Clicking Position 1 at (358, 623)...
+       -> Result: My mastered tracks
+Master a new track
+Mastered
+Original
+02 - MOONLIT CIRCUITS.mp3
+0:00 / 2:45
+
+Intensity
+
+Low
+High
+
+EQ Options
+
+Brighter
+Warmer
+Download mastered track
+     Clicking Position 2 at (425, 623)...
+       -> Result: My mastered tracks
+Master a new track
+Mastered
+Original
+02 - MOONLIT CIRCUITS.mp3
+0:00 / 2:45
+
+Intensity
+
+Low
+High
+
+EQ Options
+
+Brighter
+Warmer
+Download mastered track
+     Clicking Position 3 at (492, 623)...
+       -> Result: My mastered tracks
+Master a new track
+Mastered
+Original
+02 - MOONLIT CIRCUITS.mp3
+0:00 / 2:45
+
+Intensity
+
+Low
+High
+
+EQ Options
+
+Brighter
+Warmer
+Download mastered track
+     Clicking Position 4 at (559, 623)...
+       -> Result: My mastered tracks
+Master a new track
+Mastered
+Original
+02 - MOONLIT CIRCUITS.mp3
+0:00 / 2:45
+
+Intensity
+
+Low
+High
+
+EQ Options
+
+Brighter
+Warmer
+Download mastered track
+   🎯 Selected Position: 4 | EQ: PRESERVED (Don't touch)
+   - Applying final target: Position 4
+   ✅ Confirmed: My mastered tracks
+Master a new track
+Mastered
+Original
+02 - MOONLIT CIRCUITS.mp3
+0:00 / 2:45
+
+Intensity
+
+Low
+High
+
+EQ Options
+
+Brighter
+Warmer
+Download mastered track | My mastered tracks
+Master a new track
+Mastered
+Original
+02 - MOONLIT CIRCUITS.mp3
+0:00 / 2:45
+
+Intensity
+
+Low
+High
+
+EQ Options
+
+Brighter
+Warmer
+Download mastered track
+   - Waiting for mastering process (0% -> 100%)...
+   - ✨ Mastering complete!
+   - Initiating Download sequence...
+   - Clicking Download dropdown...
+   - Looking for 'Ultra HD' option...
+   - Found Ultra HD element: DIV | href=none | onclick=no
+   - Setting up download capture (3 strategies)...
+   - Clicking Ultra HD...
+   - All 3 strategies timed out. Checking for direct download links...
+   - Found direct WAV link: https://distrokid.com/mixea/finishedtracks/download/?mixeaSongUUID=C976EAF243B7A708608046324B5A9D51&quality=hd-wav
+   ✅ Saved from direct link: C:\Users\Jeff\Desktop\1OF1 - Solstice\Mastered\02 - MOONLIT CIRCUITS.wav (47508604 bytes)
+   - Returning to main list...
+
+🎧 Processing: 03 - VELVET AFTERBURN.mp3
+   - Checking if already mastered with target settings...
+   - 📤 Starting upload flow for: 03 - VELVET AFTERBURN.mp3
+   - File uploaded. Waiting for processing/editor UI...
+   - ✅ Editor UI ready.
+   - Starting rigorous intensity discovery (Step-by-Step Security)...
+     Slider Box: {"x":258.15313720703125,"y":603.6035766601562,"width":334.279296875,"height":37.9954833984375}
+     Clicking Position 0 at (292, 623)...
+       -> Result: My mastered tracks
+Master a new track
+Mastered
+Original
+03 - VELVET AFTERBURN.mp3
+0:00 / 2:40
+
+Intensity
+
+Low
+High
+
+EQ Options
+
+Brighter
+Warmer
+Download mastered track
+     Clicking Position 1 at (358, 623)...
+       -> Result: My mastered tracks
+Master a new track
+Mastered
+Original
+03 - VELVET AFTERBURN.mp3
+0:00 / 2:40
+
+Intensity
+
+Low
+High
+
+EQ Options
+
+Brighter
+Warmer
+Download mastered track
+     Clicking Position 2 at (425, 623)...
+       -> Result: My mastered tracks
+Master a new track
+Mastered
+Original
+03 - VELVET AFTERBURN.mp3
+0:00 / 2:40
+
+Intensity
+
+Low
+High
+
+EQ Options
+
+Brighter
+Warmer
+Download mastered track
+     Clicking Position 3 at (492, 623)...
+       -> Result: My mastered tracks
+Master a new track
+Mastered
+Original
+03 - VELVET AFTERBURN.mp3
+0:00 / 2:40
+
+Intensity
+
+Low
+High
+
+EQ Options
+
+Brighter
+Warmer
+Download mastered track
+     Clicking Position 4 at (559, 623)...
+       -> Result: My mastered tracks
+Master a new track
+Mastered
+Original
+03 - VELVET AFTERBURN.mp3
+0:00 / 2:40
+
+Intensity
+
+Low
+High
+
+EQ Options
+
+Brighter
+Warmer
+Download mastered track
+   🎯 Selected Position: 4 | EQ: PRESERVED (Don't touch)
+   - Applying final target: Position 4
+   ✅ Confirmed: My mastered tracks
+Master a new track
+Mastered
+Original
+03 - VELVET AFTERBURN.mp3
+0:00 / 2:40
+
+Intensity
+
+Low
+High
+
+EQ Options
+
+Brighter
+Warmer
+Download mastered track | My mastered tracks
+Master a new track
+Mastered
+Original
+03 - VELVET AFTERBURN.mp3
+0:00 / 2:40
+
+Intensity
+
+Low
+High
+
+EQ Options
+
+Brighter
+Warmer
+Download mastered track
+   - Waiting for mastering process (0% -> 100%)...
+   - ✨ Mastering complete!
+   - Initiating Download sequence...
+   - Clicking Download dropdown...
+   - Looking for 'Ultra HD' option...
+   - Found Ultra HD element: DIV | href=none | onclick=no
+   - Setting up download capture (3 strategies)...
+   - Clicking Ultra HD...
+   - All 3 strategies timed out. Checking for direct download links...
+   - Found direct WAV link: https://distrokid.com/mixea/finishedtracks/download/?mixeaSongUUID=747EFB9C15E292406C7684E98F974B12&quality=hd-wav
+   ✅ Saved from direct link: C:\Users\Jeff\Desktop\1OF1 - Solstice\Mastered\03 - VELVET AFTERBURN.wav (46011004 bytes)
+   - Returning to main list...
+
+🎧 Processing: 04 - SILK CIRCUIT.mp3
+   - Checking if already mastered with target settings...
+   - 📤 Starting upload flow for: 04 - SILK CIRCUIT.mp3
+   - File uploaded. Waiting for processing/editor UI...
+   - ✅ Editor UI ready.
+   - Starting rigorous intensity discovery (Step-by-Step Security)...
+     Slider Box: {"x":258.15313720703125,"y":603.6035766601562,"width":334.279296875,"height":37.9954833984375}
+     Clicking Position 0 at (292, 623)...
+       -> Result: My mastered tracks
+Master a new track
+Mastered
+Original
+04 - SILK CIRCUIT.mp3
+0:00 / 2:41
+
+Intensity
+
+Low
+High
+
+EQ Options
+
+Brighter
+Warmer
+Download mastered track
+     Clicking Position 1 at (358, 623)...
+       -> Result: My mastered tracks
+Master a new track
+Mastered
+Original
+04 - SILK CIRCUIT.mp3
+0:00 / 2:41
+
+Intensity
+
+Low
+High
+
+EQ Options
+
+Brighter
+Warmer
+Download mastered track
+     Clicking Position 2 at (425, 623)...
+       -> Result: My mastered tracks
+Master a new track
+Mastered
+Original
+04 - SILK CIRCUIT.mp3
+0:00 / 2:41
+
+Intensity
+
+Low
+High
+
+EQ Options
+
+Brighter
+Warmer
+Download mastered track
+     Clicking Position 3 at (492, 623)...
+       -> Result: My mastered tracks
+Master a new track
+Mastered
+Original
+04 - SILK CIRCUIT.mp3
+0:00 / 2:41
+
+Intensity
+
+Low
+High
+
+EQ Options
+
+Brighter
+Warmer
+Download mastered track
+     Clicking Position 4 at (559, 623)...
+       -> Result: My mastered tracks
+Master a new track
+Mastered
+Original
+04 - SILK CIRCUIT.mp3
+0:00 / 2:41
+
+Intensity
+
+Low
+High
+
+EQ Options
+
+Brighter
+Warmer
+Download mastered track
+   🎯 Selected Position: 4 | EQ: PRESERVED (Don't touch)
+   - Applying final target: Position 4
+   ✅ Confirmed: My mastered tracks
+Master a new track
+Mastered
+Original
+04 - SILK CIRCUIT.mp3
+0:00 / 2:41
+
+Intensity
+
+Low
+High
+
+EQ Options
+
+Brighter
+Warmer
+Download mastered track | My mastered tracks
+Master a new track
+Mastered
+Original
+04 - SILK CIRCUIT.mp3
+0:00 / 2:41
+
+Intensity
+
+Low
+High
+
+EQ Options
+
+Brighter
+Warmer
+Download mastered track
+   - Waiting for mastering process (0% -> 100%)...
+   - ✨ Mastering complete!
+   - Initiating Download sequence...
+   - Clicking Download dropdown...
+   - Looking for 'Ultra HD' option...
+   - Found Ultra HD element: DIV | href=none | onclick=no
+   - Setting up download capture (3 strategies)...
+   - Clicking Ultra HD...
+   - All 3 strategies timed out. Checking for direct download links...
+   - Found direct WAV link: https://distrokid.com/mixea/finishedtracks/download/?mixeaSongUUID=50FCEF070BEC0A35E923BE4EADC60C9D&quality=hd-wav
+   ✅ Saved from direct link: C:\Users\Jeff\Desktop\1OF1 - Solstice\Mastered\04 - SILK CIRCUIT.wav (46402684 bytes)
+   - Returning to main list...
+
+🎧 Processing: 05 - TIDAL LIGHT.mp3
+   - Checking if already mastered with target settings...
+   - 📤 Starting upload flow for: 05 - TIDAL LIGHT.mp3
+   - File uploaded. Waiting for processing/editor UI...
+   - ✅ Editor UI ready.
+   - Starting rigorous intensity discovery (Step-by-Step Security)...
+     Slider Box: {"x":258.15313720703125,"y":603.6035766601562,"width":334.279296875,"height":37.9954833984375}
+     Clicking Position 0 at (292, 623)...
+       -> Result: My mastered tracks
+Master a new track
+Mastered
+Original
+05 - TIDAL LIGHT.mp3
+0:00 / 3:03
+
+Intensity
+
+Low
+High
+
+EQ Options
+
+Brighter
+Warmer
+Download mastered track
+     Clicking Position 1 at (358, 623)...
+       -> Result: My mastered tracks
+Master a new track
+Mastered
+Original
+05 - TIDAL LIGHT.mp3
+0:00 / 3:03
+
+Intensity
+
+Low
+High
+
+EQ Options
+
+Brighter
+Warmer
+Download mastered track
+     Clicking Position 2 at (425, 623)...
+       -> Result: My mastered tracks
+Master a new track
+Mastered
+Original
+05 - TIDAL LIGHT.mp3
+0:00 / 3:03
+
+Intensity
+
+Low
+High
+
+EQ Options
+
+Brighter
+Warmer
+Download mastered track
+     Clicking Position 3 at (492, 623)...
+       -> Result: My mastered tracks
+Master a new track
+Mastered
+Original
+05 - TIDAL LIGHT.mp3
+0:00 / 3:03
+
+Intensity
+
+Low
+High
+
+EQ Options
+
+Brighter
+Warmer
+Download mastered track
+     Clicking Position 4 at (559, 623)...
+       -> Result: My mastered tracks
+Master a new track
+Mastered
+Original
+05 - TIDAL LIGHT.mp3
+0:00 / 3:03
+
+Intensity
+
+Low
+High
+
+EQ Options
+
+Brighter
+Warmer
+Download mastered track
+   🎯 Selected Position: 4 | EQ: PRESERVED (Don't touch)
+   - Applying final target: Position 4
+   ✅ Confirmed: My mastered tracks
+Master a new track
+Mastered
+Original
+05 - TIDAL LIGHT.mp3
+0:00 / 3:03
+
+Intensity
+
+Low
+High
+
+EQ Options
+
+Brighter
+Warmer
+Download mastered track | My mastered tracks
+Master a new track
+Mastered
+Original
+05 - TIDAL LIGHT.mp3
+0:00 / 3:03
+
+Intensity
+
+Low
+High
+
+EQ Options
+
+Brighter
+Warmer
+Download mastered track
+   - Waiting for mastering process (0% -> 100%)...
+   - ✨ Mastering complete!
+   - Initiating Download sequence...
+   - Clicking Download dropdown...
+   - Looking for 'Ultra HD' option...
+   - Found Ultra HD element: DIV | href=none | onclick=no
+   - Setting up download capture (3 strategies)...
+   - Clicking Ultra HD...
+   - All 3 strategies timed out. Checking for direct download links...
+   - Found direct WAV link: https://distrokid.com/mixea/finishedtracks/download/?mixeaSongUUID=B7A169C567D7B2D0D6CCCD938B9D9F1B&quality=hd-wav
+   ✅ Saved from direct link: C:\Users\Jeff\Desktop\1OF1 - Solstice\Mastered\05 - TIDAL LIGHT.wav (52681084 bytes)
+   - Returning to main list...
+
+🎧 Processing: 06 - ORBIT.mp3
+   - Checking if already mastered with target settings...
+   - 📤 Starting upload flow for: 06 - ORBIT.mp3
+   - File uploaded. Waiting for processing/editor UI...
+   - ✅ Editor UI ready.
+   - Starting rigorous intensity discovery (Step-by-Step Security)...
+     Slider Box: {"x":258.15313720703125,"y":603.6035766601562,"width":334.279296875,"height":37.9954833984375}
+     Clicking Position 0 at (292, 623)...
+       -> Result: My mastered tracks
+Master a new track
+Mastered
+Original
+06 - ORBIT.mp3
+0:00 / 2:48
+
+Intensity
+
+Low
+High
+
+EQ Options
+
+Brighter
+Warmer
+Download mastered track
+     Clicking Position 1 at (358, 623)...
+       -> Result: My mastered tracks
+Master a new track
+Mastered
+Original
+06 - ORBIT.mp3
+0:00 / 2:48
+
+Intensity
+
+Low
+High
+
+EQ Options
+
+Brighter
+Warmer
+Download mastered track
+     Clicking Position 2 at (425, 623)...
+       -> Result: My mastered tracks
+Master a new track
+Mastered
+Original
+06 - ORBIT.mp3
+0:00 / 2:48
+
+Intensity
+
+Low
+High
+
+EQ Options
+
+Brighter
+Warmer
+Download mastered track
+     Clicking Position 3 at (492, 623)...
+       -> Result: My mastered tracks
+Master a new track
+Mastered
+Original
+06 - ORBIT.mp3
+0:00 / 2:48
+
+Intensity
+
+Low
+High
+
+EQ Options
+
+Brighter
+Warmer
+Download mastered track
+     Clicking Position 4 at (559, 623)...
+       -> Result: My mastered tracks
+Master a new track
+Mastered
+Original
+06 - ORBIT.mp3
+0:00 / 2:48
+
+Intensity
+
+Low
+High
+
+EQ Options
+
+Brighter
+Warmer
+Download mastered track
+   🎯 Selected Position: 4 | EQ: PRESERVED (Don't touch)
+   - Applying final target: Position 4
+   ✅ Confirmed: My mastered tracks
+Master a new track
+Mastered
+Original
+06 - ORBIT.mp3
+0:00 / 2:48
+
+Intensity
+
+Low
+High
+
+EQ Options
+
+Brighter
+Warmer
+Download mastered track | My mastered tracks
+Master a new track
+Mastered
+Original
+06 - ORBIT.mp3
+0:00 / 2:48
+
+Intensity
+
+Low
+High
+
+EQ Options
+
+Brighter
+Warmer
+Download mastered track
+   - Waiting for mastering process (0% -> 100%)...
+   - ✨ Mastering complete!
+   - Initiating Download sequence...
+   - Clicking Download dropdown...
+   - Looking for 'Ultra HD' option...
+   - Found Ultra HD element: DIV | href=none | onclick=no
+   - Setting up download capture (3 strategies)...
+   - Clicking Ultra HD...
+   - All 3 strategies timed out. Checking for direct download links...
+   - Found direct WAV link: https://distrokid.com/mixea/finishedtracks/download/?mixeaSongUUID=297DFF7D42EB2625DDB269EA737E55E7&quality=hd-wav
+   ✅ Saved from direct link: C:\Users\Jeff\Desktop\1OF1 - Solstice\Mastered\06 - ORBIT.wav (48510844 bytes)
+   - Returning to main list...
+
+🎧 Processing: 07 - DRAGONFRUIT.mp3
+   - Checking if already mastered with target settings...
+   - 📤 Starting upload flow for: 07 - DRAGONFRUIT.mp3
+   - File uploaded. Waiting for processing/editor UI...
+   - ✅ Editor UI ready.
+   - Starting rigorous intensity discovery (Step-by-Step Security)...
+     Slider Box: {"x":258.15313720703125,"y":603.6035766601562,"width":334.279296875,"height":37.9954833984375}
+     Clicking Position 0 at (292, 623)...
+       -> Result: My mastered tracks
+Master a new track
+Mastered
+Original
+07 - DRAGONFRUIT.mp3
+0:00 / 3:05
+
+Intensity
+
+Low
+High
+
+EQ Options
+
+Brighter
+Warmer
+Download mastered track
+     Clicking Position 1 at (358, 623)...
+       -> Result: My mastered tracks
+Master a new track
+Mastered
+Original
+07 - DRAGONFRUIT.mp3
+0:00 / 3:05
+
+Intensity
+
+Low
+High
+
+EQ Options
+
+Brighter
+Warmer
+Download mastered track
+     Clicking Position 2 at (425, 623)...
+       -> Result: My mastered tracks
+Master a new track
+Mastered
+Original
+07 - DRAGONFRUIT.mp3
+0:00 / 3:05
+
+Intensity
+
+Low
+High
+
+EQ Options
+
+Brighter
+Warmer
+Download mastered track
+     Clicking Position 3 at (492, 623)...
+       -> Result: My mastered tracks
+Master a new track
+Mastered
+Original
+07 - DRAGONFRUIT.mp3
+0:00 / 3:05
+
+Intensity
+
+Low
+High
+
+EQ Options
+
+Brighter
+Warmer
+Download mastered track
+     Clicking Position 4 at (559, 623)...
+       -> Result: My mastered tracks
+Master a new track
+Mastered
+Original
+07 - DRAGONFRUIT.mp3
+0:00 / 3:05
+
+Intensity
+
+Low
+High
+
+EQ Options
+
+Brighter
+Warmer
+Download mastered track
+   🎯 Selected Position: 4 | EQ: PRESERVED (Don't touch)
+   - Applying final target: Position 4
+   ✅ Confirmed: My mastered tracks
+Master a new track
+Mastered
+Original
+07 - DRAGONFRUIT.mp3
+0:00 / 3:05
+
+Intensity
+
+Low
+High
+
+EQ Options
+
+Brighter
+Warmer
+Download mastered track | My mastered tracks
+Master a new track
+Mastered
+Original
+07 - DRAGONFRUIT.mp3
+0:00 / 3:05
+
+Intensity
+
+Low
+High
+
+EQ Options
+
+Brighter
+Warmer
+Download mastered track
+   - Waiting for mastering process (0% -> 100%)...
+   - ✨ Mastering complete!
+   - Initiating Download sequence...
+   - Clicking Download dropdown...
+   - Looking for 'Ultra HD' option...
+   - Found Ultra HD element: DIV | href=none | onclick=no
+   - Setting up download capture (3 strategies)...
+   - Clicking Ultra HD...
+   - All 3 strategies timed out. Checking for direct download links...
+   - Found direct WAV link: https://distrokid.com/mixea/finishedtracks/download/?mixeaSongUUID=758A2FBFEBE5B8E27F127B1BFADDA924&quality=hd-wav
+   ✅ Saved from direct link: C:\Users\Jeff\Desktop\1OF1 - Solstice\Mastered\07 - DRAGONFRUIT.wav (53211004 bytes)
+   - Returning to main list...
+
+🎧 Processing: 08 - LIGHTRUNNER.mp3
+   - Checking if already mastered with target settings...
+   - 📤 Starting upload flow for: 08 - LIGHTRUNNER.mp3
+   - File uploaded. Waiting for processing/editor UI...
+   - ✅ Editor UI ready.
+   - Starting rigorous intensity discovery (Step-by-Step Security)...
+     Slider Box: {"x":258.15313720703125,"y":603.6035766601562,"width":334.279296875,"height":37.9954833984375}
+     Clicking Position 0 at (292, 623)...
+       -> Result: My mastered tracks
+Master a new track
+Mastered
+Original
+08 - LIGHTRUNNER.mp3
+0:00 / 3:15
+
+Intensity
+
+Low
+High
+
+EQ Options
+
+Brighter
+Warmer
+Download mastered track
+     Clicking Position 1 at (358, 623)...
+       -> Result: My mastered tracks
+Master a new track
+Mastered
+Original
+08 - LIGHTRUNNER.mp3
+0:00 / 3:15
+
+Intensity
+
+Low
+High
+
+EQ Options
+
+Brighter
+Warmer
+Download mastered track
+     Clicking Position 2 at (425, 623)...
+       -> Result: My mastered tracks
+Master a new track
+Mastered
+Original
+08 - LIGHTRUNNER.mp3
+0:00 / 3:15
+
+Intensity
+
+Low
+High
+
+EQ Options
+
+Brighter
+Warmer
+Download mastered track
+     Clicking Position 3 at (492, 623)...
+       -> Result: My mastered tracks
+Master a new track
+Mastered
+Original
+08 - LIGHTRUNNER.mp3
+0:00 / 3:15
+
+Intensity
+
+Low
+High
+
+EQ Options
+
+Brighter
+Warmer
+Download mastered track
+     Clicking Position 4 at (559, 623)...
+       -> Result: My mastered tracks
+Master a new track
+Mastered
+Original
+08 - LIGHTRUNNER.mp3
+0:00 / 3:15
+
+Intensity
+
+Low
+High
+
+EQ Options
+
+Brighter
+Warmer
+Download mastered track
+   🎯 Selected Position: 4 | EQ: PRESERVED (Don't touch)
+   - Applying final target: Position 4
+   ✅ Confirmed: My mastered tracks
+Master a new track
+Mastered
+Original
+08 - LIGHTRUNNER.mp3
+0:00 / 3:15
+
+Intensity
+
+Low
+High
+
+EQ Options
+
+Brighter
+Warmer
+Download mastered track | My mastered tracks
+Master a new track
+Mastered
+Original
+08 - LIGHTRUNNER.mp3
+0:00 / 3:15
+
+Intensity
+
+Low
+High
+
+EQ Options
+
+Brighter
+Warmer
+Download mastered track
+   - Waiting for mastering process (0% -> 100%)...
+   - ✨ Mastering complete!
+   - Initiating Download sequence...
+   - Clicking Download dropdown...
+   - Looking for 'Ultra HD' option...
+   - Found Ultra HD element: DIV | href=none | onclick=no
+   - Setting up download capture (3 strategies)...
+   - Clicking Ultra HD...
+   - All 3 strategies timed out. Checking for direct download links...
+   - Found direct WAV link: https://distrokid.com/mixea/finishedtracks/download/?mixeaSongUUID=10AC6204D1AF4A77894141D886C595FC&quality=hd-wav
+   ✅ Saved from direct link: C:\Users\Jeff\Desktop\1OF1 - Solstice\Mastered\08 - LIGHTRUNNER.wav (56148604 bytes)
+   - Returning to main list...
+
+🎧 Processing: 09 - NIGHTSHIFT STELLAR.mp3
+   - Checking if already mastered with target settings...
+   - 📤 Starting upload flow for: 09 - NIGHTSHIFT STELLAR.mp3
+   - File uploaded. Waiting for processing/editor UI...
+   - ✅ Editor UI ready.
+   - Starting rigorous intensity discovery (Step-by-Step Security)...
+     Slider Box: {"x":258.15313720703125,"y":603.6035766601562,"width":334.279296875,"height":37.9954833984375}
+     Clicking Position 0 at (292, 623)...
+       -> Result: My mastered tracks
+Master a new track
+Mastered
+Original
+09 - NIGHTSHIFT STELLAR.mp3
+0:00 / 2:10
+
+Intensity
+
+Low
+High
+
+EQ Options
+
+Brighter
+Warmer
+Download mastered track
+     Clicking Position 1 at (358, 623)...
+       -> Result: My mastered tracks
+Master a new track
+Mastered
+Original
+09 - NIGHTSHIFT STELLAR.mp3
+0:00 / 2:10
+
+Intensity
+
+Low
+High
+
+EQ Options
+
+Brighter
+Warmer
+Download mastered track
+     Clicking Position 2 at (425, 623)...
+       -> Result: My mastered tracks
+Master a new track
+Mastered
+Original
+09 - NIGHTSHIFT STELLAR.mp3
+0:00 / 2:10
+
+Intensity
+
+Low
+High
+
+EQ Options
+
+Brighter
+Warmer
+Download mastered track
+     Clicking Position 3 at (492, 623)...
+       -> Result: My mastered tracks
+Master a new track
+Mastered
+Original
+09 - NIGHTSHIFT STELLAR.mp3
+0:00 / 2:10
+
+Intensity
+
+Low
+High
+
+EQ Options
+
+Brighter
+Warmer
+Download mastered track
+     Clicking Position 4 at (559, 623)...
+       -> Result: My mastered tracks
+Master a new track
+Mastered
+Original
+09 - NIGHTSHIFT STELLAR.mp3
+0:00 / 2:10
+
+Intensity
+
+Low
+High
+
+EQ Options
+
+Brighter
+Warmer
+Download mastered track
+   🎯 Selected Position: 4 | EQ: PRESERVED (Don't touch)
+   - Applying final target: Position 4
+   ✅ Confirmed: My mastered tracks
+Master a new track
+Mastered
+Original
+09 - NIGHTSHIFT STELLAR.mp3
+0:00 / 2:10
+
+Intensity
+
+Low
+High
+
+EQ Options
+
+Brighter
+Warmer
+Download mastered track | My mastered tracks
+Master a new track
+Mastered
+Original
+09 - NIGHTSHIFT STELLAR.mp3
+0:00 / 2:10
+
+Intensity
+
+Low
+High
+
+EQ Options
+
+Brighter
+Warmer
+Download mastered track
+   - Waiting for mastering process (0% -> 100%)...
+   - ✨ Mastering complete!
+   - Initiating Download sequence...
+   - Clicking Download dropdown...
+   - Looking for 'Ultra HD' option...
+   - Found Ultra HD element: DIV | href=none | onclick=no
+   - Setting up download capture (3 strategies)...
+   - Clicking Ultra HD...
+   - All 3 strategies timed out. Checking for direct download links...
+   - Found direct WAV link: https://distrokid.com/mixea/finishedtracks/download/?mixeaSongUUID=8337DF1F7F2DB9D9A74700C8E63BDCD3&quality=hd-wav
+   ✅ Saved from direct link: C:\Users\Jeff\Desktop\1OF1 - Solstice\Mastered\09 - NIGHTSHIFT STELLAR.wav (37405564 bytes)
+   - Returning to main list...
+
+🎧 Processing: 10 - MOONSTEP.mp3
+   - Checking if already mastered with target settings...
+   - 📤 Starting upload flow for: 10 - MOONSTEP.mp3
+   - File uploaded. Waiting for processing/editor UI...
+   - ✅ Editor UI ready.
+   - Starting rigorous intensity discovery (Step-by-Step Security)...
+     Slider Box: {"x":258.15313720703125,"y":603.6035766601562,"width":334.279296875,"height":37.9954833984375}
+     Clicking Position 0 at (292, 623)...
+       -> Result: My mastered tracks
+Master a new track
+Mastered
+Original
+10 - MOONSTEP.mp3
+0:00 / 2:55
+
+Intensity
+
+Low
+High
+
+EQ Options
+
+Brighter
+Warmer
+Download mastered track
+     Clicking Position 1 at (358, 623)...
+       -> Result: My mastered tracks
+Master a new track
+Mastered
+Original
+10 - MOONSTEP.mp3
+0:00 / 2:55
+
+Intensity
+
+Low
+High
+
+EQ Options
+
+Brighter
+Warmer
+Download mastered track
+     Clicking Position 2 at (425, 623)...
+       -> Result: My mastered tracks
+Master a new track
+Mastered
+Original
+10 - MOONSTEP.mp3
+0:00 / 2:55
+
+Intensity
+
+Low
+High
+
+EQ Options
+
+Brighter
+Warmer
+Download mastered track
+     Clicking Position 3 at (492, 623)...
+       -> Result: My mastered tracks
+Master a new track
+Mastered
+Original
+10 - MOONSTEP.mp3
+0:00 / 2:55
+
+Intensity
+
+Low
+High
+
+EQ Options
+
+Brighter
+Warmer
+Download mastered track
+     Clicking Position 4 at (559, 623)...
+       -> Result: My mastered tracks
+Master a new track
+Mastered
+Original
+10 - MOONSTEP.mp3
+0:00 / 2:55
+
+Intensity
+
+Low
+High
+
+EQ Options
+
+Brighter
+Warmer
+Download mastered track
+   🎯 Selected Position: 4 | EQ: PRESERVED (Don't touch)
+   - Applying final target: Position 4
+   ✅ Confirmed: My mastered tracks
+Master a new track
+Mastered
+Original
+10 - MOONSTEP.mp3
+0:00 / 2:55
+
+Intensity
+
+Low
+High
+
+EQ Options
+
+Brighter
+Warmer
+Download mastered track | My mastered tracks
+Master a new track
+Mastered
+Original
+10 - MOONSTEP.mp3
+0:00 / 2:55
+
+Intensity
+
+Low
+High
+
+EQ Options
+
+Brighter
+Warmer
+Download mastered track
+   - Waiting for mastering process (0% -> 100%)...
+   - ✨ Mastering complete!
+   - Initiating Download sequence...
+   - Clicking Download dropdown...
+   - Looking for 'Ultra HD' option...
+   - Found Ultra HD element: DIV | href=none | onclick=no
+   - Setting up download capture (3 strategies)...
+   - Clicking Ultra HD...
+   - All 3 strategies timed out. Checking for direct download links...
+   - Found direct WAV link: https://distrokid.com/mixea/finishedtracks/download/?mixeaSongUUID=026188E3BB60A8519AF73A2E53AB7939&quality=hd-wav
+   ✅ Saved from direct link: C:\Users\Jeff\Desktop\1OF1 - Solstice\Mastered\10 - MOONSTEP.wav (50296444 bytes)
+   - Returning to main list...
+
+🎧 Processing: 11 - MIRAGE.mp3
+   - Checking if already mastered with target settings...
+   - 📤 Starting upload flow for: 11 - MIRAGE.mp3
+   - File uploaded. Waiting for processing/editor UI...
+   - ✅ Editor UI ready.
+   - Starting rigorous intensity discovery (Step-by-Step Security)...
+     Slider Box: {"x":258.15313720703125,"y":603.6035766601562,"width":334.279296875,"height":37.9954833984375}
+     Clicking Position 0 at (292, 623)...
+       -> Result: My mastered tracks
+Master a new track
+Mastered
+Original
+11 - MIRAGE.mp3
+0:00 / 2:19
+
+Intensity
+
+Low
+High
+
+EQ Options
+
+Brighter
+Warmer
+Download mastered track
+     Clicking Position 1 at (358, 623)...
+       -> Result: My mastered tracks
+Master a new track
+Mastered
+Original
+11 - MIRAGE.mp3
+0:00 / 2:19
+
+Intensity
+
+Low
+High
+
+EQ Options
+
+Brighter
+Warmer
+Download mastered track
+     Clicking Position 2 at (425, 623)...
+       -> Result: My mastered tracks
+Master a new track
+Mastered
+Original
+11 - MIRAGE.mp3
+0:00 / 2:19
+
+Intensity
+
+Low
+High
+
+EQ Options
+
+Brighter
+Warmer
+Download mastered track
+     Clicking Position 3 at (492, 623)...
+       -> Result: My mastered tracks
+Master a new track
+Mastered
+Original
+11 - MIRAGE.mp3
+0:00 / 2:19
+
+Intensity
+
+Low
+High
+
+EQ Options
+
+Brighter
+Warmer
+Download mastered track
+     Clicking Position 4 at (559, 623)...
+       -> Result: My mastered tracks
+Master a new track
+Mastered
+Original
+11 - MIRAGE.mp3
+0:00 / 2:19
+
+Intensity
+
+Low
+High
+
+EQ Options
+
+Brighter
+Warmer
+Download mastered track
+   🎯 Selected Position: 4 | EQ: PRESERVED (Don't touch)
+   - Applying final target: Position 4
+   ✅ Confirmed: My mastered tracks
+Master a new track
+Mastered
+Original
+11 - MIRAGE.mp3
+0:00 / 2:19
+
+Intensity
+
+Low
+High
+
+EQ Options
+
+Brighter
+Warmer
+Download mastered track | My mastered tracks
+Master a new track
+Mastered
+Original
+11 - MIRAGE.mp3
+0:00 / 2:19
+
+Intensity
+
+Low
+High
+
+EQ Options
+
+Brighter
+Warmer
+Download mastered track
+   - Waiting for mastering process (0% -> 100%)...
+   - ✨ Mastering complete!
+   - Initiating Download sequence...
+   - Clicking Download dropdown...
+   - Looking for 'Ultra HD' option...
+   - Found Ultra HD element: DIV | href=none | onclick=no
+   - Setting up download capture (3 strategies)...
+   - Clicking Ultra HD...
+   - All 3 strategies timed out. Checking for direct download links...
+   - Found direct WAV link: https://distrokid.com/mixea/finishedtracks/download/?mixeaSongUUID=F98159338622563D3234226C102BE21E&quality=hd-wav
+   ✅ Saved from direct link: C:\Users\Jeff\Desktop\1OF1 - Solstice\Mastered\11 - MIRAGE.wav (40112764 bytes)
+   - Returning to main list...
+
+🎧 Processing: 12 - GLASS COMET.mp3
+   - Checking if already mastered with target settings...
+   - 📤 Starting upload flow for: 12 - GLASS COMET.mp3
+   - File uploaded. Waiting for processing/editor UI...
+   - ✅ Editor UI ready.
+   - Starting rigorous intensity discovery (Step-by-Step Security)...
+     Slider Box: {"x":258.15313720703125,"y":603.6035766601562,"width":334.279296875,"height":37.9954833984375}
+     Clicking Position 0 at (292, 623)...
+       -> Result: My mastered tracks
+Master a new track
+Mastered
+Original
+12 - GLASS COMET.mp3
+0:00 / 2:10
+
+Intensity
+
+Low
+High
+
+EQ Options
+
+Brighter
+Warmer
+Download mastered track
+     Clicking Position 1 at (358, 623)...
+       -> Result: My mastered tracks
+Master a new track
+Mastered
+Original
+12 - GLASS COMET.mp3
+0:00 / 2:10
+
+Intensity
+
+Low
+High
+
+EQ Options
+
+Brighter
+Warmer
+Download mastered track
+     Clicking Position 2 at (425, 623)...
+       -> Result: My mastered tracks
+Master a new track
+Mastered
+Original
+12 - GLASS COMET.mp3
+0:00 / 2:10
+
+Intensity
+
+Low
+High
+
+EQ Options
+
+Brighter
+Warmer
+Download mastered track
+     Clicking Position 3 at (492, 623)...
+       -> Result: My mastered tracks
+Master a new track
+Mastered
+Original
+12 - GLASS COMET.mp3
+0:00 / 2:10
+
+Intensity
+
+Low
+High
+
+EQ Options
+
+Brighter
+Warmer
+Download mastered track
+     Clicking Position 4 at (559, 623)...
+       -> Result: My mastered tracks
+Master a new track
+Mastered
+Original
+12 - GLASS COMET.mp3
+0:00 / 2:10
+
+Intensity
+
+Low
+High
+
+EQ Options
+
+Brighter
+Warmer
+Download mastered track
+   🎯 Selected Position: 4 | EQ: PRESERVED (Don't touch)
+   - Applying final target: Position 4
+   ✅ Confirmed: My mastered tracks
+Master a new track
+Mastered
+Original
+12 - GLASS COMET.mp3
+0:00 / 2:10
+
+Intensity
+
+Low
+High
+
+EQ Options
+
+Brighter
+Warmer
+Download mastered track | My mastered tracks
+Master a new track
+Mastered
+Original
+12 - GLASS COMET.mp3
+0:00 / 2:10
+
+Intensity
+
+Low
+High
+
+EQ Options
+
+Brighter
+Warmer
+Download mastered track
+   - Waiting for mastering process (0% -> 100%)...
+   - ✨ Mastering complete!
+   - Initiating Download sequence...
+   - Clicking Download dropdown...
+   - Looking for 'Ultra HD' option...
+   - Found Ultra HD element: DIV | href=none | onclick=no
+   - Setting up download capture (3 strategies)...
+   - Clicking Ultra HD...
+   - All 3 strategies timed out. Checking for direct download links...
+   - Found direct WAV link: https://distrokid.com/mixea/finishedtracks/download/?mixeaSongUUID=743F96CC9420A7133EC129037D0F7C07&quality=hd-wav
+   ✅ Saved from direct link: C:\Users\Jeff\Desktop\1OF1 - Solstice\Mastered\12 - GLASS COMET.wav (37428604 bytes)
+   - Returning to main list...
+
+🎧 Processing: 13 - SILVER TONGUE.mp3
+   - Checking if already mastered with target settings...
+   - 📤 Starting upload flow for: 13 - SILVER TONGUE.mp3
+   - File uploaded. Waiting for processing/editor UI...
+   - ✅ Editor UI ready.
+   - Starting rigorous intensity discovery (Step-by-Step Security)...
+     Slider Box: {"x":258.15313720703125,"y":603.6035766601562,"width":334.279296875,"height":37.9954833984375}
+     Clicking Position 0 at (292, 623)...
+       -> Result: My mastered tracks
+Master a new track
+Mastered
+Original
+13 - SILVER TONGUE.mp3
+0:00 / 2:13
+
+Intensity
+
+Low
+High
+
+EQ Options
+
+Brighter
+Warmer
+Download mastered track
+     Clicking Position 1 at (358, 623)...
+       -> Result: My mastered tracks
+Master a new track
+Mastered
+Original
+13 - SILVER TONGUE.mp3
+0:00 / 2:13
+
+Intensity
+
+Low
+High
+
+EQ Options
+
+Brighter
+Warmer
+Download mastered track
+     Clicking Position 2 at (425, 623)...
+       -> Result: My mastered tracks
+Master a new track
+Mastered
+Original
+13 - SILVER TONGUE.mp3
+0:00 / 2:13
+
+Intensity
+
+Low
+High
+
+EQ Options
+
+Brighter
+Warmer
+Download mastered track
+     Clicking Position 3 at (492, 623)...
+       -> Result: My mastered tracks
+Master a new track
+Mastered
+Original
+13 - SILVER TONGUE.mp3
+0:00 / 2:13
+
+Intensity
+
+Low
+High
+
+EQ Options
+
+Brighter
+Warmer
+Download mastered track
+     Clicking Position 4 at (559, 623)...
+       -> Result: My mastered tracks
+Master a new track
+Mastered
+Original
+13 - SILVER TONGUE.mp3
+0:00 / 2:13
+
+Intensity
+
+Low
+High
+
+EQ Options
+
+Brighter
+Warmer
+Download mastered track
+   🎯 Selected Position: 4 | EQ: PRESERVED (Don't touch)
+   - Applying final target: Position 4
+   ✅ Confirmed: My mastered tracks
+Master a new track
+Mastered
+Original
+13 - SILVER TONGUE.mp3
+0:00 / 2:13
+
+Intensity
+
+Low
+High
+
+EQ Options
+
+Brighter
+Warmer
+Download mastered track | My mastered tracks
+Master a new track
+Mastered
+Original
+13 - SILVER TONGUE.mp3
+0:00 / 2:13
+
+Intensity
+
+Low
+High
+
+EQ Options
+
+Brighter
+Warmer
+Download mastered track
+   - Waiting for mastering process (0% -> 100%)...
+   - ✨ Mastering complete!
+   - Initiating Download sequence...
+   - Clicking Download dropdown...
+   - Looking for 'Ultra HD' option...
+   - Found Ultra HD element: DIV | href=none | onclick=no
+   - Setting up download capture (3 strategies)...
+   - Clicking Ultra HD...
+   - All 3 strategies timed out. Checking for direct download links...
+   - Found direct WAV link: https://distrokid.com/mixea/finishedtracks/download/?mixeaSongUUID=E5190A3071934F0DF023C14F5F66FE76&quality=hd-wav
+   ✅ Saved from direct link: C:\Users\Jeff\Desktop\1OF1 - Solstice\Mastered\13 - SILVER TONGUE.wav (38188924 bytes)
+   - Returning to main list...
+
+🎧 Processing: 14 - GEMINI.mp3
+   - Checking if already mastered with target settings...
+   - 📤 Starting upload flow for: 14 - GEMINI.mp3
+   - File uploaded. Waiting for processing/editor UI...
+   - ✅ Editor UI ready.
+   - Starting rigorous intensity discovery (Step-by-Step Security)...
+     Slider Box: {"x":258.15313720703125,"y":603.6035766601562,"width":334.279296875,"height":37.9954833984375}
+     Clicking Position 0 at (292, 623)...
+       -> Result: My mastered tracks
+Master a new track
+Mastered
+Original
+14 - GEMINI.mp3
+0:00 / 2:54
+
+Intensity
+
+Low
+High
+
+EQ Options
+
+Brighter
+Warmer
+Download mastered track
+     Clicking Position 1 at (358, 623)...
+       -> Result: My mastered tracks
+Master a new track
+Mastered
+Original
+14 - GEMINI.mp3
+0:00 / 2:54
+
+Intensity
+
+Low
+High
+
+EQ Options
+
+Brighter
+Warmer
+Download mastered track
+     Clicking Position 2 at (425, 623)...
+       -> Result: My mastered tracks
+Master a new track
+Mastered
+Original
+14 - GEMINI.mp3
+0:00 / 2:54
+
+Intensity
+
+Low
+High
+
+EQ Options
+
+Brighter
+Warmer
+Download mastered track
+     Clicking Position 3 at (492, 623)...
+       -> Result: My mastered tracks
+Master a new track
+Mastered
+Original
+14 - GEMINI.mp3
+0:00 / 2:54
+
+Intensity
+
+Low
+High
+
+EQ Options
+
+Brighter
+Warmer
+Download mastered track
+     Clicking Position 4 at (559, 623)...
+       -> Result: My mastered tracks
+Master a new track
+Mastered
+Original
+14 - GEMINI.mp3
+0:00 / 2:54
+
+Intensity
+
+Low
+High
+
+EQ Options
+
+Brighter
+Warmer
+Download mastered track
+   🎯 Selected Position: 4 | EQ: PRESERVED (Don't touch)
+   - Applying final target: Position 4
+   ✅ Confirmed: My mastered tracks
+Master a new track
+Mastered
+Original
+14 - GEMINI.mp3
+0:00 / 2:54
+
+Intensity
+
+Low
+High
+
+EQ Options
+
+Brighter
+Warmer
+Download mastered track | My mastered tracks
+Master a new track
+Mastered
+Original
+14 - GEMINI.mp3
+0:00 / 2:54
+
+Intensity
+
+Low
+High
+
+EQ Options
+
+Brighter
+Warmer
+Download mastered track
+   - Waiting for mastering process (0% -> 100%)...
+   - ✨ Mastering complete!
+   - Initiating Download sequence...
+   - Clicking Download dropdown...
+   - Looking for 'Ultra HD' option...
+   - Found Ultra HD element: DIV | href=none | onclick=no
+   - Setting up download capture (3 strategies)...
+   - Clicking Ultra HD...
+   - All 3 strategies timed out. Checking for direct download links...
+   - Found direct WAV link: https://distrokid.com/mixea/finishedtracks/download/?mixeaSongUUID=48CAE41D36623AEA9CD78157387C041F&quality=hd-wav
+   ✅ Saved from direct link: C:\Users\Jeff\Desktop\1OF1 - Solstice\Mastered\14 - GEMINI.wav (50089084 bytes)
+   - Returning to main list...
+
+🎧 Processing: 15 - OMG NEW USERS.mp3
+   - Checking if already mastered with target settings...
+   - 📤 Starting upload flow for: 15 - OMG NEW USERS.mp3
+   - File uploaded. Waiting for processing/editor UI...
+   - ✅ Editor UI ready.
+   - Starting rigorous intensity discovery (Step-by-Step Security)...
+     Slider Box: {"x":258.15313720703125,"y":603.6035766601562,"width":334.279296875,"height":37.9954833984375}
+     Clicking Position 0 at (292, 623)...
+       -> Result: My mastered tracks
+Master a new track
+Mastered
+Original
+15 - OMG NEW USERS.mp3
+0:00 / 1:50
+
+Intensity
+
+Low
+High
+
+EQ Options
+
+Brighter
+Warmer
+Download mastered track
+     Clicking Position 1 at (358, 623)...
+       -> Result: My mastered tracks
+Master a new track
+Mastered
+Original
+15 - OMG NEW USERS.mp3
+0:00 / 1:50
+
+Intensity
+
+Low
+High
+
+EQ Options
+
+Brighter
+Warmer
+Download mastered track
+     Clicking Position 2 at (425, 623)...
+       -> Result: My mastered tracks
+Master a new track
+Mastered
+Original
+15 - OMG NEW USERS.mp3
+0:00 / 1:50
+
+Intensity
+
+Low
+High
+
+EQ Options
+
+Brighter
+Warmer
+Download mastered track
+     Clicking Position 3 at (492, 623)...
+       -> Result: My mastered tracks
+Master a new track
+Mastered
+Original
+15 - OMG NEW USERS.mp3
+0:00 / 1:50
+
+Intensity
+
+Low
+High
+
+EQ Options
+
+Brighter
+Warmer
+Download mastered track
+     Clicking Position 4 at (559, 623)...
+       -> Result: My mastered tracks
+Master a new track
+Mastered
+Original
+15 - OMG NEW USERS.mp3
+0:00 / 1:50
+
+Intensity
+
+Low
+High
+
+EQ Options
+
+Brighter
+Warmer
+Download mastered track
+   🎯 Selected Position: 4 | EQ: PRESERVED (Don't touch)
+   - Applying final target: Position 4
+   ✅ Confirmed: My mastered tracks
+Master a new track
+Mastered
+Original
+15 - OMG NEW USERS.mp3
+0:00 / 1:50
+
+Intensity
+
+Low
+High
+
+EQ Options
+
+Brighter
+Warmer
+Download mastered track | My mastered tracks
+Master a new track
+Mastered
+Original
+15 - OMG NEW USERS.mp3
+0:00 / 1:50
+
+Intensity
+
+Low
+High
+
+EQ Options
+
+Brighter
+Warmer
+Download mastered track
+   - Waiting for mastering process (0% -> 100%)...
+   - ✨ Mastering complete!
+   - Initiating Download sequence...
+   - Clicking Download dropdown...
+   - Looking for 'Ultra HD' option...
+   - Found Ultra HD element: DIV | href=none | onclick=no
+   - Setting up download capture (3 strategies)...
+   - Clicking Ultra HD...
+   - All 3 strategies timed out. Checking for direct download links...
+   - Found direct WAV link: https://distrokid.com/mixea/finishedtracks/download/?mixeaSongUUID=B29AA7D50658B8566FEF34921C388253&quality=hd-wav
+   ✅ Saved from direct link: C:\Users\Jeff\Desktop\1OF1 - Solstice\Mastered\15 - OMG NEW USERS.wav (31668604 bytes)
+   - Returning to main list...
+
+🎧 Processing: 16 - BLACK CARD.mp3
+   - Checking if already mastered with target settings...
+   - 📤 Starting upload flow for: 16 - BLACK CARD.mp3
+   - File uploaded. Waiting for processing/editor UI...
+   - ✅ Editor UI ready.
+   - Starting rigorous intensity discovery (Step-by-Step Security)...
+     Slider Box: {"x":258.15313720703125,"y":603.6035766601562,"width":334.279296875,"height":37.9954833984375}
+     Clicking Position 0 at (292, 623)...
+       -> Result: My mastered tracks
+Master a new track
+Mastered
+Original
+16 - BLACK CARD.mp3
+0:00 / 2:51
+
+Intensity
+
+Low
+High
+
+EQ Options
+
+Brighter
+Warmer
+Download mastered track
+     Clicking Position 1 at (358, 623)...
+       -> Result: My mastered tracks
+Master a new track
+Mastered
+Original
+16 - BLACK CARD.mp3
+0:00 / 2:51
+
+Intensity
+
+Low
+High
+
+EQ Options
+
+Brighter
+Warmer
+Download mastered track
+     Clicking Position 2 at (425, 623)...
+       -> Result: My mastered tracks
+Master a new track
+Mastered
+Original
+16 - BLACK CARD.mp3
+0:00 / 2:51
+
+Intensity
+
+Low
+High
+
+EQ Options
+
+Brighter
+Warmer
+Download mastered track
+     Clicking Position 3 at (492, 623)...
+       -> Result: My mastered tracks
+Master a new track
+Mastered
+Original
+16 - BLACK CARD.mp3
+0:00 / 2:51
+
+Intensity
+
+Low
+High
+
+EQ Options
+
+Brighter
+Warmer
+Download mastered track
+     Clicking Position 4 at (559, 623)...
+       -> Result: My mastered tracks
+Master a new track
+Mastered
+Original
+16 - BLACK CARD.mp3
+0:00 / 2:51
+
+Intensity
+
+Low
+High
+
+EQ Options
+
+Brighter
+Warmer
+Download mastered track
+   🎯 Selected Position: 4 | EQ: PRESERVED (Don't touch)
+   - Applying final target: Position 4
+   ✅ Confirmed: My mastered tracks
+Master a new track
+Mastered
+Original
+16 - BLACK CARD.mp3
+0:00 / 2:51
+
+Intensity
+
+Low
+High
+
+EQ Options
+
+Brighter
+Warmer
+Download mastered track | My mastered tracks
+Master a new track
+Mastered
+Original
+16 - BLACK CARD.mp3
+0:00 / 2:51
+
+Intensity
+
+Low
+High
+
+EQ Options
+
+Brighter
+Warmer
+Download mastered track
+   - Waiting for mastering process (0% -> 100%)...
+   - ✨ Mastering complete!
+   - Initiating Download sequence...
+   - Clicking Download dropdown...
+   - Looking for 'Ultra HD' option...
+   - Found Ultra HD element: DIV | href=none | onclick=no
+   - Setting up download capture (3 strategies)...
+   - Clicking Ultra HD...
+   - All 3 strategies timed out. Checking for direct download links...
+   - Found direct WAV link: https://distrokid.com/mixea/finishedtracks/download/?mixeaSongUUID=4FE8669F88EDAB6DA9797A67664233C6&quality=hd-wav
+   ✅ Saved from direct link: C:\Users\Jeff\Desktop\1OF1 - Solstice\Mastered\16 - BLACK CARD.wav (49109884 bytes)
+   - Returning to main list...
+
+🎧 Processing: 17 - PHANTOM THREAD.mp3
+   - Checking if already mastered with target settings...
+   - 📤 Starting upload flow for: 17 - PHANTOM THREAD.mp3
+   - File uploaded. Waiting for processing/editor UI...
+   - ✅ Editor UI ready.
+   - Starting rigorous intensity discovery (Step-by-Step Security)...
+     Slider Box: {"x":258.15313720703125,"y":603.6035766601562,"width":334.279296875,"height":37.9954833984375}
+     Clicking Position 0 at (292, 623)...
+       -> Result: My mastered tracks
+Master a new track
+Mastered
+Original
+17 - PHANTOM THREAD.mp3
+0:00 / 2:52
+
+Intensity
+
+Low
+High
+
+EQ Options
+
+Brighter
+Warmer
+Download mastered track
+     Clicking Position 1 at (358, 623)...
+       -> Result: My mastered tracks
+Master a new track
+Mastered
+Original
+17 - PHANTOM THREAD.mp3
+0:00 / 2:52
+
+Intensity
+
+Low
+High
+
+EQ Options
+
+Brighter
+Warmer
+Download mastered track
+     Clicking Position 2 at (425, 623)...
+       -> Result: My mastered tracks
+Master a new track
+Mastered
+Original
+17 - PHANTOM THREAD.mp3
+0:00 / 2:52
+
+Intensity
+
+Low
+High
+
+EQ Options
+
+Brighter
+Warmer
+Download mastered track
+     Clicking Position 3 at (492, 623)...
+       -> Result: My mastered tracks
+Master a new track
+Mastered
+Original
+17 - PHANTOM THREAD.mp3
+0:00 / 2:52
+
+Intensity
+
+Low
+High
+
+EQ Options
+
+Brighter
+Warmer
+Download mastered track
+     Clicking Position 4 at (559, 623)...
+       -> Result: My mastered tracks
+Master a new track
+Mastered
+Original
+17 - PHANTOM THREAD.mp3
+0:00 / 2:52
+
+Intensity
+
+Low
+High
+
+EQ Options
+
+Brighter
+Warmer
+Download mastered track
+   🎯 Selected Position: 4 | EQ: PRESERVED (Don't touch)
+   - Applying final target: Position 4
+   ✅ Confirmed: My mastered tracks
+Master a new track
+Mastered
+Original
+17 - PHANTOM THREAD.mp3
+0:00 / 2:52
+
+Intensity
+
+Low
+High
+
+EQ Options
+
+Brighter
+Warmer
+Download mastered track | My mastered tracks
+Master a new track
+Mastered
+Original
+17 - PHANTOM THREAD.mp3
+0:00 / 2:52
+
+Intensity
+
+Low
+High
+
+EQ Options
+
+Brighter
+Warmer
+Download mastered track
+   - Waiting for mastering process (0% -> 100%)...
+   - ✨ Mastering complete!
+   - Initiating Download sequence...
+   - Clicking Download dropdown...
+   - Looking for 'Ultra HD' option...
+   - Found Ultra HD element: DIV | href=none | onclick=no
+   - Setting up download capture (3 strategies)...
+   - Clicking Ultra HD...
+   - All 3 strategies timed out. Checking for direct download links...
+   - Found direct WAV link: https://distrokid.com/mixea/finishedtracks/download/?mixeaSongUUID=5B74D47DA66E33C7A03612C613B3100D&quality=hd-wav
+   ✅ Saved from direct link: C:\Users\Jeff\Desktop\1OF1 - Solstice\Mastered\17 - PHANTOM THREAD.wav (49432444 bytes)
+   - Returning to main list...
+
+🎧 Processing: 18 - DUSK.mp3
+   - Checking if already mastered with target settings...
+   - 📤 Starting upload flow for: 18 - DUSK.mp3
+   - File uploaded. Waiting for processing/editor UI...
+   - ✅ Editor UI ready.
+   - Starting rigorous intensity discovery (Step-by-Step Security)...
+     Slider Box: {"x":258.15313720703125,"y":603.6035766601562,"width":334.279296875,"height":37.9954833984375}
+     Clicking Position 0 at (292, 623)...
+       -> Result: My mastered tracks
+Master a new track
+Mastered
+Original
+18 - DUSK.mp3
+0:00 / 2:33
+
+Intensity
+
+Low
+High
+
+EQ Options
+
+Brighter
+Warmer
+Download mastered track
+     Clicking Position 1 at (358, 623)...
+       -> Result: My mastered tracks
+Master a new track
+Mastered
+Original
+18 - DUSK.mp3
+0:00 / 2:33
+
+Intensity
+
+Low
+High
+
+EQ Options
+
+Brighter
+Warmer
+Download mastered track
+     Clicking Position 2 at (425, 623)...
+       -> Result: My mastered tracks
+Master a new track
+Mastered
+Original
+18 - DUSK.mp3
+0:00 / 2:33
+
+Intensity
+
+Low
+High
+
+EQ Options
+
+Brighter
+Warmer
+Download mastered track
+     Clicking Position 3 at (492, 623)...
+       -> Result: My mastered tracks
+Master a new track
+Mastered
+Original
+18 - DUSK.mp3
+0:00 / 2:33
+
+Intensity
+
+Low
+High
+
+EQ Options
+
+Brighter
+Warmer
+Download mastered track
+     Clicking Position 4 at (559, 623)...
+       -> Result: My mastered tracks
+Master a new track
+Mastered
+Original
+18 - DUSK.mp3
+0:00 / 2:33
+
+Intensity
+
+Low
+High
+
+EQ Options
+
+Brighter
+Warmer
+Download mastered track
+   🎯 Selected Position: 4 | EQ: PRESERVED (Don't touch)
+   - Applying final target: Position 4
+   ✅ Confirmed: My mastered tracks
+Master a new track
+Mastered
+Original
+18 - DUSK.mp3
+0:00 / 2:33
+
+Intensity
+
+Low
+High
+
+EQ Options
+
+Brighter
+Warmer
+Download mastered track | My mastered tracks
+Master a new track
+Mastered
+Original
+18 - DUSK.mp3
+0:00 / 2:33
+
+Intensity
+
+Low
+High
+
+EQ Options
+
+Brighter
+Warmer
+Download mastered track
+   - Waiting for mastering process (0% -> 100%)...
+   - ✨ Mastering complete!
+   - Initiating Download sequence...
+   - Clicking Download dropdown...
+   - Looking for 'Ultra HD' option...
+   - Found Ultra HD element: DIV | href=none | onclick=no
+   - Setting up download capture (3 strategies)...
+   - Clicking Ultra HD...
+   - All 3 strategies timed out. Checking for direct download links...
+   - Found direct WAV link: https://distrokid.com/mixea/finishedtracks/download/?mixeaSongUUID=569F7273AF4D4D63920E34C27EE43F98&quality=hd-wav
+   ✅ Saved from direct link: C:\Users\Jeff\Desktop\1OF1 - Solstice\Mastered\18 - DUSK.wav (44006524 bytes)
+   - Returning to main list...
+
+🎧 Processing: 19 - STARSHIFT.mp3
+   - Checking if already mastered with target settings...
+   - 📤 Starting upload flow for: 19 - STARSHIFT.mp3
+   - File uploaded. Waiting for processing/editor UI...
+   - ✅ Editor UI ready.
+   - Starting rigorous intensity discovery (Step-by-Step Security)...
+     Slider Box: {"x":258.15313720703125,"y":603.6035766601562,"width":334.279296875,"height":37.9954833984375}
+     Clicking Position 0 at (292, 623)...
+       -> Result: My mastered tracks
+Master a new track
+Mastered
+Original
+19 - STARSHIFT.mp3
+0:00 / 3:10
+
+Intensity
+
+Low
+High
+
+EQ Options
+
+Brighter
+Warmer
+Download mastered track
+     Clicking Position 1 at (358, 623)...
+       -> Result: My mastered tracks
+Master a new track
+Mastered
+Original
+19 - STARSHIFT.mp3
+0:00 / 3:10
+
+Intensity
+
+Low
+High
+
+EQ Options
+
+Brighter
+Warmer
+Download mastered track
+     Clicking Position 2 at (425, 623)...
+       -> Result: My mastered tracks
+Master a new track
+Mastered
+Original
+19 - STARSHIFT.mp3
+0:00 / 3:10
+
+Intensity
+
+Low
+High
+
+EQ Options
+
+Brighter
+Warmer
+Download mastered track
+     Clicking Position 3 at (492, 623)...
+       -> Result: My mastered tracks
+Master a new track
+Mastered
+Original
+19 - STARSHIFT.mp3
+0:00 / 3:10
+
+Intensity
+
+Low
+High
+
+EQ Options
+
+Brighter
+Warmer
+Download mastered track
+     Clicking Position 4 at (559, 623)...
+       -> Result: My mastered tracks
+Master a new track
+Mastered
+Original
+19 - STARSHIFT.mp3
+0:00 / 3:10
+
+Intensity
+
+Low
+High
+
+EQ Options
+
+Brighter
+Warmer
+Download mastered track
+   🎯 Selected Position: 4 | EQ: PRESERVED (Don't touch)
+   - Applying final target: Position 4
+   ✅ Confirmed: My mastered tracks
+Master a new track
+Mastered
+Original
+19 - STARSHIFT.mp3
+0:00 / 3:10
+
+Intensity
+
+Low
+High
+
+EQ Options
+
+Brighter
+Warmer
+Download mastered track | My mastered tracks
+Master a new track
+Mastered
+Original
+19 - STARSHIFT.mp3
+0:00 / 3:10
+
+Intensity
+
+Low
+High
+
+EQ Options
+
+Brighter
+Warmer
+Download mastered track
+   - Waiting for mastering process (0% -> 100%)...
+   - ✨ Mastering complete!
+   - Initiating Download sequence...
+   - Clicking Download dropdown...
+   - Looking for 'Ultra HD' option...
+   - Found Ultra HD element: DIV | href=none | onclick=no
+   - Setting up download capture (3 strategies)...
+   - Clicking Ultra HD...
+   - All 3 strategies timed out. Checking for direct download links...
+   - Found direct WAV link: https://distrokid.com/mixea/finishedtracks/download/?mixeaSongUUID=EEBD007915C72D1C6182B6652686461C&quality=hd-wav
+   ✅ Saved from direct link: C:\Users\Jeff\Desktop\1OF1 - Solstice\Mastered\19 - STARSHIFT.wav (54651004 bytes)
+   - Returning to main list...
+
+v16 finished. Check the browser or logs.

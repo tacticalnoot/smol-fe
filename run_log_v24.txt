@@ -1,0 +1,146 @@
+≡ƒÜÇ Starting Mixea Automation v16 (Adaptive)...
+   ≡ƒôé Browser Profile: C:\Users\Jeff\Mixtape Auto\smol-fe\scripts\mixea_browser_data
+Navigating to Mixea...
+
+ΓÜá∩╕Å  PLEASE LOG IN TO DISTROKID/MIXEA IN THE BROWSER WINDOW ΓÜá∩╕Å
+ΓÅ│ Waiting for interface load (Upload or Mastered List)...
+Γ£à Interface detected!
+
+≡ƒÄº Processing: 01 - STARLACE.mp3
+   - Checking if already mastered with target settings...
+   - ≡ƒôñ Starting upload flow for: 01 - STARLACE.mp3
+   - File uploaded. Waiting for processing/editor UI...
+   - Γ£à Editor UI ready.
+   - Starting rigorous intensity discovery (Step-by-Step Security)...
+     Slider Box: {"x":258.15313720703125,"y":603.6035766601562,"width":334.279296875,"height":37.9954833984375}
+     Clicking Position 0 at (292, 623)...
+       -> Result: My mastered tracks
+Master a new track
+Mastered
+Original
+01 - STARLACE.mp3
+0:00┬á/┬á3:50
+
+Intensity
+
+Low
+High
+
+EQ Options
+
+Brighter
+Warmer
+Download mastered track
+     Clicking Position 1 at (358, 623)...
+       -> Result: My mastered tracks
+Master a new track
+Mastered
+Original
+01 - STARLACE.mp3
+0:00┬á/┬á3:50
+
+Intensity
+
+Low
+High
+
+EQ Options
+
+Brighter
+Warmer
+Download mastered track
+     Clicking Position 2 at (425, 623)...
+       -> Result: My mastered tracks
+Master a new track
+Mastered
+Original
+01 - STARLACE.mp3
+0:00┬á/┬á3:50
+
+Intensity
+
+Low
+High
+
+EQ Options
+
+Brighter
+Warmer
+Download mastered track
+     Clicking Position 3 at (492, 623)...
+       -> Result: My mastered tracks
+Master a new track
+Mastered
+Original
+01 - STARLACE.mp3
+0:00┬á/┬á3:50
+
+Intensity
+
+Low
+High
+
+EQ Options
+
+Brighter
+Warmer
+Download mastered track
+     Clicking Position 4 at (559, 623)...
+       -> Result: My mastered tracks
+Master a new track
+Mastered
+Original
+01 - STARLACE.mp3
+0:00┬á/┬á3:50
+
+Intensity
+
+Low
+High
+
+EQ Options
+
+Brighter
+Warmer
+Download mastered track
+   ≡ƒÄ» Selected Position: 4 | EQ: PRESERVED (Don't touch)
+   - Applying final target: Position 4
+   Γ£à Confirmed: My mastered tracks
+Master a new track
+Mastered
+Original
+01 - STARLACE.mp3
+0:00┬á/┬á3:50
+
+Intensity
+
+Low
+High
+
+EQ Options
+
+Brighter
+Warmer
+Download mastered track | My mastered tracks
+Master a new track
+Mastered
+Original
+01 - STARLACE.mp3
+0:00┬á/┬á3:50
+
+Intensity
+
+Low
+High
+
+EQ Options
+
+Brighter
+Warmer
+Download mastered track
+   - Waiting for mastering process (0% -> 100%)...
+   - Γ£¿ Mastering complete!
+   - Initiating Download sequence...
+   - Clicking Download dropdown...
+   - Looking for 'Ultra HD' option...
+   - Selecting Ultra HD (WAV)...

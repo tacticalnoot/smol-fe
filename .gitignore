@@ -61,3 +61,9 @@ zk/**/.risc0_work/
 .agent/_reports/
 .tmp/
 
+browser_profile_v2/
+scripts/mixea_browser_profile_v2/
+scripts/mixea_browser_profile/
+scripts/mixea_browser_data/
+scripts/mixea_browser_data_bak/
+scripts/dk_browser_data/

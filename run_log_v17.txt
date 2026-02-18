@@ -1,0 +1,26 @@
+≡ƒÜÇ Starting Mixea Automation v16 (Adaptive)...
+   ≡ƒôé Browser Profile: C:\Users\Jeff\Mixtape Auto\smol-fe\scripts\mixea_browser_data
+node:internal/process/promises:394
+    triggerUncaughtException(err, true /* fromPromise */);
+    ^
+
+browserType.launchPersistentContext: Target page, context or browser has been closed
+Browser logs:
+
+<launching> C:\Users\Jeff\AppData\Local\ms-playwright\chromium-1200\chrome-win64\chrome.exe --disable-field-trial-config --disable-background-networking --disable-background-timer-throttling --disable-backgrounding-occluded-windows --disable-back-forward-cache --disable-breakpad --disable-client-side-phishing-detection --disable-component-extensions-with-background-pages --disable-component-update --no-default-browser-check --disable-default-apps --disable-dev-shm-usage --disable-extensions --disable-features=AcceptCHFrame,AvoidUnnecessaryBeforeUnloadCheckSync,DestroyProfileOnBrowserClose,DialMediaRouteProvider,GlobalMediaControls,HttpsUpgrades,LensOverlay,MediaRouter,PaintHolding,ThirdPartyStoragePartitioning,Translate,AutoDeElevate,RenderDocument,OptimizationHints --enable-features=CDPScreenshotNewSurface --allow-pre-commit-input --disable-hang-monitor --disable-ipc-flooding-protection --disable-popup-blocking --disable-prompt-on-repost --disable-renderer-backgrounding --force-color-profile=srgb --metrics-recording-only --no-first-run --password-store=basic --use-mock-keychain --no-service-autorun --export-tagged-pdf --disable-search-engine-choice-screen --unsafely-disable-devtools-self-xss-warnings --edge-skip-compat-layer-relaunch --enable-automation --disable-infobars --disable-search-engine-choice-screen --disable-sync --no-sandbox --enable-automation --no-sandbox --disable-setuid-sandbox --user-data-dir=C:\Users\Jeff\Mixtape Auto\smol-fe\scripts\mixea_browser_data --remote-debugging-pipe about:blank
+<launched> pid=19976
+Call log:
+  - <launching> C:\Users\Jeff\AppData\Local\ms-playwright\chromium-1200\chrome-win64\chrome.exe --disable-field-trial-config --disable-background-networking --disable-background-timer-throttling --disable-backgrounding-occluded-windows --disable-back-forward-cache --disable-breakpad --disable-client-side-phishing-detection --disable-component-extensions-with-background-pages --disable-component-update --no-default-browser-check --disable-default-apps --disable-dev-shm-usage --disable-extensions --disable-features=AcceptCHFrame,AvoidUnnecessaryBeforeUnloadCheckSync,DestroyProfileOnBrowserClose,DialMediaRouteProvider,GlobalMediaControls,HttpsUpgrades,LensOverlay,MediaRouter,PaintHolding,ThirdPartyStoragePartitioning,Translate,AutoDeElevate,RenderDocument,OptimizationHints --enable-features=CDPScreenshotNewSurface --allow-pre-commit-input --disable-hang-monitor --disable-ipc-flooding-protection --disable-popup-blocking --disable-prompt-on-repost --disable-renderer-backgrounding --force-color-profile=srgb --metrics-recording-only --no-first-run --password-store=basic --use-mock-keychain --no-service-autorun --export-tagged-pdf --disable-search-engine-choice-screen --unsafely-disable-devtools-self-xss-warnings --edge-skip-compat-layer-relaunch --enable-automation --disable-infobars --disable-search-engine-choice-screen --disable-sync --no-sandbox --enable-automation --no-sandbox --disable-setuid-sandbox --user-data-dir=C:\Users\Jeff\Mixtape Auto\smol-fe\scripts\mixea_browser_data --remote-debugging-pipe about:blank
+  - <launched> pid=19976
+  - [pid=19976] <gracefully close start>
+  - [pid=19976] <kill>
+  - [pid=19976] <will force kill>
+  - [pid=19976] taskkill stderr: ERROR: The process "19976" not found.
+  - [pid=19976] <process did exit: exitCode=21, signal=null>
+  - [pid=19976] starting temporary directories cleanup
+  - [pid=19976] finished temporary directories cleanup
+  - [pid=19976] <gracefully close end>
+
+    at async run (C:\Users\Jeff\Mixtape Auto\smol-fe\scripts\mixea-master.mjs:49:21)
+
+Node.js v22.21.1

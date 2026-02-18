@@ -1,0 +1,10 @@
+≡ƒÜÇ Starting TESTNET Bundle Deployment...
+Using secret from deployer_secret_testnet.txt
+Identity: GABMLE4MQR6XFKMHLR46TZFSFPDZVEUGXKK75MGGR5PYTWAGYINEO5Y6
+Funding with Friendbot...
+Friendbot response: {
+  type: 'https://stellar.org/friendbot-errors/bad_request',
+  title: 'Bad Request',
+  status: 400,
+  detail: 'account already funded to starting balance'
+}

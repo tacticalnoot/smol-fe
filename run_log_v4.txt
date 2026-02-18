@@ -1,0 +1,40 @@
+≡ƒÜÇ Starting Mixea Automation...
+   ≡ƒôé Browser Profile: C:\Users\Jeff\Mixtape Auto\smol-fe\scripts\mixea_browser_data
+Navigating to Mixea...
+
+ΓÜá∩╕Å  PLEASE LOG IN TO DISTROKID/MIXEA IN THE BROWSER WINDOW ΓÜá∩╕Å
+Waiting for you to arrive at the main Mixea interface...
+Script will proceed when it sees the 'Upload' area or 'Drag & Drop' zone.
+
+   - Checking for cookie banners...
+Γ£à Detected Upload interface! Proceeding...
+ΓÅ│ Waiting 5 seconds for page to settle...
+
+≡ƒÄº Processing: 01 - STARLACE.mp3
+   - File uploading...
+   - Waiting for editor (Intensity slider)...
+   ≡ƒô¥ Dumped HTML to C:\Users\Jeff\Mixtape Auto\smol-fe\scripts\debug_error.html for debugging.
+Script finished. Browser will remain open for you to check results.
+   Γ¥î Error processing 01 - STARLACE.mp3: page.waitForSelector: Timeout 120000ms exceeded.
+Call log:
+  - waiting for locator('#intensity-range') to be visible
+    15 ├ù locator resolved to hidden <input min="1" max="3" value="2" type="range" id="intensity-range" class="range-slider event-target" data-event-name="intensity-range"/>
+    - waiting for navigation to finish...
+    - navigated to "https://distrokid.com/mixea/?mixeasonguuid=83F14551180962E480112AE97B8721AF&reference=false&c=null"
+    207 ├ù locator resolved to hidden <input min="1" max="3" value="2" type="range" id="intensity-range" class="range-slider event-target" data-event-name="intensity-range"/>
+
+    at run (C:\Users\Jeff\Mixtape Auto\smol-fe\scripts\mixea-master.mjs:123:28) {
+  name: 'TimeoutError'
+}
+
+Γ¥î Script Failed: page.waitForSelector: Timeout 120000ms exceeded.
+Call log:
+  - waiting for locator('#intensity-range') to be visible
+    15 ├ù locator resolved to hidden <input min="1" max="3" value="2" type="range" id="intensity-range" class="range-slider event-target" data-event-name="intensity-range"/>
+    - waiting for navigation to finish...
+    - navigated to "https://distrokid.com/mixea/?mixeasonguuid=83F14551180962E480112AE97B8721AF&reference=false&c=null"
+    207 ├ù locator resolved to hidden <input min="1" max="3" value="2" type="range" id="intensity-range" class="range-slider event-target" data-event-name="intensity-range"/>
+
+    at run (C:\Users\Jeff\Mixtape Auto\smol-fe\scripts\mixea-master.mjs:123:28) {
+  name: 'TimeoutError'
+}

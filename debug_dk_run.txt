@@ -1,0 +1,79 @@
+🔫 DK MasterBlaster — DistroKid Upload Helper
+📀 Album: 1OF1 - Solstice
+📂 Tracks: 19
+🖼️ Cover: C:\Users\Jeff\Desktop\1OF1 - Solstice\cover.png
+🌐 Navigating to https://distrokid.com/new/ ...
+🔢 Setting 'Number of Songs' to 19...
+⏳ Waiting 5s for form to re-render...
+✍️ Filling Album Details...
+🖼️ Uploading Cover Art...
+⚠️ Could not set genres: page.selectOption: Timeout 30000ms exceeded.
+Call log:
+[2m  - waiting for locator('#genreSecondary')[22m
+[2m    - locator resolved to <select name="genre2" id="genreSecondary" onchange="genreChange();" class="coolInput cool-input-select">…</select>[22m
+[2m  - attempting select option action[22m
+[2m    2 × waiting for element to be visible and enabled[22m
+[2m      - did not find some options[22m
+[2m    - retrying select option action[22m
+[2m    - waiting 20ms[22m
+[2m    2 × waiting for element to be visible and enabled[22m
+[2m      - did not find some options[22m
+[2m    - retrying select option action[22m
+[2m      - waiting 100ms[22m
+[2m    59 × waiting for element to be visible and enabled[22m
+[2m       - did not find some options[22m
+[2m     - retrying select option action[22m
+[2m       - waiting 500ms[22m
+
+🎵 Filling Track Information...
+   [Track 1] STARLACE
+      Sound file attached: 01 - STARLACE.wav
+   [Track 2] MOONLIT CIRCUITS
+      Sound file attached: 02 - MOONLIT CIRCUITS.wav
+   [Track 3] VELVET AFTERBURN
+      Sound file attached: 03 - VELVET AFTERBURN.wav
+   [Track 4] SILK CIRCUIT
+      Sound file attached: 04 - SILK CIRCUIT.wav
+   [Track 5] TIDAL LIGHT
+      Sound file attached: 05 - TIDAL LIGHT.wav
+   [Track 6] ORBIT
+      Sound file attached: 06 - ORBIT.wav
+   [Track 7] DRAGONFRUIT
+      Sound file attached: 07 - DRAGONFRUIT.wav
+   [Track 8] LIGHTRUNNER
+      Sound file attached: 08 - LIGHTRUNNER.wav
+   [Track 9] NIGHTSHIFT STELLAR
+      Sound file attached: 09 - NIGHTSHIFT STELLAR.wav
+   [Track 10] MOONSTEP
+      Sound file attached: 10 - MOONSTEP.wav
+   [Track 11] MIRAGE
+      Sound file attached: 11 - MIRAGE.wav
+   [Track 12] GLASS COMET
+      Sound file attached: 12 - GLASS COMET.wav
+   [Track 13] SILVER TONGUE
+      Sound file attached: 13 - SILVER TONGUE.wav
+   [Track 14] GEMINI
+      Sound file attached: 14 - GEMINI.wav
+   [Track 15] OMG NEW USERS
+      Sound file attached: 15 - OMG NEW USERS.wav
+   [Track 16] BLACK CARD
+      Sound file attached: 16 - BLACK CARD.wav
+   [Track 17] PHANTOM THREAD
+      Sound file attached: 17 - PHANTOM THREAD.wav
+   [Track 18] DUSK
+      Sound file attached: 18 - DUSK.wav
+   [Track 19] STARSHIFT
+      Sound file attached: 19 - STARSHIFT.wav
+
+✅ Automation Complete!
+⚠️  MANUAL REVIEW REQUIRED:
+   1. Check Genres (Electronic / Downtempo)
+   2. Verify Cover Art crop
+   3. Check "Explicit" settings if any songs have swears
+   4. Verify "Preview Clip" settings
+   5. Click "DONE" at the bottom.
+
+═════════════════════════════════════════
+🔫 Browser Open. Press Ctrl+C to exit.
+═════════════════════════════════════════
+

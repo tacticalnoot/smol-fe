@@ -1,0 +1,16 @@
+≡ƒöì Starting Testnet Verification...
+Contract IDs loaded:
+- Farm: CCZIYZUY4GDT4SZ66THR6KJBYECG7PVCMWFDESL4STYROOEJICIQB4JT
+- Tier: CDPACZDP7LZ4BEHVG64EAEOOGNTJS5V4WB2JGMZ4I6FK2GCAYVO7LRCC
+- RISC0: CDQCOSAQTGZLBOJ3OQSYVIFSLPMHIQPUJWS6RYKCEJUGDQGZNPIFVWLJ
+
+Invoking CCZIYZUY4GDT4SZ66THR6KJBYECG7PVCMWFDESL4STYROOEJICIQB4JT.admin()...
+Γ£à Farm Admin: GABMLE4MQR6XFKMHLR46TZFSFPDZVEUGXKK75MGGR5PYTWAGYINEO5Y6
+
+Checking Tier Verifier VKEY existence via verify_groth16...
+
+Invoking CDPACZDP7LZ4BEHVG64EAEOOGNTJS5V4WB2JGMZ4I6FK2GCAYVO7LRCC.verify_groth16()...
+Γ£à Tier Verifier is initialized! (Failed with Expected Error: InvalidPublicInputs/InvalidProof)
+Skipping RISC0 specific check (assumed ok if deployment succeeded).
+
+Γ£à Verification check complete.
