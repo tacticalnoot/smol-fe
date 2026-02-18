@@ -81,11 +81,16 @@ export async function connectTestnetWallet(): Promise<string> {
     });
 
     // If the modal closed without a selection, it might be a race condition where
-    // the callback hasn't fired yet. Give it a moment.
+    // the callback hasn't fired yet. Give it a generous grace period (4s).
     if (!walletSelected) {
-        for (let i = 0; i < 10; i++) {
+        console.log(`[HackathonMode] Modal closed. Waiting for selection callback... (${new Date().toISOString()})`);
+
+        for (let i = 0; i < 40; i++) {
             await new Promise(r => setTimeout(r, 100));
-            if (walletSelected) break;
+            if (walletSelected) {
+                console.log(`[HackathonMode] Selection caught after ${i * 100}ms delay (${new Date().toISOString()})`);
+                break;
+            }
         }
     }
 
