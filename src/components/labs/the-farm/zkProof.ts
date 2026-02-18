@@ -591,6 +591,11 @@ async function _submitProofToContractOnce(
     }
 
     console.log(`[ZK] Simulation succeeded using ${selectedMode} G2 encoding.`);
+    if (sim.result && sim.result.auth) {
+        console.log("[ZK] Simulation Auth Entries:", JSON.stringify(sim.result.auth, null, 2));
+    } else {
+        console.warn("[ZK] Simulation returned NO auth entries (unexpected for require_auth call)");
+    }
 
     // Prepare transaction with simulation data
     opts?.onStage?.("assembling");
