@@ -69,35 +69,56 @@ export async function connectTestnetWallet(): Promise<string> {
         });
     }
 
+    // Track whether user actually selected a wallet in the modal
+    let walletSelected = false;
+
     await _swkKit.openModal({
         onWalletSelected: async (option: { id: string }) => {
+            console.log("[HackathonMode] Wallet selected:", option.id);
+            walletSelected = true;
             _swkKit.setWallet(option.id);
         },
     });
 
-    // Retry getting address for a short period to allow setWallet to propagate
-    for (let attempt = 0; attempt < 5; attempt++) {
+    // If the modal closed without a selection, bail early
+    if (!walletSelected) {
+        console.warn("[HackathonMode] Modal closed without wallet selection");
+        throw new Error("No wallet selected — please try again");
+    }
+
+    // Freighter on first connect can be slow — give it up to ~8 seconds
+    const MAX_POLLS = 20;
+    const POLL_MS = 400;
+
+    for (let attempt = 0; attempt < MAX_POLLS; attempt++) {
         try {
             const { address } = await _swkKit.getAddress();
             _publicKey = address;
             console.log("[HackathonMode] Connected testnet wallet:", address);
             return address;
         } catch (err: any) {
-            // Only retry if it's the specific "set wallet first" error
-            // AND we are not on the last attempt
-            const isSetWalletError = err?.message?.includes("set the wallet first");
-            if (isSetWalletError && attempt < 4) {
-                await new Promise(r => setTimeout(r, 200));
+            const msg = err?.message || "";
+            const isSetWalletError = msg.includes("set the wallet first");
+
+            if (isSetWalletError && attempt < MAX_POLLS - 1) {
+                // Still propagating — wait and retry
+                if (attempt % 5 === 4) {
+                    console.log(`[HackathonMode] Still waiting for wallet... (${attempt + 1}/${MAX_POLLS})`);
+                }
+                await new Promise(r => setTimeout(r, POLL_MS));
                 continue;
             }
 
+            // Final attempt or unknown error
             if (isSetWalletError) {
-                throw new Error("Wallet connection cancelled");
+                console.error("[HackathonMode] Wallet never became ready after", MAX_POLLS * POLL_MS, "ms");
+                throw new Error("Wallet took too long to connect — please reload and try again");
             }
+            console.error("[HackathonMode] getAddress error:", msg);
             throw err;
         }
     }
-    throw new Error("Wallet connection failed");
+    throw new Error("Wallet connection timed out");
 }
 
 export function disconnectTestnetWallet(): void {
@@ -200,15 +221,16 @@ async function executeHubCall(
     args: any[],
     paramsContext: any
 ): Promise<string> {
-    const MAX_RETRIES = 3;
+    const MAX_RETRIES = 5;
     let lastError: any;
 
     for (let attempt = 1; attempt <= MAX_RETRIES; attempt++) {
         try {
             if (attempt > 1) {
                 console.log(`[HackathonMode] Retry attempt ${attempt}/${MAX_RETRIES} for ${method}...`);
-                // Add a small jitter delay to allow RPC to catch up
-                await new Promise(r => setTimeout(r, 1000 + Math.random() * 500));
+                // Progressive backoff
+                const delay = attempt * 1000 + Math.random() * 500;
+                await new Promise(r => setTimeout(r, delay));
             }
 
             const { assembled } = await buildAndSimulateSwk(HUB_CONTRACT_ID, method, args);

@@ -2242,6 +2242,15 @@
                                 : "CONNECT TESTNET WALLET (FREIGHTER)"}
                         </button>
                     {/if}
+                    {#if hubStatus === "connecting"}
+                        <p
+                            class="dg-hint"
+                            style="margin-top:0.3rem;color:var(--dg-accent)"
+                        >
+                            Check your wallet popup. If it takes >5s, please
+                            reload.
+                        </p>
+                    {/if}
 
                     {#if hubError}
                         <p class="dg-cred-warn" style="margin-top:0.3rem">

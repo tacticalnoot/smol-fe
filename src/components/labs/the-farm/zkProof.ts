@@ -396,15 +396,16 @@ export async function submitProofToContract(
         net?: DungeonNetworkConfig;
     },
 ): Promise<{ success: boolean; txHash?: string; error?: string }> {
-    const MAX_RETRIES = 3;
+    const MAX_RETRIES = 5;
     let lastError: any;
 
     for (let attempt = 1; attempt <= MAX_RETRIES; attempt++) {
         try {
             if (attempt > 1) {
                 console.log(`[ZK] Retry attempt ${attempt}/${MAX_RETRIES} for verify_and_attest...`);
-                // Jitter delay
-                await new Promise(r => setTimeout(r, 1000 + Math.random() * 500));
+                // Progressive backoff: 1s, 2s, 3s, 4s
+                const delay = attempt * 1000 + Math.random() * 500;
+                await new Promise(r => setTimeout(r, delay));
             }
 
             return await _submitProofToContractOnce(
