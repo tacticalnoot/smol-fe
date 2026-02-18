@@ -587,6 +587,23 @@ async function _submitProofToContractOnce(
     }
 
     if (!rpc.Api.isSimulationSuccess(sim)) {
+        console.error("[ZK] Simulation FAILED. Detailed dump:", JSON.stringify(sim, null, 2));
+
+        // Log the args we tried to use
+        console.log("[ZK] Args used:", {
+            farmer: farmerAddress,
+            tierId,
+            commitment: Buffer.from(commitment).toString('hex'),
+            proofMode: selectedMode,
+        });
+
+        // Check if we have auth entries anyway (sometimes they exist even on failure)
+        // @ts-ignore
+        if (sim.result && sim.result.auth) {
+            // @ts-ignore
+            console.log("[ZK] Simulation Auth Entries (on failure):", JSON.stringify(sim.result.auth, null, 2));
+        }
+
         throw new Error("Simulation failed for verify_and_attest: " + summarizeFailure(sim));
     }
 
