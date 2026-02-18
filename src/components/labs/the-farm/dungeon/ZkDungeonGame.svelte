@@ -1945,7 +1945,14 @@
                 hubStatus = "ended";
                 console.log("[HackathonMode] end_game() tx:", txHash);
             } catch (err) {
-                const msg = err instanceof Error ? err.message : String(err);
+                const msg =
+                    err instanceof Error
+                        ? err.message
+                        : typeof err === "object" && err && "message" in err
+                          ? String((err as any).message)
+                          : typeof err === "object"
+                            ? JSON.stringify(err)
+                            : String(err);
                 console.error("[HackathonMode] end_game() failed:", msg);
                 hubError = msg;
                 hubStatus = "error";
@@ -2219,7 +2226,13 @@
                                     hubError =
                                         err instanceof Error
                                             ? err.message
-                                            : String(err);
+                                            : typeof err === "object" &&
+                                                err &&
+                                                "message" in err
+                                              ? String((err as any).message)
+                                              : typeof err === "object"
+                                                ? JSON.stringify(err)
+                                                : String(err);
                                     hubStatus = "error";
                                 }
                             }}
