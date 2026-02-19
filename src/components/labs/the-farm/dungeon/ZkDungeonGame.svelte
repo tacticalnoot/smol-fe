@@ -196,6 +196,7 @@
         ready: boolean;
         floor: number;
         attempts: number;
+        testnetAddress?: string;
     };
     type DungeonEvent =
         | { seq: number; kind: "system"; message: string; ts: number }
@@ -711,11 +712,15 @@
         const server = new rpc.Server(resolvedUrl);
 
         for (let attempt = 0; attempt < 50; attempt += 1) {
-            const tx = await server.getTransaction(hash);
-            if (tx.status === rpc.Api.GetTransactionStatus.SUCCESS)
-                return "success";
-            if (tx.status === rpc.Api.GetTransactionStatus.FAILED)
-                return "failed";
+            try {
+                const tx = await server.getTransaction(hash);
+                if (tx.status === rpc.Api.GetTransactionStatus.SUCCESS)
+                    return "success";
+                if (tx.status === rpc.Api.GetTransactionStatus.FAILED)
+                    return "failed";
+            } catch {
+                // Transient RPC error (network blip, 503, etc.) — keep polling.
+            }
             await new Promise<void>((resolve) => setTimeout(resolve, 1200));
         }
 
@@ -762,6 +767,7 @@
                 body: JSON.stringify({
                     account,
                     name: playerName || walletLabel || "Seeker",
+                    ...(testnetAddress ? { testnetAddress } : {}),
                 }),
             },
         );
@@ -784,6 +790,11 @@
 
     async function relayPollOnce() {
         if (!relayToken || !lobbyCode) return;
+
+        // Clear any previous transient error so the UI doesn't show stale errors
+        // once the relay is responding successfully again.
+        relayError = null;
+        if (relayStatus === "error") relayStatus = "connected";
 
         const resp = await fetch(
             `/api/dungeon/rooms/${encodeURIComponent(lobbyCode)}/events?cursor=${encodeURIComponent(String(relayCursor))}`,
@@ -814,13 +825,23 @@
             }
         }
 
-        if (gateWaiting && multiplayerEnabled) {
-            const roster = relayRoster;
-            if (
-                roster.length >= 2 &&
-                roster.every((r) => r.floor >= currentFloor)
-            ) {
+        // Only manage the multiplayer-sync gate when the player is NOT on a gate floor.
+        // When currentFloor IS a gate floor (e.g. floor 1), gateWaiting may be set
+        // by the on-chain verification overlay — polling must not clear it early.
+        // After advancing past a gate floor (e.g. currentFloor=2), isGateFloor=false
+        // and polling manages the sync gate normally.
+        if (gateWaiting && !isGateFloor) {
+            if (!multiplayerEnabled) {
+                // Opponent disconnected — unblock so the player isn't stuck indefinitely.
                 gateWaiting = false;
+            } else {
+                const roster = relayRoster;
+                if (
+                    roster.length >= 2 &&
+                    roster.every((r) => r.floor >= currentFloor)
+                ) {
+                    gateWaiting = false;
+                }
             }
         }
     }
@@ -882,6 +903,7 @@
         } catch (err) {
             relayStatus = "error";
             relayError = err instanceof Error ? err.message : String(err);
+            readySelf = false;
         }
     }
 
@@ -934,19 +956,22 @@
         risc0Groth16OnChain = { status: "idle" };
 
         // ── Hackathon Mode: call start_game() on testnet hub ────────
-        if (hackathonMode && testnetAddress) {
+        // Only the host (or a solo player) registers the session — the guest skips this
+        // so we avoid duplicate registrations for the same run.
+        if (hackathonMode && testnetAddress && !opts?.fromRemote) {
             try {
                 hubStatus = "starting";
                 hubError = null;
                 hackathonSessionId = Math.floor(Math.random() * 0x7fffffff);
+                // Find opponent's testnet G-address from the relay roster (stored at join time).
+                // Use opponentProgress (derived from roster) rather than the display-only
+                // opponentName string, which can be empty even when a real opponent exists.
+                const opponentEntry = opponentProgress ?? undefined;
                 const txHash = await hubStartGame({
                     gameId: TESTNET_HUB_CONTRACT,
                     sessionId: hackathonSessionId,
                     player1: testnetAddress,
-                    player2: opponentName
-                        ? relayRoster.find((r) => r.account !== testnetAddress)
-                              ?.account || testnetAddress
-                        : undefined,
+                    player2: opponentEntry?.testnetAddress || undefined,
                 });
                 hubStartTxHash = txHash;
                 hubStatus = "started";
@@ -988,8 +1013,13 @@
     }
 
     async function hostStartGame() {
-        if (hasOpponent) await relayPost({ kind: "start", ts: Date.now() });
-        await startGameLocal();
+        try {
+            if (hasOpponent) await relayPost({ kind: "start", ts: Date.now() });
+            await startGameLocal();
+        } catch (err) {
+            relayStatus = "error";
+            relayError = err instanceof Error ? err.message : String(err);
+        }
     }
 
     async function chooseDoor(doorIndex: number) {
@@ -1051,6 +1081,7 @@
             } as any;
             doorStates = emptyDoorStates();
             activeDoor = null;
+            gateWaiting = false;
             return;
         }
 
@@ -1813,6 +1844,12 @@
         groth16OnChain = { status: "idle" };
         noirUltraHonkOnChain = { status: "idle" };
         risc0Groth16OnChain = { status: "idle" };
+        // Clear per-run identifiers so a fresh run gets new IDs, a new policy seed,
+        // and reshuffled doors — not the same assignment as the previous run.
+        runId = "";
+        runStartedAt = 0;
+        runPolicySeed = "";
+        runTierId = 0;
         // Reset hackathon hub state (keep hackathonMode + testnetAddress for next run)
         hackathonSessionId = 0;
         hubStartTxHash = null;
@@ -1989,6 +2026,7 @@
     async function playSolo() {
         warmupDungeonVerifiers();
 
+        stopRelayPolling();
         lobbyCode = "SOLO";
         lobbyRole = null;
         playerName = walletLabel || "Solo Seeker";
@@ -1997,7 +2035,6 @@
         relayRoster = [];
         relayStatus = "disconnected";
         relayError = null;
-        stopRelayPolling();
 
         // Initialize a new run and enter the Airlock (Room 0) before gameplay.
         runId = crypto.randomUUID();
@@ -2526,17 +2563,17 @@
             </div>
 
             <div class="dg-lobby-players">
-                <div class="dg-lobby-player dg-lobby-player-ready">
-                    <span class="dg-lobby-player-icon">P1</span>
+                <div class="dg-lobby-player {readySelf ? 'dg-lobby-player-ready' : 'dg-lobby-player-waiting'}">
+                    <span class="dg-lobby-player-icon">{lobbyRole === "host" ? "P1" : "P2"}</span>
                     <span class="dg-lobby-player-name">{playerName}</span>
-                    <span class="dg-lobby-player-status">READY</span>
+                    <span class="dg-lobby-player-status">{readySelf ? "READY" : "NOT READY"}</span>
                 </div>
                 <div
                     class="dg-lobby-player {opponentName
-                        ? 'dg-lobby-player-ready'
+                        ? opponentReady ? 'dg-lobby-player-ready' : 'dg-lobby-player-waiting'
                         : 'dg-lobby-player-waiting'}"
                 >
-                    <span class="dg-lobby-player-icon">P2</span>
+                    <span class="dg-lobby-player-icon">{lobbyRole === "host" ? "P2" : "P1"}</span>
                     <span class="dg-lobby-player-name"
                         >{opponentName || "..."}</span
                     >

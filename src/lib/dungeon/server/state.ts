@@ -16,6 +16,7 @@ export type DungeonRosterEntry = {
   ready: boolean;
   floor: number;
   attempts: number;
+  testnetAddress?: string;
 };
 
 export type DungeonEvent =
