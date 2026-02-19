@@ -329,3 +329,20 @@ export async function hubEndGame(params: HubEndGameParams): Promise<string> {
 
     return executeHubCall("end_game", args, params);
 }
+
+/**
+ * Fund the connected testnet wallet using Friendbot.
+ */
+export async function fundWithFriendbot(publicKey?: string): Promise<void> {
+    const target = publicKey || _publicKey;
+    if (!target) throw new Error("Testnet wallet not connected");
+
+    console.log("[HackathonMode] Funding wallet via Friendbot:", target);
+    try {
+        const resp = await fetch(`https://friendbot.stellar.org/?addr=${target}`);
+        const json = await resp.json();
+        console.log("[HackathonMode] Friendbot response:", json);
+    } catch (e) {
+        console.warn("[HackathonMode] Friendbot funding warning:", e);
+    }
+}

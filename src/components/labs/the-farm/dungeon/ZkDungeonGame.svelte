@@ -39,6 +39,7 @@
         isTestnetConnected,
         hubStartGame,
         hubEndGame,
+        fundWithFriendbot,
         HUB_CONTRACT_ID as TESTNET_HUB_CONTRACT,
     } from "./dungeonTestnetWallet";
     import {
@@ -674,9 +675,11 @@
             }
 
             // Keep KALE balance fresh for Groth16 tier proofs (the circuit may enforce thresholds).
-            try {
-                await updateContractBalance(walletAddress);
-            } catch {}
+            if (!hackathonMode) {
+                try {
+                    await updateContractBalance(walletAddress);
+                } catch {}
+            }
         })().catch((err) => {
             if (cancelled) return;
             credentialLoadError =
@@ -764,7 +767,9 @@
         relayStatus = "connecting";
         relayError = null;
 
-        const account = userState.contractId || "";
+        const account = hackathonMode
+            ? testnetAddress || ""
+            : userState.contractId || "";
         if (!account) throw new Error("Wallet not connected");
 
         const resp = await fetch(
@@ -2137,7 +2142,22 @@
                 </button>
 
                 {#if isConnected}
-                    <p class="dg-wallet-badge">{walletLabel}</p>
+                    <div
+                        style="display:flex;align-items:center;gap:0.5rem;justify-content:center;margin-bottom:1rem"
+                    >
+                        <p class="dg-wallet-badge" style="margin-bottom:0">
+                            {walletLabel}
+                        </p>
+                        {#if hackathonMode}
+                            <button
+                                class="dg-btn dg-btn-sm dg-btn-ghost"
+                                style="font-size:0.7rem;padding:0.2rem 0.6rem;height:auto;min-height:0"
+                                onclick={() => fundWithFriendbot()}
+                            >
+                                FRIEND-BOT
+                            </button>
+                        {/if}
+                    </div>
                     <button
                         class="dg-btn dg-btn-secondary"
                         onclick={createLobby}>CREATE 2P LOBBY</button
@@ -2601,17 +2621,29 @@
             </div>
 
             <div class="dg-lobby-players">
-                <div class="dg-lobby-player {readySelf ? 'dg-lobby-player-ready' : 'dg-lobby-player-waiting'}">
-                    <span class="dg-lobby-player-icon">{lobbyRole === "host" ? "P1" : "P2"}</span>
+                <div
+                    class="dg-lobby-player {readySelf
+                        ? 'dg-lobby-player-ready'
+                        : 'dg-lobby-player-waiting'}"
+                >
+                    <span class="dg-lobby-player-icon"
+                        >{lobbyRole === "host" ? "P1" : "P2"}</span
+                    >
                     <span class="dg-lobby-player-name">{playerName}</span>
-                    <span class="dg-lobby-player-status">{readySelf ? "READY" : "NOT READY"}</span>
+                    <span class="dg-lobby-player-status"
+                        >{readySelf ? "READY" : "NOT READY"}</span
+                    >
                 </div>
                 <div
                     class="dg-lobby-player {opponentName
-                        ? opponentReady ? 'dg-lobby-player-ready' : 'dg-lobby-player-waiting'
+                        ? opponentReady
+                            ? 'dg-lobby-player-ready'
+                            : 'dg-lobby-player-waiting'
                         : 'dg-lobby-player-waiting'}"
                 >
-                    <span class="dg-lobby-player-icon">{lobbyRole === "host" ? "P2" : "P1"}</span>
+                    <span class="dg-lobby-player-icon"
+                        >{lobbyRole === "host" ? "P2" : "P1"}</span
+                    >
                     <span class="dg-lobby-player-name"
                         >{opponentName || "..."}</span
                     >
