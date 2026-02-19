@@ -4,6 +4,15 @@
 
 Smol is a decentralized high-fidelity application powered by **Stellar Smart Contracts** and **Zero-Knowledge Proofs (ZK)**. It combines generative AI music with on-chain verifiable gaming mechanics.
 
+## 🎵 Smol Music: The Core Product
+Smol is the premier destination for high-fidelity, AI-generated music on the Stellar network. It represents our base product and the foundation of the ecosystem.
+- **Generative AI Audio**: Produce high-fidelity, diverse musical variations at the click of a button.
+- **On-Chain Minting**: Seamlessly transform generations into NFTs via our integrated Soroban smart contracts.
+- **Social Tipping & Splits**: Support your favorite artists with direct tips in **XLM**, **KALE**, or **USDC**. Our contract-level splits ensure fair distribution between artists, curators, and minters.
+- **Mixtape Builder**: Create and publish on-chain mixtapes to share your curated collections with the community.
+- **Radio V2**: Experience a 24/7 stream of the latest and greatest community-minted songs.
+- **Passkey Security**: Zero seed phrases. Authenticate and sign transactions securely using device biometrics via **PasskeyKit**.
+
 ## 🧪 Smol Labs: The Everything Lab
 While **Smol** serves as our base product and AI music foundation, **Labs** is our "Everything Lab"—a high-fidelity R&D environment where we showcase the newest and greatest innovations on the **Stellar Network**. It is an active testing ground for:
 - **Zero-Knowledge Proofs (ZK)**: On-chain verifiable gaming and privacy-preserving state settlement.
