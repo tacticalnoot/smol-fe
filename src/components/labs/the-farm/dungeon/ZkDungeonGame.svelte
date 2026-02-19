@@ -315,7 +315,9 @@
                         : "AUDIT_RECORD";
 
                 // Per-system action labels and learning notes
-                const isNoir = proofSystem.includes("Noir") || proofSystem.includes("UltraHonk");
+                const isNoir =
+                    proofSystem.includes("Noir") ||
+                    proofSystem.includes("UltraHonk");
                 const isRisc0 = proofSystem.includes("RISC0");
                 const isGroth16 = proofSystem.includes("Groth16") && !isRisc0;
 
@@ -442,8 +444,14 @@
     );
 
     // ── Derived State ───────────────────────────────────────────────────
-    let walletAddress = $derived(userState.contractId);
-    let isConnected = $derived(!!userState.contractId && !!userState.keyId);
+    let walletAddress = $derived(
+        hackathonMode && testnetAddress ? testnetAddress : userState.contractId,
+    );
+    let isConnected = $derived(
+        hackathonMode
+            ? !!testnetAddress
+            : !!userState.contractId && !!userState.keyId,
+    );
     let isGateFloor = $derived(GATE_FLOORS.includes(currentFloor));
     let progressPct = $derived(((currentFloor - 1) / TOTAL_FLOORS) * 100);
     let walletLabel = $derived(
@@ -1038,7 +1046,7 @@
                 floor: currentFloor,
                 doorChoice: doorIndex,
                 attemptNonce: attempts,
-                playerAddress: userState.contractId ?? "anonymous",
+                playerAddress: walletAddress ?? "anonymous",
                 keyId: userState.keyId ?? "",
                 contractId: userState.contractId ?? "",
                 policySeed,
@@ -1158,7 +1166,9 @@
                     const submitRes = await submitProofToContract(
                         // @ts-ignore
                         (window as any).passkeyKit,
-                        (hackathonNet ? testnetAddress : userState.contractId) as string,
+                        (hackathonNet
+                            ? testnetAddress
+                            : userState.contractId) as string,
                         result.tierId,
                         result.groth16.commitmentBytes,
                         result.groth16.proof,
@@ -1204,7 +1214,10 @@
                         reasonCode: "ONCHAIN_VERIFIED",
                     });
 
-                    const confirmed = await waitForTx(submitRes.txHash, hackathonNet?.rpcUrl);
+                    const confirmed = await waitForTx(
+                        submitRes.txHash,
+                        hackathonNet?.rpcUrl,
+                    );
                     if (confirmed === "success") {
                         groth16OnChain = {
                             status: "confirmed",
@@ -1410,8 +1423,10 @@
                         "../../../../lib/dungeon/publishNoirUltraHonkVerifyMainnet"
                     );
                     const submitRes = await publishNoirUltraHonkVerifyMainnet({
-                        owner: noirNet ? testnetAddress! : userState.contractId,
-                        keyId: userState.keyId,
+                        owner: noirNet
+                            ? testnetAddress!
+                            : (userState.contractId as string),
+                        keyId: userState.keyId as string,
                         tierId: effectiveTierId,
                         proofOverride,
                         vkId: "NOIR_ROLE_V1",
@@ -1463,7 +1478,10 @@
                         reasonCode: "ONCHAIN_VERIFIED",
                     });
 
-                    const confirmed = await waitForTx(submitRes.txHash, noirNet?.rpcUrl);
+                    const confirmed = await waitForTx(
+                        submitRes.txHash,
+                        noirNet?.rpcUrl,
+                    );
                     if (confirmed === "success") {
                         noirUltraHonkOnChain = {
                             status: "confirmed",
@@ -1673,8 +1691,8 @@
                     const submitRes = await publishRisc0Groth16VerifyMainnet({
                         owner: risc0Net
                             ? testnetAddress!
-                            : userState.contractId,
-                        keyId: userState.keyId,
+                            : (userState.contractId as string),
+                        keyId: userState.keyId as string,
                         proofOverride,
                         net: risc0Net,
                         onStage: (stage) => {
@@ -1722,7 +1740,10 @@
                         reasonCode: "ONCHAIN_VERIFIED",
                     });
 
-                    const confirmed = await waitForTx(submitRes.txHash, risc0Net?.rpcUrl);
+                    const confirmed = await waitForTx(
+                        submitRes.txHash,
+                        risc0Net?.rpcUrl,
+                    );
                     if (confirmed === "success") {
                         risc0Groth16OnChain = {
                             status: "confirmed",
@@ -1951,7 +1972,9 @@
         else withdrawalStamp = { status: "simulating" };
 
         const res = await publishDungeonStampMainnet({
-            owner: (hackathonNet ? testnetAddress : userState.contractId) as string,
+            owner: (hackathonNet
+                ? testnetAddress
+                : userState.contractId) as string,
             keyId: (userState.keyId ?? "") as string,
             kind,
             statementHash,
@@ -2149,9 +2172,24 @@
                 {:else}
                     <button
                         class="dg-btn dg-btn-secondary"
-                        onclick={connectWallet}
+                        onclick={hackathonMode
+                            ? () => {
+                                  hubStatus = "connecting";
+                                  connectTestnetWallet()
+                                      .then((addr) => {
+                                          testnetAddress = addr;
+                                          hubStatus = "idle";
+                                      })
+                                      .catch((err) => {
+                                          hubError = err.message;
+                                          hubStatus = "error";
+                                      });
+                              }
+                            : connectWallet}
                     >
-                        CONNECT WALLET (2P)
+                        {hackathonMode
+                            ? "CONNECT WALLET (FREIGHTER)"
+                            : "CONNECT WALLET (2P)"}
                     </button>
                     <p class="dg-hint">
                         2-player lobby uses a Labs-only relay (no SEP-10 auth
@@ -2724,7 +2762,9 @@
                     {#if floorDef.verifierType === "GROTH16"}
                         <div class="dg-stamp-box">
                             <div class="dg-stamp-title">
-                                ON-CHAIN PROOF VERIFY ({testnetAddress ? "TESTNET" : "MAINNET"})
+                                ON-CHAIN PROOF VERIFY ({testnetAddress
+                                    ? "TESTNET"
+                                    : "MAINNET"})
                             </div>
                             {#if isConnected || testnetAddress}
                                 <div class="dg-stamp-status">
@@ -2754,7 +2794,9 @@
                                     <div class="dg-placard-sub">
                                         Tip: clearing the correct door will
                                         trigger a real Tier Verifier
-                                        `verify_and_attest` tx ({testnetAddress ? "Freighter" : "passkey"}-signed).
+                                        `verify_and_attest` tx ({testnetAddress
+                                            ? "Freighter"
+                                            : "passkey"}-signed).
                                     </div>
                                 {/if}
                             {:else}
@@ -2768,7 +2810,9 @@
                     {#if floorDef.verifierType === "NOIR_ULTRAHONK"}
                         <div class="dg-stamp-box">
                             <div class="dg-stamp-title">
-                                ON-CHAIN ULTRAHONK ({testnetAddress ? "TESTNET" : "MAINNET"})
+                                ON-CHAIN ULTRAHONK ({testnetAddress
+                                    ? "TESTNET"
+                                    : "MAINNET"})
                             </div>
                             {#if !isConnected && !testnetAddress}
                                 <div class="dg-stamp-status">
@@ -2826,7 +2870,9 @@
                     {#if floorDef.verifierType === "RISC0_RECEIPT"}
                         <div class="dg-stamp-box">
                             <div class="dg-stamp-title">
-                                ON-CHAIN RECEIPT ({testnetAddress ? "TESTNET" : "MAINNET"})
+                                ON-CHAIN RECEIPT ({testnetAddress
+                                    ? "TESTNET"
+                                    : "MAINNET"})
                             </div>
                             {#if !isConnected && !testnetAddress}
                                 <div class="dg-stamp-status">
@@ -3027,7 +3073,8 @@
                             <div class="dg-gate-panel">
                                 {#if currentFloor === 1 && (isConnected || testnetAddress) && groth16OnChain.status !== "idle" && groth16OnChain.status !== "confirmed"}
                                     <p class="dg-gate-title">
-                                        {testnetAddress ? "TESTNET" : "MAINNET"} PROOF VERIFY
+                                        {testnetAddress ? "TESTNET" : "MAINNET"}
+                                        PROOF VERIFY
                                     </p>
                                     <p class="dg-gate-desc">
                                         Verifying your Groth16 credential
@@ -3380,7 +3427,9 @@
                                     withdrawalStamp.status === "signing"}
                                 onclick={() => stampOnChain("WITHDRAWAL")}
                             >
-                                RECORD SEED WITHDRAWAL ON-CHAIN ({testnetAddress ? "FREIGHTER" : "PASSKEY"})
+                                RECORD SEED WITHDRAWAL ON-CHAIN ({testnetAddress
+                                    ? "FREIGHTER"
+                                    : "PASSKEY"})
                             </button>
                         {:else}
                             <button
@@ -3486,7 +3535,9 @@
                 </div>
 
                 <div class="dg-tx-flow-pill">
-                    SCIENTIFIC FLOW: snarkjs/bb.js/RISC0 prove → simulate → assemble → {testnetAddress ? "Freighter" : "passkey"} sign/send → Soroban contract result
+                    SCIENTIFIC FLOW: snarkjs/bb.js/RISC0 prove → simulate →
+                    assemble → {testnetAddress ? "Freighter" : "passkey"} sign/send
+                    → Soroban contract result
                 </div>
 
                 {#if txScienceEvents.length === 0}
@@ -3515,8 +3566,14 @@
                                         )}...{tx.hash.slice(-8)}</span
                                     >
                                     {#if tx.commitment}
-                                        <span title="Poseidon(address_hash, balance, salt) — public input submitted on-chain">
-                                            POSEIDON COMMIT: {BigInt(tx.commitment).toString(16).slice(0, 10)}...
+                                        <span
+                                            title="Poseidon(address_hash, balance, salt) — public input submitted on-chain"
+                                        >
+                                            POSEIDON COMMIT: {BigInt(
+                                                tx.commitment,
+                                            )
+                                                .toString(16)
+                                                .slice(0, 10)}...
                                         </span>
                                     {/if}
                                 </div>
