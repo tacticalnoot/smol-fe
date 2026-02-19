@@ -312,6 +312,29 @@
                         ? "PROOF_VERIFY"
                         : "AUDIT_RECORD";
 
+                // Per-system action labels and learning notes
+                const isNoir = proofSystem.includes("Noir") || proofSystem.includes("UltraHonk");
+                const isRisc0 = proofSystem.includes("RISC0");
+                const isGroth16 = proofSystem.includes("Groth16") && !isRisc0;
+
+                const actionLabel =
+                    txKind === "PROOF_VERIFY"
+                        ? isNoir
+                            ? "ULTRAHONK PROOF ACCEPTED"
+                            : isRisc0
+                              ? "RISC0 RECEIPT ACCEPTED"
+                              : "GROTH16 PROOF ACCEPTED"
+                        : "RUN EVENT";
+
+                const learningNote =
+                    txKind === "PROOF_VERIFY"
+                        ? isNoir
+                            ? "Noir UltraHonk proof verified on-chain via the farm-attestations verifier bridge. bb.js generated the proof in-browser; Soroban ran the pairing check."
+                            : isRisc0
+                              ? "RISC0 zkVM receipt wrapped in a BN254 Groth16 proof, verified on-chain via the risc0-groth16-verifier contract. Proves execution of the RISC0 guest program without revealing inputs."
+                              : "Groth16 BN254 proof verified on-chain by the Tier Verifier contract (CAP-0074 bn254 host functions). snarkjs generated the proof; Soroban ran the pairing check."
+                        : "Run metadata recorded on-chain.";
+
                 add({
                     id: `${entry.timestamp}:${entry.txHash}`,
                     hash: entry.txHash,
@@ -320,16 +343,10 @@
                         entry.door >= 0
                             ? `ROOM ${entry.floor} DOOR ${entry.door + 1}`
                             : `ROOM ${entry.floor}`,
-                    actionLabel:
-                        txKind === "PROOF_VERIFY"
-                            ? "VERIFIER ACCEPTED PROOF"
-                            : "RUN EVENT",
+                    actionLabel,
                     proofSystem,
                     timestamp: entry.timestamp,
-                    learningNote:
-                        txKind === "PROOF_VERIFY"
-                            ? "The contract accepted verifier inputs after simulate -> assemble -> sign/send."
-                            : "Run metadata recorded on-chain.",
+                    learningNote,
                     network: verifyNetwork,
                 });
             }
@@ -3430,8 +3447,7 @@
                 </div>
 
                 <div class="dg-tx-flow-pill">
-                    SCIENTIFIC FLOW: simulate -> assemble -> passkey sign/send
-                    -> contract result
+                    SCIENTIFIC FLOW: snarkjs/bb.js/RISC0 prove → simulate → assemble → {testnetAddress ? "Freighter" : "passkey"} sign/send → Soroban contract result
                 </div>
 
                 {#if txScienceEvents.length === 0}
