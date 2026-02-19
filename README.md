@@ -17,6 +17,8 @@ Smol is the premier destination for high-fidelity, AI-generated music on the Ste
 Smol is built on the belief that Web3 must be invisible to reach the next billion users. We achieve this through a state-of-the-art **Smart Account** architecture.
 - **PasskeyKit Smart Wallets**: By leveraging WebAuthn, we've replaced confusing seed phrases with the biometrics users already trust (FaceID, TouchID). Your device *is* your key.
 - **Onboarding Billions**: Our architecture removes the "Gas Gap". Users can join and start creating without ever needing to buy XLM or understand transaction fees.
+- **No Trustline Hurdles**: Unlike traditional Stellar accounts, these Smart Wallets can receive any amount of any coin instantly. No manual trustline setup required for incoming payments—anybody can send assets to a Smol wallet and it just works.
+- **Seamless Sending**: When enabled, these smart accounts can send any asset out as easily as they receive them, maintaining full compatibility with the broader Stellar ecosystem.
 - **Kale Relayer & OpenZeppelin**: We utilize the **Kale Relayer** in tandem with **OpenZeppelin GSN (Gas Station Network)** patterns to sponsor transaction fees. This allows the base product to feel like a high-speed "Web2" app while maintaining "Web3" sovereignty.
 - **Programmable Accounts**: Every account is a smart contract, enabling complex features like multi-sig, recovery, and batching that standard accounts cannot touch.
 
