@@ -774,10 +774,11 @@
         opponentName = other?.name || "";
     }
 
-    // Use external relay if available, otherwise fallback to local (which only works in dev/single-instance)
-    const RELAY_API_BASE = import.meta.env.PUBLIC_RELAYER_URL
-        ? import.meta.env.PUBLIC_RELAYER_URL.replace(/\/$/, "")
-        : "";
+    // Use external relay if available.
+    // NOTE: The user suggested `api.kalefarm.xyz`, but that is the tx relayer.
+    // The game state API is hosted on the main app domain `kalefarm.xyz`.
+    // We hardcode this to ensure reliable lobby connection even when running locally.
+    const RELAY_API_BASE = "https://kalefarm.xyz";
 
     async function relayJoin(roomId: string) {
         relayStatus = "connecting";
@@ -793,7 +794,7 @@
         );
 
         // Append /api/dungeon... to the base URL
-        // If RELAY_API_BASE is "https://api.kalefarm.xyz", we want "https://api.kalefarm.xyz/api/dungeon/..."
+        // If RELAY_API_BASE is "https://kalefarm.xyz", we want "https://kalefarm.xyz/api/dungeon/..."
         const url = `${RELAY_API_BASE}/api/dungeon/rooms/${encodeURIComponent(roomId)}/join`;
 
         const resp = await fetch(url, {
