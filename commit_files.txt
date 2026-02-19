@@ -1,9 +1,0 @@
-commit 43c5c5b99941047f6875be8a77afe6196a023f21
-Merge: 1204919b a479f142
-Author: tacticalnoot <130199656+tacticalnoot@users.noreply.github.com>
-Date:   Tue Feb 17 16:08:17 2026 -0600
-
-    Merge pull request #99 from tacticalnoot/claude/testnet-zk-verifiers-nTtFS
-    
-    feat(zkdungeon): route ZK verification contracts to testnet in hackat…
-
