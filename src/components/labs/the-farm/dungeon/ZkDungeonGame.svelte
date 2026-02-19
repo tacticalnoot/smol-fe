@@ -774,6 +774,11 @@
         opponentName = other?.name || "";
     }
 
+    // Use external relay if available, otherwise fallback to local (which only works in dev/single-instance)
+    const RELAY_API_BASE = import.meta.env.PUBLIC_RELAYER_URL
+        ? import.meta.env.PUBLIC_RELAYER_URL.replace(/\/$/, "")
+        : "";
+
     async function relayJoin(roomId: string) {
         relayStatus = "connecting";
         relayError = null;
@@ -783,18 +788,23 @@
             : userState.contractId || "";
         if (!account) throw new Error("Wallet not connected");
 
-        const resp = await fetch(
-            `/api/dungeon/rooms/${encodeURIComponent(roomId)}/join`,
-            {
-                method: "POST",
-                headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({
-                    account,
-                    name: playerName || walletLabel || "Seeker",
-                    ...(testnetAddress ? { testnetAddress } : {}),
-                }),
-            },
+        console.log(
+            `[RelayJoin] Joining Room:${roomId} as Account:${account} (Hackathon:${hackathonMode})`,
         );
+
+        // Append /api/dungeon... to the base URL
+        // If RELAY_API_BASE is "https://api.kalefarm.xyz", we want "https://api.kalefarm.xyz/api/dungeon/..."
+        const url = `${RELAY_API_BASE}/api/dungeon/rooms/${encodeURIComponent(roomId)}/join`;
+
+        const resp = await fetch(url, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+                account,
+                name: playerName || walletLabel || "Seeker",
+                ...(testnetAddress ? { testnetAddress } : {}),
+            }),
+        });
 
         if (!resp.ok) {
             const text = await resp.text();
@@ -820,10 +830,11 @@
         relayError = null;
         if (relayStatus === "error") relayStatus = "connected";
 
-        const resp = await fetch(
-            `/api/dungeon/rooms/${encodeURIComponent(lobbyCode)}/events?cursor=${encodeURIComponent(String(relayCursor))}`,
-            { headers: { Authorization: `Bearer ${relayToken}` } },
-        );
+        const url = `${RELAY_API_BASE}/api/dungeon/rooms/${encodeURIComponent(lobbyCode)}/events?cursor=${encodeURIComponent(String(relayCursor))}`;
+
+        const resp = await fetch(url, {
+            headers: { Authorization: `Bearer ${relayToken}` },
+        });
 
         if (!resp.ok) {
             const text = await resp.text();
@@ -839,7 +850,7 @@
         // DEBUG: Log roster updates to debug visibility issues
         if (phase === "lobby") {
             console.log(
-                "[RelayPoll] Roster:",
+                `[RelayPoll] Room:${lobbyCode} Roster:${data.roster.length}`,
                 data.roster,
                 "Local:",
                 walletAddress,
