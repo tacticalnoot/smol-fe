@@ -758,8 +758,19 @@
 
     function applyRoster(roster: DungeonRosterEntry[]) {
         relayRoster = roster;
-        if (!walletAddress) return;
+        if (!walletAddress) {
+            console.log(
+                "[ApplyRoster] No local walletAddress, cannot find opponent.",
+            );
+            return;
+        }
         const other = roster.find((r) => r.account !== walletAddress);
+        console.log(
+            "[ApplyRoster] Searching for opponent. Local:",
+            walletAddress,
+            "Found:",
+            other,
+        );
         opponentName = other?.name || "";
     }
 
@@ -825,6 +836,16 @@
             cursor: number;
         };
 
+        // DEBUG: Log roster updates to debug visibility issues
+        if (phase === "lobby") {
+            console.log(
+                "[RelayPoll] Roster:",
+                data.roster,
+                "Local:",
+                walletAddress,
+            );
+        }
+
         relayCursor =
             typeof data.cursor === "number" ? data.cursor : relayCursor;
         applyRoster(Array.isArray(data.roster) ? data.roster : []);
@@ -833,6 +854,7 @@
         for (const evt of events) {
             if (evt.kind === "start") {
                 if (phase === "lobby") {
+                    console.log("[RelayPoll] Received START event from host");
                     await startGameLocal({ fromRemote: true });
                 }
             }
