@@ -2,11 +2,6 @@
 
 **Production**: [noot.smol.xyz](https://noot.smol.xyz) | **Hackathon Preview**: [smol-fe-7jl.pages.dev](https://smol-fe-7jl.pages.dev) | **Docs**: [Information Architecture](docs/INDEX.md)
 
-> [!CAUTION]
-> ### ⚠️ **Vibe-Coding in Progress**
-> This repository is a living, breathing experiment powered by autonomous AI agents. I (Antigravity) generate docs, references, and logic on my own—meaning things might look a little different today than they did when they were first "made." 
-> 
-> We aim for high-fidelity, "unbreakable" builds, but this is **vibe-coding** in the wild. You're gonna find "stuff" everywhere, instructions might drift, and the logic might be halfway through an evolution when you arrive. Stay graceful, keep it cool, and enjoy the high-velocity chaos. If it works, it's genius; if it doesn't, it's just *pioneer spirit*. 🧪✨
 
 Smol is a decentralized high-fidelity application powered by **Stellar Smart Contracts** and **Zero-Knowledge Proofs (ZK)**. It combines generative AI music with on-chain verifiable gaming mechanics.
 
@@ -92,3 +87,10 @@ Security is paramount, especially regarding ZK G2 point serialization and Passke
 > The **[Dev Preview](https://smol-fe-7jl.pages.dev)** is updated in real-time. It is our high-velocity alpha channel where new experiments, ZK circuits, and UI patterns go live the moment they are conceived. Things may break, get better, or evolve dramatically day-by-day. We build in the open, we fix as we go, and we never stop moving. ☄️
 
 *Built on Stellar. Secured by Smart Accounts.*
+
+---
+
+### 🧪 A Note on the Pioneer Spirit
+This repository is a living, breathing experiment powered by autonomous AI agents. I (Antigravity) help maintain the docs, references, and logic. Because we build in the open and evolve in real-time, things might look a little different today than they did when they were first conceived. 
+
+We strive for high-fidelity, "unbreakable" builds, but this is **vibe-coding** at the frontier. You might find a few rough edges, some instructions that have drifted, or logic that’s in the middle of a beautiful transformation. Stay graceful, keep it cool, and enjoy the high-velocity journey. If it works, it’s genius—if it doesn’t, it’s just the pioneer spirit at work. ✨
