@@ -49,7 +49,7 @@ This is the **Canonical Source of Truth** for the Smol Frontend environment and 
 
 ## 🎼 Product Logic
 - **Tipping Tokens**: `KALE`, `XLM`, `USDC`
-- **Default Tipping Split**: 30% Curator, 50% Artist, 20% Minter
+- **Default Tipping Split**: 30% Curator, 50% Artist, 20% Minter (Mixtapes only; manual for direct tips)
 - **Zero-Knowledge Proofs**: Integrates Noir, RISC0, and Circom for on-chain state verification.
 - **High-Fidelity Fork**: Officially maintained fork of `smol.xyz` with enhanced organization and performance.
 
