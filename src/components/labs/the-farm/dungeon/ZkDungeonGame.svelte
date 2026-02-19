@@ -787,6 +787,11 @@
     async function relayPollOnce() {
         if (!relayToken || !lobbyCode) return;
 
+        // Clear any previous transient error so the UI doesn't show stale errors
+        // once the relay is responding successfully again.
+        relayError = null;
+        if (relayStatus === "error") relayStatus = "connected";
+
         const resp = await fetch(
             `/api/dungeon/rooms/${encodeURIComponent(lobbyCode)}/events?cursor=${encodeURIComponent(String(relayCursor))}`,
             { headers: { Authorization: `Bearer ${relayToken}` } },
@@ -889,6 +894,7 @@
         } catch (err) {
             relayStatus = "error";
             relayError = err instanceof Error ? err.message : String(err);
+            readySelf = false;
         }
     }
 
@@ -949,9 +955,9 @@
                 hubError = null;
                 hackathonSessionId = Math.floor(Math.random() * 0x7fffffff);
                 // Find opponent's testnet G-address from the relay roster (stored at join time).
-                const opponentEntry = opponentName
-                    ? relayRoster.find((r) => r.account !== (userState.contractId || ""))
-                    : undefined;
+                // Use opponentProgress (derived from roster) rather than the display-only
+                // opponentName string, which can be empty even when a real opponent exists.
+                const opponentEntry = opponentProgress ?? undefined;
                 const txHash = await hubStartGame({
                     gameId: TESTNET_HUB_CONTRACT,
                     sessionId: hackathonSessionId,
@@ -1066,6 +1072,7 @@
             } as any;
             doorStates = emptyDoorStates();
             activeDoor = null;
+            gateWaiting = false;
             return;
         }
 
@@ -1828,6 +1835,12 @@
         groth16OnChain = { status: "idle" };
         noirUltraHonkOnChain = { status: "idle" };
         risc0Groth16OnChain = { status: "idle" };
+        // Clear per-run identifiers so a fresh run gets new IDs, a new policy seed,
+        // and reshuffled doors — not the same assignment as the previous run.
+        runId = "";
+        runStartedAt = 0;
+        runPolicySeed = "";
+        runTierId = 0;
         // Reset hackathon hub state (keep hackathonMode + testnetAddress for next run)
         hackathonSessionId = 0;
         hubStartTxHash = null;
@@ -2004,6 +2017,7 @@
     async function playSolo() {
         warmupDungeonVerifiers();
 
+        stopRelayPolling();
         lobbyCode = "SOLO";
         lobbyRole = null;
         playerName = walletLabel || "Solo Seeker";

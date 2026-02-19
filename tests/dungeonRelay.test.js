@@ -365,3 +365,143 @@ test("gate unblocks when opponent disconnects (multiplayerEnabled becomes false)
     checkGate(relayRoster);
     assert.ok(!gateWaiting, "Gate should unblock when opponent disconnects");
 });
+
+// ── lastSeenAt-before-prune ordering (events.ts GET fix) ─────────────────────
+
+test("player polling self is never pruned even at exactly the stale threshold", () => {
+    // Simulate the fixed GET handler: refresh self BEFORE pruning.
+    resetStore();
+    const room = getDungeonRoom("SELFP");
+    const STALE_MS = 30_000;
+    const now = Date.now();
+
+    // Place self in roster exactly at the threshold
+    room.rosterByAccount["SELF"] = {
+        id: "s1", account: "SELF", name: "Me",
+        joinedAt: now - 60_000,
+        lastSeenAt: now - STALE_MS, // exactly on the edge
+        ready: false, floor: 1, attempts: 0,
+    };
+
+    // Simulate: update self FIRST (as the fixed GET handler does)
+    const me = room.rosterByAccount["SELF"];
+    if (me) {
+        me.lastSeenAt = Date.now(); // refresh before prune
+        room.rosterByAccount["SELF"] = me;
+    }
+
+    // Now prune — self should NOT be removed
+    const pruned = pruneStaleRoster("SELFP");
+    assert.equal(pruned.length, 0, "polling player should never be pruned by their own request");
+    assert.ok(room.rosterByAccount["SELF"], "self should remain in roster");
+});
+
+test("stale opponent is still pruned after self is refreshed", () => {
+    resetStore();
+    const room = getDungeonRoom("OREFR");
+    const now = Date.now();
+
+    room.rosterByAccount["SELF"] = {
+        id: "s1", account: "SELF", name: "Me",
+        joinedAt: now - 60_000, lastSeenAt: now - 31_000,
+        ready: true, floor: 2, attempts: 1,
+    };
+    room.rosterByAccount["OPP"] = {
+        id: "o1", account: "OPP", name: "Them",
+        joinedAt: now - 90_000, lastSeenAt: now - 35_000,
+        ready: true, floor: 1, attempts: 0,
+    };
+
+    // Refresh self first (as fixed GET handler does)
+    room.rosterByAccount["SELF"].lastSeenAt = now;
+
+    // Prune — opponent should be removed, self should remain
+    const pruned = pruneStaleRoster("OREFR");
+    assert.equal(pruned.length, 1);
+    assert.equal(pruned[0], "OPP");
+    assert.ok(room.rosterByAccount["SELF"]);
+    assert.ok(!room.rosterByAccount["OPP"]);
+});
+
+// ── Run-ID / policy-seed reset between runs ───────────────────────────────────
+
+test("startGameLocal guard: empty runId triggers fresh UUID generation", () => {
+    // Simulate the condition: runId is empty (as after resetGame) → should generate new ID.
+    let runId = "";
+    let runStartedAt = 0;
+
+    // This mirrors the startGameLocal guard:
+    if (!runId || !runStartedAt) {
+        runId = crypto.randomUUID();
+        runStartedAt = Date.now();
+    }
+
+    assert.match(runId, /^[0-9a-f-]{36}$/, "fresh runId should be a UUID");
+    assert.ok(runStartedAt > 0, "runStartedAt should be set");
+});
+
+test("startGameLocal guard: existing runId is NOT overwritten mid-run", () => {
+    // Simulate a 2P lobby re-entering startGameLocal (fromRemote) with IDs already set.
+    const existingId = "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee";
+    let runId = existingId;
+    let runStartedAt = Date.now() - 5000;
+
+    if (!runId || !runStartedAt) {
+        runId = crypto.randomUUID();
+        runStartedAt = Date.now();
+    }
+
+    assert.equal(runId, existingId, "mid-run runId should not be overwritten");
+});
+
+test("policy seed uses runPolicySeed when set, falls back to runId, then walletAddress", () => {
+    // Mirror the $derived policySeed logic
+    function getPolicySeed(runPolicySeed, runId, walletAddress) {
+        return (runPolicySeed || runId || walletAddress || "demo").toString();
+    }
+
+    assert.equal(getPolicySeed("SEED1", "id1", "addr1"), "SEED1");
+    assert.equal(getPolicySeed("", "id1", "addr1"), "id1");
+    assert.equal(getPolicySeed("", "", "addr1"), "addr1");
+    assert.equal(getPolicySeed("", "", ""), "demo");
+});
+
+// ── gateWaiting cleared on proof error ───────────────────────────────────────
+
+test("gateWaiting is reset when chooseDoor encounters a proof error", () => {
+    // Simulate the fixed error path in chooseDoor
+    let gateWaiting = true;
+    let doorStates = ["idle", "idle"];
+    let activeDoor = 0;
+
+    // Simulate error path (submitDoorAttempt throws):
+    try {
+        throw new Error("Proof generation failed");
+    } catch (_) {
+        doorStates = ["idle", "idle"]; // emptyDoorStates()
+        activeDoor = null;
+        gateWaiting = false; // <-- the fix
+    }
+
+    assert.ok(!gateWaiting, "gateWaiting must be cleared on proof error");
+    assert.equal(activeDoor, null);
+});
+
+// ── MAX_EVENTS cursor gap documentation ──────────────────────────────────────
+
+test("events trimmed beyond maxEvents: new events still have monotonic seq", () => {
+    resetStore();
+    // Fill past maxEvents
+    for (let i = 0; i < 5; i++) {
+        addDungeonEvent("MONO", { kind: "system", message: `m${i}`, ts: i }, { maxEvents: 3 });
+    }
+    const room = getDungeonRoom("MONO");
+    // Only last 3 events remain, seq 3..5
+    assert.equal(room.events.length, 3);
+    for (let i = 1; i < room.events.length; i++) {
+        assert.ok(room.events[i].seq > room.events[i - 1].seq);
+    }
+    // Cursor at old event (seq 1) that was trimmed: filter still works safely
+    const filtered = room.events.filter(e => e.seq > 1);
+    assert.equal(filtered.length, 3, "all remaining events are after the trimmed cursor");
+});

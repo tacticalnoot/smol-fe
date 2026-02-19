@@ -38,17 +38,19 @@ export const GET: APIRoute = async (ctx) => {
   const url = new URL(request.url);
   const cursor = parseCursor(url.searchParams.get("cursor"));
 
-  // Prune stale players before returning roster
-  pruneStaleRoster(roomId);
-
+  // Refresh the polling player's lastSeenAt BEFORE pruning so they are never
+  // falsely removed by their own request arriving just over the threshold.
   const state = getDungeonRoom(roomId);
-  const events = state.events.filter((evt) => evt.seq > cursor);
-
   const me = state.rosterByAccount[session.account];
   if (me) {
     me.lastSeenAt = Date.now();
     state.rosterByAccount[session.account] = me;
   }
+
+  // Prune other stale players after refreshing self
+  pruneStaleRoster(roomId);
+
+  const events = state.events.filter((evt) => evt.seq > cursor);
 
   return new Response(
     JSON.stringify({
