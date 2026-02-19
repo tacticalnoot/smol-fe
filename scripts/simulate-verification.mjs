@@ -1,14 +1,33 @@
-import pkg from '@stellar/stellar-sdk';
-const { Contract, rpc, xdr, Address, Account, Networks, TransactionBuilder, scValToNative, nativeToScVal } = pkg;
-
-const RPC_URL = "https://mainnet.sorobanrpc.com";
-const CONTRACT_ID = "CAU7NET7FXSFBBRMLM6X7CJMVAIHMG7RC4YPCXG6G4YOYG6C3CVGR25M";
-const FARMER = "CAY6HXZGUP5W2OPCW4E7OOH2H37JR4GA4XP5XHQQQTH5L4JKJT64KCKF";
+const RPC_URL = "https://soroban-testnet.stellar.org";
+const CONTRACT_ID = "CDPACZDP7LZ4BEHVG64EAEOOGNTJS5V4WB2JGMZ4I6FK2GCAYVO7LRCC"; // Public Tier Verifier Testnet
+const FARMER = "GDBP4WOQVPJKEZWFPQFP4WUXES7ACORKIRN5SR5VM6YOYYAJDUNXZOFI";
 
 async function simulate() {
+    console.log("Starting script...");
+    let sdk;
+    try {
+        sdk = await import('@stellar/stellar-sdk');
+        console.log("Stellar SDK loaded");
+    } catch (e) {
+        console.error("Failed to load SDK:", e);
+        return;
+    }
+    const { Keypair, Contract, rpc, xdr, Address, Account, Networks, TransactionBuilder, scValToNative, nativeToScVal } = sdk;
+    console.log("SDK Keys:", Object.keys(sdk));
+    console.log("RPC Object:", rpc);
+
     console.log(`🧪 Simulating verify_and_attest for: ${CONTRACT_ID}`);
-    const server = new rpc.Server(RPC_URL);
-    const contract = new Contract(CONTRACT_ID);
+    let server, contract;
+    try {
+        server = new rpc.Server(RPC_URL);
+        console.log("RPC Server defined");
+        contract = new Contract(CONTRACT_ID);
+        console.log("Contract defined");
+    } catch (e) {
+        console.error("Setup failed:", e);
+        return;
+    }
+    console.log("Contract defined");
 
     // Inputs from user logs
     const tier = 0;
@@ -29,17 +48,22 @@ async function simulate() {
         new xdr.ScMapEntry({ key: xdr.ScVal.scvSymbol("pi_c"), val: xdr.ScVal.scvBytes(pi_c) }),
     ]);
 
+    // SDK objects are available here
+    const farmerAddress = new Address(FARMER);
+    console.log("Simulating with Farmer:", farmerAddress.toString());
+
+    // Arg 1: Farmer (Address)
     const op = contract.call("verify_and_attest",
-        new Address(FARMER).toScVal(),
-        nativeToScVal(tier, { type: "u32" }),
+        farmerAddress.toScVal(),
+        nativeToScVal(tier, { type: "u32" }), // Tier 0
         nativeToScVal(commitment, { type: "bytes" }),
         proofStruct
     );
 
-    const source = new Account("GAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAWHF", "1");
+    const source = new Account(FARMER, "0");
     const tx = new TransactionBuilder(source, {
         fee: "100",
-        networkPassphrase: Networks.PUBLIC
+        networkPassphrase: "Test SDF Network ; September 2015"
     }).addOperation(op).setTimeout(30).build();
 
     const sim = await server.simulateTransaction(tx);

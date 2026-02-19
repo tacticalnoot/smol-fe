@@ -1,6 +1,5 @@
 import { readFileSync } from 'fs';
-import pkg from '@stellar/stellar-sdk';
-const { Keypair, Contract, rpc, TransactionBuilder, Networks, xdr, Address, nativeToScVal } = pkg;
+import { Keypair, Contract, rpc, TransactionBuilder, Networks, xdr, Address, nativeToScVal } from '@stellar/stellar-sdk';
 import path from 'path';
 import { fileURLToPath } from 'url';
 
@@ -11,10 +10,10 @@ const rootDir = path.resolve(__dirname, '..');
 
 // Constants
 const VKEY_PATH = "public/zk/verification_key.json";
-const CONTRACT_ID_PATH = "deployed-contract-id.txt";
-const SECRET_PATH = "deployer_secret.txt";
-const RPC_URL = "https://mainnet.sorobanrpc.com";
-const NETWORK_PASSPHRASE = Networks.PUBLIC;
+// Testnet Contract ID
+const CONTRACT_ID = "CDPACZDP7LZ4BEHVG64EAEOOGNTJS5V4WB2JGMZ4I6FK2GCAYVO7LRCC";
+const RPC_URL = "https://soroban-testnet.stellar.org";
+const NETWORK_PASSPHRASE = "Test SDF Network ; September 2015";
 
 // ============================================================================
 // Serialization Helpers
@@ -52,115 +51,102 @@ function serializeG2(point) {
     return result;
 }
 
-// ============================================================================
-// Main Script
-// ============================================================================
+async function fundWithFriendbot(publicKey) {
+    try {
+        const res = await fetch(`https://friendbot.stellar.org/?addr=${publicKey}`);
+        const json = await res.json();
+        console.log("Friendbot:", json);
+    } catch (e) {
+        console.error("Friendbot failed:", e);
+    }
+}
 
 async function main() {
-    console.log("🔐 Starting SDK Initialization (Sorted nativeToScVal)...");
+    console.log("🚀 Initializing Tier Verifier (TESTNET)...");
 
-    // 1. Load Secrets & Config
-    const secret = readFileSync(path.join(rootDir, SECRET_PATH), 'utf8').trim();
-    if (!secret) throw new Error("Deployer secret not found");
-    const kp = Keypair.fromSecret(secret);
+    // 1. Generate random admin
+    const source = Keypair.random();
+    console.log("Generated Admin:", source.publicKey());
 
-    const contractId = readFileSync(path.join(rootDir, CONTRACT_ID_PATH), 'utf8').trim();
-    if (!contractId) throw new Error("Contract ID not found");
+    // 2. Fund it
+    await fundWithFriendbot(source.publicKey());
 
-    console.log(`Identity: ${kp.publicKey()}`);
-    console.log(`Contract: ${contractId}`);
+    // 3. Load VKey
+    const vkeyRaw = JSON.parse(readFileSync(path.resolve(rootDir, VKEY_PATH), 'utf8'));
 
-    // 2. Load VKey and Serialize
-    const vkeyRaw = JSON.parse(readFileSync(path.join(rootDir, VKEY_PATH), 'utf8'));
+    const vkeyScVal = xdr.ScVal.scvMap([
+        new xdr.ScMapEntry({ key: xdr.ScVal.scvSymbol("alpha_g1"), val: xdr.ScVal.scvBytes(serializeG1(vkeyRaw.vk_alpha_1)) }),
+        new xdr.ScMapEntry({ key: xdr.ScVal.scvSymbol("beta_g2"), val: xdr.ScVal.scvBytes(serializeG2(vkeyRaw.vk_beta_2)) }),
+        new xdr.ScMapEntry({ key: xdr.ScVal.scvSymbol("delta_g2"), val: xdr.ScVal.scvBytes(serializeG2(vkeyRaw.vk_delta_2)) }),
+        new xdr.ScMapEntry({ key: xdr.ScVal.scvSymbol("gamma_g2"), val: xdr.ScVal.scvBytes(serializeG2(vkeyRaw.vk_gamma_2)) }),
+        new xdr.ScMapEntry({ key: xdr.ScVal.scvSymbol("ic"), val: xdr.ScVal.scvVec(vkeyRaw.IC.map(p => xdr.ScVal.scvBytes(serializeG1(p)))) }),
+    ]);
 
-    const alpha_g1_bytes = serializeG1(vkeyRaw.vk_alpha_1);
-    const beta_g2_bytes = serializeG2(vkeyRaw.vk_beta_2);
-    const gamma_g2_bytes = serializeG2(vkeyRaw.vk_gamma_2);
-    const delta_g2_bytes = serializeG2(vkeyRaw.vk_delta_2);
-    const ic_bytes_array = vkeyRaw.IC.map(point => serializeG1(point));
-
-    // 3. Build ScVal using nativeToScVal (explicitly sorted keys)
-    // Order: alpha, beta, delta, gamma, ic
-    const vkeyObj = {
-        alpha_g1: alpha_g1_bytes,
-        beta_g2: beta_g2_bytes,
-        delta_g2: delta_g2_bytes, // D comes before G
-        gamma_g2: gamma_g2_bytes,
-        ic: ic_bytes_array
-    };
-
-    console.log("Keys in object:", Object.keys(vkeyObj));
-
-    let vkeyScVal;
-    try {
-        vkeyScVal = nativeToScVal(vkeyObj);
-    } catch (e) {
-        console.error("nativeToScVal failed:", e);
-        throw e;
-    }
-
-    // 4. Build Transaction
+    // 4. Initialize
     const server = new rpc.Server(RPC_URL);
-    const account = await server.getAccount(kp.publicKey());
-
-    const contract = new Contract(contractId);
+    const contract = new Contract(CONTRACT_ID);
+    const adminAddress = new Address(source.publicKey());
 
     const op = contract.call("initialize",
-        new Address(kp.publicKey()).toScVal(), // admin
-        vkeyScVal // vkey
+        adminAddress.toScVal(),
+        vkeyScVal
     );
 
+    let account;
+    let attempts = 0;
+    while (!account && attempts < 20) {
+        try {
+            account = await server.getAccount(source.publicKey());
+            console.log("Account found!");
+        } catch (e) {
+            console.log("Waiting for account indexing...");
+            await new Promise(r => setTimeout(r, 2000));
+            attempts++;
+        }
+    }
+
+    if (!account) {
+        throw new Error("Account not found after retries");
+    }
+
     const tx = new TransactionBuilder(account, {
-        fee: "100000", // 0.01 XLM
+        fee: "10000",
         networkPassphrase: NETWORK_PASSPHRASE
     })
         .addOperation(op)
         .setTimeout(30)
         .build();
 
-    tx.sign(kp);
-
-    // 5. Simulate & Send
-    console.log("Simulating...");
-    const sim = await server.simulateTransaction(tx);
-
-    if (rpc.Api.isSimulationError(sim)) {
-        console.error("❌ Simulation Failed:", JSON.stringify(sim, null, 2));
-        process.exit(1);
-    }
-
-    console.log("Simulation Successful. Resources cost:", sim.minResourceFee);
-
+    console.log("Preparing transaction...");
     const preparedTx = await server.prepareTransaction(tx);
-    preparedTx.sign(kp);
-    console.log("Submitting...");
+
+    preparedTx.sign(source);
+
+    console.log("Submitting initialization...");
     const result = await server.sendTransaction(preparedTx);
 
-    if (result.status !== "PENDING") {
-        console.error("❌ Submission Failed:", result);
-        process.exit(1);
-    }
-
-    console.log(`✅ Transaction sent! Hash: ${result.hash}`);
-
-    console.log("Waiting for confirmation...");
-    let status = await server.getTransaction(result.hash);
-    let retries = 0;
-    while (status.status === "NOT_FOUND" && retries < 20) {
-        await new Promise(r => setTimeout(r, 2000));
-        status = await server.getTransaction(result.hash);
-        retries++;
-    }
-
-    if (status.status === "SUCCESS") {
-        console.log("✅ Initialization confirmed on-chain.");
-        console.log(`\n🎉 CONTRACT INITIALIZED: ${contractId}`);
+    if (result.status === "PENDING") {
+        console.log("PENDING:", result.hash);
+        // poll
+        let status = result.status;
+        let retries = 0;
+        while (status === "PENDING" && retries < 10) {
+            await new Promise(r => setTimeout(r, 2000));
+            try {
+                const r = await server.getTransaction(result.hash);
+                status = r.status;
+                console.log("Status:", status);
+            } catch (e) {
+                console.log("Polling error:", e.message);
+            }
+        }
     } else {
-        console.warn("⚠️  Transaction status:", status.status);
+        console.log("Result FAILED:", JSON.stringify(result, null, 2));
+        // Try to decode expected error
+        if (result.errorResultXdr) {
+            console.log("Error XDR:", result.errorResultXdr);
+        }
     }
 }
 
-main().catch(err => {
-    console.error("Script Error:", err);
-    process.exit(1);
-});
+main().catch(console.error);
