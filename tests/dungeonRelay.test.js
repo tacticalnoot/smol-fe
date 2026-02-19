@@ -487,6 +487,69 @@ test("gateWaiting is reset when chooseDoor encounters a proof error", () => {
     assert.equal(activeDoor, null);
 });
 
+// ── gateWaiting / isGateFloor collision fix ───────────────────────────────────
+
+test("relay gate check does NOT run when player is still on a gate floor (isGateFloor=true)", () => {
+    // Scenario: on-chain verification sets gateWaiting=true at floor 1.
+    // Both players have floor=1 in roster (trivially satisfies floor >= 1).
+    // Without the isGateFloor guard, polling would immediately clear gateWaiting,
+    // dismissing the on-chain overlay. With the guard it stays set.
+    const GATE_FLOORS = [1];
+    let gateWaiting = true;
+    let currentFloor = 1;
+    let isGateFloor = GATE_FLOORS.includes(currentFloor); // true
+    let relayRoster = [
+        { account: "P1", floor: 1, ready: true },
+        { account: "P2", floor: 1, ready: true },
+    ];
+    let multiplayerEnabled = relayRoster.length >= 2;
+
+    function checkGateFixed(roster) {
+        if (gateWaiting && !isGateFloor) {          // <-- the fix
+            if (!multiplayerEnabled) {
+                gateWaiting = false;
+            } else if (roster.length >= 2 && roster.every(r => r.floor >= currentFloor)) {
+                gateWaiting = false;
+            }
+        }
+    }
+
+    checkGateFixed(relayRoster);
+    assert.ok(gateWaiting, "on-chain overlay (gateWaiting) must NOT be cleared while still on gate floor");
+});
+
+test("relay gate check DOES run after player advances past gate floor (isGateFloor=false)", () => {
+    // After advancing from floor 1 to floor 2, currentFloor=2, isGateFloor=false.
+    // The multiplayer sync gate should now be managed by polling.
+    const GATE_FLOORS = [1];
+    let gateWaiting = true;
+    let currentFloor = 2;
+    let isGateFloor = GATE_FLOORS.includes(currentFloor); // false
+    let multiplayerEnabled = true;
+
+    // Scenario A: P2 is still at floor 1 — gate stays
+    let roster = [
+        { account: "P1", floor: 2, ready: true },
+        { account: "P2", floor: 1, ready: true },
+    ];
+    function checkGateFixed(r) {
+        if (gateWaiting && !isGateFloor) {
+            if (!multiplayerEnabled) {
+                gateWaiting = false;
+            } else if (r.length >= 2 && r.every(e => e.floor >= currentFloor)) {
+                gateWaiting = false;
+            }
+        }
+    }
+    checkGateFixed(roster);
+    assert.ok(gateWaiting, "gate should stay while P2 is behind");
+
+    // Scenario B: P2 advances to floor 2 — gate clears
+    roster[1].floor = 2;
+    checkGateFixed(roster);
+    assert.ok(!gateWaiting, "gate should clear when both reach floor 2");
+});
+
 // ── MAX_EVENTS cursor gap documentation ──────────────────────────────────────
 
 test("events trimmed beyond maxEvents: new events still have monotonic seq", () => {

@@ -712,11 +712,15 @@
         const server = new rpc.Server(resolvedUrl);
 
         for (let attempt = 0; attempt < 50; attempt += 1) {
-            const tx = await server.getTransaction(hash);
-            if (tx.status === rpc.Api.GetTransactionStatus.SUCCESS)
-                return "success";
-            if (tx.status === rpc.Api.GetTransactionStatus.FAILED)
-                return "failed";
+            try {
+                const tx = await server.getTransaction(hash);
+                if (tx.status === rpc.Api.GetTransactionStatus.SUCCESS)
+                    return "success";
+                if (tx.status === rpc.Api.GetTransactionStatus.FAILED)
+                    return "failed";
+            } catch {
+                // Transient RPC error (network blip, 503, etc.) — keep polling.
+            }
             await new Promise<void>((resolve) => setTimeout(resolve, 1200));
         }
 
@@ -821,7 +825,12 @@
             }
         }
 
-        if (gateWaiting) {
+        // Only manage the multiplayer-sync gate when the player is NOT on a gate floor.
+        // When currentFloor IS a gate floor (e.g. floor 1), gateWaiting may be set
+        // by the on-chain verification overlay — polling must not clear it early.
+        // After advancing past a gate floor (e.g. currentFloor=2), isGateFloor=false
+        // and polling manages the sync gate normally.
+        if (gateWaiting && !isGateFloor) {
             if (!multiplayerEnabled) {
                 // Opponent disconnected — unblock so the player isn't stuck indefinitely.
                 gateWaiting = false;
@@ -2026,7 +2035,6 @@
         relayRoster = [];
         relayStatus = "disconnected";
         relayError = null;
-        stopRelayPolling();
 
         // Initialize a new run and enter the Airlock (Room 0) before gameplay.
         runId = crypto.randomUUID();
