@@ -4,11 +4,19 @@
 
 Smol is a decentralized high-fidelity application powered by **Stellar Smart Contracts** and **Zero-Knowledge Proofs (ZK)**. It combines generative AI music with on-chain verifiable gaming mechanics.
 
+## 🧪 Smol Labs: The Innovation Playground
+**Labs** is our high-fidelity R&D environment where we showcase the newest and greatest innovations on the **Stellar Network**. It is more than just a gallery; it is an active testing ground for:
+- **Zero-Knowledge Proofs (ZK)**: On-chain verifiable gaming and privacy-preserving state settlemet.
+- **AI Music Automation**: Advanced generative audio pipelines and NFT minting.
+- **Stellar Experiments**: Soroban session keys, batch transitions, and next-gen smart contract patterns.
+- **Personal Tools**: Custom developer utilities and experimental interfaces designed for anyone to play with and extend.
+
+We use Labs to push the boundaries of what is possible on Stellar, transforming half-baked ideas into verifiable, state-of-the-art decentralized experiences.
+
 ## 🕹️ ZK Dungeon (Hackathon Mode)
-Participating in the **DoraHacks Stellar Hacks: ZK Gaming** hackathon.
-- **Verifiable Strategy**: Uses **Noir**, **RISC0**, and **Circom** to generate zero-knowledge proofs of local gameplay, verified on-chain via Stellar smart contracts.
-- **Multilayered Privacy**: Players compete in a decentralized dungeon where every move is verified without exposing the underlying game state until settlement.
-- **Hackathon MVP**: Includes a fully integrated Single-Player "Hackathon Mode" using the **Stellar Wallets Kit (Freighter)** on Testnet.
+A flagship experiment within the Labs section, participating in the **DoraHacks Stellar Hacks: ZK Gaming** hackathon.
+- **Verifiable Strategy**: Uses **Noir**, **RISC0**, and **Circom** to generate zero-knowledge proofs of gameplay, verified on-chain via Stellar.
+- **Multiplayer State Channels**: Proxied relay architecture for seamless peer-to-peer gaming.
 
 ## 🏗️ Core Technology
 - **Framework**: Astro `5.x` + Svelte `5.x` (Runes)
