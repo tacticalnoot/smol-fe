@@ -258,6 +258,7 @@
         timestamp: number;
         learningNote: string;
         network?: "mainnet" | "testnet";
+        commitment?: string | null; // Poseidon commitment (Groth16 public input)
     }
 
     function proofSystemLabel(proofType: string): string {
@@ -332,7 +333,7 @@
                             ? "Noir UltraHonk proof verified on-chain via the farm-attestations verifier bridge. bb.js generated the proof in-browser; Soroban ran the pairing check."
                             : isRisc0
                               ? "RISC0 zkVM receipt wrapped in a BN254 Groth16 proof, verified on-chain via the risc0-groth16-verifier contract. Proves execution of the RISC0 guest program without revealing inputs."
-                              : "Groth16 BN254 proof verified on-chain by the Tier Verifier contract (CAP-0074 bn254 host functions). snarkjs generated the proof; Soroban ran the pairing check."
+                              : "Groth16 BN254 proof verified on-chain by the Tier Verifier contract (CAP-0074 bn254 host functions). snarkjs generated the proof using a Poseidon commitment (address + balance + salt) as the public input binding; Soroban ran the pairing check."
                         : "Run metadata recorded on-chain.";
 
                 add({
@@ -348,6 +349,7 @@
                     timestamp: entry.timestamp,
                     learningNote,
                     network: verifyNetwork,
+                    commitment: entry.commitment,
                 });
             }
 
@@ -3475,6 +3477,11 @@
                                             10,
                                         )}...{tx.hash.slice(-8)}</span
                                     >
+                                    {#if tx.commitment}
+                                        <span title="Poseidon(address_hash, balance, salt) — public input submitted on-chain">
+                                            POSEIDON COMMIT: {BigInt(tx.commitment).toString(16).slice(0, 10)}...
+                                        </span>
+                                    {/if}
                                 </div>
                                 <p class="dg-tx-note">{tx.learningNote}</p>
                                 <a
