@@ -11,7 +11,7 @@ Smol is the premier destination for high-fidelity, AI-generated music on the Ste
 -   🧪 **Experimental Alpha**: The latest cutting-edge updates and "Everything Lab" features are first deployed to the **[Pages Dev Preview](https://smol-fe-7jl.pages.dev)**.
 - **Generative AI Audio**: Produce high-fidelity, diverse musical variations at the click of a button.
 - **On-Chain Minting**: Seamlessly transform generations into NFTs via our integrated Soroban smart contracts.
-- **Social Tipping & Splits**: Support your favorite artists with direct tips in **XLM**, **KALE**, or **USDC**. Our contract-level splits ensure fair distribution between artists, curators, and minters.
+- **Social Tipping & Splits**: Support your favorite artists with direct tips in **XLM**, **KALE**, or **USDC**. For on-chain mixtapes, our contract-level splits ensure fair distribution between artists, curators, and minters.
 - **Mixtape Builder**: Create and publish on-chain mixtapes to share your curated collections with the community.
 - **Radio V2**: Experience a 24/7 stream of the latest and greatest community-minted songs.
 - **Passkey Security**: Zero seed phrases. Authenticate and sign transactions securely using device biometrics via **PasskeyKit**.
