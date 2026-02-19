@@ -29,9 +29,10 @@ export const POST: APIRoute = async (ctx) => {
   if (!roomId) return new Response("Room id required", { status: 400 });
 
   try {
-    const body = (await request.json()) as { account?: string; name?: string };
+    const body = (await request.json()) as { account?: string; name?: string; testnetAddress?: string };
     const account = body?.account?.trim() || "";
     const name = sanitizeName(body?.name || "");
+    const testnetAddress = typeof body?.testnetAddress === "string" ? body.testnetAddress.trim().slice(0, 56) || undefined : undefined;
     if (!account) return new Response("Missing account", { status: 400 });
 
     const state = getDungeonRoom(roomId);
@@ -48,6 +49,7 @@ export const POST: APIRoute = async (ctx) => {
           ...existing,
           name,
           lastSeenAt: now,
+          ...(testnetAddress !== undefined ? { testnetAddress } : {}),
         }
       : {
           id: crypto.randomUUID(),
@@ -58,6 +60,7 @@ export const POST: APIRoute = async (ctx) => {
           ready: false,
           floor: 1,
           attempts: 0,
+          ...(testnetAddress !== undefined ? { testnetAddress } : {}),
         };
 
     state.rosterByAccount[account] = entry;

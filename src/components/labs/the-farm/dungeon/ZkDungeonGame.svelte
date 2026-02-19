@@ -196,6 +196,7 @@
         ready: boolean;
         floor: number;
         attempts: number;
+        testnetAddress?: string;
     };
     type DungeonEvent =
         | { seq: number; kind: "system"; message: string; ts: number }
@@ -762,6 +763,7 @@
                 body: JSON.stringify({
                     account,
                     name: playerName || walletLabel || "Seeker",
+                    ...(testnetAddress ? { testnetAddress } : {}),
                 }),
             },
         );
@@ -814,13 +816,18 @@
             }
         }
 
-        if (gateWaiting && multiplayerEnabled) {
-            const roster = relayRoster;
-            if (
-                roster.length >= 2 &&
-                roster.every((r) => r.floor >= currentFloor)
-            ) {
+        if (gateWaiting) {
+            if (!multiplayerEnabled) {
+                // Opponent disconnected — unblock so the player isn't stuck indefinitely.
                 gateWaiting = false;
+            } else {
+                const roster = relayRoster;
+                if (
+                    roster.length >= 2 &&
+                    roster.every((r) => r.floor >= currentFloor)
+                ) {
+                    gateWaiting = false;
+                }
             }
         }
     }
@@ -934,19 +941,22 @@
         risc0Groth16OnChain = { status: "idle" };
 
         // ── Hackathon Mode: call start_game() on testnet hub ────────
-        if (hackathonMode && testnetAddress) {
+        // Only the host (or a solo player) registers the session — the guest skips this
+        // so we avoid duplicate registrations for the same run.
+        if (hackathonMode && testnetAddress && !opts?.fromRemote) {
             try {
                 hubStatus = "starting";
                 hubError = null;
                 hackathonSessionId = Math.floor(Math.random() * 0x7fffffff);
+                // Find opponent's testnet G-address from the relay roster (stored at join time).
+                const opponentEntry = opponentName
+                    ? relayRoster.find((r) => r.account !== (userState.contractId || ""))
+                    : undefined;
                 const txHash = await hubStartGame({
                     gameId: TESTNET_HUB_CONTRACT,
                     sessionId: hackathonSessionId,
                     player1: testnetAddress,
-                    player2: opponentName
-                        ? relayRoster.find((r) => r.account !== testnetAddress)
-                              ?.account || testnetAddress
-                        : undefined,
+                    player2: opponentEntry?.testnetAddress || undefined,
                 });
                 hubStartTxHash = txHash;
                 hubStatus = "started";
@@ -988,8 +998,13 @@
     }
 
     async function hostStartGame() {
-        if (hasOpponent) await relayPost({ kind: "start", ts: Date.now() });
-        await startGameLocal();
+        try {
+            if (hasOpponent) await relayPost({ kind: "start", ts: Date.now() });
+            await startGameLocal();
+        } catch (err) {
+            relayStatus = "error";
+            relayError = err instanceof Error ? err.message : String(err);
+        }
     }
 
     async function chooseDoor(doorIndex: number) {
@@ -2526,17 +2541,17 @@
             </div>
 
             <div class="dg-lobby-players">
-                <div class="dg-lobby-player dg-lobby-player-ready">
-                    <span class="dg-lobby-player-icon">P1</span>
+                <div class="dg-lobby-player {readySelf ? 'dg-lobby-player-ready' : 'dg-lobby-player-waiting'}">
+                    <span class="dg-lobby-player-icon">{lobbyRole === "host" ? "P1" : "P2"}</span>
                     <span class="dg-lobby-player-name">{playerName}</span>
-                    <span class="dg-lobby-player-status">READY</span>
+                    <span class="dg-lobby-player-status">{readySelf ? "READY" : "NOT READY"}</span>
                 </div>
                 <div
                     class="dg-lobby-player {opponentName
-                        ? 'dg-lobby-player-ready'
+                        ? opponentReady ? 'dg-lobby-player-ready' : 'dg-lobby-player-waiting'
                         : 'dg-lobby-player-waiting'}"
                 >
-                    <span class="dg-lobby-player-icon">P2</span>
+                    <span class="dg-lobby-player-icon">{lobbyRole === "host" ? "P2" : "P1"}</span>
                     <span class="dg-lobby-player-name"
                         >{opponentName || "..."}</span
                     >
