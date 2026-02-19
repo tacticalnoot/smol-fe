@@ -774,11 +774,10 @@
         opponentName = other?.name || "";
     }
 
-    // Use external relay if available.
-    // NOTE: The user suggested `api.kalefarm.xyz`, but that is the tx relayer.
-    // The game state API is hosted on the main app domain `kalefarm.xyz`.
-    // We hardcode this to ensure reliable lobby connection even when running locally.
-    const RELAY_API_BASE = "https://kalefarm.xyz";
+    // The game state API is proxying to the main app domain `kalefarm.xyz`.
+    // We use a Cloudflare Pages Function proxy (our own /api/dungeon routes)
+    // to forward these requests server-side, completely bypassing browser CORS.
+    const RELAY_API_BASE = "";
 
     async function relayJoin(roomId: string) {
         relayStatus = "connecting";
