@@ -13,6 +13,13 @@ Smol is the premier destination for high-fidelity, AI-generated music on the Ste
 - **Radio V2**: Experience a 24/7 stream of the latest and greatest community-minted songs.
 - **Passkey Security**: Zero seed phrases. Authenticate and sign transactions securely using device biometrics via **PasskeyKit**.
 
+## 🛡️ The Future: PasskeyKit & Smart Accounts
+Smol is built on the belief that Web3 must be invisible to reach the next billion users. We achieve this through a state-of-the-art **Smart Account** architecture.
+- **PasskeyKit Smart Wallets**: By leveraging WebAuthn, we've replaced confusing seed phrases with the biometrics users already trust (FaceID, TouchID). Your device *is* your key.
+- **Onboarding Billions**: Our architecture removes the "Gas Gap". Users can join and start creating without ever needing to buy XLM or understand transaction fees.
+- **Kale Relayer & OpenZeppelin**: We utilize the **Kale Relayer** in tandem with **OpenZeppelin GSN (Gas Station Network)** patterns to sponsor transaction fees. This allows the base product to feel like a high-speed "Web2" app while maintaining "Web3" sovereignty.
+- **Programmable Accounts**: Every account is a smart contract, enabling complex features like multi-sig, recovery, and batching that standard accounts cannot touch.
+
 ## 🧪 Smol Labs: The Everything Lab
 While **Smol** serves as our base product and AI music foundation, **Labs** is our "Everything Lab"—a high-fidelity R&D environment where we showcase the newest and greatest innovations on the **Stellar Network**. It is an active testing ground for:
 - **Zero-Knowledge Proofs (ZK)**: On-chain verifiable gaming and privacy-preserving state settlement.
