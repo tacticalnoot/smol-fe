@@ -77,10 +77,12 @@ function serializeG1(point) {
 }
 
 function serializeG2(point) {
-    const x_c1 = BigInt(point[0][0]);
-    const x_c0 = BigInt(point[0][1]);
-    const y_c1 = BigInt(point[1][0]);
-    const y_c0 = BigInt(point[1][1]);
+    // snarkjs vkey format: [[X_c0, X_c1], [Y_c0, Y_c1], ["1","0"]]
+    // CAP-0074 Bn254G2Affine::from_bytes expects: X_c1 || X_c0 || Y_c1 || Y_c0 (128 bytes)
+    const x_c0 = BigInt(point[0][0]);
+    const x_c1 = BigInt(point[0][1]);
+    const y_c0 = BigInt(point[1][0]);
+    const y_c1 = BigInt(point[1][1]);
     const result = new Uint8Array(128);
     result.set(bigintToBytes32(x_c1), 0);
     result.set(bigintToBytes32(x_c0), 32);

@@ -679,12 +679,17 @@
         setTimeout(() => joinLobby(), 50);
     });
 
-    async function waitForMainnetTx(
+    async function waitForTx(
         hash: string,
+        rpcUrl?: string,
     ): Promise<"success" | "failed" | "timeout"> {
         const { rpc } = await import("@stellar/stellar-sdk/minimal");
-        const { getBestRpcUrl } = await import("../../../../utils/rpc");
-        const server = new rpc.Server(getBestRpcUrl());
+        let resolvedUrl = rpcUrl;
+        if (!resolvedUrl) {
+            const { getBestRpcUrl } = await import("../../../../utils/rpc");
+            resolvedUrl = getBestRpcUrl();
+        }
+        const server = new rpc.Server(resolvedUrl);
 
         for (let attempt = 0; attempt < 50; attempt += 1) {
             const tx = await server.getTransaction(hash);
@@ -1149,7 +1154,7 @@
                         reasonCode: "ONCHAIN_VERIFIED",
                     });
 
-                    const confirmed = await waitForMainnetTx(submitRes.txHash);
+                    const confirmed = await waitForTx(submitRes.txHash, hackathonNet?.rpcUrl);
                     if (confirmed === "success") {
                         groth16OnChain = {
                             status: "confirmed",
@@ -1408,7 +1413,7 @@
                         reasonCode: "ONCHAIN_VERIFIED",
                     });
 
-                    const confirmed = await waitForMainnetTx(submitRes.txHash);
+                    const confirmed = await waitForTx(submitRes.txHash);
                     if (confirmed === "success") {
                         noirUltraHonkOnChain = {
                             status: "confirmed",
@@ -1667,7 +1672,7 @@
                         reasonCode: "ONCHAIN_VERIFIED",
                     });
 
-                    const confirmed = await waitForMainnetTx(submitRes.txHash);
+                    const confirmed = await waitForTx(submitRes.txHash);
                     if (confirmed === "success") {
                         risc0Groth16OnChain = {
                             status: "confirmed",
