@@ -32,7 +32,10 @@ While **Smol** serves as our base product and AI music foundation, **Labs** is o
 - **Stellar Innovations**: Soroban session keys, batch transitions, and next-gen smart contract patterns.
 - **Personal Tools**: Custom developer utilities and experimental interfaces designed for anyone to play with and extend.
 
-We use Labs to push the boundaries of what is possible on Stellar, transforming half-baked ideas into verifiable, state-of-the-art decentralized experiences.
+We use Labs to push the boundaries of what is possible on Stellar, transforming experimental ideas into verifiable, state-of-the-art decentralized experiences.
+
+> [!NOTE]
+> **Graduation Strategy**: Features and innovations perfected in the Everything Lab may graduate to the main Smol product or continue advancing as specialized tools within the Labs ecosystem.
 
 ## 🕹️ ZK Dungeon (Hackathon Mode)
 A flagship experiment within the Labs section, participating in the **DoraHacks Stellar Hacks: ZK Gaming** hackathon.
