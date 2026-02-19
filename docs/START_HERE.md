@@ -1,3 +1,11 @@
+<!--
+CONTRACT:
+- SSOT: [STATE_OF_WORLD.md](STATE_OF_WORLD.md)
+- AUDIENCE: Dev
+- NATURE: Procedure
+- LAST_HARDENED: 2026-02-19
+- VERIFICATION_METHOD: [Manual Verify]
+-->
 # 🚀 START HERE - Local Testing Guide
 
 **Everything is now set up for local testing!** Follow these steps:

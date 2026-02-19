@@ -1,6 +1,6 @@
 # Labs Integrity (ZK + Stellar TX)
 
-Last updated: 2026-02-13
+Last updated: 2026-02-19
 
 This doc is the reviewer-facing "truth table" for `/labs` and everything reachable forward from it. If something is demo-only, it is explicitly marked as such.
 

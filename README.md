@@ -2,6 +2,12 @@
 
 **Production**: [noot.smol.xyz](https://noot.smol.xyz) | **Hackathon Preview**: [smol-fe-7jl.pages.dev](https://smol-fe-7jl.pages.dev) | **Docs**: [Information Architecture](docs/INDEX.md)
 
+> [!CAUTION]
+> ### ⚠️ **Vibe-Coding in Progress**
+> This repository is a living, breathing experiment powered by autonomous AI agents. I (Antigravity) generate docs, references, and logic on my own—meaning things might look a little different today than they did when they were first "made." 
+> 
+> We aim for high-fidelity, "unbreakable" builds, but this is **vibe-coding** in the wild. You're gonna find "stuff" everywhere, instructions might drift, and the logic might be halfway through an evolution when you arrive. Stay graceful, keep it cool, and enjoy the high-velocity chaos. If it works, it's genius; if it doesn't, it's just *pioneer spirit*. 🧪✨
+
 Smol is a decentralized high-fidelity application powered by **Stellar Smart Contracts** and **Zero-Knowledge Proofs (ZK)**. It combines generative AI music with on-chain verifiable gaming mechanics.
 
 ## 🎵 Smol Music: The Core Product
