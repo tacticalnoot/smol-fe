@@ -21,7 +21,7 @@ Smol is built on the belief that Web3 must be invisible to reach the next billio
 - **PasskeyKit Smart Wallets**: By leveraging WebAuthn, we've replaced confusing seed phrases with the biometrics users already trust (FaceID, TouchID). Your device *is* your key.
 - **Onboarding Billions**: Our architecture removes the "Gas Gap". Users can join and start creating **for free** without ever needing to buy XLM or understand transaction fees.
 - **No Trustline Hurdles**: Unlike traditional Stellar accounts, these Smart Wallets can receive any amount of any coin instantly **for free**. No manual trustline setup required for incoming payments—anybody can send assets to a Smol wallet and it just works.
-- **Seamless Sending**: When enabled, these smart accounts can send assets out **for free** (via sponsored fee channels). Currently, built-in support is optimized for **XLM**, **KALE**, and **USDC**—if you need support for other assets, reach out and let's talk about adding them!
+- **Seamless Sending**: When enabled, these smart accounts can send assets out **for free** (via sponsored fee channels). Currently, built-in support is optimized for **XLM**, **KALE**, and **USDC**—adding support for new assets is a no-brainer, so reach out and let's talk about expanding the list!
 - **Kale Relayer & OpenZeppelin**: We utilize the **Kale Relayer** in tandem with **OpenZeppelin GSN (Gas Station Network)** patterns to sponsor transaction fees. This allows the base product to feel like a high-speed "Web2" app while maintaining "Web3" sovereignty.
 - **Programmable Accounts**: Every account is a smart contract, enabling complex features like multi-sig, recovery, and batching that standard accounts cannot touch.
 
