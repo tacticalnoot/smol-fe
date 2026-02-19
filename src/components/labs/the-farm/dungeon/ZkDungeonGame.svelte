@@ -1108,12 +1108,12 @@
                     const submitRes = await submitProofToContract(
                         // @ts-ignore
                         (window as any).passkeyKit,
-                        hackathonNet ? testnetAddress! : userState.contractId,
+                        (hackathonNet ? testnetAddress : userState.contractId) as string,
                         result.tierId,
                         result.groth16.commitmentBytes,
                         result.groth16.proof,
                         result.groth16.publicSignals,
-                        userState.keyId,
+                        userState.keyId ?? undefined,
                         {
                             net: hackathonNet,
                             onStage: (stage) => {
@@ -1413,7 +1413,7 @@
                         reasonCode: "ONCHAIN_VERIFIED",
                     });
 
-                    const confirmed = await waitForTx(submitRes.txHash);
+                    const confirmed = await waitForTx(submitRes.txHash, noirNet?.rpcUrl);
                     if (confirmed === "success") {
                         noirUltraHonkOnChain = {
                             status: "confirmed",
@@ -1672,7 +1672,7 @@
                         reasonCode: "ONCHAIN_VERIFIED",
                     });
 
-                    const confirmed = await waitForTx(submitRes.txHash);
+                    const confirmed = await waitForTx(submitRes.txHash, risc0Net?.rpcUrl);
                     if (confirmed === "success") {
                         risc0Groth16OnChain = {
                             status: "confirmed",
@@ -1865,7 +1865,8 @@
     }
 
     async function stampOnChain(kind: DungeonStampKind) {
-        if (!userState.contractId || !userState.keyId) {
+        const hackathonNet = getHackathonNet();
+        if (!hackathonNet && (!userState.contractId || !userState.keyId)) {
             throw new Error("Connect your passkey wallet first.");
         }
 
@@ -1893,14 +1894,13 @@
         if (kind === "ENTRY") entryStamp = { status: "simulating" };
         else withdrawalStamp = { status: "simulating" };
 
-        const net = getHackathonNet();
         const res = await publishDungeonStampMainnet({
-            owner: net ? testnetAddress! : userState.contractId,
-            keyId: userState.keyId,
+            owner: (hackathonNet ? testnetAddress : userState.contractId) as string,
+            keyId: (userState.keyId ?? "") as string,
             kind,
             statementHash,
             verifierHash,
-            net,
+            net: hackathonNet,
             onStage: (stage) => {
                 const update = (tx: typeof entryStamp) => {
                     if (kind === "ENTRY") entryStamp = tx;
@@ -2401,7 +2401,7 @@
                             <div class="dg-stamp-error">{entryStamp.error}</div>
                         {/if}
 
-                        {#if isConnected}
+                        {#if isConnected || testnetAddress}
                             {#if entryClearanceGranted}
                                 <div class="dg-placard-sub">
                                     Entry stamp confirmed. Clearance is active
@@ -2429,7 +2429,7 @@
                     </div>
 
                     <div class="dg-vault-actions">
-                        {#if isConnected}
+                        {#if isConnected || testnetAddress}
                             {#if entryClearanceGranted}
                                 <button
                                     class="dg-btn dg-btn-primary dg-btn-kale"
@@ -2668,9 +2668,9 @@
                     {#if floorDef.verifierType === "GROTH16"}
                         <div class="dg-stamp-box">
                             <div class="dg-stamp-title">
-                                ON-CHAIN PROOF VERIFY (MAINNET)
+                                ON-CHAIN PROOF VERIFY ({testnetAddress ? "TESTNET" : "MAINNET"})
                             </div>
-                            {#if isConnected}
+                            {#if isConnected || testnetAddress}
                                 <div class="dg-stamp-status">
                                     STATUS: {groth16OnChain.status.toUpperCase()}
                                 </div>
@@ -2698,7 +2698,7 @@
                                     <div class="dg-placard-sub">
                                         Tip: clearing the correct door will
                                         trigger a real Tier Verifier
-                                        `verify_and_attest` tx (passkey-signed).
+                                        `verify_and_attest` tx ({testnetAddress ? "Freighter" : "passkey"}-signed).
                                     </div>
                                 {/if}
                             {:else}
@@ -2712,9 +2712,9 @@
                     {#if floorDef.verifierType === "NOIR_ULTRAHONK"}
                         <div class="dg-stamp-box">
                             <div class="dg-stamp-title">
-                                ON-CHAIN ULTRAHONK (MAINNET)
+                                ON-CHAIN ULTRAHONK ({testnetAddress ? "TESTNET" : "MAINNET"})
                             </div>
-                            {#if !isConnected}
+                            {#if !isConnected && !testnetAddress}
                                 <div class="dg-stamp-status">
                                     STATUS: DISABLED (WALLET NOT CONNECTED)
                                 </div>
@@ -2770,9 +2770,9 @@
                     {#if floorDef.verifierType === "RISC0_RECEIPT"}
                         <div class="dg-stamp-box">
                             <div class="dg-stamp-title">
-                                ON-CHAIN RECEIPT (MAINNET)
+                                ON-CHAIN RECEIPT ({testnetAddress ? "TESTNET" : "MAINNET"})
                             </div>
-                            {#if !isConnected}
+                            {#if !isConnected && !testnetAddress}
                                 <div class="dg-stamp-status">
                                     STATUS: DISABLED (WALLET NOT CONNECTED)
                                 </div>
@@ -2954,7 +2954,7 @@
                                     >LOCAL</span
                                 >
                             {/if}
-                            {#if isConnected}
+                            {#if isConnected || testnetAddress}
                                 <label class="dg-toggle dg-advanced">
                                     <input
                                         type="checkbox"
@@ -2969,9 +2969,9 @@
                     {#if gateWaiting}
                         <div class="dg-gate-overlay">
                             <div class="dg-gate-panel">
-                                {#if currentFloor === 1 && isConnected && groth16OnChain.status !== "idle" && groth16OnChain.status !== "confirmed"}
+                                {#if currentFloor === 1 && (isConnected || testnetAddress) && groth16OnChain.status !== "idle" && groth16OnChain.status !== "confirmed"}
                                     <p class="dg-gate-title">
-                                        MAINNET PROOF VERIFY
+                                        {testnetAddress ? "TESTNET" : "MAINNET"} PROOF VERIFY
                                     </p>
                                     <p class="dg-gate-desc">
                                         Verifying your Groth16 credential
@@ -3315,7 +3315,7 @@
                             </div>
                         {/if}
 
-                        {#if isConnected}
+                        {#if isConnected || testnetAddress}
                             <button
                                 class="dg-btn dg-btn-primary"
                                 disabled={withdrawalStamp.status ===
@@ -3324,7 +3324,7 @@
                                     withdrawalStamp.status === "signing"}
                                 onclick={() => stampOnChain("WITHDRAWAL")}
                             >
-                                RECORD SEED WITHDRAWAL ON-CHAIN (PASSKEY)
+                                RECORD SEED WITHDRAWAL ON-CHAIN ({testnetAddress ? "FREIGHTER" : "PASSKEY"})
                             </button>
                         {:else}
                             <button
