@@ -78,4 +78,8 @@ We prioritize **Velocity & Trust**. Please read our **[CONTRIBUTING.md](CONTRIBU
 ## 🔒 Security
 Security is paramount, especially regarding ZK G2 point serialization and Passkey signatures. See **[SECURITY.md](SECURITY.md)** for reporting vulnerabilities.
 
+> [!TIP]
+> ### ⚡ The Bleeding Edge
+> The **[Dev Preview](https://smol-fe-7jl.pages.dev)** is updated in real-time. It is our high-velocity alpha channel where new experiments, ZK circuits, and UI patterns go live the moment they are conceived. Things may break, get better, or evolve dramatically day-by-day. We build in the open, we fix as we go, and we never stop moving. ☄️
+
 *Built on Stellar. Secured by ZK.*
