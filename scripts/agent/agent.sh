@@ -2,8 +2,8 @@
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
-PRD="$ROOT/scripts/ralph/prd.json"
-PROMPT="$ROOT/scripts/ralph/prompt.md"
+PRD="$ROOT/scripts/agent/prd.json"
+PROMPT="$ROOT/scripts/agent/prompt.md"
 
 if ! command -v jq >/dev/null 2>&1; then
   echo "ERROR: jq is required." >&2
@@ -12,7 +12,7 @@ fi
 
 BRANCH="$(jq -r '.branchName' "$PRD")"
 if [[ -z "$BRANCH" || "$BRANCH" == "null" ]]; then
-  echo "ERROR: scripts/ralph/prd.json missing branchName" >&2
+  echo "ERROR: scripts/agent/prd.json missing branchName" >&2
   exit 1
 fi
 
@@ -34,11 +34,11 @@ fi
 # Prefer Amp if installed, else fail loudly (no silent no-op)
 if ! command -v amp >/dev/null 2>&1; then
   echo "ERROR: amp CLI not found. Install Amp, then re-run." >&2
-  echo "Tip: If you're using another agent runner, feed it scripts/ralph/prompt.md + prd.json + progress.txt." >&2
+  echo "Tip: If you're using another agent runner, feed it scripts/agent/prompt.md + prd.json + progress.txt." >&2
   exit 1
 fi
 
-echo "Running Ralph on branch: $BRANCH"
+echo "Running agent loop on branch: $BRANCH"
 echo "PRD: $PRD"
 echo "Prompt: $PROMPT"
 

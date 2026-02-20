@@ -33,7 +33,7 @@ CONTRACT:
 - `scripts/` — snapshot and audit tooling
 - `ext/` — linked Soroban SDKs (`smol-sdk`, `comet-sdk`)
 - `public/` — static assets, llms files, robots
-- `.agent/` — agent rules, skills, and Ralph artifacts
+- `.agent/` — agent rules, skills, and agent artifacts
 
 **Runtime hotspots**
 - Audio: `src/stores/audio.svelte.ts`, `src/components/audio/BarAudioPlayer.svelte`
@@ -209,11 +209,11 @@ CONTRACT:
   - ✅ Improve: add “current vs expected.”
 
 ### scripts + .agent
-- `scripts/ralph/prompt.md`
-  - ✅ Good: clear Ralph loop workflow.
+- `scripts/agent/prompt.md`
+  - ✅ Good: clear agent loop workflow.
   - ⚠️ Missing: align with AGENTS “After every task” rule.
   - ✅ Improve: reference `AGENTS.md` in prerequisites.
-- `scripts/ralph/progress.txt`
+- `scripts/agent/progress.txt`
   - ✅ Good: useful historical log.
   - ⚠️ Missing: this audit entry.
   - ✅ Improve: append new entry after changes.
@@ -225,7 +225,7 @@ CONTRACT:
   - ✅ Good: guardrails for small diffs.
   - ⚠️ Missing: explicit exception for audit docs.
   - ✅ Improve: add “doc-only audits may exceed file count.”
-- `.agent/rules/60_ralph_loop.md`
+- `.agent/rules/60_agent_loop.md`
   - ✅ Good: strong verification gate.
   - ⚠️ Missing: explicit examples for auth/tx changes.
   - ✅ Improve: add example validator list.
@@ -233,13 +233,13 @@ CONTRACT:
   - ✅ Good: domain allowlist.
   - ⚠️ Missing: mention which URLs are expected in tests.
   - ✅ Improve: add Playwright test URLs.
-- `.agent/workflows/ralph-loop.md`
+- `.agent/workflows/agent-loop.md`
   - ✅ Good: step-by-step loop guidance.
   - ⚠️ Missing: template for “triage” output.
   - ✅ Improve: include example triage format.
-- `.agent/_reports/RALPH_PROGRESS.md`, `.agent/_reports/RALPH_DIFFSTAT.txt`, `.agent/_reports/RALPH_RISK.md`
-  - ✅ Good: preserves previous Ralph iterations.
-  - ⚠️ Missing: update for current task if Ralph loop is triggered.
+- `.agent/_reports/AGENT_PROGRESS.md`, `.agent/_reports/AGENT_DIFFSTAT.txt`, `.agent/_reports/AGENT_RISK.md`
+  - ✅ Good: preserves previous agent loop iterations.
+  - ⚠️ Missing: update for current task if agent loop is triggered.
   - ✅ Improve: add a date marker for the next run.
 - `.agent/skills/*/SKILL.md` and `.agent/skills/blockchain-transactions/aquarius-research.md`
   - ✅ Good: solid procedural guidance.

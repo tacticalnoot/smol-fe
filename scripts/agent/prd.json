@@ -1,5 +1,5 @@
 {
-    "branchName": "ralph/swapper-audit-harness",
+    "branchName": "agent/swapper-audit-harness",
     "projectName": "Smol Swapper Audit Harness",
     "quality": {
         "typecheck": "pnpm run typecheck",

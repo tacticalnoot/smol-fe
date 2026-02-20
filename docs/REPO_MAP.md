@@ -43,7 +43,7 @@ CONTRACT:
 ## Key Hotspots & Danger Zones
 1.  **Audio State** (`src/stores/audio.svelte.ts`):
     - Central playback logic. Modifications here affect Global Player, Radio, and Artist pages.
-2.  **Auth & Tipping** (Requires Ralph Loop):
+2.  **Auth & Tipping** (Requires Agent Loop):
     - **Passkey Kit**: Hard interaction with `passkey-kit` and `OpenZeppelin Relayer`.
     - **Relayer**: Configured via environment variables (~`RELAYER_URL`).
     - **Files**: `src/stores/user.svelte.ts`, [rpc.ts](../src/utils/rpc.ts)

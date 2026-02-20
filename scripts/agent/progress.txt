@@ -7,7 +7,7 @@
 ---
 ## 2026-01-16 - SWAP-000 (bootstrap)
 Thread: TBD
-- Initialized Ralph workflow for swap-audit harness
+- Initialized agent workflow for swap-audit harness
 - Pending implementation
 
 [2026-01-16] - SWAP-001
@@ -63,7 +63,7 @@ Thread: N/A (Audit pass)
 	•	Created AUDIT_NOTES.md with repo map, doc review, risk register, and PR plan.
 	•	Added Playwright E2E smoke tests + TESTING.md instructions.
 	•	Fixed MusicRecording schema datePublished binding and removed duplicate rss import.
-	•	Files changed: AUDIT_NOTES.md, TESTING.md, playwright.config.ts, tests/e2e/smol-e2e.spec.ts, package.json, pnpm-lock.yaml, src/pages/[id].astro, src/pages/rss.xml.ts, scripts/ralph/prd.json.
+	•	Files changed: AUDIT_NOTES.md, TESTING.md, playwright.config.ts, tests/e2e/smol-e2e.spec.ts, package.json, pnpm-lock.yaml, src/pages/[id].astro, src/pages/rss.xml.ts, scripts/agent/prd.json.
 	•	Learnings for future iterations:
 		- Centralize MediaSession handlers to avoid collisions.
 		- Use schema checks in E2E to validate SEO-critical data.
@@ -84,7 +84,7 @@ Thread: Passkey login hotfix + SmartAccountKit migration
 	•	Added SmartAccountKit wallet wrapper with IndexedDB storage and relayer config.
 	•	Updated auth flow to use SmartAccountKit, added /login debug logging, and ensured credentialed requests.
 	•	Added production passkey smoke test checklist and documented WebAuthn verifier env var.
-	•	Files changed: src/lib/wallet/smartAccount.ts, src/hooks/useAuthentication.ts, src/stores/user.svelte.ts, src/env.d.ts, src/utils/env-validation.ts, docs/PROD_PASSKEY_SMOKE_TEST.md, docs/passkey-relayer-mainnet.md, package.json, pnpm-lock.yaml, scripts/ralph/prd.json.
+	•	Files changed: src/lib/wallet/smartAccount.ts, src/hooks/useAuthentication.ts, src/stores/user.svelte.ts, src/env.d.ts, src/utils/env-validation.ts, docs/PROD_PASSKEY_SMOKE_TEST.md, docs/passkey-relayer-mainnet.md, package.json, pnpm-lock.yaml, scripts/agent/prd.json.
 	•	Learnings for future iterations:
 		- SmartAccountKit requires a WebAuthn verifier contract address in env.
 	•	Gotchas encountered:

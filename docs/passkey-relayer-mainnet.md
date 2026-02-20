@@ -341,4 +341,4 @@ export const account = new PasskeyKit({
 ---
 
 *Last updated: 2026-01-16*
-*Ralph Hardening Audit: H-003 documentation sync applied*
+*Hardening Audit: H-003 documentation sync applied*
