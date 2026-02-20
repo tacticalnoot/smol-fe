@@ -2,7 +2,7 @@ import { execSync } from 'child_process';
 import fs from 'fs';
 import path from 'path';
 
-const PROGRESS_FILE = 'scripts/ralph/progress.txt';
+const PROGRESS_FILE = 'scripts/agent/progress.txt';
 const DIRECTIONS = ['xlm_to_kale', 'kale_to_xlm'];
 let cycleCount = 0;
 
@@ -44,7 +44,7 @@ async function runCycle() {
     setTimeout(runCycle, delay);
 }
 
-console.log('🚀 Ralph Spammer started at 3-5s intervals');
+console.log('🚀 Spammer started at 3-5s intervals');
 console.log('Press Ctrl+C to stop');
 logToProgress('STRESS TEST INITIALIZED');
 

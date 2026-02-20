@@ -78,7 +78,7 @@ async function main() {
     const skipSponsor = hasFlag('--skip-sponsor');
     const turnstileToken = getArg('--turnstile-token') || null;
 
-    console.log("🕵️  Ralph Swapper Audit Harness v2");
+    console.log("🕵️  Swapper Audit Harness v2");
     console.log(`   Network: ${network}`);
     console.log(`   Direction: ${direction || 'NOT SPECIFIED'}`);
     console.log(`   Amount In: ${amountIn} stroops`);

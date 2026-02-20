@@ -1,5 +1,5 @@
-# /ralph-loop — Verified Completion Workflow
-Ralph Loop = enforce completion via verification, not confidence.
+# /agent-loop — Verified Completion Workflow
+Agent Loop = enforce completion via verification, not confidence.
 
 ## Inputs (must be explicit)
 1) Repro steps (including env: local / preview / prod)
@@ -9,7 +9,7 @@ Ralph Loop = enforce completion via verification, not confidence.
 ## Setup
 Create/ensure:
 - .agent/_reports/ exists
-- A minimal “validator set” exists:
+- A minimal "validator set" exists:
   - build command
   - tests command OR manual checklist
 
@@ -20,7 +20,7 @@ Create/ensure:
    - Run validators (build/tests/checklist).
    - Re-run repro steps.
 3) RECORD
-   - Append iteration log to .agent/_reports/RALPH_PROGRESS.md:
+   - Append iteration log to .agent/_reports/AGENT_PROGRESS.md:
      - iteration number
      - failure observed
      - hypothesis

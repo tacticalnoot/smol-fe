@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-# Generic Ralph loop driver. Configure via env vars so it works with Antigravity, Claude Code, etc.
+# Generic agent loop driver. Configure via env vars so it works with Antigravity, Claude Code, etc.
 # You provide:
 #   PROMPT_FILE: file containing task prompt for the agent (required)
 #   AGENT_CMD: command to run the agent (required) e.g. "antigravity run" or "claude" etc
@@ -22,17 +22,17 @@ if [[ -z "$PROMPT_FILE" || -z "$AGENT_CMD" || -z "$VALIDATE_CMD" ]]; then
   echo "  PROMPT_FILE=.agent/_reports/TASK_PROMPT.md \\"
   echo "  AGENT_CMD='antigravity run' \\"
   echo "  VALIDATE_CMD='pnpm -s test && pnpm -s build' \\"
-  echo "  bash .agent/scripts/ralph-loop.sh"
+  echo "  bash .agent/scripts/agent-loop.sh"
   exit 1
 fi
 
 mkdir -p "$REPORT_DIR"
-PROGRESS="$REPORT_DIR/RALPH_PROGRESS.md"
-DIFFSTAT="$REPORT_DIR/RALPH_DIFFSTAT.txt"
+PROGRESS="$REPORT_DIR/AGENT_PROGRESS.md"
+DIFFSTAT="$REPORT_DIR/AGENT_DIFFSTAT.txt"
 
 if [[ ! -f "$PROGRESS" ]]; then
   cat > "$PROGRESS" <<EOF
-# RALPH PROGRESS LOG
+# AGENT PROGRESS LOG
 Start: $(date -u +"%Y-%m-%dT%H:%M:%SZ")
 
 ## Success Criteria (EDIT THIS)
