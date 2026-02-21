@@ -25,9 +25,9 @@ export const dungeonLore: Record<DungeonRoomId, RoomLore> = {
     roomSubtitle: "Entry Protocol (Mainnet Audit Stamp)",
     briefingMarkdown:
       [
-        "The Kale-Seed Vault is not a warehouse. It is an archive of genetic diversity, and the Farm treats it like regulated custody. Every access attempt is a compliance event: someone, at some time, asserted they were authorized to approach sealed material. The system is designed to be useful to auditors without turning the vault into a surveillance tool.",
-        "This airlock is the compromise. We stamp entry on-chain as an immutable audit marker, but we do it as a digest-only record. No seed counts, no private inventory values, no room-by-room telemetry. Just enough to prove the run existed and to bind a run identifier to the auditor’s passkey-backed account.",
-        "The point is not to make you sign constantly. The point is to make entry undeniable. If a later incident occurs, investigators can prove an access window existed without learning what you saw inside.",
+        "The Kale-Seed Vault holds decades of irreplaceable crop genetics. When a vial goes missing inside an unlogged access window, it stays missing — and without an audit trail, the investigation has nowhere to start. The Farm’s answer was not cameras or constant sign-offs. It was a single, signed commitment at the door.",
+        "This airlock stamps your entry as a digest-only record on mainnet: a cryptographic note that *someone, holding this passkey, entered this vault at this moment.* No seed inventory. No room-by-room telemetry. Just enough to bind a run ID to your account before the inner doors open.",
+        "Stamping is optional. Skip it and proceed in demo mode — the proof rooms still work. But if something goes wrong inside, the audit trail stops right here.",
       ].join("\n\n"),
     protocolPlacard:
       "Protocol: Stamp ENTRY on mainnet (digest-only). Then proceed to the proof-gated rooms.",
@@ -35,10 +35,10 @@ export const dungeonLore: Record<DungeonRoomId, RoomLore> = {
       "This is not a proof verification step. It is a Soroban on-chain audit stamp signed with your passkey, using the Farm’s existing relayer flow.",
     failureExplainersByReasonCode: {
       ERROR:
-        "Entry stamp failed. This can happen if the relayer is unreachable, the RPC is unhealthy, or the wallet rejects the signature. You can retry, or proceed in demo mode without an on-chain stamp (clearly marked).",
+        "Entry stamp failed. This can happen if the relayer is unreachable, the RPC is unhealthy, or the wallet rejects the signature. You can retry, or proceed without an on-chain stamp — the proof rooms still work either way.",
     },
     successExplainer:
-      "Entry stamped. Your run now has an immutable on-chain audit marker. Proceed to the vault wings.",
+      "Entry stamped. The ledger now knows this run started. Proceed to the vault wings.",
   },
 
   intake: {
@@ -47,9 +47,9 @@ export const dungeonLore: Record<DungeonRoomId, RoomLore> = {
     roomSubtitle: "Groth Gate (Groth16 / BN254)",
     briefingMarkdown:
       [
-        "This wing was built first, after an early mold incident. The policy is blunt and intentionally boring: a minimum clearance is required to handle intake crates. Nobody wanted a complicated rule here because failures in intake are expensive, and auditors need something that can be checked quickly under pressure.",
-        "Groth16 is used because it is compact and mature. The verification key is stable, the proof size is small, and verification is a predictable pairing check. In real systems, this is what you deploy when you want long-lived, audit-friendly proof gates that can be verified by constrained environments.",
-        "Read the placard, read the door tags, and treat the credential like a clearance badge. A valid proof can still be denied if you choose a door whose policy your credential does not satisfy.",
+        "This wing was built in a hurry, after a mold outbreak traced back to unqualified handling at intake. The post-mortem found that anyone with a building badge could move crates — no minimum clearance, no lane routing. That gap closed overnight, and the rule has not changed since: minimum tier, correct lane, no exceptions.",
+        "The team chose Groth16 because the audit committee wanted something that would still be readable in ten years. The verification key is stable, the proof fits in a text field, and the pairing check runs in milliseconds. When failures are expensive and pressure is high, you want a gate that is boring to operate.",
+        "Each door shows two tags. Both must match your credential. A cryptographically valid proof is still rejected if it is presented at the wrong door — the proof system does not know which door you chose; the policy layer does.",
       ].join("\n\n"),
     protocolPlacard:
       "Policy: Intake Routing. Door opens iff (tier_id >= MIN) AND (Lane matches). Read both tags.",
@@ -57,81 +57,81 @@ export const dungeonLore: Record<DungeonRoomId, RoomLore> = {
       "Verifier: Groth16 (Circom / BN254). The dungeon generates a real proof and verifies it locally. If your passkey wallet is connected, this wing also performs real on-chain verification via Tier Verifier (verify_and_attest).",
     failureExplainersByReasonCode: {
       PROOF_INVALID:
-        "Credential invalid: the Groth16 verifier rejected the proof. This is not a policy mismatch. Regenerate and retry.",
+        "Credential invalid: the Groth16 verifier rejected the proof. This is a cryptographic failure, not a policy mismatch. Regenerate and retry.",
       POLICY_MISMATCH:
-        "Credential valid, but you chose a door whose MIN or LANE does not match your credential. Intake denies cross-lane access to prevent mixups.",
+        "Credential valid, but the MIN or LANE on this door does not match your credential. The proof was correct — you just picked the wrong door. Check both tags.",
     },
     successExplainer:
-      "Intake cleared. Your credential satisfies the minimum-clearance policy. Proceed to catalog custody.",
+      "Intake cleared. Minimum clearance confirmed, lane matched. Proceed to catalog custody.",
   },
 
   catalog: {
-    roomId: "catalog",
-    roomTitle: "Room 2: Catalog & Custody Hall",
-    roomSubtitle: "UltraHonk Arbiter (Noir / bb.js)",
+    roomId: “catalog”,
+    roomTitle: “Room 2: Catalog & Custody Hall”,
+    roomSubtitle: “UltraHonk Arbiter (Noir / bb.js)”,
     briefingMarkdown:
       [
-        "Catalog custody is where the Farm gets strict. The problem is not mold, it is provenance. A seed drawer is a chain-of-custody object. The wrong role opening the wrong cabinet is a compliance failure even if they are otherwise “high clearance.”",
-        "The team that rebuilt this hall standardized on Noir because internal policy proofs changed often. They wanted a pipeline that let them evolve constraints quickly and verify locally with strong performance. UltraHonk is used here as a high-throughput verifier for policy proofs in the “paperwork wing,” where many checks occur and most do not need on-chain settlement.",
-        "In the dungeon, Noir verification is cryptographically real. If you are in training mode, the credential may be a verified training artifact rather than a proof generated from your live wallet inputs. The difference is stated plainly in the UI.",
-      ].join("\n\n"),
+        “The intake wing keeps out the unqualified. This wing keeps out the merely qualified. A seed drawer is a chain-of-custody object — the wrong role opening the right cabinet is a compliance event, even for senior staff. Clearance level is not the same as authorization.”,
+        “After a provenance audit flagged three unmarked cabinet accesses, the custody team rebuilt this hall's policy engine in Noir. They needed to revise constraints frequently — new cultivar classifications, rotating lane assignments — without deploying a new on-chain verifier for each change. UltraHonk lets them verify locally at high throughput and settle on-chain only when an auditor requests it.”,
+        “The rule here is exact match, not minimum clearance. Your tier must equal the role on the door — not exceed it, not approximate it. The catalog's least favorite phrase is 'close enough.'”,
+      ].join(“\n\n”),
     protocolPlacard:
-      "Policy: Role-Based + Custody Lane. Door opens iff (tier_id matches ROLE) AND (Lane matches).",
+      “Policy: Role-Based + Custody Lane. Door opens iff (tier_id matches ROLE exactly) AND (Lane matches).”,
     verifierExplainer:
-      "Verifier: UltraHonk (Noir). The dungeon can verify locally in the browser, and (when the local prover service is running) it can also submit a real mainnet on-chain verification via farm-attestations → ultrahonk-verifier (VK_ID NOIR_ROLE_V1), signed with your passkey.",
+      “Verifier: UltraHonk (Noir). The dungeon can verify locally in the browser, and (when the local prover service is running) it can also submit a real mainnet on-chain verification via farm-attestations → ultrahonk-verifier (VK_ID NOIR_ROLE_V1), signed with your passkey.”,
     failureExplainersByReasonCode: {
       PROOF_INVALID:
-        "Credential invalid: the UltraHonk verifier rejected the proof artifact. This is a cryptographic failure, not a policy mismatch.",
+        “Credential invalid: the UltraHonk verifier rejected the proof artifact. This is a cryptographic failure, not a policy mismatch. Retry with a fresh credential.”,
       POLICY_MISMATCH:
-        "Credential valid, but the ROLE or LANE does not match. In custody, “close enough” is not allowed.",
+        “Credential valid, but the ROLE or LANE does not match. Exact tier required — being over-qualified is still a mismatch here. Check both tags.”,
     },
     successExplainer:
-      "Custody cleared. Your credential satisfies role-based access. Proceed to deep freeze storage.",
+      “Custody cleared. Role confirmed, lane matched. Proceed to deep freeze storage.”,
   },
 
   cold: {
-    roomId: "cold",
-    roomTitle: "Room 3: Deep Freeze Cold Storage",
-    roomSubtitle: "Receipt Sentinel (RISC0 zkVM)",
+    roomId: “cold”,
+    roomTitle: “Room 3: Deep Freeze Cold Storage”,
+    roomSubtitle: “Receipt Sentinel (RISC0 zkVM)”,
     briefingMarkdown:
       [
-        "Deep freeze is where logic got complicated. After a power anomaly, the Farm added “two-factor” style policy gates: clearance plus a secondary condition that is cheap to evaluate and easy to audit. They didn’t want to deploy a new on-chain verifier for every revision, and they needed to attest to general checks that could evolve.",
-        "zkVM receipts are used here because they can attest to arbitrary computation. The system records that a specific program (identified by a method ID) ran and produced an accepted journal. That’s operationally useful: you can upgrade the policy program, rotate method IDs, and keep a clear audit trail of what was verified.",
-        "In this room, the second factor is deterministic and visible: parity. It’s not magical security, it’s a teachable example of multi-constraint policy. Your credential can be valid and still fail the parity requirement.",
-      ].join("\n\n"),
+        “After a power anomaly knocked out one cold-chain corridor for six hours, the Farm got paranoid. The original policy — tier only — had left a gap: a single compromised credential could cause a cold-chain break with no secondary check. The team added a second constraint layer. Not biometrics, not a second passkey. Something cheaper and more auditable.”,
+        “They chose parity — EVEN or ODD based on your tier ID. It is not sophisticated. That is the point. The RISC0 zkVM handles it because zkVM receipts can attest to arbitrary computation, which means the policy logic can be upgraded without touching the verifier contract. The receipt proves that a specific program ran, produced an accepted result, and matched the method ID on file.”,
+        “Three tags now. Minimum tier, parity, lane — all three must match. A credential that passes the first two and fails the lane is still a rejection. Cold storage does not have an appeal process.”,
+      ].join(“\n\n”),
     protocolPlacard:
-      "Policy: Two-Factor + Cold-Chain Lane. Door opens iff (tier_id >= MIN) AND (parity matches) AND (Lane matches).",
+      “Policy: Two-Factor + Cold-Chain Lane. Door opens iff (tier_id >= MIN) AND (parity matches) AND (Lane matches).”,
     verifierExplainer:
-      "Verifier: RISC0 receipt verifier (WASM). The dungeon verifies receipts locally, and (when the local prover service is running) it can also submit a real mainnet on-chain Groth16 verification of the receipt via farm-attestations (VK_ID R0G16V1), signed with your passkey.",
+      “Verifier: RISC0 receipt verifier (WASM). The dungeon verifies receipts locally, and (when the local prover service is running) it can also submit a real mainnet on-chain Groth16 verification of the receipt via farm-attestations (VK_ID R0G16V1), signed with your passkey.”,
     failureExplainersByReasonCode: {
       PROOF_INVALID:
-        "Credential invalid: the receipt verifier rejected the artifact. Retry with a valid receipt artifact.",
+        “Credential invalid: the receipt verifier rejected the artifact. This is a cryptographic failure. Retry with a fresh credential.”,
       POLICY_MISMATCH:
-        "Credential valid, but you failed one or more constraints (MIN tier, parity, lane). Read all tags.",
+        “Credential valid, but you failed at least one constraint (MIN tier, parity, or lane). All three must match — check each tag.”,
     },
     successExplainer:
-      "Cold storage cleared. Your credential satisfies the two-factor policy. Proceed to the ledger chamber.",
+      “Cold storage cleared. All three constraints satisfied. Proceed to the ledger chamber.”,
   },
 
   ledger: {
-    roomId: "ledger",
-    roomTitle: "Room 4: Ledger Chamber",
-    roomSubtitle: "Seed Withdrawal Record (Mainnet Audit Stamp)",
+    roomId: “ledger”,
+    roomTitle: “Room 4: Ledger Chamber”,
+    roomSubtitle: “Seed Withdrawal Record (Mainnet Audit Stamp)”,
     briefingMarkdown:
       [
-        "Withdrawal is where stories go wrong in the real world. The vault does not care that you “could have” opened doors. It cares what you actually did, and what policies were satisfied. A completion stamp is the custody record that your run reached the withdrawal threshold.",
-        "This record is digest-only. It can be used for audit trails, receipts, and dispute resolution without leaking the private values that your proofs may have depended on. Think of it as a signed compliance memo: room plan, verifier families used, and a run identifier, committed immutably to the ledger.",
-        "You will sign at most twice in the standard flow: entry and withdrawal. If you skip stamping, the dungeon remains educational, but it is no longer a reviewer-proof “real mainnet audit stamp” run.",
-      ].join("\n\n"),
+        “You made it through. Three policy gates, three proof systems, all cleared. The ledger chamber is where that fact becomes a permanent record.”,
+        “The completion stamp is digest-only: room plan, verifier families used, run ID — no private values, no proof contents. Think of it as a signed compliance memo. In a real dispute, this is the record that matters most. Not the individual door proofs, but the completion event: the vault was entered, all gates were satisfied, and the run ended cleanly.”,
+        “Stamp it or don’t. Either way, the inner vault is behind you. But if this run counted — for an audit, a hackathon, a demo — sign it. The ledger does not accept verbal confirmation.”,
+      ].join(“\n\n”),
     protocolPlacard:
-      "Protocol: Record WITHDRAWAL on mainnet (digest-only). This is an audit record, not on-chain proof verification.",
+      “Protocol: Record WITHDRAWAL on mainnet (digest-only). This is an audit record, not on-chain proof verification.”,
     verifierExplainer:
-      "This is a passkey-signed Soroban transaction using the repo’s existing relayer flow. It records digests only.",
+      “This is a passkey-signed Soroban transaction using the repo’s existing relayer flow. It records digests only.”,
     failureExplainersByReasonCode: {
       ERROR:
-        "Withdrawal record failed. Retry, or end the run without an on-chain completion record (clearly marked).",
+        “Withdrawal record failed. Retry, or end the run without an on-chain completion record — the dungeon run is still valid either way.”,
     },
     successExplainer:
-      "Withdrawal recorded. The ledger now contains a completion stamp for this run.",
+      “Withdrawal recorded. The ledger now has a completion stamp for this run. You’re done.”,
   },
 };

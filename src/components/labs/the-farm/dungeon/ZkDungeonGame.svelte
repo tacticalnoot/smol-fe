@@ -2165,10 +2165,10 @@
             <p class="dg-eyebrow">THE FARM LABS</p>
             <h1 class="dg-game-title">KALE-SEED VAULT</h1>
             <p class="dg-subtitle">
-                A ZK proof compliance vault: three rooms, three proof systems
-                (Groth16 → Noir → RISC0). Each door enforces a real ZK policy
-                against your credential. Identify the matching door, prove it,
-                advance.
+                Three rooms. Three proof systems. Eight doors per room — one
+                correct door, determined by your clearance tier and routing
+                lane. Every attempt generates a real ZK proof. The vault
+                decides, not a random roll.
             </p>
 
             <div class="dg-title-actions">
@@ -2266,9 +2266,9 @@
                     {/if}
                 </p>
                 <p class="dg-cred-subline" style="margin-top:6px;opacity:0.65">
-                    Your tier rank and routing lane determine which door will
-                    accept you in each room. Each attempt generates a real ZK
-                    proof — the verifier enforces the policy, not a random roll.
+                    Your tier and lane are fixed at run start. Every door in
+                    every room checks them — find the one door where all tags
+                    match, and the ZK proof gets you through.
                 </p>
                 {#if credentialLoadError}
                     <p class="dg-cred-warn">
@@ -2428,52 +2428,56 @@
                         <div>
                             <strong>Airlock — optional entry stamp</strong>
                             <p>
-                                Passkey-sign an on-chain digest of your run start (no private data).
-                                Skip it and proceed directly to the proof rooms in demo mode.
+                                Sign an on-chain digest of your run start with your passkey — no
+                                private data, just proof the run happened. Skip it and go straight
+                                to the proof rooms in demo mode. Either way, the rooms work.
                             </p>
                         </div>
                     </div>
                     <div class="dg-hiw-item">
                         <span class="dg-hiw-num">2</span>
                         <div>
-                            <strong>Match the door: Tier + Lane must both fit</strong>
+                            <strong>Read the tags, find your door</strong>
                             <p>
-                                Each door shows policy tags (e.g. MIN ≥ T1 · LANE: MINT).
-                                Your credential also has a tier and a lane — find the door
-                                where every tag matches. A cryptographically valid proof
-                                still fails if it's the wrong door policy.
+                                Each door shows policy tags: MIN tier, LANE, ROLE, PARITY.
+                                Your credential has a tier and a lane — locked in at run start.
+                                Find the one door where every tag fits. A valid ZK proof at
+                                the wrong door is still a rejection.
                             </p>
                         </div>
                     </div>
                     <div class="dg-hiw-item">
                         <span class="dg-hiw-num">3</span>
                         <div>
-                            <strong>Forensics panel explains every outcome</strong>
+                            <strong>Wrong door? The Forensics panel tells you exactly why</strong>
                             <p>
-                                Wrong door? The Forensics panel shows your credential,
-                                the door's policy, which constraint failed, and what to
-                                do next. No guesswork — the ZK verifier makes the call.
+                                Every failed attempt shows your credential, the door's policy,
+                                and which constraint didn't match. No guesswork — the verifier
+                                makes the call and explains it.
                             </p>
                         </div>
                     </div>
                     <div class="dg-hiw-item">
                         <span class="dg-hiw-num">4</span>
                         <div>
-                            <strong>Three rooms, three proof systems</strong>
+                            <strong>Three rooms, three real proof systems</strong>
                             <p>
-                                Room 1: Groth16 (Circom/BN254) — on-chain verify via Tier Verifier.
-                                Room 2: UltraHonk (Noir) — local verify, optional on-chain.
-                                Room 3: RISC0 zkVM receipt — local verify, optional on-chain.
+                                Room 1: Groth16 (Circom/BN254) — compact proofs, on-chain pairing
+                                check via Tier Verifier. Room 2: UltraHonk (Noir) — fast local
+                                verify, optional on-chain record. Room 3: RISC0 zkVM receipt —
+                                arbitrary computation attested, optional on-chain record.
                             </p>
                         </div>
                     </div>
                     <div class="dg-hiw-item">
                         <span class="dg-hiw-num">5</span>
                         <div>
-                            <strong>Ledger chamber — optional completion record</strong>
+                            <strong>Ledger chamber — sign the completion record</strong>
                             <p>
-                                Record a digest-only completion stamp on-chain via passkey.
-                                The Transaction Science Board shows every real on-chain event from your run.
+                                Stamp the run closed with a digest-only record: rooms cleared,
+                                proof systems used, run ID. Optional, but if the run counted
+                                for something — sign it. The ledger doesn't accept verbal
+                                confirmation.
                             </p>
                         </div>
                     </div>
@@ -3743,9 +3747,10 @@
             <p class="dg-eyebrow">DUNGEON CLEARED</p>
             <h1 class="dg-victory-title">VICTORY</h1>
             <p class="dg-victory-subtitle">
-                Seed vault tour completed. Room verifiers are real; on-chain
-                stamps are digest-only records signed with your passkey (if
-                used).
+                You passed every policy gate. Groth16, Noir, RISC0 — each
+                door was a live cryptographic check. On-chain stamps, if
+                used, are digest-only records signed with your passkey.
+                The ledger has your run.
             </p>
 
             <div class="dg-victory-stats">
