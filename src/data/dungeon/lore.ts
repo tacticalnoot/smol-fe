@@ -54,7 +54,7 @@ export const dungeonLore: Record<DungeonRoomId, RoomLore> = {
     protocolPlacard:
       "Policy: Intake Routing. Door opens iff (tier_id >= MIN) AND (Lane matches). Read both tags.",
     verifierExplainer:
-      "Verifier: Groth16 (Circom / BN254). The dungeon generates a real proof and verifies it locally. If your passkey wallet is connected, this wing also performs real on-chain verification via Tier Verifier (verify_and_attest).",
+      "Verifier: Groth16 (Circom / BN254). The dungeon generates a real proof and verifies it locally. If your passkey wallet is connected, this wing submits the proof to a custom-built Tier Verifier contract on Stellar Mainnet — written from scratch to accept Groth16 proofs and run BN254 pairing checks via CAP-0074 host functions. Not a template, not an audit tool wrapper. A purpose-built on-chain verifier for this exact credential scheme.",
     failureExplainersByReasonCode: {
       PROOF_INVALID:
         "Credential invalid: the Groth16 verifier rejected the proof. This is a cryptographic failure, not a policy mismatch. Regenerate and retry.",
@@ -72,13 +72,13 @@ export const dungeonLore: Record<DungeonRoomId, RoomLore> = {
     briefingMarkdown:
       [
         “The intake wing keeps out the unqualified. This wing keeps out the merely qualified. A seed drawer is a chain-of-custody object — the wrong role opening the right cabinet is a compliance event, even for senior staff. Clearance level is not the same as authorization.”,
-        “After a provenance audit flagged three unmarked cabinet accesses, the custody team rebuilt this hall's policy engine in Noir. They needed to revise constraints frequently — new cultivar classifications, rotating lane assignments — without deploying a new on-chain verifier for each change. The solution: a purpose-built UltraHonk verifier contract on Stellar Mainnet, one of the first Noir proof verifiers live on Soroban. UltraHonk verification runs fast enough locally for high-throughput checks, and the same proof can be settled on-chain with a passkey signature when a permanent record is needed.”,
+        “After a provenance audit flagged three unmarked cabinet accesses, the custody team rebuilt this hall's policy engine in Noir. They needed to revise constraints frequently — new cultivar classifications, rotating lane assignments — without redeploying verification infrastructure for each change. The solution was a custom-built UltraHonk verifier contract, written from scratch and deployed to Stellar Mainnet. No pre-existing Noir verifier existed on Soroban; this is one of the first. UltraHonk verification runs fast enough locally for high-throughput checks, and the same proof can be settled on-chain with a passkey signature when a permanent record is needed.”,
         “The rule here is exact match, not minimum clearance. Your tier must equal the role on the door — not exceed it, not approximate it. The catalog's least favorite phrase is 'close enough.'”,
       ].join(“\n\n”),
     protocolPlacard:
       “Policy: Role-Based + Custody Lane. Door opens iff (tier_id matches ROLE exactly) AND (Lane matches).”,
     verifierExplainer:
-      “Verifier: UltraHonk (Noir). Local verification runs in-browser via bb.js. On-chain verification uses a purpose-built UltraHonk verifier contract deployed to Stellar Mainnet — one of the first Noir proof verifiers live on Soroban. When the local prover is running, this room submits a real on-chain UltraHonk verification via farm-attestations → ultrahonk-verifier (VK_ID NOIR_ROLE_V1), signed with your passkey and settled on the Stellar ledger.”,
+      “Verifier: UltraHonk (Noir). Local verification runs in-browser via bb.js. On-chain verification uses a custom-built UltraHonk verifier contract, written from scratch and deployed to Stellar Mainnet — one of the first Noir proof verifiers ever live on Soroban. No off-the-shelf solution existed; the contract was purpose-built for this system. When the local prover is running, this room submits a real on-chain UltraHonk verification via farm-attestations → ultrahonk-verifier (VK_ID NOIR_ROLE_V1), signed with your passkey and settled on the Stellar ledger.”,
     failureExplainersByReasonCode: {
       PROOF_INVALID:
         “Credential invalid: the UltraHonk verifier rejected the proof artifact. This is a cryptographic failure, not a policy mismatch. Retry with a fresh credential.”,
@@ -102,7 +102,7 @@ export const dungeonLore: Record<DungeonRoomId, RoomLore> = {
     protocolPlacard:
       “Policy: Two-Factor + Cold-Chain Lane. Door opens iff (tier_id >= MIN) AND (parity matches) AND (Lane matches).”,
     verifierExplainer:
-      “Verifier: RISC0 zkVM (WASM). Local verification checks the receipt directly in-browser. On-chain verification goes further: RISC0 wraps its receipt in a Groth16 proof, which is then verified on Stellar Mainnet using BN254 pairing via CAP-0074 — the same host-function primitive that powers the Circom gate in Room 1, now repurposed to attest to arbitrary zkVM computation. When the local prover is running, this room submits a real on-chain Groth16-of-receipt verification via farm-attestations (VK_ID R0G16V1), signed with your passkey.”,
+      “Verifier: RISC0 zkVM (WASM). Local verification checks the receipt directly in-browser. On-chain verification goes further: RISC0 wraps its receipt in a Groth16 proof, and a custom-built Soroban contract — written from scratch — verifies that proof on Stellar Mainnet using BN254 pairing via CAP-0074. Same primitive as Room 1's Circom gate, entirely new contract, entirely new use case: settling arbitrary zkVM computation on Stellar. When the local prover is running, this room submits that real on-chain verification via farm-attestations (VK_ID R0G16V1), signed with your passkey.”,
     failureExplainersByReasonCode: {
       PROOF_INVALID:
         “Credential invalid: the receipt verifier rejected the artifact. This is a cryptographic failure. Retry with a fresh credential.”,
