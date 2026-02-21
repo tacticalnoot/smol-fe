@@ -2165,8 +2165,10 @@
             <p class="dg-eyebrow">THE FARM LABS</p>
             <h1 class="dg-game-title">KALE-SEED VAULT</h1>
             <p class="dg-subtitle">
-                A guided compliance run through three protocol wings: Groth16 →
-                Noir → RISC0. Two optional mainnet passkey audit stamps.
+                Three rooms. Three proof systems. Eight doors per room — one
+                correct door, determined by your clearance tier and routing
+                lane. Every attempt generates a real ZK proof. The vault
+                decides, not a random roll.
             </p>
 
             <div class="dg-title-actions">
@@ -2263,27 +2265,27 @@
                         >
                     {/if}
                 </p>
+                <p class="dg-cred-subline" style="margin-top:6px;opacity:0.65">
+                    Your tier and lane are fixed at run start. Every door in
+                    every room checks them — find the one door where all tags
+                    match, and the ZK proof gets you through.
+                </p>
                 {#if credentialLoadError}
                     <p class="dg-cred-warn">
                         On-chain clearance unavailable: {credentialLoadError}
                     </p>
                 {/if}
 
-                <p class="dg-cred-line dg-cred-subline">
-                    LOCAL PROVER (DEV): {localProverHealth.ok
-                        ? "CONNECTED"
-                        : "OFFLINE"}
-                    {#if !localProverHealth.ok && localProverHealth.error}
-                        <span class="dg-cred-inline-warn"
-                            >({localProverHealth.error})</span
-                        >
-                    {/if}
-                </p>
+                {#if localProverHealth.ok}
+                    <p class="dg-cred-line dg-cred-subline">
+                        LOCAL PROVER (DEV): CONNECTED
+                    </p>
+                {/if}
 
                 <div class="dg-cred-controls">
                     <label class="dg-toggle">
                         <input type="checkbox" bind:checked={trainingMode} />
-                        <span>TRAINING MODE (SHOWS MECHANICS)</span>
+                        <span>TRAINING MODE — highlights correct doors + shows your lane</span>
                     </label>
 
                     {#if trainingMode && attestedTierId === null}
@@ -2424,48 +2426,58 @@
                     <div class="dg-hiw-item">
                         <span class="dg-hiw-num">1</span>
                         <div>
-                            <strong>Airlock (optional mainnet stamp)</strong>
+                            <strong>Airlock — optional entry stamp</strong>
                             <p>
-                                Stamp entry as a digest-only audit record via
-                                passkey (reviewer-proof), or proceed in demo
-                                mode.
+                                Sign an on-chain digest of your run start with your passkey — no
+                                private data, just proof the run happened. Skip it and go straight
+                                to the proof rooms in demo mode. Either way, the rooms work.
                             </p>
                         </div>
                     </div>
                     <div class="dg-hiw-item">
                         <span class="dg-hiw-num">2</span>
                         <div>
-                            <strong>Read the placard, then choose a door</strong
-                            >
+                            <strong>Read the tags, find your door</strong>
                             <p>
-                                Doors show explicit policy tags. A valid
-                                credential can still be denied if the policy
-                                mismatch is real.
+                                Each door shows policy tags: MIN tier, LANE, ROLE, PARITY.
+                                Your credential has a tier and a lane — locked in at run start.
+                                Find the one door where every tag fits. A valid ZK proof at
+                                the wrong door is still a rejection.
                             </p>
                         </div>
                     </div>
                     <div class="dg-hiw-item">
                         <span class="dg-hiw-num">3</span>
                         <div>
-                            <strong>Verifier changes by room</strong>
+                            <strong>Wrong door? The Forensics panel tells you exactly why</strong>
                             <p>
-                                Room 1 uses Groth16 per attempt. Rooms 2–3 can
-                                generate live-input Noir/RISC0 proofs if the
-                                local prover is running, then submit real
-                                mainnet on-chain verification via passkey.
+                                Every failed attempt shows your credential, the door's policy,
+                                and which constraint didn't match. No guesswork — the verifier
+                                makes the call and explains it.
                             </p>
                         </div>
                     </div>
                     <div class="dg-hiw-item">
                         <span class="dg-hiw-num">4</span>
                         <div>
-                            <strong
-                                >Ledger chamber (optional mainnet record)</strong
-                            >
+                            <strong>Three rooms, three real proof systems</strong>
                             <p>
-                                Record a completion digest on-chain via passkey.
-                                This is a record, not on-chain proof
-                                verification.
+                                Room 1: Groth16 (Circom/BN254) — compact proofs, on-chain pairing
+                                check via Tier Verifier. Room 2: UltraHonk (Noir) — fast local
+                                verify, optional on-chain record. Room 3: RISC0 zkVM receipt —
+                                arbitrary computation attested, optional on-chain record.
+                            </p>
+                        </div>
+                    </div>
+                    <div class="dg-hiw-item">
+                        <span class="dg-hiw-num">5</span>
+                        <div>
+                            <strong>Ledger chamber — sign the completion record</strong>
+                            <p>
+                                Stamp the run closed with a digest-only record: rooms cleared,
+                                proof systems used, run ID. Optional, but if the run counted
+                                for something — sign it. The ledger doesn't accept verbal
+                                confirmation.
                             </p>
                         </div>
                     </div>
@@ -2519,6 +2531,14 @@
                     aria-label="Protocol Placard"
                 >
                     <div class="dg-panel-head">PROTOCOL PLACARD</div>
+                    <div class="dg-stamp-box" style="border-color:rgba(154,230,0,0.3);background:rgba(154,230,0,0.04);margin-bottom:14px">
+                        <p class="dg-placard" style="margin:0 0 6px">
+                            TL;DR: This is the optional entry checkpoint.
+                        </p>
+                        <p class="dg-placard-sub" style="margin:0">
+                            Stamping entry records an on-chain audit marker via passkey (no private data). Skip it and you can still play all three proof-gated rooms in demo mode — the ZK verification is real either way.
+                        </p>
+                    </div>
                     <p class="dg-placard">{roomLore.protocolPlacard}</p>
                     <div class="dg-placard-sub">
                         {roomLore.verifierExplainer}
@@ -3076,6 +3096,9 @@
                             POLICY: {floorDef.policyName}
                         </h2>
                         <p class="dg-floor-desc">{floorDef.briefing}</p>
+                        <p class="dg-floor-desc" style="margin-top:6px;font-style:italic;opacity:0.75">
+                            Find the ONE door where every tag matches your credential (shown below). Wrong choices show exactly why in the Forensics panel.
+                        </p>
                         <div class="dg-floor-controls">
                             <label class="dg-toggle">
                                 <input
@@ -3084,8 +3107,11 @@
                                 />
                                 <span>TRAINING MODE</span>
                             </label>
-                            <label class="dg-toggle dg-present">
-                                <span>PRESENT</span>
+                            <label
+                                class="dg-toggle dg-present"
+                                title="Submit a different proof format to see how the guardian rejects a format mismatch. Normally auto-set to match this room's verifier."
+                            >
+                                <span>PROOF FORMAT{presentedTouched ? " ⚠" : ""}</span>
                                 <select
                                     class="dg-select"
                                     bind:value={presentedVerifierType}
@@ -3104,15 +3130,9 @@
                                 </select>
                             </label>
                             <span class="dg-hint-pill">
-                                {#if trainingMode}
-                                    CREDENTIAL: T{shownTierId} ({tierLabel(
-                                        shownTierId,
-                                    )}) • PARITY {shownTierParity} • LANE {activeLane.name}
-                                {:else}
-                                    CREDENTIAL: T{shownTierId} ({tierLabel(
-                                        shownTierId,
-                                    )}) • PARITY {shownTierParity}
-                                {/if}
+                                CREDENTIAL: T{shownTierId} ({tierLabel(
+                                    shownTierId,
+                                )}) • PARITY {shownTierParity} • LANE <span style="color: {activeLane.color}">{activeLane.name}</span>
                             </span>
                             {#if attestedTierId !== null}
                                 <span class="dg-cred-source">ON-CHAIN</span>
@@ -3727,9 +3747,10 @@
             <p class="dg-eyebrow">DUNGEON CLEARED</p>
             <h1 class="dg-victory-title">VICTORY</h1>
             <p class="dg-victory-subtitle">
-                Seed vault tour completed. Room verifiers are real; on-chain
-                stamps are digest-only records signed with your passkey (if
-                used).
+                You passed every policy gate. Groth16, Noir, RISC0 — each
+                door was a live cryptographic check. On-chain stamps, if
+                used, are digest-only records signed with your passkey.
+                The ledger has your run.
             </p>
 
             <div class="dg-victory-stats">
