@@ -426,6 +426,9 @@
         and RISC0 tracks verify locally and can optionally publish a hash record
         on-chain.
       </p>
+      <p class="hero-sub" style="font-size:0.95rem;opacity:0.6;margin-top:-20px">
+        Your on-chain tier from this page becomes your ZK Dungeon credential — the vault doors use it as the policy input for Groth16, Noir, and RISC0 proofs. No wallet? The dungeon also runs in demo mode with a local credential.
+      </p>
       <div class="hero-metrics">
         <div class="metric">
           <span class="label">Identity Status</span>
