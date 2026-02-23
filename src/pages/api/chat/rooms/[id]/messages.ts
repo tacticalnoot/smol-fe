@@ -2,6 +2,27 @@ import type { APIRoute } from 'astro';
 import { getDb } from '../../../../../lib/the-vip/db';
 import { getSession } from '../../../../../lib/the-vip/auth';
 
+// Access rules mirroring rooms/index.ts
+const ROOM_ACCESS: Record<string, 'open' | 'horizon' | 'disabled'> = {
+    general:   'open',
+    builders:  'horizon',
+    lumenauts: 'disabled',
+    contact:   'disabled',
+};
+
+async function checkRoomAccess(roomId: string, address: string): Promise<boolean> {
+    const rule = ROOM_ACCESS[roomId];
+    if (!rule || rule === 'disabled') return false;
+    if (rule === 'open') return true;
+    // 'horizon': account must exist on Stellar
+    try {
+        const res = await fetch(`https://horizon.stellar.org/accounts/${address}`);
+        return res.ok;
+    } catch {
+        return false;
+    }
+}
+
 export const GET: APIRoute = async (context) => {
     const { request, locals, params } = context;
     const env = (locals as any).runtime?.env;
@@ -16,12 +37,8 @@ export const GET: APIRoute = async (context) => {
     const roomId = params.id;
     if (!roomId) return new Response('Room ID required', { status: 400 });
 
-    // TODO: Verify Gating Access here too?
-    // Ideally Yes. For MVP, we might skip strictly repeating the Horizon check on every poll 
-    // IF the listing check was sufficient UI-wise.
-    // BUT Security rules say "gate required".
-    // We should cache the "Access Granted" bit in the Session 
-    // or just checking generic access for now.
+    const hasAccess = await checkRoomAccess(roomId, session.address);
+    if (!hasAccess) return new Response('Forbidden', { status: 403 });
 
     // Fetch messages
     // Default limit 50
@@ -62,6 +79,11 @@ export const POST: APIRoute = async (context) => {
     if (!session) return new Response('Unauthorized', { status: 401 });
 
     const roomId = params.id;
+    if (!roomId) return new Response('Room ID required', { status: 400 });
+
+    const hasAccess = await checkRoomAccess(roomId, session.address);
+    if (!hasAccess) return new Response('Forbidden', { status: 403 });
+
     const body = await request.json() as { ciphertext: string, nonce: string, senderHash?: string };
 
     if (!body.ciphertext || !body.nonce) {
