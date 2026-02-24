@@ -137,16 +137,18 @@
     const ENERGY_HISTORY_SIZE = 43; // ~1 second at 60fps
 
     // Difficulty-based onset sensitivity
+    // Higher = stricter (fewer beats detected). Tuned so hard/expert
+    // only fire on musically clear hits, not background noise.
     let onsetThresholdMultiplier = $derived.by(() => {
         switch (settings.difficulty) {
             case "easy":
-                return 2.5; // Stricter
+                return 2.5;
             case "medium":
                 return 2.0;
             case "hard":
-                return 1.6;
+                return 1.9;
             case "expert":
-                return 1.3;
+                return 1.6;
             default:
                 return 2.0;
         }
@@ -320,11 +322,25 @@
         });
     }
 
+    let lastGlobalOnsetTimeRT = 0; // Cross-lane spacing for real-time mode
+
     function detectOnsets() {
         if (!bassAnalyser || !midAnalyser || !trebleAnalyser) return;
 
         const analysers = [bassAnalyser, midAnalyser, trebleAnalyser];
         const currentTime = audio?.currentTime || 0;
+
+        // Per-lane minimum spacing (difficulty-aware)
+        let minTimeBetweenOnsets = 0.22; // Expert default
+        if (settings.difficulty === "easy") minTimeBetweenOnsets = 0.4;
+        if (settings.difficulty === "medium") minTimeBetweenOnsets = 0.3;
+        if (settings.difficulty === "hard") minTimeBetweenOnsets = 0.3;
+
+        // Cross-lane minimum spacing
+        let globalMinSpacing = 0.07; // Expert default
+        if (settings.difficulty === "easy") globalMinSpacing = 0.3;
+        if (settings.difficulty === "medium") globalMinSpacing = 0.15;
+        if (settings.difficulty === "hard") globalMinSpacing = 0.1;
 
         analysers.forEach((analyser, lane) => {
             const bufferLength = analyser.frequencyBinCount;
@@ -354,15 +370,16 @@
 
             // Detect onset: current energy significantly above average
             const threshold = avgEnergy * onsetThresholdMultiplier;
-            const minTimeBetweenOnsets = 0.1; // 100ms minimum between onsets in same lane
 
             if (
                 rms > threshold &&
-                currentTime - lastOnsetTimes[lane] > minTimeBetweenOnsets
+                currentTime - lastOnsetTimes[lane] > minTimeBetweenOnsets &&
+                currentTime - lastGlobalOnsetTimeRT > globalMinSpacing
             ) {
                 // ONSET DETECTED!
                 spawnNote(lane, currentTime);
                 lastOnsetTimes[lane] = currentTime;
+                lastGlobalOnsetTimeRT = currentTime;
             }
         });
     }
@@ -792,8 +809,8 @@
                 const windowSize = Math.floor(sampleRate / 60); // ~60fps windows
 
                 // Detection State per lane
-                // Detection State per lane
                 const lastOnsetTimes = [0, 0, 0];
+                let lastGlobalOnsetTime = 0; // Cross-lane spacing
                 const energyHistory: number[][] = [[], [], []];
 
                 // Peak Centering Sate
@@ -852,10 +869,21 @@
                         const threshold = avgEnergy * onsetThresholdMultiplier;
 
                         // -- DENSITY CONTROL --
-                        let minSpacing = 0.15; // Default (Expert)
+                        // Per-lane minimum spacing (seconds between notes in same lane)
+                        let minSpacing = 0.22; // Default (Expert)
                         if (settings.difficulty === "easy") minSpacing = 0.4;
                         if (settings.difficulty === "medium") minSpacing = 0.3;
-                        if (settings.difficulty === "hard") minSpacing = 0.2;
+                        if (settings.difficulty === "hard") minSpacing = 0.3;
+
+                        // Cross-lane minimum spacing (seconds between notes on ANY lane)
+                        // Prevents walls of simultaneous notes
+                        let globalMinSpacing = 0.07; // Default (Expert)
+                        if (settings.difficulty === "easy")
+                            globalMinSpacing = 0.3;
+                        if (settings.difficulty === "medium")
+                            globalMinSpacing = 0.15;
+                        if (settings.difficulty === "hard")
+                            globalMinSpacing = 0.1;
 
                         // -- PEAK CENTERING LOGIC --
                         const state = laneState[lane];
@@ -872,16 +900,19 @@
                                 currentTime - state.startTime > PEAK_WINDOW ||
                                 rms < state.peakRMS * 0.5
                             ) {
-                                // Only add if we respect the density spacing
+                                // Only add if we respect both per-lane AND global spacing
                                 if (
                                     state.peakTime - lastOnsetTimes[lane] >
-                                    minSpacing
+                                        minSpacing &&
+                                    state.peakTime - lastGlobalOnsetTime >
+                                        globalMinSpacing
                                 ) {
                                     detectedOnsets.push({
                                         lane,
                                         time: state.peakTime,
                                     });
                                     lastOnsetTimes[lane] = state.peakTime;
+                                    lastGlobalOnsetTime = state.peakTime;
                                 }
 
                                 // Reset and cooldown
@@ -889,11 +920,13 @@
                                 state.peakRMS = 0;
                             }
                         } else {
-                            // Start tracking if over threshold, cooldown passed, AND over absolute floor
+                            // Start tracking if over threshold, cooldowns passed, AND over absolute floor
                             if (
                                 rms > threshold &&
                                 currentTime - lastOnsetTimes[lane] >
                                     minSpacing &&
+                                currentTime - lastGlobalOnsetTime >
+                                    globalMinSpacing &&
                                 rms > 0.01 // Noise floor
                             ) {
                                 state.isTracking = true;
@@ -992,6 +1025,7 @@
         };
         energyHistory = [[], [], []];
         lastOnsetTimes = [0, 0, 0];
+        lastGlobalOnsetTimeRT = 0;
         spawnedCachedOnsets.clear(); // Reset cached onset tracking
 
         // Create and setup audio
