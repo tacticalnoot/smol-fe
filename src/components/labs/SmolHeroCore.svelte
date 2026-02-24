@@ -155,6 +155,112 @@
     // Screen shake on combo break
     let comboBreakShake = $state(false);
 
+    // ======================
+    // CUSTOM TRACK RECORDING
+    // ======================
+
+    let recordingMode = $state(false); // Tap-to-record mode (no auto notes)
+    let recordedNotes = $state<CachedOnset[]>([]); // Captured taps during recording
+    let customShareLink = $state<string | null>(null); // Encoded URL for sharing
+    let customLinkCopied = $state(false); // Copy-to-clipboard feedback
+    // Beatmap decoded from a shared URL (custom track link)
+    let incomingCustomBeatmap = $state<Beatmap | null>(null);
+
+    /** Encode a recorded beatmap to a compact URL-safe string.
+     *  Format: base64url( "{trackId}|{noteStream}" )
+     *  noteStream: for each note: "{lane}{deltaCs_hex4}" (centiseconds, 4 hex digits)
+     *  Max delta per step ≤ 65535 cs = ~655 seconds — more than enough. */
+    function encodeCustomTrack(trackId: string, onsets: CachedOnset[]): string {
+        const sorted = [...onsets].sort((a, b) => a.time - b.time);
+        let prev = 0;
+        const stream = sorted.map(o => {
+            const deltaCs = Math.round(Math.max(0, o.time - prev) * 100);
+            prev = o.time;
+            return `${o.lane}${Math.min(deltaCs, 65535).toString(16).padStart(4, '0')}`;
+        }).join('');
+        const raw = `${trackId}|${stream}`;
+        try {
+            return btoa(encodeURIComponent(raw))
+                .replace(/\+/g, '-').replace(/\//g, '_').replace(/=/g, '');
+        } catch {
+            return '';
+        }
+    }
+
+    /** Decode a custom track string back to trackId + onsets. */
+    function decodeCustomTrack(encoded: string): { trackId: string; onsets: CachedOnset[] } | null {
+        try {
+            const b64 = encoded.replace(/-/g, '+').replace(/_/g, '/');
+            const padded = b64 + '=='.slice((b64.length + 3) % 4); // re-pad
+            const raw = decodeURIComponent(atob(padded));
+            const sep = raw.indexOf('|');
+            if (sep === -1) return null;
+            const trackId = raw.slice(0, sep);
+            const stream = raw.slice(sep + 1);
+            const onsets: CachedOnset[] = [];
+            let cursor = 0;
+            let cumTime = 0;
+            while (cursor + 5 <= stream.length) {
+                const lane = parseInt(stream[cursor]);
+                const deltaCs = parseInt(stream.slice(cursor + 1, cursor + 5), 16);
+                cumTime += deltaCs / 100;
+                if (lane >= 0 && lane <= 2 && !isNaN(deltaCs)) {
+                    onsets.push({ lane, time: cumTime });
+                }
+                cursor += 5;
+            }
+            return { trackId, onsets };
+        } catch {
+            return null;
+        }
+    }
+
+    function buildShareUrl(): string {
+        if (!currentTrack || recordedNotes.length === 0) return '';
+        const encoded = encodeCustomTrack(currentTrack.Song_1, recordedNotes);
+        if (!encoded) return '';
+        const url = new URL(window.location.href);
+        url.hash = `custom=${encoded}`;
+        return url.toString();
+    }
+
+    async function copyShareLink() {
+        const link = customShareLink || buildShareUrl();
+        if (!link) return;
+        try {
+            await navigator.clipboard.writeText(link);
+            customLinkCopied = true;
+            setTimeout(() => (customLinkCopied = false), 2500);
+        } catch {
+            // Fallback: prompt user
+            prompt('Copy this link:', link);
+        }
+    }
+
+    /** Start the game in recording mode (no auto-beats, taps are recorded). */
+    function startRecordingMode(track: any) {
+        currentTrack = track;
+        recordingMode = true;
+        recordedNotes = [];
+        customShareLink = null;
+        cachedBeatmap = null; // No auto-spawned notes during recording
+        gameState = "playing";
+        startGame();
+    }
+
+    /** Play back a previously recorded (or URL-decoded) custom beatmap. */
+    function playCustomBeatmap(track: any, onsets: CachedOnset[]) {
+        currentTrack = track;
+        recordingMode = false;
+        cachedBeatmap = {
+            trackId: track.Song_1,
+            difficulty: settings.difficulty,
+            onsets: [...onsets].sort((a, b) => a.time - b.time),
+        };
+        gameState = "playing";
+        startGame();
+    }
+
     // Live derived stats
     let totalNotes = $derived(stats.perfect + stats.great + stats.ok + stats.miss);
     let liveAccuracy = $derived.by(() => {
@@ -489,11 +595,13 @@
             songProgress = currentTime / audio.duration;
         }
 
-        // Detect new onsets (real-time or from cache)
-        if (cachedBeatmap) {
-            detectOnsetsFromCache(currentTime);
-        } else {
-            detectOnsets();
+        // Detect new onsets (skip entirely in recording mode — user taps ARE the notes)
+        if (!recordingMode) {
+            if (cachedBeatmap) {
+                detectOnsetsFromCache(currentTime);
+            } else {
+                detectOnsets();
+            }
         }
 
         // Update note positions — notes reach hitZoneY exactly at their hitTime
@@ -541,6 +649,20 @@
 
         // Visual feedback
         pressedLanes[laneIndex] = true;
+
+        // Recording mode: stamp this tap as a note, skip hit detection
+        if (recordingMode) {
+            const t = audio?.currentTime || 0;
+            recordedNotes = [...recordedNotes, { lane: laneIndex, time: t }];
+            // Show a brief hit burst so the user sees their tap
+            hitEffects = [...hitEffects, {
+                id: Math.random().toString(),
+                lane: laneIndex,
+                timestamp: Date.now(),
+                color: LANE_COLORS[laneIndex].hex,
+            }];
+            return;
+        }
 
         // Find closest unhit note in this lane (apply calibration offset)
         const currentTime = (audio?.currentTime || 0) + settings.calibrationOffset / 1000;
@@ -1143,8 +1265,8 @@
             trackDuration = audio?.duration || 0;
         };
 
-        // Init analysis (only if not using pre-computed beatmap)
-        if (!cachedBeatmap) {
+        // Init analysis (skip if using pre-computed beatmap or in recording mode)
+        if (!cachedBeatmap && !recordingMode) {
             initAudioAnalysis();
         }
 
@@ -1178,6 +1300,17 @@
     }
 
     function finishGame() {
+        // Recording mode: save the captured taps and go to the recorded screen
+        if (recordingMode) {
+            recordingMode = false;
+            isAnalyzing = false;
+            if (animationFrameId) cancelAnimationFrame(animationFrameId);
+            if (audio) audio.pause();
+            customShareLink = buildShareUrl();
+            gameState = "recorded";
+            return;
+        }
+
         gameState = "finished";
         isAnalyzing = false;
         attestResult = null;
@@ -1325,6 +1458,15 @@
         attestResult = null;
         attestStage = null;
         isAttesting = false;
+        recordingMode = false;
+        recordedNotes = [];
+        customShareLink = null;
+        // Clear incoming custom beatmap from URL so the user can browse freely
+        incomingCustomBeatmap = null;
+        // Clear the hash so reloading doesn't re-trigger the custom track
+        if (window.location.hash.startsWith('#custom=')) {
+            history.replaceState(null, '', window.location.pathname + window.location.search);
+        }
     }
 
     async function mintScoreToStellar() {
@@ -1416,6 +1558,20 @@
         // Responsive game field dimensions
         updateDimensions();
         window.addEventListener("resize", updateDimensions);
+
+        // Check for a custom track encoded in the URL hash (#custom=...)
+        const hash = window.location.hash;
+        if (hash.startsWith('#custom=')) {
+            const encoded = hash.slice('#custom='.length);
+            const decoded = decodeCustomTrack(encoded);
+            if (decoded && decoded.onsets.length > 0) {
+                incomingCustomBeatmap = {
+                    trackId: decoded.trackId,
+                    difficulty: settings.difficulty,
+                    onsets: decoded.onsets,
+                };
+            }
+        }
 
         loadTracks();
         window.addEventListener("keydown", handleKeyDown);
@@ -1636,6 +1792,38 @@
                 </div>
             </div>
 
+            <!-- Incoming custom track from shared URL -->
+            {#if incomingCustomBeatmap}
+                {@const customTrack = allTracks.find(t => t.Song_1 === incomingCustomBeatmap?.trackId)}
+                <div class="p-3.5 border-2 border-[#f91880]/60 rounded-md bg-[#f91880]/5 flex flex-col gap-2">
+                    <div class="flex items-center gap-2">
+                        <div class="w-2 h-2 rounded-full bg-[#f91880]"></div>
+                        <span class="text-[10px] text-[#f91880] font-bold tracking-wider uppercase">Custom Track Link Detected</span>
+                    </div>
+                    {#if customTrack}
+                        <p class="text-xs text-white">
+                            <span class="font-bold">{customTrack.Title}</span>
+                            <span class="text-[#555]"> &bull; {incomingCustomBeatmap.onsets.length} custom notes</span>
+                        </p>
+                        <button
+                            onclick={() => playCustomBeatmap(customTrack, incomingCustomBeatmap!.onsets)}
+                            class="w-full px-3 py-2 rounded text-black text-xs font-bold transition-all hover:opacity-90"
+                            style="background: #f91880;"
+                        >
+                            ▶ PLAY THIS CUSTOM TRACK
+                        </button>
+                    {:else}
+                        <p class="text-[10px] text-[#555]">
+                            Song not found in your library. It may have been removed.
+                        </p>
+                    {/if}
+                    <button onclick={() => incomingCustomBeatmap = null}
+                        class="text-[9px] text-[#555] hover:text-[#f91880] text-right self-end transition-colors">
+                        Dismiss ×
+                    </button>
+                </div>
+            {/if}
+
             <!-- Track list -->
             <div
                 class="track-list grid grid-cols-1 md:grid-cols-2 gap-2 max-h-[420px] overflow-y-auto pr-1"
@@ -1659,7 +1847,7 @@
                     <div class="relative group">
                         <button
                             onclick={() => selectTrack(track)}
-                            class="track-card w-full p-3.5 border rounded-md bg-[#0a0a0a] text-left pr-12 transition-all
+                            class="track-card w-full p-3.5 border rounded-md bg-[#0a0a0a] text-left pr-20 transition-all
                                    {isCached ? 'border-[#9ae600]/20' : 'border-[#1a1a1a]'}
                                    hover:border-[#9ae600]/60 hover:bg-[#111]"
                         >
@@ -1697,10 +1885,15 @@
                                 </div>
                             </div>
                         </button>
-                        <div
-                            class="absolute right-2.5 top-1/2 -translate-y-1/2"
-                            onclick={(e) => e.stopPropagation()}
-                        >
+                        <!-- REC button + Like button -->
+                        <div class="absolute right-1.5 top-1/2 -translate-y-1/2 flex flex-col items-center gap-1"
+                            onclick={(e) => e.stopPropagation()}>
+                            <!-- REC: create a custom track for this song -->
+                            <button
+                                onclick={() => startRecordingMode(track)}
+                                title="Create custom track"
+                                class="w-7 h-7 flex items-center justify-center rounded text-[9px] font-bold transition-all border border-[#f91880]/20 text-[#f91880]/40 hover:text-[#f91880] hover:border-[#f91880]/60 hover:bg-[#f91880]/10"
+                            >◉</button>
                             <LikeButton
                                 smolId={track.Id}
                                 liked={likedTrackIds.has(track.Id)}
@@ -1803,8 +1996,16 @@
                 </div>
             </div>
 
-            <!-- Combo Milestone Text -->
-            {#if comboText}
+            <!-- REC mode indicator (replaces combo text area in recording mode) -->
+            {#if recordingMode}
+                <div class="absolute top-14 left-1/2 -translate-x-1/2 z-30 pointer-events-none flex items-center gap-2 px-3 py-1.5 rounded-md"
+                    style="border: 1px solid rgba(249,24,128,0.5); background: rgba(249,24,128,0.1); animation: recPulse 1s ease-in-out infinite;">
+                    <div class="w-2.5 h-2.5 rounded-full bg-[#f91880]" style="animation: recDot 1s ease-in-out infinite;"></div>
+                    <span class="text-[11px] text-[#f91880] font-bold tracking-widest">REC</span>
+                    <span class="text-[11px] text-[#f91880]/70 tabular-nums">{recordedNotes.length} notes</span>
+                </div>
+            {:else if comboText}
+                <!-- Combo Milestone Text -->
                 <div class="absolute top-14 left-1/2 -translate-x-1/2 z-30 pointer-events-none combo-milestone-text"
                     style="color: {stats.combo >= 100 ? '#FFD700' : stats.combo >= 50 ? '#f91880' : '#9ae600'};
                            font-size: {stats.combo >= 100 ? 20 : stats.combo >= 50 ? 18 : 14}px;
@@ -2366,6 +2567,114 @@
                 </button>
             </div>
         </div>
+    {:else if gameState === "recorded"}
+        <!-- CUSTOM TRACK RECORDED — share + playback screen -->
+        <div class="flex flex-col gap-5 p-6 md:p-8 rounded-lg bg-[#111]"
+            style="border: 2px solid #f91880; box-shadow: 0 0 24px rgba(249,24,128,0.15);">
+
+            <!-- Header -->
+            <div class="text-center border-b border-[#333] pb-4">
+                <h2 class="text-2xl md:text-3xl font-bold mb-1" style="color:#f91880; text-shadow: 0 0 20px rgba(249,24,128,0.4);">
+                    CUSTOM TRACK SAVED!
+                </h2>
+                <p class="text-sm text-white">{currentTrack?.Title || 'Unknown Track'}</p>
+                <p class="text-[10px] text-[#555] mt-0.5">{getArtistDisplay(currentTrack)}</p>
+            </div>
+
+            <!-- Note count + lane breakdown -->
+            {#if recordedNotes.length > 0}
+                <div class="flex flex-col gap-3">
+                    <div class="text-center">
+                        <span class="text-3xl font-bold text-white tabular-nums">{recordedNotes.length}</span>
+                        <span class="text-sm text-[#555] ml-2">notes recorded</span>
+                    </div>
+                    <!-- Lane breakdown bars -->
+                    <div class="flex gap-3 h-14 items-end">
+                        {#each [0, 1, 2] as lane}
+                            {@const count = recordedNotes.filter(n => n.lane === lane).length}
+                            {@const pct = recordedNotes.length > 0 ? count / recordedNotes.length : 0}
+                            <div class="flex-1 flex flex-col items-center gap-1.5">
+                                <span class="text-[9px] tabular-nums font-bold" style="color: {LANE_COLORS[lane].hex}">{count}</span>
+                                <div class="w-full rounded-t-sm"
+                                    style="height: {Math.max(4, Math.round(pct * 40))}px;
+                                           background: {LANE_COLORS[lane].hex};
+                                           box-shadow: 0 0 8px rgba({LANE_COLORS[lane].rgb}, 0.5);
+                                           opacity: 0.85;">
+                                </div>
+                            </div>
+                        {/each}
+                    </div>
+                    <div class="flex justify-around text-[8px] text-[#444] uppercase tracking-wider">
+                        <span>Bass (D)</span>
+                        <span>Mid (F)</span>
+                        <span>Treble (J)</span>
+                    </div>
+                </div>
+            {:else}
+                <div class="text-center py-4">
+                    <p class="text-sm text-[#555]">No notes were recorded.</p>
+                    <p class="text-[10px] text-[#333] mt-1">Try again and tap D / F / J to the beat!</p>
+                </div>
+            {/if}
+
+            <!-- Share Link -->
+            {#if customShareLink && recordedNotes.length > 0}
+                <div class="flex flex-col gap-2">
+                    <span class="text-[9px] text-[#555] uppercase tracking-wider">Shareable Link</span>
+                    <p class="text-[9px] text-[#333]">
+                        Anyone who opens this link can play your exact beat pattern on this song.
+                        The whole beatmap is encoded in the URL — no server needed.
+                    </p>
+                    <div class="flex gap-2">
+                        <div class="flex-1 bg-[#0a0a0a] border border-[#333] rounded px-2 py-2 text-[9px] text-[#555] font-mono overflow-hidden">
+                            <span class="block truncate">{customShareLink}</span>
+                        </div>
+                        <button
+                            onclick={copyShareLink}
+                            class="flex-shrink-0 px-4 py-2 rounded text-xs font-bold transition-all"
+                            style="background: {customLinkCopied ? '#9ae600' : 'transparent'};
+                                   color: {customLinkCopied ? 'black' : '#f91880'};
+                                   border: 2px solid {customLinkCopied ? '#9ae600' : '#f91880'};"
+                        >
+                            {customLinkCopied ? '✓ COPIED!' : 'COPY'}
+                        </button>
+                    </div>
+                    <p class="text-[8px] text-[#333]">
+                        Link size: ~{Math.round(customShareLink.length / 1024 * 10) / 10 < 1
+                            ? customShareLink.length + ' chars'
+                            : (Math.round(customShareLink.length / 1024 * 10) / 10) + ' KB'}
+                        &bull; {recordedNotes.length} notes encoded
+                    </p>
+                </div>
+            {/if}
+
+            <!-- Actions -->
+            <div class="flex flex-col gap-3">
+                {#if recordedNotes.length > 0}
+                    <button
+                        onclick={() => playCustomBeatmap(currentTrack, recordedNotes)}
+                        class="w-full px-4 py-3 rounded text-black text-sm font-bold transition-all hover:opacity-90"
+                        style="background: #f91880;"
+                    >
+                        ▶ PLAY BACK MY TRACK
+                    </button>
+                {/if}
+                <div class="flex gap-3">
+                    <button
+                        onclick={returnToMenu}
+                        class="flex-1 px-4 py-3 bg-[#0a0a0a] border border-[#333] rounded text-white text-xs hover:bg-[#1a1a1a] hover:border-[#555] transition-all"
+                    >
+                        BACK TO MENU
+                    </button>
+                    <button
+                        onclick={() => startRecordingMode(currentTrack)}
+                        class="flex-1 px-4 py-3 border border-[#f91880]/40 rounded text-[#f91880] text-xs font-bold hover:bg-[#f91880]/10 transition-all"
+                    >
+                        ◉ RE-RECORD
+                    </button>
+                </div>
+            </div>
+        </div>
     {/if}
 </div>
 
@@ -2454,6 +2763,18 @@
     @keyframes comboTextPulse {
         0%, 100% { transform: translateX(-50%) scale(1); opacity: 0.9; }
         50% { transform: translateX(-50%) scale(1.08); opacity: 1; }
+    }
+
+    /* REC indicator pulse */
+    @keyframes recPulse {
+        0%, 100% { opacity: 1; }
+        50% { opacity: 0.65; }
+    }
+
+    /* REC dot blinking */
+    @keyframes recDot {
+        0%, 49% { opacity: 1; }
+        50%, 100% { opacity: 0; }
     }
 
     /* Volume slider styling */
