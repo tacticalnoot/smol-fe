@@ -186,9 +186,10 @@ export async function attestHeroScore(input: {
         const contract = new Contract(contractId);
         const sourceAccount = new Account(NULL_ACCOUNT, "0");
 
-        // Build the contract call: attest(owner, "HERO", tier, statement, verifier)
+        // Build the contract call: attest_if_best(owner, "HERO", tier, statement, verifier, score)
+        // Personal-best enforcement: only writes on-chain if score > existing.
         const operation = contract.call(
-            "attest",
+            "attest_if_best",
             new Address(input.owner).toScVal(),
             symbol("HERO"),
             symbol(tier),
@@ -198,6 +199,7 @@ export async function attestHeroScore(input: {
             xdr.ScVal.scvBytes(
                 Buffer.from(hexToBytes(ensureBytes32Hex(verifierHash))),
             ),
+            xdr.ScVal.scvU64(xdr.Uint64.fromString(String(input.payload.score))),
         );
 
         const tx = new TransactionBuilder(sourceAccount, {
