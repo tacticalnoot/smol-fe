@@ -152,10 +152,29 @@
         }
     });
 
-    // Visual
-    let laneHeight = 600;
-    let hitZoneY = 500; // Y position of hit zone
-    let noteSize = 40;
+    // Visual (responsive)
+    let laneHeight = $state(600);
+    let hitZoneY = $state(450); // Y position of hit zone — notes arrive HERE at hitTime
+    let noteSize = $state(42);
+
+    function updateDimensions() {
+        const vh = window.innerHeight;
+        const vw = window.innerWidth;
+        const mobile = vw < 768;
+
+        if (mobile) {
+            // On mobile, fit the game field within the viewport
+            // Account for HUD (~80px), controls (~40px), page chrome (~120px)
+            const availableHeight = vh - 240;
+            laneHeight = Math.max(320, Math.min(availableHeight, 480));
+            hitZoneY = Math.floor(laneHeight * 0.72); // Higher up for mobile
+            noteSize = 36;
+        } else {
+            laneHeight = 600;
+            hitZoneY = Math.floor(laneHeight * 0.75); // 75% down
+            noteSize = 42;
+        }
+    }
 
     // Timing constants (in ms)
     const PERFECT_WINDOW = 50;
@@ -386,25 +405,25 @@
             detectOnsets();
         }
 
-        // Update note positions
+        // Update note positions — notes reach hitZoneY exactly at their hitTime
         notes = notes.map((note) => {
             if (note.hit) return note;
 
-            // Calculate position based on time until hit
-            // Calculate raw position first
             const timeUntilHit = note.hitTime - currentTime;
-            const progress = 1 - timeUntilHit / (NOTE_SPAWN_LEAD_TIME / 1000);
-            const rawPosition = progress * 100;
-            const newPosition = Math.max(0, Math.min(100, rawPosition));
+            const travelTime = NOTE_SPAWN_LEAD_TIME / 1000;
+            const progress = 1 - timeUntilHit / travelTime;
 
-            // Check if note passed hit zone (miss)
-            // allow a small buffer (110%) before counting as miss to allow late hits
-            if (rawPosition > 110 && !note.hit && !note.accuracy) {
+            // Position in pixels: progress=0 → top, progress=1 → hitZoneY
+            const pixelY = progress * hitZoneY;
+
+            // Miss: note has fallen MISS_THRESHOLD ms past the hit zone
+            const msPastHit = -timeUntilHit * 1000;
+            if (msPastHit > MISS_THRESHOLD && !note.hit && !note.accuracy) {
                 handleMiss(note);
-                return { ...note, accuracy: "miss", position: newPosition };
+                return { ...note, accuracy: "miss" as const, position: pixelY };
             }
 
-            return { ...note, position: newPosition };
+            return { ...note, position: Math.max(0, pixelY) };
         });
 
         // Clean up old notes
@@ -1124,6 +1143,10 @@
         // On iOS, force Sync Mode (no option)
         if (isIOS) usePreAnalysis = true;
 
+        // Responsive game field dimensions
+        updateDimensions();
+        window.addEventListener("resize", updateDimensions);
+
         loadTracks();
         window.addEventListener("keydown", handleKeyDown);
         window.addEventListener("keyup", handleKeyUp);
@@ -1132,6 +1155,7 @@
     onDestroy(() => {
         window.removeEventListener("keydown", handleKeyDown);
         window.removeEventListener("keyup", handleKeyUp);
+        window.removeEventListener("resize", updateDimensions);
         if (animationFrameId) {
             cancelAnimationFrame(animationFrameId);
             animationFrameId = null;
@@ -1234,163 +1258,148 @@
         </div>
     {:else if gameState === "menu"}
         <!-- TRACK SELECTION MENU -->
-        <div class="flex flex-col gap-6">
-            <div class="text-center border-b border-[#333] pb-6">
-                <h1 class="text-4xl font-bold mb-2">
-                    <span class="text-[#9ae600]">SMOL</span>
+        <div class="flex flex-col gap-5">
+            <!-- Header -->
+            <div class="text-center pb-5" style="border-bottom: 1px solid #222;">
+                <h1 class="text-4xl font-bold mb-1 tracking-tight">
+                    <span class="text-[#9ae600]" style="text-shadow: 0 0 20px rgba(154, 230, 0, 0.3);">SMOL</span>
                     <span class="text-white">HERO</span>
                 </h1>
-                <p class="text-xs text-[#555] uppercase tracking-widest">
-                    Rhythm Game • Beat Detection Engine
+                <p class="text-[10px] text-[#444] uppercase tracking-[0.2em]">
+                    Rhythm Game &bull; Beat Detection Engine
                 </p>
                 {#if isIOS}
                     <div
                         class="mt-3 inline-block px-3 py-1 bg-[#9ae600]/10 border border-[#9ae600] rounded text-[10px] text-[#9ae600]"
                     >
-                        ✓ iOS COMPATIBLE • Pre-Analysis Mode Active
+                        iOS &bull; Pre-Analysis Mode Active
                     </div>
                 {:else}
                     <button
                         onclick={() => (usePreAnalysis = !usePreAnalysis)}
-                        class="mt-3 inline-flex items-center gap-2 px-3 py-1 border rounded text-[10px] transition-all {usePreAnalysis
-                            ? 'bg-[#9ae600]/10 border-[#9ae600] text-[#9ae600]'
-                            : 'bg-[#222] border-[#333] text-[#555] hover:border-[#666]'}"
+                        class="mt-3 inline-flex items-center gap-2 px-3 py-1.5 border rounded-md text-[10px] transition-all {usePreAnalysis
+                            ? 'bg-[#9ae600]/10 border-[#9ae600]/50 text-[#9ae600]'
+                            : 'bg-[#111] border-[#333] text-[#555] hover:border-[#666]'}"
                     >
                         {usePreAnalysis
-                            ? "✓ SYNC MODE (BEST)"
-                            : "○ INSTANT START (LAGGY)"}
+                            ? "SYNC MODE (BEST)"
+                            : "INSTANT START (LAGGY)"}
                     </button>
                     {#if usePreAnalysis}
-                        <p class="text-[8px] text-[#555] mt-1">
-                            Analyzes track before playing for perfect beat
-                            syncing.
+                        <p class="text-[8px] text-[#444] mt-1">
+                            Pre-analyzes audio for perfect beat syncing
                         </p>
                     {/if}
                 {/if}
             </div>
 
-            <div class="flex gap-4 justify-center mb-4">
-                <button
-                    onclick={() => (settings.difficulty = "easy")}
-                    class="px-4 py-2 text-xs border rounded {settings.difficulty ===
-                    'easy'
-                        ? 'bg-[#9ae600] text-black border-[#9ae600]'
-                        : 'bg-black border-[#333] text-[#555] hover:border-[#9ae600]'}"
-                >
-                    EASY
-                </button>
-                <button
-                    onclick={() => (settings.difficulty = "medium")}
-                    class="px-4 py-2 text-xs border rounded {settings.difficulty ===
-                    'medium'
-                        ? 'bg-[#9ae600] text-black border-[#9ae600]'
-                        : 'bg-black border-[#333] text-[#555] hover:border-[#9ae600]'}"
-                >
-                    MEDIUM
-                </button>
-                <button
-                    onclick={() => (settings.difficulty = "hard")}
-                    class="px-4 py-2 text-xs border rounded {settings.difficulty ===
-                    'hard'
-                        ? 'bg-[#9ae600] text-black border-[#9ae600]'
-                        : 'bg-black border-[#333] text-[#555] hover:border-[#9ae600]'}"
-                >
-                    HARD
-                </button>
-                <button
-                    onclick={() => (settings.difficulty = "expert")}
-                    class="px-4 py-2 text-xs border rounded {settings.difficulty ===
-                    'expert'
-                        ? 'bg-[#9ae600] text-black border-[#9ae600]'
-                        : 'bg-black border-[#333] text-[#555] hover:border-[#9ae600]'}"
-                >
-                    EXPERT
-                </button>
+            <!-- Difficulty selector -->
+            <div class="flex gap-2 justify-center">
+                {#each difficultyOptions as d}
+                    <button
+                        onclick={() => (settings.difficulty = d)}
+                        class="px-4 py-2 text-[10px] uppercase tracking-wider border rounded-md transition-all {settings.difficulty === d
+                            ? 'bg-[#9ae600] text-black border-[#9ae600] font-bold shadow-[0_0_12px_rgba(154,230,0,0.3)]'
+                            : 'bg-[#0a0a0a] border-[#2a2a2a] text-[#555] hover:border-[#9ae600]/50 hover:text-[#9ae600]'}"
+                    >
+                        {d}
+                    </button>
+                {/each}
             </div>
 
             <!-- FILTERS -->
             <div
-                class="flex flex-col gap-3 mb-4 sticky top-0 bg-black z-10 pb-2"
+                class="flex flex-col gap-2.5 sticky top-0 bg-black z-10 pb-2 pt-1"
             >
-                <input
-                    type="text"
-                    bind:value={searchQuery}
-                    placeholder="Search songs or artists..."
-                    class="w-full bg-[#111] border border-[#333] rounded px-3 py-2 text-xs text-white focus:outline-none focus:border-[#9ae600]"
-                />
-                <div class="flex gap-2 justify-between flex-wrap">
+                <div class="relative">
+                    <input
+                        type="text"
+                        bind:value={searchQuery}
+                        placeholder="Search songs or artists..."
+                        class="w-full bg-[#0a0a0a] border border-[#2a2a2a] rounded-md px-3 py-2.5 text-xs text-white placeholder-[#444] focus:outline-none focus:border-[#9ae600]/50 transition-colors"
+                    />
+                    {#if searchQuery}
+                        <button
+                            onclick={() => (searchQuery = "")}
+                            class="absolute right-2 top-1/2 -translate-y-1/2 text-[#555] hover:text-white text-sm"
+                        >x</button>
+                    {/if}
+                </div>
+                <div class="flex gap-2 justify-between flex-wrap items-center">
                     <div class="flex gap-1">
-                        <button
-                            onclick={() => (sortMode = "latest")}
-                            class="px-2 py-1 text-[10px] border rounded {sortMode ===
-                            'latest'
-                                ? 'bg-[#9ae600] text-black border-[#9ae600]'
-                                : 'bg-black border-[#333] text-[#555]'}"
-                            >LATEST</button
-                        >
-                        <button
-                            onclick={() => (sortMode = "artist")}
-                            class="px-2 py-1 text-[10px] border rounded {sortMode ===
-                            'artist'
-                                ? 'bg-[#9ae600] text-black border-[#9ae600]'
-                                : 'bg-black border-[#333] text-[#555]'}"
-                            >ARTIST</button
-                        >
-                        <button
-                            onclick={() => (sortMode = "liked")}
-                            class="px-2 py-1 text-[10px] border rounded {sortMode ===
-                            'liked'
-                                ? 'bg-[#9ae600] text-black border-[#9ae600]'
-                                : 'bg-black border-[#333] text-[#555]'}"
-                            >LIKED</button
-                        >
+                        {#each [["latest", "LATEST"], ["artist", "ARTIST"], ["liked", "LIKED"]] as [mode, label]}
+                            <button
+                                onclick={() => (sortMode = mode as any)}
+                                class="px-2.5 py-1 text-[10px] border rounded-md transition-all {sortMode === mode
+                                    ? 'bg-[#9ae600]/15 text-[#9ae600] border-[#9ae600]/40'
+                                    : 'bg-transparent border-[#222] text-[#555] hover:border-[#444]'}"
+                            >{label}</button>
+                        {/each}
                     </div>
 
                     <button
                         onclick={() => (filterLikedOnly = !filterLikedOnly)}
-                        class="px-2 py-1 text-[10px] border rounded flex items-center gap-1 {filterLikedOnly
-                            ? 'bg-[#f91880] text-white border-[#f91880]'
-                            : 'bg-black border-[#333] text-[#555]'}"
+                        class="px-2.5 py-1 text-[10px] border rounded-md flex items-center gap-1 transition-all {filterLikedOnly
+                            ? 'bg-[#f91880]/15 text-[#f91880] border-[#f91880]/40'
+                            : 'bg-transparent border-[#222] text-[#555] hover:border-[#444]'}"
                     >
-                        ♥ LIKED ONLY
+                        ♥ LIKED
                     </button>
                 </div>
-                <div class="text-[10px] text-[#444] text-right">
-                    Showing {playableTracks.length} / {filteredTracksCount} tracks
+                <div class="text-[9px] text-[#333] text-right tabular-nums">
+                    {playableTracks.length} / {filteredTracksCount} tracks
                 </div>
             </div>
 
+            <!-- Track list -->
             <div
-                class="grid grid-cols-1 md:grid-cols-2 gap-3 max-h-96 overflow-y-auto pr-1"
+                class="track-list grid grid-cols-1 md:grid-cols-2 gap-2 max-h-[420px] overflow-y-auto pr-1"
                 onscroll={(e) => {
                     const el = e.currentTarget;
-                    // Auto-load more when scrolling near bottom
                     if (
                         el.scrollHeight - el.scrollTop - el.clientHeight <
                         200
                     ) {
                         if (visibleLimit < filteredTracksCount) {
                             visibleLimit += 50;
-                            applyFilters(); // Re-slice
+                            applyFilters();
                         }
                     }
                 }}
             >
                 {#each playableTracks as track (track.Id)}
+                    {@const isCached = beatmapCache.has(`${track.Song_1}-${settings.difficulty}`)}
                     <div class="relative group">
                         <button
                             onclick={() => selectTrack(track)}
-                            class="w-full p-4 border border-[#333] rounded bg-[#111] hover:border-[#9ae600] hover:bg-[#222] transition-all text-left pr-12"
+                            class="track-card w-full p-3.5 border rounded-md bg-[#0a0a0a] text-left pr-12 transition-all
+                                   {isCached ? 'border-[#9ae600]/20' : 'border-[#1a1a1a]'}
+                                   hover:border-[#9ae600]/60 hover:bg-[#111]"
                         >
-                            <div class="text-sm text-white font-bold truncate">
-                                {track.Title}
-                            </div>
-                            <div class="text-[10px] text-[#555] truncate">
-                                {getArtistDisplay(track)}
+                            <div class="flex items-center gap-3">
+                                <!-- Mini waveform icon -->
+                                <div class="flex items-end gap-[2px] h-5 flex-shrink-0 opacity-40 group-hover:opacity-80 transition-opacity">
+                                    <div class="w-[2px] bg-[#9ae600] rounded-t-full" style="height: 8px;"></div>
+                                    <div class="w-[2px] bg-[#9ae600] rounded-t-full" style="height: 14px;"></div>
+                                    <div class="w-[2px] bg-[#9ae600] rounded-t-full" style="height: 10px;"></div>
+                                    <div class="w-[2px] bg-[#9ae600] rounded-t-full" style="height: 18px;"></div>
+                                    <div class="w-[2px] bg-[#9ae600] rounded-t-full" style="height: 6px;"></div>
+                                </div>
+                                <div class="flex-1 min-w-0">
+                                    <div class="text-[13px] text-white font-bold truncate leading-tight">
+                                        {track.Title}
+                                    </div>
+                                    <div class="text-[10px] text-[#555] truncate mt-0.5">
+                                        {getArtistDisplay(track)}
+                                        {#if isCached}
+                                            <span class="text-[#9ae600]/60 ml-1">&bull; cached</span>
+                                        {/if}
+                                    </div>
+                                </div>
                             </div>
                         </button>
                         <div
-                            class="absolute right-2 top-1/2 -translate-y-1/2"
+                            class="absolute right-2.5 top-1/2 -translate-y-1/2"
                             onclick={(e) => e.stopPropagation()}
                         >
                             <LikeButton
@@ -1398,7 +1407,6 @@
                                 liked={likedTrackIds.has(track.Id)}
                                 iconSize="size-4"
                                 on:likeChanged={(e) => {
-                                    // Update local set to reflect change immediately UI-wise
                                     const newSet = new Set(likedTrackIds);
                                     if (e.detail.liked)
                                         newSet.add(e.detail.smolId);
@@ -1410,13 +1418,13 @@
                     </div>
                 {/each}
                 {#if visibleLimit < filteredTracksCount}
-                    <div class="col-span-1 md:col-span-2 text-center py-4">
+                    <div class="col-span-1 md:col-span-2 text-center py-3">
                         <button
                             onclick={() => {
                                 visibleLimit += 50;
                                 applyFilters();
                             }}
-                            class="text-xs text-[#9ae600] border border-[#9ae600] px-4 py-2 rounded hover:bg-[#9ae600] hover:text-black"
+                            class="text-[10px] text-[#9ae600] border border-[#9ae600]/30 px-5 py-2 rounded-md hover:bg-[#9ae600]/10 transition-all"
                         >
                             LOAD MORE
                         </button>
@@ -1429,30 +1437,33 @@
         <div class="relative">
             <!-- HUD -->
             <div
-                class="flex justify-between items-start mb-4 p-4 border-b border-[#333]"
+                class="flex justify-between items-center mb-3 px-3 py-2.5"
+                style="border-bottom: 1px solid #1a1a1a;"
             >
-                <div class="flex flex-col gap-1">
-                    <div class="text-sm text-white font-bold">
+                <div class="flex flex-col gap-0.5 min-w-0 flex-1">
+                    <div class="text-sm text-white font-bold truncate">
                         {currentTrack?.Title || "Unknown Track"}
                     </div>
-                    <div class="text-[10px] text-[#555]">
-                        {getArtistDisplay(currentTrack)}
+                    <div class="text-[10px] text-[#444] truncate">
+                        {getArtistDisplay(currentTrack)} &bull; {settings.difficulty.toUpperCase()}
                     </div>
                 </div>
-                <div class="flex gap-6 text-right">
+                <div class="flex gap-5 text-right flex-shrink-0 ml-4">
                     <div class="flex flex-col">
-                        <span class="text-[10px] text-[#555]">SCORE</span>
-                        <span class="text-xl text-[#9ae600] font-bold"
+                        <span class="text-[9px] text-[#444] tracking-wider">SCORE</span>
+                        <span class="text-lg text-[#9ae600] font-bold tabular-nums leading-tight"
+                            style="text-shadow: 0 0 12px rgba(154, 230, 0, 0.3);"
                             >{stats.score.toLocaleString()}</span
                         >
                     </div>
                     <div class="flex flex-col">
-                        <span class="text-[10px] text-[#555]">COMBO</span>
+                        <span class="text-[9px] text-[#444] tracking-wider">COMBO</span>
                         <span
-                            class="text-xl text-[#f91880] font-bold {stats.combo >
-                            0
-                                ? 'animate-pulse'
-                                : ''}">{stats.combo}x</span
+                            class="text-lg font-bold tabular-nums leading-tight"
+                            style="color: {stats.combo > 0 ? '#f91880' : '#333'};
+                                   text-shadow: {stats.combo >= 10 ? '0 0 12px rgba(249, 24, 128, 0.4)' : 'none'};
+                                   transition: color 0.15s;"
+                            >{stats.combo}x</span
                         >
                     </div>
                 </div>
@@ -1460,14 +1471,18 @@
 
             <!-- GAME FIELD -->
             <div
-                class="relative bg-black border-2 border-[#333] rounded-lg overflow-hidden"
-                style="height: {laneHeight}px;"
+                class="game-field relative bg-black rounded-lg overflow-hidden"
+                style="height: {laneHeight}px; border: 1px solid #222;"
             >
+                <!-- Scanline overlay for retro feel -->
+                <div class="absolute inset-0 pointer-events-none scanlines"></div>
+
                 <!-- Lanes -->
                 <div class="absolute inset-0 flex">
                     {#each [0, 1, 2] as lane}
                         <div
-                            class="flex-1 border-r border-[#222] last:border-r-0 relative touch-none"
+                            class="flex-1 relative touch-none select-none"
+                            style="border-right: 1px solid {lane < 2 ? '#1a1a1a' : 'transparent'};"
                             onpointerdown={(e) => {
                                 e.preventDefault();
                                 handleInputStart(lane);
@@ -1480,149 +1495,191 @@
                                 handleInputEnd(lane);
                             }}
                         >
-                            <!-- Lane background -->
+                            <!-- Lane background glow when pressed -->
                             <div
-                                class="absolute inset-0 bg-gradient-to-b from-transparent via-[#111] to-black transition-all duration-75"
-                                style="opacity: {pressedLanes[lane]
-                                    ? 0.8
-                                    : 0.5}; background-color: {pressedLanes[
-                                    lane
-                                ]
-                                    ? `rgba(${LANE_COLORS[lane].rgb}, 0.1)`
-                                    : 'transparent'}; box-shadow: {pressedLanes[
-                                    lane
-                                ]
-                                    ? `inset 0 0 20px rgba(${LANE_COLORS[lane].rgb}, 0.1)`
-                                    : 'none'};"
+                                class="absolute inset-0"
+                                style="background: linear-gradient(to bottom,
+                                    transparent 0%,
+                                    rgba({LANE_COLORS[lane].rgb}, {pressedLanes[lane] ? 0.06 : 0.015}) 50%,
+                                    rgba({LANE_COLORS[lane].rgb}, {pressedLanes[lane] ? 0.15 : 0.03}) 100%
+                                ); transition: background 0.08s ease-out;"
                             ></div>
 
-                            <!-- Hit zone indicator -->
+                            <!-- Lane center guide line -->
                             <div
-                                class="absolute w-full h-2 border-y-2 transition-all duration-75"
-                                style="top: {hitZoneY}px; background-color: {pressedLanes[
-                                    lane
-                                ]
-                                    ? `rgba(${LANE_COLORS[lane].rgb}, 0.6)`
-                                    : `rgba(${LANE_COLORS[lane].rgb}, 0.3)`}; border-color: {pressedLanes[
-                                    lane
-                                ]
-                                    ? LANE_COLORS[lane].hex
-                                    : LANE_COLORS[lane]
-                                          .hex}; box-shadow: {pressedLanes[lane]
-                                    ? `0 0 20px ${LANE_COLORS[lane].hex}`
-                                    : 'none'};"
+                                class="absolute left-1/2 top-0 bottom-0 w-px"
+                                style="background: linear-gradient(to bottom, transparent, rgba({LANE_COLORS[lane].rgb}, 0.06), rgba({LANE_COLORS[lane].rgb}, 0.12));"
                             ></div>
 
-                            <!-- Key hint -->
+                            <!-- Hit zone — thick glowing receiver bar -->
                             <div
-                                class="absolute bottom-4 left-1/2 -translate-x-1/2 text-[#333] text-2xl font-bold transition-all duration-75"
-                                style="color: {pressedLanes[lane]
-                                    ? LANE_COLORS[lane].hex
-                                    : '#333'}; transform: {pressedLanes[lane]
-                                    ? 'translate(-50%) scale(1.1)'
-                                    : 'translate(-50%) scale(1)'};"
+                                class="absolute w-full pointer-events-none"
+                                style="top: {hitZoneY - 12}px; height: 24px;"
+                            >
+                                <!-- Outer glow -->
+                                <div
+                                    class="absolute inset-x-1 inset-y-0 rounded-sm"
+                                    style="background: rgba({LANE_COLORS[lane].rgb}, {pressedLanes[lane] ? 0.25 : 0.08});
+                                           box-shadow: 0 0 {pressedLanes[lane] ? 30 : 12}px rgba({LANE_COLORS[lane].rgb}, {pressedLanes[lane] ? 0.5 : 0.15});
+                                           transition: all 0.08s ease-out;"
+                                ></div>
+                                <!-- Core line -->
+                                <div
+                                    class="absolute inset-x-0 top-1/2 -translate-y-1/2"
+                                    style="height: {pressedLanes[lane] ? 4 : 3}px;
+                                           background: {LANE_COLORS[lane].hex};
+                                           box-shadow: 0 0 8px {LANE_COLORS[lane].hex}, 0 0 16px rgba({LANE_COLORS[lane].rgb}, 0.5);
+                                           opacity: {pressedLanes[lane] ? 1 : 0.7};
+                                           transition: all 0.08s ease-out;"
+                                ></div>
+                                <!-- Receiver diamonds (left + right markers) -->
+                                <div
+                                    class="absolute top-1/2 -translate-y-1/2 left-1"
+                                    style="width: 6px; height: 6px; background: {LANE_COLORS[lane].hex};
+                                           transform: translateY(-50%) rotate(45deg); opacity: {pressedLanes[lane] ? 1 : 0.5};"
+                                ></div>
+                                <div
+                                    class="absolute top-1/2 -translate-y-1/2 right-1"
+                                    style="width: 6px; height: 6px; background: {LANE_COLORS[lane].hex};
+                                           transform: translateY(-50%) rotate(45deg); opacity: {pressedLanes[lane] ? 1 : 0.5};"
+                                ></div>
+                            </div>
+
+                            <!-- Key hint (below hit zone) -->
+                            <div
+                                class="absolute left-1/2 pointer-events-none"
+                                style="top: {hitZoneY + 24}px;
+                                       transform: translateX(-50%) scale({pressedLanes[lane] ? 1.15 : 1});
+                                       color: {pressedLanes[lane] ? LANE_COLORS[lane].hex : '#2a2a2a'};
+                                       font-size: {noteSize * 0.55}px;
+                                       font-weight: bold;
+                                       text-shadow: {pressedLanes[lane] ? `0 0 10px ${LANE_COLORS[lane].hex}` : 'none'};
+                                       transition: all 0.08s ease-out;"
                             >
                                 {LANE_KEYS[lane].toUpperCase()}
                             </div>
 
                             <!-- Hit feedback text -->
                             {#each hitFeedback.filter((f) => f.lane === lane) as feedback (feedback.timestamp)}
-                                {@const age =
-                                    (Date.now() - feedback.timestamp) / 1000}
-                                {@const opacity = Math.max(0, 1 - age)}
-                                {@const yOffset = age * 50}
+                                {@const age = (Date.now() - feedback.timestamp) / 1000}
+                                {@const opacity = Math.max(0, 1 - age * 1.5)}
+                                {@const yOffset = age * 60}
+                                {@const scale = 1 + age * 0.3}
                                 <div
-                                    class="absolute left-1/2 -translate-x-1/2 text-xs font-bold pointer-events-none"
-                                    style="top: {hitZoneY -
-                                        yOffset}px; opacity: {opacity}; color: {feedback.text ===
-                                    'PERFECT!'
-                                        ? '#9ae600'
-                                        : feedback.text === 'GREAT!'
-                                          ? '#FDDA24'
-                                          : feedback.text === 'OK'
-                                            ? '#f91880'
-                                            : '#666'}; text-shadow: 0 0 10px currentColor;"
+                                    class="absolute left-1/2 pointer-events-none font-bold"
+                                    style="transform: translateX(-50%) scale({scale});
+                                           top: {hitZoneY - 20 - yOffset}px;
+                                           opacity: {opacity};
+                                           font-size: {feedback.text === 'PERFECT!' ? 14 : 12}px;
+                                           color: {feedback.text === 'PERFECT!' ? '#9ae600'
+                                               : feedback.text === 'GREAT!' ? '#FDDA24'
+                                               : feedback.text === 'OK' ? '#f91880'
+                                               : '#444'};
+                                           text-shadow: 0 0 12px currentColor, 0 0 24px currentColor;"
                                 >
                                     {feedback.text}
                                 </div>
                             {/each}
 
-                            <!-- Hit effects -->
+                            <!-- Hit effects (burst) -->
                             {#each hitEffects.filter((e) => e.lane === lane) as effect (effect.id)}
+                                {@const age = (Date.now() - effect.timestamp) / 500}
                                 <div
-                                    class="absolute left-1/2 -translate-x-1/2 w-full aspect-square pointer-events-none"
-                                    style="top: {hitZoneY - 20}px;"
+                                    class="absolute left-1/2 pointer-events-none"
+                                    style="top: {hitZoneY - 16}px; transform: translateX(-50%);"
                                 >
                                     <div
-                                        class="absolute inset-0 rounded-full animate-ping opacity-75"
-                                        style="background-color: {effect.color}"
-                                    ></div>
-                                    <div
-                                        class="absolute inset-0 rounded-full animate-pulse opacity-50"
-                                        style="background-color: {effect.color}; filter: blur(4px)"
+                                        class="hit-burst"
+                                        style="width: {32 + age * 40}px; height: {32 + age * 40}px;
+                                               background: radial-gradient(circle, {effect.color} 0%, transparent 70%);
+                                               opacity: {Math.max(0, 1 - age)};
+                                               border-radius: 50%;"
                                     ></div>
                                 </div>
                             {/each}
 
                             <!-- Notes in this lane -->
                             {#each notes.filter((n) => n.lane === lane) as note (note.id)}
-                                <!-- Hold Note Tail -->
-                                {@const duration = note.duration ?? 0}
-                                {#if duration > 0.2}
+                                {@const isActive = !note.hit}
+                                {@const noteColor = note.hit
+                                    ? note.accuracy === 'perfect' ? '#9ae600'
+                                    : note.accuracy === 'great' ? '#FDDA24'
+                                    : note.accuracy === 'miss' ? '#333'
+                                    : '#f91880'
+                                    : LANE_COLORS[lane].hex}
+
+                                {#if isActive}
+                                    <!-- Note trail (glow streak behind the note) -->
                                     <div
-                                        class="absolute left-1/2 -translate-x-1/2 w-2 opacity-40 rounded-b-full"
-                                        style="
-                                             top: {(note.position / 100) *
-                                            laneHeight -
-                                            duration *
-                                                settings.noteSpeed}px;
-                                             height: {duration *
-                                            settings.noteSpeed}px;
-                                        background: {LANE_COLORS[lane].hex};
-                                         "
+                                        class="absolute left-1/2 pointer-events-none"
+                                        style="transform: translateX(-50%);
+                                               top: {Math.max(0, note.position - 50)}px;
+                                               width: {noteSize * 0.35}px;
+                                               height: {Math.min(50, note.position)}px;
+                                               background: linear-gradient(to bottom, transparent, {LANE_COLORS[lane].hex});
+                                               opacity: 0.3;
+                                               border-radius: 0 0 4px 4px;"
                                     ></div>
                                 {/if}
 
+                                <!-- Note body -->
                                 <div
-                                    class="absolute left-1/2 -translate-x-1/2 rounded-full transition-all duration-75"
-                                    style="
-                                        top: {(note.position / 100) *
-                                        laneHeight}px;
-                                        width: {noteSize}px;
-                                        height: {noteSize}px;
-                                        height: {noteSize}px;
-                                        background: {note.hit
-                                        ? note.accuracy === 'perfect'
-                                            ? '#9ae600'
-                                            : note.accuracy === 'great'
-                                              ? '#FDDA24'
-                                              : '#f91880'
-                                        : LANE_COLORS[lane].hex};
-                                        opacity: {note.hit ? 0.3 : 1};
-                                        box-shadow: 0 0 20px currentColor;
-                                    "
+                                    class="absolute left-1/2 pointer-events-none"
+                                    style="transform: translateX(-50%);
+                                           top: {note.position - noteSize / 2}px;
+                                           width: {noteSize}px;
+                                           height: {noteSize}px;"
                                 >
-                                    {#if note.hit && note.accuracy}
+                                    <!-- Outer glow -->
+                                    {#if isActive}
                                         <div
-                                            class="absolute inset-0 flex items-center justify-center text-black text-[8px] font-bold"
-                                        >
-                                            {note.accuracy === "perfect"
-                                                ? "★"
-                                                : note.accuracy === "great"
-                                                  ? "✓"
-                                                  : "·"}
-                                        </div>
+                                            class="absolute inset-[-4px] rounded-full"
+                                            style="background: radial-gradient(circle, rgba({LANE_COLORS[lane].rgb}, 0.4) 0%, transparent 70%);
+                                                   filter: blur(4px);"
+                                        ></div>
                                     {/if}
+                                    <!-- Diamond shape with rounded corners -->
+                                    <div
+                                        class="absolute inset-[3px] rounded-lg"
+                                        style="transform: rotate(45deg);
+                                               background: {isActive
+                                                   ? `linear-gradient(135deg, ${LANE_COLORS[lane].hex}, ${LANE_COLORS[lane].hex}dd)`
+                                                   : noteColor};
+                                               opacity: {note.hit ? 0.2 : 1};
+                                               box-shadow: {isActive
+                                                   ? `0 0 12px ${LANE_COLORS[lane].hex}, inset 0 0 8px rgba(255,255,255,0.2)`
+                                                   : 'none'};
+                                               border: 1px solid rgba(255,255,255,{isActive ? 0.3 : 0});"
+                                    >
+                                        {#if note.hit && note.accuracy}
+                                            <div
+                                                class="absolute inset-0 flex items-center justify-center text-black font-bold"
+                                                style="transform: rotate(-45deg); font-size: 10px;"
+                                            >
+                                                {note.accuracy === "perfect" ? "★"
+                                                    : note.accuracy === "great" ? "✓"
+                                                    : note.accuracy === "miss" ? "✗"
+                                                    : "·"}
+                                            </div>
+                                        {/if}
+                                    </div>
                                 </div>
                             {/each}
                         </div>
                     {/each}
                 </div>
+
+                <!-- Bottom fade (below hit zone) -->
+                <div
+                    class="absolute inset-x-0 bottom-0 pointer-events-none"
+                    style="height: {laneHeight - hitZoneY}px;
+                           background: linear-gradient(to bottom, transparent, rgba(0,0,0,0.6));"
+                ></div>
             </div>
 
             <!-- Controls hint -->
-            <div class="mt-4 text-center text-[10px] text-[#333]">
-                Press D, F, J or Tap Lanes • ESC to pause
+            <div class="mt-3 text-center text-[10px] text-[#333] tracking-wider">
+                D / F / J &nbsp;or&nbsp; TAP LANES &nbsp;&bull;&nbsp; ESC to pause
             </div>
         </div>
 
@@ -1781,5 +1838,58 @@
 <style>
     .smol-hero-container {
         min-height: 600px;
+    }
+
+    /* Scanline overlay for retro arcade feel */
+    .scanlines {
+        background: repeating-linear-gradient(
+            to bottom,
+            transparent 0px,
+            transparent 3px,
+            rgba(0, 0, 0, 0.08) 3px,
+            rgba(0, 0, 0, 0.08) 4px
+        );
+        z-index: 5;
+    }
+
+    /* Game field subtle vignette */
+    .game-field::after {
+        content: '';
+        position: absolute;
+        inset: 0;
+        pointer-events: none;
+        box-shadow: inset 0 0 60px rgba(0, 0, 0, 0.5);
+        z-index: 4;
+        border-radius: inherit;
+    }
+
+    /* Track list custom scrollbar */
+    .track-list::-webkit-scrollbar {
+        width: 4px;
+    }
+    .track-list::-webkit-scrollbar-track {
+        background: #111;
+        border-radius: 2px;
+    }
+    .track-list::-webkit-scrollbar-thumb {
+        background: #333;
+        border-radius: 2px;
+    }
+    .track-list::-webkit-scrollbar-thumb:hover {
+        background: #9ae600;
+    }
+
+    /* Track card hover lift */
+    .track-card:hover {
+        transform: translateY(-1px);
+    }
+
+    /* Hit burst animation */
+    .hit-burst {
+        position: absolute;
+        top: 50%;
+        left: 50%;
+        transform: translate(-50%, -50%);
+        pointer-events: none;
     }
 </style>
