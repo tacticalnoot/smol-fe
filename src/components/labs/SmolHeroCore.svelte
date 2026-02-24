@@ -191,7 +191,7 @@
     function decodeCustomTrack(encoded: string): { trackId: string; onsets: CachedOnset[] } | null {
         try {
             const b64 = encoded.replace(/-/g, '+').replace(/_/g, '/');
-            const padded = b64 + '=='.slice((b64.length + 3) % 4); // re-pad
+            const padded = b64 + '=='.slice(0, (4 - b64.length % 4) % 4); // re-pad
             const raw = decodeURIComponent(atob(padded));
             const sep = raw.indexOf('|');
             if (sep === -1) return null;
