@@ -177,7 +177,10 @@
     let gameStartTime = 0;
     let lastOnsetTimes = [0, 0, 0]; // Last onset time per lane
     let energyHistory: number[][] = [[], [], []]; // Energy history per lane
-    const ENERGY_HISTORY_SIZE = 43; // ~1 second at 60fps
+    let prevRmsRT = [0, 0, 0]; // Previous RMS for real-time spectral flux
+    let fluxHistoryRT: number[][] = [[], [], []]; // Flux history for real-time mode
+    const ENERGY_HISTORY_SIZE = 86; // ~1.4s at 60fps — longer window for better adaptive threshold
+    const FLUX_HISTORY_SIZE = 86; // For spectral flux adaptive baseline
 
     // Difficulty-based onset sensitivity
     // Higher = stricter (fewer beats detected). Tuned so hard/expert
@@ -235,6 +238,13 @@
         { hex: "#b026ff", rgb: "176, 38, 255" }, // Purple
         { hex: "#ff7700", rgb: "255, 119, 0" }, // Orange
     ];
+    // Bass notes are larger (low freq = heavy), treble notes are smaller (high freq = sharp)
+    const LANE_NOTE_SCALES = [1.18, 1.0, 0.82];
+
+    function getLaneNoteSize(lane: number): number {
+        return Math.round(noteSize * LANE_NOTE_SCALES[lane]);
+    }
+
     let pressedKeys = new Set<string>();
     let pressedLanes = $state<boolean[]>([false, false, false]); // Visual feedback for pressed lanes
     let hitFeedback = $state<
@@ -262,41 +272,41 @@
             gain.gain.value = 1.0;
             gainNode = gain;
 
-            // Create frequency band filters
-            // BASS: 20-200 Hz
+            // Create frequency band filters — matched to offline analysis frequencies
+            // BASS: kick drum / sub-bass (up to ~100 Hz)
             const bass = audioContext.createBiquadFilter();
             bass.type = "lowpass";
-            bass.frequency.value = 200;
-            bass.Q.value = 0.7;
+            bass.frequency.value = 100;
+            bass.Q.value = 0.8;
             bassFilter = bass;
 
             const bassAnalyzer = audioContext.createAnalyser();
             bassAnalyzer.fftSize = 512;
-            bassAnalyzer.smoothingTimeConstant = 0.3;
+            bassAnalyzer.smoothingTimeConstant = 0.2; // Faster response for onset detection
             bassAnalyser = bassAnalyzer;
 
-            // MID: 200-2000 Hz (bandpass)
+            // MID: vocal / guitar / snare (bandpass ~800 Hz)
             const mid = audioContext.createBiquadFilter();
             mid.type = "bandpass";
-            mid.frequency.value = 1000;
-            mid.Q.value = 0.7;
+            mid.frequency.value = 800;
+            mid.Q.value = 0.9;
             midFilter = mid;
 
             const midAnalyzer = audioContext.createAnalyser();
             midAnalyzer.fftSize = 512;
-            midAnalyzer.smoothingTimeConstant = 0.3;
+            midAnalyzer.smoothingTimeConstant = 0.2;
             midAnalyser = midAnalyzer;
 
-            // TREBLE: 2000+ Hz
+            // TREBLE: hi-hats / cymbals / bright melodic (3500+ Hz)
             const treble = audioContext.createBiquadFilter();
             treble.type = "highpass";
-            treble.frequency.value = 2000;
-            treble.Q.value = 0.7;
+            treble.frequency.value = 3500;
+            treble.Q.value = 0.8;
             trebleFilter = treble;
 
             const trebleAnalyzer = audioContext.createAnalyser();
             trebleAnalyzer.fftSize = 512;
-            trebleAnalyzer.smoothingTimeConstant = 0.3;
+            trebleAnalyzer.smoothingTimeConstant = 0.2;
             trebleAnalyser = trebleAnalyzer;
 
             // Connect audio graph
@@ -367,6 +377,9 @@
 
     let lastGlobalOnsetTimeRT = 0; // Cross-lane spacing for real-time mode
 
+    // Per-band noise floors (byte scale 0-255) — treble band is quieter, needs lower floor
+    const RT_NOISE_FLOORS = [2.0, 2.5, 1.5]; // bass, mid, treble
+
     function detectOnsets() {
         if (!bassAnalyser || !midAnalyser || !trebleAnalyser) return;
 
@@ -397,25 +410,38 @@
             }
             const rms = Math.sqrt(sum / bufferLength);
 
-            // Add to history
+            // Spectral flux: only positive energy increases indicate note attacks
+            const flux = Math.max(0, rms - prevRmsRT[lane]);
+            prevRmsRT[lane] = rms;
+
+            // Add to histories
             energyHistory[lane].push(rms);
             if (energyHistory[lane].length > ENERGY_HISTORY_SIZE) {
                 energyHistory[lane].shift();
+            }
+            fluxHistoryRT[lane].push(flux);
+            if (fluxHistoryRT[lane].length > FLUX_HISTORY_SIZE) {
+                fluxHistoryRT[lane].shift();
             }
 
             // Need enough history for detection
             if (energyHistory[lane].length < ENERGY_HISTORY_SIZE) return;
 
-            // Calculate average energy
+            // Adaptive thresholds based on recent history
             const avgEnergy =
                 energyHistory[lane].reduce((a, b) => a + b, 0) /
                 energyHistory[lane].length;
+            const avgFlux =
+                fluxHistoryRT[lane].reduce((a, b) => a + b, 0) /
+                fluxHistoryRT[lane].length;
 
-            // Detect onset: current energy significantly above average
-            const threshold = avgEnergy * onsetThresholdMultiplier;
+            // Flux threshold is lower multiplier since flux values are inherently smaller
+            const fluxThreshold = avgFlux * (onsetThresholdMultiplier * 0.65);
 
+            // Onset detected when flux spikes (rising energy = note attack) AND above noise
             if (
-                rms > threshold &&
+                flux > fluxThreshold &&
+                rms > RT_NOISE_FLOORS[lane] &&
                 currentTime - lastOnsetTimes[lane] > minTimeBetweenOnsets &&
                 currentTime - lastGlobalOnsetTimeRT > globalMinSpacing
             ) {
@@ -821,20 +847,20 @@
 
                 const bassFilter = offlineCtx.createBiquadFilter();
                 bassFilter.type = "lowpass";
-                bassFilter.frequency.value = 150; // Tuned for kick drums
-                bassFilter.Q.value = 1.0;
+                bassFilter.frequency.value = 100; // Tighter kick drum / sub-bass isolation
+                bassFilter.Q.value = 0.8;
 
-                // Mid Path
+                // Mid Path — covers vocal/guitar/snare range
                 const midFilter = offlineCtx.createBiquadFilter();
                 midFilter.type = "bandpass";
-                midFilter.frequency.value = 1000;
-                midFilter.Q.value = 1.0; // Wider band
+                midFilter.frequency.value = 800; // Centered on vocal / snare sweet spot
+                midFilter.Q.value = 0.9;
 
-                // Treble Path
+                // Treble Path — hi-hats, cymbals, bright melodic content
                 const trebleFilter = offlineCtx.createBiquadFilter();
                 trebleFilter.type = "highpass";
-                trebleFilter.frequency.value = 3000; // Tuned for crisp hats
-                trebleFilter.Q.value = 1.0;
+                trebleFilter.frequency.value = 3500; // Cleaner separation from mid
+                trebleFilter.Q.value = 0.8;
 
                 // Merger (3 channels)
                 const merger = offlineCtx.createChannelMerger(3);
@@ -866,8 +892,14 @@
                 const lastOnsetTimes = [0, 0, 0];
                 let lastGlobalOnsetTime = 0; // Cross-lane spacing
                 const energyHistory: number[][] = [[], [], []];
+                // Spectral flux state — detects note attacks (rising energy) not sustains
+                const fluxHistory: number[][] = [[], [], []];
+                const prevRmsArr = [0, 0, 0];
+                const FLUX_HIST = 86;
+                // Per-band noise floors (float, post-filter amplitude is small)
+                const BAND_NOISE_FLOORS = [0.003, 0.004, 0.003];
 
-                // Peak Centering Sate
+                // Peak Centering State
                 const laneState = [
                     {
                         isTracking: false,
@@ -908,10 +940,18 @@
                         }
                         const rms = Math.sqrt(sum / (end - i));
 
-                        // Rolling History
+                        // Spectral flux: only positive energy increases (note attacks)
+                        const flux = Math.max(0, rms - prevRmsArr[lane]);
+                        prevRmsArr[lane] = rms;
+
+                        // Rolling Histories
                         energyHistory[lane].push(rms);
                         if (energyHistory[lane].length > ENERGY_HISTORY_SIZE) {
                             energyHistory[lane].shift();
+                        }
+                        fluxHistory[lane].push(flux);
+                        if (fluxHistory[lane].length > FLUX_HIST) {
+                            fluxHistory[lane].shift();
                         }
 
                         if (energyHistory[lane].length < ENERGY_HISTORY_SIZE)
@@ -920,7 +960,13 @@
                         const avgEnergy =
                             energyHistory[lane].reduce((a, b) => a + b, 0) /
                             energyHistory[lane].length;
+                        const avgFlux =
+                            fluxHistory[lane].length > 0
+                                ? fluxHistory[lane].reduce((a, b) => a + b, 0) / fluxHistory[lane].length
+                                : 0;
                         const threshold = avgEnergy * onsetThresholdMultiplier;
+                        // Flux threshold is lower multiplier — flux values are inherently smaller
+                        const fluxThreshold = avgFlux * (onsetThresholdMultiplier * 0.65);
 
                         // -- DENSITY CONTROL --
                         // Per-lane minimum spacing (seconds between notes in same lane)
@@ -974,14 +1020,16 @@
                                 state.peakRMS = 0;
                             }
                         } else {
-                            // Start tracking if over threshold, cooldowns passed, AND over absolute floor
+                            // Start tracking when energy is high AND rising (flux spike = note attack)
+                            // This prevents false triggers from sustained loud sections
                             if (
                                 rms > threshold &&
+                                flux > fluxThreshold && // Require rising energy
                                 currentTime - lastOnsetTimes[lane] >
                                     minSpacing &&
                                 currentTime - lastGlobalOnsetTime >
                                     globalMinSpacing &&
-                                rms > 0.01 // Noise floor
+                                rms > BAND_NOISE_FLOORS[lane]
                             ) {
                                 state.isTracking = true;
                                 state.startTime = currentTime;
@@ -1078,6 +1126,8 @@
             score: 0,
         };
         energyHistory = [[], [], []];
+        prevRmsRT = [0, 0, 0];
+        fluxHistoryRT = [[], [], []];
         lastOnsetTimes = [0, 0, 0];
         lastGlobalOnsetTimeRT = 0;
         spawnedCachedOnsets.clear(); // Reset cached onset tracking
@@ -1812,38 +1862,51 @@
                                 style="background: linear-gradient(to bottom, transparent, rgba({LANE_COLORS[lane].rgb}, 0.06), rgba({LANE_COLORS[lane].rgb}, 0.12));"
                             ></div>
 
-                            <!-- Hit zone — thick glowing receiver bar -->
+                            <!-- Hit zone — receiver bar + large centered target diamond -->
                             <div
                                 class="absolute w-full pointer-events-none"
                                 style="top: {hitZoneY - 12}px; height: 24px;"
                             >
-                                <!-- Outer glow -->
+                                <!-- Outer glow bar -->
                                 <div
                                     class="absolute inset-x-1 inset-y-0 rounded-sm"
-                                    style="background: rgba({LANE_COLORS[lane].rgb}, {pressedLanes[lane] ? 0.25 : 0.08});
-                                           box-shadow: 0 0 {pressedLanes[lane] ? 30 : 12}px rgba({LANE_COLORS[lane].rgb}, {pressedLanes[lane] ? 0.5 : 0.15});
+                                    style="background: rgba({LANE_COLORS[lane].rgb}, {pressedLanes[lane] ? 0.25 : 0.07});
+                                           box-shadow: 0 0 {pressedLanes[lane] ? 30 : 12}px rgba({LANE_COLORS[lane].rgb}, {pressedLanes[lane] ? 0.5 : 0.12});
                                            transition: all 0.08s ease-out;"
                                 ></div>
                                 <!-- Core line -->
                                 <div
                                     class="absolute inset-x-0 top-1/2 -translate-y-1/2"
-                                    style="height: {pressedLanes[lane] ? 4 : 3}px;
+                                    style="height: {pressedLanes[lane] ? 4 : 2}px;
                                            background: {LANE_COLORS[lane].hex};
-                                           box-shadow: 0 0 8px {LANE_COLORS[lane].hex}, 0 0 16px rgba({LANE_COLORS[lane].rgb}, 0.5);
-                                           opacity: {pressedLanes[lane] ? 1 : 0.7};
+                                           box-shadow: 0 0 8px {LANE_COLORS[lane].hex}, 0 0 16px rgba({LANE_COLORS[lane].rgb}, 0.4);
+                                           opacity: {pressedLanes[lane] ? 1 : 0.5};
                                            transition: all 0.08s ease-out;"
                                 ></div>
-                                <!-- Receiver diamonds (left + right markers) -->
+                                <!-- Large centered target diamond — notes fall through this -->
                                 <div
-                                    class="absolute top-1/2 -translate-y-1/2 left-1"
-                                    style="width: 6px; height: 6px; background: {LANE_COLORS[lane].hex};
-                                           transform: translateY(-50%) rotate(45deg); opacity: {pressedLanes[lane] ? 1 : 0.5};"
+                                    class="absolute left-1/2 top-1/2"
+                                    style="width: {getLaneNoteSize(lane) + 12}px;
+                                           height: {getLaneNoteSize(lane) + 12}px;
+                                           border: {pressedLanes[lane] ? 3 : 2}px solid {LANE_COLORS[lane].hex};
+                                           border-radius: 4px;
+                                           transform: translate(-50%, -50%) rotate(45deg);
+                                           box-shadow: 0 0 {pressedLanes[lane] ? 20 : 10}px rgba({LANE_COLORS[lane].rgb}, {pressedLanes[lane] ? 0.8 : 0.35}),
+                                                       inset 0 0 {pressedLanes[lane] ? 12 : 5}px rgba({LANE_COLORS[lane].rgb}, {pressedLanes[lane] ? 0.35 : 0.1});
+                                           opacity: {pressedLanes[lane] ? 1.0 : 0.6};
+                                           transition: all 0.08s ease-out;"
                                 ></div>
-                                <div
-                                    class="absolute top-1/2 -translate-y-1/2 right-1"
-                                    style="width: 6px; height: 6px; background: {LANE_COLORS[lane].hex};
-                                           transform: translateY(-50%) rotate(45deg); opacity: {pressedLanes[lane] ? 1 : 0.5};"
-                                ></div>
+                                <!-- Small inner fill when pressed -->
+                                {#if pressedLanes[lane]}
+                                    <div
+                                        class="absolute left-1/2 top-1/2"
+                                        style="width: {getLaneNoteSize(lane) - 4}px;
+                                               height: {getLaneNoteSize(lane) - 4}px;
+                                               background: rgba({LANE_COLORS[lane].rgb}, 0.18);
+                                               border-radius: 3px;
+                                               transform: translate(-50%, -50%) rotate(45deg);"
+                                    ></div>
+                                {/if}
                             </div>
 
                             <!-- Key hint (below hit zone) -->
@@ -1908,35 +1971,39 @@
                                     : note.accuracy === 'miss' ? '#333'
                                     : '#f91880'
                                     : LANE_COLORS[lane].hex}
+                                {@const lns = getLaneNoteSize(lane)}
+                                {@const distToHit = Math.abs(note.position - hitZoneY)}
+                                {@const proxFactor = isActive ? Math.max(0, 1 - distToHit / 90) : 0}
 
                                 {#if isActive}
                                     <!-- Note trail (glow streak behind the note) -->
                                     <div
                                         class="absolute left-1/2 pointer-events-none"
                                         style="transform: translateX(-50%);
-                                               top: {Math.max(0, note.position - 50)}px;
-                                               width: {noteSize * 0.35}px;
-                                               height: {Math.min(50, note.position)}px;
+                                               top: {Math.max(0, note.position - 55)}px;
+                                               width: {lns * 0.32}px;
+                                               height: {Math.min(55, note.position)}px;
                                                background: linear-gradient(to bottom, transparent, {LANE_COLORS[lane].hex});
-                                               opacity: 0.3;
+                                               opacity: {0.25 + proxFactor * 0.25};
                                                border-radius: 0 0 4px 4px;"
                                     ></div>
                                 {/if}
 
-                                <!-- Note body -->
+                                <!-- Note body (per-lane size + proximity glow) -->
                                 <div
                                     class="absolute left-1/2 pointer-events-none"
                                     style="transform: translateX(-50%);
-                                           top: {note.position - noteSize / 2}px;
-                                           width: {noteSize}px;
-                                           height: {noteSize}px;"
+                                           top: {note.position - lns / 2}px;
+                                           width: {lns}px;
+                                           height: {lns}px;"
                                 >
-                                    <!-- Outer glow -->
+                                    <!-- Outer glow — brightens near hit zone -->
                                     {#if isActive}
                                         <div
-                                            class="absolute inset-[-4px] rounded-full"
-                                            style="background: radial-gradient(circle, rgba({LANE_COLORS[lane].rgb}, 0.4) 0%, transparent 70%);
-                                                   filter: blur(4px);"
+                                            class="absolute rounded-full"
+                                            style="inset: {-4 - proxFactor * 4}px;
+                                                   background: radial-gradient(circle, rgba({LANE_COLORS[lane].rgb}, {0.35 + proxFactor * 0.35}) 0%, transparent 70%);
+                                                   filter: blur({3 + proxFactor * 4}px);"
                                         ></div>
                                     {/if}
                                     <!-- Diamond shape with rounded corners -->
@@ -1948,7 +2015,7 @@
                                                    : noteColor};
                                                opacity: {note.hit ? 0.2 : 1};
                                                box-shadow: {isActive
-                                                   ? `0 0 12px ${LANE_COLORS[lane].hex}, inset 0 0 8px rgba(255,255,255,0.2)`
+                                                   ? `0 0 ${12 + proxFactor * 14}px ${LANE_COLORS[lane].hex}, inset 0 0 8px rgba(255,255,255,0.2)`
                                                    : 'none'};
                                                border: 1px solid rgba(255,255,255,{isActive ? 0.3 : 0});"
                                     >
