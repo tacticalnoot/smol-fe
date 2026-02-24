@@ -4,6 +4,15 @@
     import { getSongUrl } from "../../utils/apiUrl";
     import confetti from "canvas-confetti";
     import LikeButton from "../../components/ui/LikeButton.svelte";
+    import StarRating from "./StarRating.svelte";
+    import {
+        calculateStarRating,
+        saveLocalScore,
+        getLocalScore,
+        type StarRating as StarRatingType,
+        type LocalScore,
+    } from "../../utils/starRating";
+    import { userState, isAuthenticated } from "../../stores/user.state.svelte";
 
     // ======================
     // TYPES & INTERFACES
@@ -127,6 +136,40 @@
         maxCombo: 0,
         score: 0,
     });
+
+    // Star rating & score persistence
+    let currentRating = $state<StarRatingType | null>(null);
+    let isNewPersonalBest = $state(false);
+    let attestStage = $state<string | null>(null); // null | "preparing" | ... | "confirmed"
+    let attestResult = $state<{ ok: boolean; txHash?: string; error?: string } | null>(null);
+    let isAttesting = $state(false);
+
+    // Volume & song progress
+    let volume = $state(0.7);
+    let songProgress = $state(0); // 0-1 progress through song
+    let trackDuration = $state(0); // seconds
+
+    // Previous best (for delta display on results screen)
+    let previousBest = $state<LocalScore | null>(null);
+
+    // Screen shake on combo break
+    let comboBreakShake = $state(false);
+
+    // Live derived stats
+    let totalNotes = $derived(stats.perfect + stats.great + stats.ok + stats.miss);
+    let liveAccuracy = $derived.by(() => {
+        if (totalNotes === 0) return 100;
+        const weighted = stats.perfect * 1.0 + stats.great * 0.7 + stats.ok * 0.4;
+        return Math.round((weighted / totalNotes) * 100);
+    });
+    let comboText = $derived.by(() => {
+        if (stats.combo >= 100) return "LEGENDARY";
+        if (stats.combo >= 50) return "UNSTOPPABLE";
+        if (stats.combo >= 25) return "ON FIRE";
+        if (stats.combo >= 10) return "GREAT STREAK";
+        return "";
+    });
+    let hitRate = $derived(totalNotes > 0 ? Math.round(((stats.perfect + stats.great + stats.ok) / totalNotes) * 100) : 0);
 
     // Beat detection state
     let isAnalyzing = $state(false);
@@ -415,6 +458,11 @@
 
         const currentTime = audio.currentTime;
 
+        // Update song progress
+        if (audio.duration) {
+            songProgress = currentTime / audio.duration;
+        }
+
         // Detect new onsets (real-time or from cache)
         if (cachedBeatmap) {
             detectOnsetsFromCache(currentTime);
@@ -468,8 +516,8 @@
         // Visual feedback
         pressedLanes[laneIndex] = true;
 
-        // Find closest unhit note in this lane
-        const currentTime = audio?.currentTime || 0;
+        // Find closest unhit note in this lane (apply calibration offset)
+        const currentTime = (audio?.currentTime || 0) + settings.calibrationOffset / 1000;
         const laneNotes = notes
             .filter((n) => n.lane === laneIndex && !n.hit)
             .sort(
@@ -597,6 +645,12 @@
     }
 
     function handleMiss(note: Note) {
+        // Screen shake on significant combo break
+        if (stats.combo >= 5) {
+            comboBreakShake = true;
+            setTimeout(() => comboBreakShake = false, 300);
+        }
+
         stats.miss++;
         stats.combo = 0; // Break combo
 
@@ -1032,7 +1086,12 @@
         audio = new Audio();
         audio.crossOrigin = "anonymous";
         audio.src = `${import.meta.env.PUBLIC_API_URL}/song/${currentTrack.Song_1}.mp3`;
-        audio.volume = 0.7;
+        audio.volume = volume;
+
+        // Track duration once metadata loads
+        audio.onloadedmetadata = () => {
+            trackDuration = audio?.duration || 0;
+        };
 
         // Init analysis (only if not using pre-computed beatmap)
         if (!cachedBeatmap) {
@@ -1071,23 +1130,81 @@
     function finishGame() {
         gameState = "finished";
         isAnalyzing = false;
+        attestResult = null;
+        attestStage = null;
+        isAttesting = false;
         if (animationFrameId) {
             cancelAnimationFrame(animationFrameId);
         }
 
-        // Epic confetti if good score
-        const totalNotes = stats.perfect + stats.great + stats.ok + stats.miss;
-        const accuracy =
-            totalNotes > 0
-                ? ((stats.perfect + stats.great) / totalNotes) * 100
-                : 0;
+        // Calculate star rating
+        currentRating = calculateStarRating({
+            perfect: stats.perfect,
+            great: stats.great,
+            ok: stats.ok,
+            miss: stats.miss,
+            score: stats.score,
+            maxCombo: stats.maxCombo,
+        });
 
-        if (accuracy >= 90) {
+        // Capture previous best for delta display before saving
+        previousBest = currentTrack ? getLocalScore(currentTrack.Song_1, settings.difficulty) : null;
+
+        // Save to localStorage (personal best tracking)
+        if (currentTrack) {
+            isNewPersonalBest = saveLocalScore({
+                trackId: currentTrack.Song_1,
+                trackTitle: currentTrack.Title || "Unknown",
+                difficulty: settings.difficulty,
+                score: stats.score,
+                stars: currentRating.stars,
+                golden: currentRating.golden,
+                accuracy: currentRating.accuracy,
+                maxCombo: stats.maxCombo,
+                perfect: stats.perfect,
+                great: stats.great,
+                ok: stats.ok,
+                miss: stats.miss,
+                timestamp: Date.now(),
+            });
+        }
+
+        // Confetti based on star rating
+        if (currentRating.golden) {
+            // Golden stars: epic golden confetti burst
+            confetti({
+                particleCount: 200,
+                spread: 100,
+                origin: { y: 0.5 },
+                colors: ["#FFD700", "#FFC107", "#FFE55C", "#FF8F00", "#FDDA24"],
+            });
+            setTimeout(() => {
+                confetti({
+                    particleCount: 100,
+                    spread: 60,
+                    origin: { y: 0.4, x: 0.3 },
+                    colors: ["#FFD700", "#FFE55C"],
+                });
+                confetti({
+                    particleCount: 100,
+                    spread: 60,
+                    origin: { y: 0.4, x: 0.7 },
+                    colors: ["#FFD700", "#FFE55C"],
+                });
+            }, 300);
+        } else if (currentRating.stars >= 4) {
             confetti({
                 particleCount: 100,
                 spread: 70,
                 origin: { y: 0.6 },
                 colors: ["#9ae600", "#f91880", "#FDDA24"],
+            });
+        } else if (currentRating.stars >= 3) {
+            confetti({
+                particleCount: 50,
+                spread: 50,
+                origin: { y: 0.6 },
+                colors: ["#9ae600", "#FDDA24"],
             });
         }
     }
@@ -1150,11 +1267,80 @@
         }
         gameState = "menu";
         currentTrack = null;
+        currentRating = null;
+        isNewPersonalBest = false;
+        previousBest = null;
+        songProgress = 0;
+        trackDuration = 0;
+        attestResult = null;
+        attestStage = null;
+        isAttesting = false;
+    }
+
+    async function mintScoreToStellar() {
+        if (!currentTrack || !currentRating || isAttesting) return;
+        if (!isAuthenticated()) {
+            alert("Connect your passkey wallet first to mint scores on-chain.");
+            return;
+        }
+
+        isAttesting = true;
+        attestResult = null;
+        attestStage = "preparing";
+
+        try {
+            const { attestHeroScore } = await import(
+                "../../lib/smol-hero/scoreAttestation"
+            );
+
+            const result = await attestHeroScore({
+                owner: userState.contractId!,
+                keyId: userState.keyId!,
+                payload: {
+                    trackId: currentTrack.Song_1,
+                    trackTitle: currentTrack.Title || "Unknown",
+                    score: stats.score,
+                    stars: currentRating.stars,
+                    golden: currentRating.golden,
+                    difficulty: settings.difficulty,
+                    accuracy: currentRating.accuracy,
+                    maxCombo: stats.maxCombo,
+                    perfect: stats.perfect,
+                    great: stats.great,
+                    ok: stats.ok,
+                    miss: stats.miss,
+                },
+                onStage: (stage) => {
+                    attestStage = stage;
+                },
+            });
+
+            attestResult = result;
+        } catch (e: any) {
+            attestResult = {
+                ok: false,
+                error: e?.message || "Failed to mint score",
+            };
+        } finally {
+            isAttesting = false;
+        }
     }
 
     // ======================
     // LIFECYCLE
     // ======================
+
+    function formatDuration(seconds: number): string {
+        const m = Math.floor(seconds / 60);
+        const s = Math.floor(seconds % 60);
+        return `${m}:${s.toString().padStart(2, '0')}`;
+    }
+
+    function getCachedNoteCount(track: any): number | null {
+        const cacheKey = `${track.Song_1}-${settings.difficulty}`;
+        const beatmap = beatmapCache.get(cacheKey);
+        return beatmap ? beatmap.onsets.length : null;
+    }
 
     function getArtistDisplay(track: any) {
         if (!track) return "Unknown Artist";
@@ -1327,18 +1513,33 @@
                 {/if}
             </div>
 
-            <!-- Difficulty selector -->
-            <div class="flex gap-2 justify-center">
-                {#each difficultyOptions as d}
-                    <button
-                        onclick={() => (settings.difficulty = d)}
-                        class="px-4 py-2 text-[10px] uppercase tracking-wider border rounded-md transition-all {settings.difficulty === d
-                            ? 'bg-[#9ae600] text-black border-[#9ae600] font-bold shadow-[0_0_12px_rgba(154,230,0,0.3)]'
-                            : 'bg-[#0a0a0a] border-[#2a2a2a] text-[#555] hover:border-[#9ae600]/50 hover:text-[#9ae600]'}"
-                    >
-                        {d}
+            <!-- Difficulty selector + Volume -->
+            <div class="flex flex-col gap-3">
+                <div class="flex gap-2 justify-center">
+                    {#each difficultyOptions as d}
+                        <button
+                            onclick={() => (settings.difficulty = d)}
+                            class="px-4 py-2 text-[10px] uppercase tracking-wider border rounded-md transition-all {settings.difficulty === d
+                                ? 'bg-[#9ae600] text-black border-[#9ae600] font-bold shadow-[0_0_12px_rgba(154,230,0,0.3)]'
+                                : 'bg-[#0a0a0a] border-[#2a2a2a] text-[#555] hover:border-[#9ae600]/50 hover:text-[#9ae600]'}"
+                        >
+                            {d}
                     </button>
-                {/each}
+                    {/each}
+                </div>
+                <!-- Volume slider -->
+                <div class="flex items-center justify-center gap-2">
+                    <span class="text-[9px] text-[#444]">VOL</span>
+                    <input
+                        type="range"
+                        min="0"
+                        max="1"
+                        step="0.05"
+                        bind:value={volume}
+                        class="volume-slider w-24 h-1 accent-[#9ae600] cursor-pointer"
+                    />
+                    <span class="text-[9px] text-[#555] tabular-nums w-7">{Math.round(volume * 100)}%</span>
+                </div>
             </div>
 
             <!-- FILTERS -->
@@ -1403,6 +1604,8 @@
             >
                 {#each playableTracks as track (track.Id)}
                     {@const isCached = beatmapCache.has(`${track.Song_1}-${settings.difficulty}`)}
+                    {@const personalBest = getLocalScore(track.Song_1, settings.difficulty)}
+                    {@const noteCount = getCachedNoteCount(track)}
                     <div class="relative group">
                         <button
                             onclick={() => selectTrack(track)}
@@ -1423,10 +1626,22 @@
                                     <div class="text-[13px] text-white font-bold truncate leading-tight">
                                         {track.Title}
                                     </div>
-                                    <div class="text-[10px] text-[#555] truncate mt-0.5">
-                                        {getArtistDisplay(track)}
+                                    <div class="text-[10px] text-[#555] truncate mt-0.5 flex items-center gap-1.5">
+                                        <span>{getArtistDisplay(track)}</span>
                                         {#if isCached}
-                                            <span class="text-[#9ae600]/60 ml-1">&bull; cached</span>
+                                            <span class="text-[#9ae600]/60">&bull; cached</span>
+                                        {/if}
+                                        {#if noteCount !== null}
+                                            <span class="text-[#b026ff]/60">&bull; {noteCount} notes</span>
+                                        {/if}
+                                        {#if personalBest}
+                                            <span class="inline-flex items-center gap-0.5 ml-auto">
+                                                {#each Array(5) as _, i}
+                                                    <svg viewBox="0 0 24 24" width="10" height="10" fill={i < personalBest.stars ? (personalBest.golden ? '#FFD700' : '#FDDA24') : '#222'}>
+                                                        <path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"/>
+                                                    </svg>
+                                                {/each}
+                                            </span>
                                         {/if}
                                     </div>
                                 </div>
@@ -1471,8 +1686,8 @@
         <div class="relative">
             <!-- HUD -->
             <div
-                class="flex justify-between items-center mb-3 px-3 py-2.5"
-                style="border-bottom: 1px solid #1a1a1a;"
+                class="flex justify-between items-center px-3 py-2.5"
+                style="border-bottom: none;"
             >
                 <div class="flex flex-col gap-0.5 min-w-0 flex-1">
                     <div class="text-sm text-white font-bold truncate">
@@ -1482,7 +1697,7 @@
                         {getArtistDisplay(currentTrack)} &bull; {settings.difficulty.toUpperCase()}
                     </div>
                 </div>
-                <div class="flex gap-5 text-right flex-shrink-0 ml-4">
+                <div class="flex gap-4 text-right flex-shrink-0 ml-4">
                     <div class="flex flex-col">
                         <span class="text-[9px] text-[#444] tracking-wider">SCORE</span>
                         <span class="text-lg text-[#9ae600] font-bold tabular-nums leading-tight"
@@ -1500,13 +1715,65 @@
                             >{stats.combo}x</span
                         >
                     </div>
+                    <div class="flex flex-col">
+                        <span class="text-[9px] text-[#444] tracking-wider">ACC</span>
+                        <span class="text-lg font-bold tabular-nums leading-tight"
+                            style="color: {liveAccuracy >= 90 ? '#9ae600' : liveAccuracy >= 70 ? '#FDDA24' : liveAccuracy >= 50 ? '#f91880' : '#555'};
+                                   transition: color 0.3s;"
+                            >{liveAccuracy}%</span
+                        >
+                    </div>
+                    <div class="flex flex-col">
+                        <span class="text-[9px] text-[#444] tracking-wider">MISS</span>
+                        <span class="text-lg font-bold tabular-nums leading-tight"
+                            style="color: {stats.miss > 0 ? '#f91880' : '#333'};
+                                   transition: color 0.15s;"
+                            >{stats.miss}</span
+                        >
+                    </div>
                 </div>
             </div>
+
+            <!-- Song Progress Bar + Time -->
+            <div class="relative mx-3 mb-2">
+                <div class="h-[3px] bg-[#111] rounded-full overflow-hidden">
+                    <div
+                        class="h-full rounded-full transition-[width] duration-150"
+                        style="width: {songProgress * 100}%;
+                               background: linear-gradient(90deg, #9ae600 0%, {songProgress > 0.7 ? '#f91880' : '#9ae600'} 100%);"
+                    ></div>
+                </div>
+                <div class="flex justify-between mt-0.5">
+                    <span class="text-[8px] text-[#333] tabular-nums">
+                        {trackDuration ? formatDuration(songProgress * trackDuration) : '--:--'}
+                    </span>
+                    <span class="text-[8px] text-[#333] tabular-nums">
+                        {trackDuration ? formatDuration(trackDuration) : '--:--'}
+                    </span>
+                </div>
+            </div>
+
+            <!-- Combo Milestone Text -->
+            {#if comboText}
+                <div class="absolute top-14 left-1/2 -translate-x-1/2 z-30 pointer-events-none combo-milestone-text"
+                    style="color: {stats.combo >= 100 ? '#FFD700' : stats.combo >= 50 ? '#f91880' : '#9ae600'};
+                           font-size: {stats.combo >= 100 ? 20 : stats.combo >= 50 ? 18 : 14}px;
+                           text-shadow: 0 0 20px currentColor, 0 0 40px currentColor;
+                           font-weight: bold;
+                           letter-spacing: 0.15em;
+                           animation: comboTextPulse 0.8s ease-in-out infinite;">
+                    {comboText}
+                </div>
+            {/if}
 
             <!-- GAME FIELD -->
             <div
                 class="game-field relative bg-black rounded-lg overflow-hidden"
-                style="height: {laneHeight}px; border: 1px solid #222;"
+                class:screen-shake={comboBreakShake}
+                style="height: {laneHeight}px;
+                       border: 1px solid {stats.combo >= 50 ? '#f91880' : stats.combo >= 25 ? '#9ae600' : '#222'};
+                       box-shadow: {stats.combo >= 50 ? '0 0 30px rgba(249, 24, 128, 0.2), inset 0 0 30px rgba(249, 24, 128, 0.05)' : stats.combo >= 25 ? '0 0 20px rgba(154, 230, 0, 0.15), inset 0 0 20px rgba(154, 230, 0, 0.03)' : 'none'};
+                       transition: border-color 0.3s, box-shadow 0.3s;"
             >
                 <!-- Scanline overlay for retro feel -->
                 <div class="absolute inset-0 pointer-events-none scanlines"></div>
@@ -1757,6 +2024,44 @@
                         </div>
                     </div>
 
+                    <!-- Volume + Calibration controls -->
+                    <div class="flex flex-col gap-3 mt-4 border-t border-[#333] pt-4">
+                        <div class="flex items-center justify-between">
+                            <span class="text-[10px] text-[#555] uppercase tracking-wider">Volume</span>
+                            <div class="flex items-center gap-2">
+                                <input
+                                    type="range"
+                                    min="0"
+                                    max="1"
+                                    step="0.05"
+                                    bind:value={volume}
+                                    oninput={() => { if (audio) audio.volume = volume; }}
+                                    class="volume-slider w-24 h-1 accent-[#9ae600] cursor-pointer"
+                                />
+                                <span class="text-[10px] text-[#555] tabular-nums w-8">{Math.round(volume * 100)}%</span>
+                            </div>
+                        </div>
+                        <div class="flex items-center justify-between">
+                            <span class="text-[10px] text-[#555] uppercase tracking-wider">Timing</span>
+                            <div class="flex items-center gap-2">
+                                <button
+                                    onclick={() => { settings.calibrationOffset = Math.max(-100, settings.calibrationOffset - 5); }}
+                                    class="w-6 h-6 text-xs border border-[#333] rounded text-[#777] hover:text-white hover:border-white transition-colors"
+                                >-</button>
+                                <span class="text-[10px] text-[#555] tabular-nums w-12 text-center">
+                                    {settings.calibrationOffset > 0 ? '+' : ''}{settings.calibrationOffset}ms
+                                </span>
+                                <button
+                                    onclick={() => { settings.calibrationOffset = Math.min(100, settings.calibrationOffset + 5); }}
+                                    class="w-6 h-6 text-xs border border-[#333] rounded text-[#777] hover:text-white hover:border-white transition-colors"
+                                >+</button>
+                            </div>
+                        </div>
+                        <p class="text-[8px] text-[#333] text-center">
+                            Adjust if hits feel early (-) or late (+)
+                        </p>
+                    </div>
+
                     <button
                         onclick={() => {
                             // Restart track
@@ -1796,71 +2101,199 @@
     {:else if gameState === "finished"}
         <!-- RESULTS SCREEN -->
         <div
-            class="flex flex-col gap-6 p-8 border-2 border-[#9ae600] rounded-lg bg-[#111]"
+            class="flex flex-col gap-5 p-6 md:p-8 rounded-lg bg-[#111]"
+            style="border: 2px solid {currentRating?.golden ? '#FFD700' : '#9ae600'};
+                   box-shadow: 0 0 {currentRating?.golden ? '30px rgba(255, 215, 0, 0.2)' : '20px rgba(154, 230, 0, 0.1)'};"
         >
+            <!-- Header -->
             <div class="text-center border-b border-[#333] pb-4">
-                <h2 class="text-3xl font-bold text-[#9ae600] mb-2">
-                    STAGE CLEAR!
+                <h2
+                    class="text-2xl md:text-3xl font-bold mb-1"
+                    style="color: {currentRating?.golden ? '#FFD700' : '#9ae600'};
+                           text-shadow: 0 0 20px {currentRating?.golden ? 'rgba(255, 215, 0, 0.4)' : 'rgba(154, 230, 0, 0.3)'};"
+                >
+                    {currentRating?.golden ? 'GOLDEN CLEAR!' : currentRating?.stars === 5 ? 'PERFECT STAGE!' : 'STAGE CLEAR!'}
                 </h2>
                 <p class="text-sm text-white">{currentTrack?.Title}</p>
+                <p class="text-[10px] text-[#555] mt-0.5">
+                    {getArtistDisplay(currentTrack)} &bull; {settings.difficulty.toUpperCase()}
+                </p>
             </div>
 
-            <div class="grid grid-cols-2 gap-4">
-                <div
-                    class="flex flex-col items-center p-4 border border-[#333] rounded"
-                >
-                    <span class="text-[10px] text-[#555] uppercase"
-                        >Final Score</span
-                    >
-                    <span class="text-3xl text-[#9ae600] font-bold"
-                        >{stats.score.toLocaleString()}</span
-                    >
+            <!-- Star Rating Display -->
+            <div class="flex flex-col items-center gap-2 py-3">
+                {#if currentRating}
+                    <StarRating
+                        stars={currentRating.stars}
+                        golden={currentRating.golden}
+                        size={40}
+                        animate={true}
+                        label={currentRating.label}
+                    />
+                    <div class="text-[10px] text-[#555] mt-1">
+                        {currentRating.accuracy}% weighted accuracy &bull; {totalNotes} notes
+                    </div>
+                    <!-- Grade message -->
+                    <div class="text-xs font-bold mt-0.5" style="color: {currentRating.golden ? '#FFD700' : currentRating.stars >= 4 ? '#9ae600' : currentRating.stars >= 3 ? '#FDDA24' : '#f91880'};">
+                        {currentRating.golden ? 'FLAWLESS PERFORMANCE'
+                            : currentRating.stars === 5 ? 'ROCK STAR!'
+                            : currentRating.stars === 4 ? 'ALMOST PERFECT'
+                            : currentRating.stars === 3 ? 'SOLID PERFORMANCE'
+                            : currentRating.stars === 2 ? 'GETTING THERE'
+                            : currentRating.stars === 1 ? 'KEEP PRACTICING'
+                            : 'TOUGH TRACK'}
+                    </div>
+                    {#if isNewPersonalBest}
+                        <div
+                            class="mt-1 px-3 py-1 text-[10px] font-bold tracking-widest uppercase rounded-full"
+                            style="background: linear-gradient(135deg, rgba(249, 24, 128, 0.15), rgba(154, 230, 0, 0.15));
+                                   border: 1px solid rgba(249, 24, 128, 0.4);
+                                   color: #f91880;
+                                   animation: pbPulse 1.5s ease-in-out infinite;"
+                        >
+                            NEW PERSONAL BEST!
+                        </div>
+                    {/if}
+                {/if}
+            </div>
+
+            <!-- Score & Combo -->
+            <div class="grid grid-cols-2 gap-3">
+                <div class="flex flex-col items-center p-3 border border-[#333] rounded bg-[#0a0a0a]">
+                    <span class="text-[9px] text-[#555] uppercase tracking-wider">Final Score</span>
+                    <span
+                        class="text-2xl md:text-3xl font-bold tabular-nums"
+                        style="color: {currentRating?.golden ? '#FFD700' : '#9ae600'};
+                               text-shadow: 0 0 12px {currentRating?.golden ? 'rgba(255, 215, 0, 0.3)' : 'rgba(154, 230, 0, 0.3)'};"
+                    >{stats.score.toLocaleString()}</span>
+                    <!-- Score delta vs previous best -->
+                    {#if previousBest}
+                        {@const delta = stats.score - previousBest.score}
+                        <span class="text-[10px] font-bold tabular-nums mt-0.5"
+                            style="color: {delta > 0 ? '#9ae600' : delta < 0 ? '#f91880' : '#555'};">
+                            {delta > 0 ? '+' : ''}{delta.toLocaleString()}
+                        </span>
+                    {:else}
+                        <span class="text-[10px] text-[#9ae600] font-bold mt-0.5">FIRST CLEAR!</span>
+                    {/if}
                 </div>
-                <div
-                    class="flex flex-col items-center p-4 border border-[#333] rounded"
-                >
-                    <span class="text-[10px] text-[#555] uppercase"
-                        >Max Combo</span
-                    >
-                    <span class="text-3xl text-[#f91880] font-bold"
-                        >{stats.maxCombo}x</span
-                    >
+                <div class="flex flex-col items-center p-3 border border-[#333] rounded bg-[#0a0a0a]">
+                    <span class="text-[9px] text-[#555] uppercase tracking-wider">Max Combo</span>
+                    <span class="text-2xl md:text-3xl text-[#f91880] font-bold tabular-nums"
+                        >{stats.maxCombo}x</span>
+                    <span class="text-[10px] text-[#555] tabular-nums mt-0.5">
+                        / {totalNotes} notes
+                    </span>
                 </div>
             </div>
 
+            <!-- Hit Rate Bar -->
+            <div class="px-1">
+                <div class="flex items-center gap-2 mb-1">
+                    <span class="text-[9px] text-[#555] uppercase tracking-wider">Hit Rate</span>
+                    <span class="text-[9px] text-white font-bold tabular-nums">{hitRate}%</span>
+                </div>
+                <div class="h-2 bg-[#0a0a0a] rounded-full overflow-hidden border border-[#222]">
+                    <div class="h-full flex">
+                        {#if totalNotes > 0}
+                            <div class="h-full bg-[#9ae600]" style="width: {(stats.perfect / totalNotes) * 100}%;"></div>
+                            <div class="h-full bg-[#FDDA24]" style="width: {(stats.great / totalNotes) * 100}%;"></div>
+                            <div class="h-full bg-[#f91880]" style="width: {(stats.ok / totalNotes) * 100}%;"></div>
+                        {/if}
+                    </div>
+                </div>
+                <div class="flex justify-between mt-1 text-[8px] text-[#444]">
+                    <span>{stats.perfect} perfect</span>
+                    <span>{stats.great} great</span>
+                    <span>{stats.ok} ok</span>
+                    <span>{stats.miss} miss</span>
+                </div>
+            </div>
+
+            <!-- Hit Breakdown -->
             <div class="grid grid-cols-4 gap-2 text-center">
-                <div class="p-3 border border-[#333] rounded">
-                    <div class="text-[10px] text-[#9ae600]">PERFECT</div>
-                    <div class="text-xl font-bold text-white">
-                        {stats.perfect}
-                    </div>
+                <div class="p-2 border border-[#333] rounded bg-[#0a0a0a]">
+                    <div class="text-[9px] text-[#9ae600] tracking-wider">PERFECT</div>
+                    <div class="text-lg font-bold text-white tabular-nums">{stats.perfect}</div>
                 </div>
-                <div class="p-3 border border-[#333] rounded">
-                    <div class="text-[10px] text-[#FDDA24]">GREAT</div>
-                    <div class="text-xl font-bold text-white">
-                        {stats.great}
-                    </div>
+                <div class="p-2 border border-[#333] rounded bg-[#0a0a0a]">
+                    <div class="text-[9px] text-[#FDDA24] tracking-wider">GREAT</div>
+                    <div class="text-lg font-bold text-white tabular-nums">{stats.great}</div>
                 </div>
-                <div class="p-3 border border-[#333] rounded">
-                    <div class="text-[10px] text-[#f91880]">OK</div>
-                    <div class="text-xl font-bold text-white">{stats.ok}</div>
+                <div class="p-2 border border-[#333] rounded bg-[#0a0a0a]">
+                    <div class="text-[9px] text-[#f91880] tracking-wider">OK</div>
+                    <div class="text-lg font-bold text-white tabular-nums">{stats.ok}</div>
                 </div>
-                <div class="p-3 border border-[#333] rounded">
-                    <div class="text-[10px] text-[#555]">MISS</div>
-                    <div class="text-xl font-bold text-white">{stats.miss}</div>
+                <div class="p-2 border border-[#333] rounded bg-[#0a0a0a]">
+                    <div class="text-[9px] text-[#555] tracking-wider">MISS</div>
+                    <div class="text-lg font-bold text-white tabular-nums">{stats.miss}</div>
                 </div>
             </div>
 
-            <div class="flex gap-4">
+            <!-- Stellar Attestation -->
+            <div class="border-t border-[#333] pt-4">
+                {#if attestResult?.ok}
+                    <div class="flex items-center gap-2 p-3 rounded bg-[#9ae600]/10 border border-[#9ae600]/30">
+                        <svg viewBox="0 0 24 24" width="16" height="16" fill="#9ae600">
+                            <path d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41z"/>
+                        </svg>
+                        <div class="flex-1 min-w-0">
+                            <div class="text-[10px] text-[#9ae600] font-bold">MINTED ON STELLAR</div>
+                            <div class="text-[9px] text-[#555] truncate font-mono">
+                                tx: {attestResult.txHash}
+                            </div>
+                        </div>
+                    </div>
+                {:else if attestResult && !attestResult.ok}
+                    <div class="flex items-center gap-2 p-3 rounded bg-[#f91880]/10 border border-[#f91880]/30">
+                        <div class="text-[10px] text-[#f91880]">{attestResult.error}</div>
+                    </div>
+                {:else}
+                    <button
+                        onclick={mintScoreToStellar}
+                        disabled={isAttesting}
+                        class="w-full flex items-center justify-center gap-2 px-4 py-3 rounded-md text-xs font-bold uppercase tracking-wider transition-all
+                               {isAttesting
+                                   ? 'bg-[#222] border border-[#333] text-[#555] cursor-wait'
+                                   : 'bg-gradient-to-r from-[#1a1a2e] to-[#16213e] border border-[#0f3460]/50 text-white hover:border-[#0f3460] hover:shadow-[0_0_20px_rgba(15,52,96,0.3)]'}"
+                    >
+                        {#if isAttesting}
+                            <div class="w-3 h-3 border-2 border-[#555] border-t-[#9ae600] rounded-full animate-spin"></div>
+                            <span>
+                                {attestStage === 'preparing' ? 'PREPARING...'
+                                    : attestStage === 'simulating' ? 'SIMULATING...'
+                                    : attestStage === 'assembling' ? 'ASSEMBLING TX...'
+                                    : attestStage === 'signing' ? 'SIGN WITH PASSKEY...'
+                                    : attestStage === 'submitted' ? 'CONFIRMING...'
+                                    : 'MINTING...'}
+                            </span>
+                        {:else}
+                            <!-- Stellar icon -->
+                            <svg viewBox="0 0 24 24" width="14" height="14" fill="currentColor">
+                                <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-1 17.93c-3.95-.49-7-3.85-7-7.93 0-.62.08-1.21.21-1.79L9 15v1c0 1.1.9 2 2 2v1.93zm6.9-2.54c-.26-.81-1-1.39-1.9-1.39h-1v-3c0-.55-.45-1-1-1H8v-2h2c.55 0 1-.45 1-1V7h2c1.1 0 2-.9 2-2v-.41c2.93 1.19 5 4.06 5 7.41 0 2.08-.8 3.97-2.1 5.39z"/>
+                            </svg>
+                            <span>MINT SCORE ON STELLAR</span>
+                        {/if}
+                    </button>
+                    <p class="text-[8px] text-[#333] text-center mt-1.5">
+                        Record your {currentRating?.stars}-star score as an on-chain attestation via Soroban
+                    </p>
+                {/if}
+            </div>
+
+            <!-- Action Buttons -->
+            <div class="flex gap-3">
                 <button
                     onclick={returnToMenu}
-                    class="flex-1 px-6 py-3 bg-[#222] border border-[#333] rounded text-white hover:bg-[#333] transition-all"
+                    class="flex-1 px-4 py-3 bg-[#0a0a0a] border border-[#333] rounded text-white text-xs hover:bg-[#1a1a1a] hover:border-[#555] transition-all"
                 >
                     BACK TO MENU
                 </button>
                 <button
                     onclick={() => selectTrack(currentTrack)}
-                    class="flex-1 px-6 py-3 bg-[#9ae600] border border-[#9ae600] rounded text-black font-bold hover:bg-[#7cc600] transition-all"
+                    class="flex-1 px-4 py-3 rounded text-black text-xs font-bold transition-all"
+                    style="background: {currentRating?.golden ? '#FFD700' : '#9ae600'};
+                           border: 1px solid {currentRating?.golden ? '#FFD700' : '#9ae600'};"
                 >
                     RETRY
                 </button>
@@ -1925,5 +2358,64 @@
         left: 50%;
         transform: translate(-50%, -50%);
         pointer-events: none;
+    }
+
+    /* Personal best pulse */
+    @keyframes pbPulse {
+        0%, 100% { opacity: 1; }
+        50% { opacity: 0.6; }
+    }
+
+    /* Screen shake on combo break */
+    .screen-shake {
+        animation: shake 0.3s cubic-bezier(0.36, 0.07, 0.19, 0.97) both;
+    }
+
+    @keyframes shake {
+        0%, 100% { transform: translateX(0); }
+        10% { transform: translateX(-4px) rotate(-0.5deg); }
+        20% { transform: translateX(4px) rotate(0.5deg); }
+        30% { transform: translateX(-3px) rotate(-0.3deg); }
+        40% { transform: translateX(3px) rotate(0.3deg); }
+        50% { transform: translateX(-2px); }
+        60% { transform: translateX(2px); }
+        70% { transform: translateX(-1px); }
+        80% { transform: translateX(1px); }
+    }
+
+    /* Combo milestone text pulse */
+    @keyframes comboTextPulse {
+        0%, 100% { transform: translateX(-50%) scale(1); opacity: 0.9; }
+        50% { transform: translateX(-50%) scale(1.08); opacity: 1; }
+    }
+
+    /* Volume slider styling */
+    .volume-slider {
+        appearance: none;
+        -webkit-appearance: none;
+        background: #222;
+        border-radius: 2px;
+        outline: none;
+    }
+
+    .volume-slider::-webkit-slider-thumb {
+        appearance: none;
+        -webkit-appearance: none;
+        width: 10px;
+        height: 10px;
+        background: #9ae600;
+        border-radius: 50%;
+        cursor: pointer;
+        box-shadow: 0 0 6px rgba(154, 230, 0, 0.4);
+    }
+
+    .volume-slider::-moz-range-thumb {
+        width: 10px;
+        height: 10px;
+        background: #9ae600;
+        border-radius: 50%;
+        cursor: pointer;
+        border: none;
+        box-shadow: 0 0 6px rgba(154, 230, 0, 0.4);
     }
 </style>

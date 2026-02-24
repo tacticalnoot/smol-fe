@@ -6,17 +6,27 @@ use soroban_sdk::{
     Address, Bytes, BytesN, Env, IntoVal, Symbol, Val, Vec,
 };
 
+// ════════════════════════════════════════════════════════════════════════
+//  Storage Layout
+// ════════════════════════════════════════════════════════════════════════
+
 #[derive(Clone)]
 #[contracttype]
 pub enum DataKey {
     Admin,
     Nonce,
     Entry((Address, Symbol, Symbol)),
-    // Appended (do not reorder): Groth16 VK registry for on-chain verification.
     Groth16Vk(Symbol),
-    // Appended (do not reorder): External verifier addresses (upgrade bridge).
     UltraHonkVerifier,
+    // v3 ──────────────────────────────────────────────────────────────
+    SystemIndex(Symbol),
+    OwnerIndex(Address),
+    Record((Symbol, BytesN<32>)),
 }
+
+// ════════════════════════════════════════════════════════════════════════
+//  Types
+// ════════════════════════════════════════════════════════════════════════
 
 #[derive(Clone)]
 #[contracttype]
@@ -29,7 +39,46 @@ pub struct AttestationRecord {
     pub ledger: u32,
     pub timestamp: u64,
     pub attestation_id: u64,
+    pub score: u64,
 }
+
+/// One badge in a passport: proof of participation in a system at a tier.
+#[derive(Clone)]
+#[contracttype]
+pub struct Badge {
+    pub system: Symbol,
+    pub tier: Symbol,
+}
+
+/// Lightweight pointer stored in per-system indexes for enumeration.
+#[derive(Clone)]
+#[contracttype]
+pub struct IndexEntry {
+    pub owner: Address,
+    pub tier: Symbol,
+}
+
+/// Global best score for a (system, verifier_hash) combination.
+#[derive(Clone)]
+#[contracttype]
+pub struct RecordEntry {
+    pub owner: Address,
+    pub score: u64,
+    pub attestation_id: u64,
+    pub ledger: u32,
+}
+
+/// Aggregated owner statistics across all systems.
+#[derive(Clone)]
+#[contracttype]
+pub struct OwnerStats {
+    pub total_badges: u32,
+    pub systems: Vec<Symbol>,
+}
+
+// ════════════════════════════════════════════════════════════════════════
+//  Errors
+// ════════════════════════════════════════════════════════════════════════
 
 #[contracterror]
 #[derive(Copy, Clone, Debug, Eq, PartialEq, PartialOrd, Ord)]
@@ -47,6 +96,10 @@ pub enum UltraHonkError {
     NotConfigured = 1,
     VerificationFailed = 2,
 }
+
+// ════════════════════════════════════════════════════════════════════════
+//  Verification Key Types (BN254 Groth16)
+// ════════════════════════════════════════════════════════════════════════
 
 #[derive(Clone)]
 #[contracttype]
@@ -66,14 +119,20 @@ pub struct Groth16VerificationKey {
     pub ic: Vec<BytesN<64>>,
 }
 
+// ════════════════════════════════════════════════════════════════════════
+//  Contract
+// ════════════════════════════════════════════════════════════════════════
+
 #[contract]
 pub struct FarmAttestations;
 
 #[contractimpl]
 impl FarmAttestations {
     pub fn version() -> u32 {
-        2
+        3
     }
+
+    // ── Admin ────────────────────────────────────────────────────────
 
     pub fn is_initialized(env: Env) -> bool {
         env.storage().instance().has(&DataKey::Admin)
@@ -85,7 +144,7 @@ impl FarmAttestations {
         }
         admin.require_auth();
         env.storage().instance().set(&DataKey::Admin, &admin);
-        Self::bump_instance_ttl(&env);
+        Self::bump_instance(&env);
     }
 
     pub fn admin(env: Env) -> Address {
@@ -96,7 +155,7 @@ impl FarmAttestations {
         let admin = Self::admin(env.clone());
         admin.require_auth();
         env.storage().instance().set(&DataKey::Admin, &new_admin);
-        Self::bump_instance_ttl(&env);
+        Self::bump_instance(&env);
     }
 
     pub fn upgrade(env: Env, new_wasm_hash: BytesN<32>) {
@@ -105,74 +164,58 @@ impl FarmAttestations {
         env.deployer().update_current_contract_wasm(new_wasm_hash);
     }
 
-    /// Extend instance TTL (admin/nonce). Anyone may call to keep the contract alive.
+    // ── TTL Management ──────────────────────────────────────────────
+
     pub fn extend_ttl(env: Env) {
-        Self::bump_instance_ttl(&env);
+        Self::bump_instance(&env);
     }
 
-    /// Extend TTL of a specific attestation entry (persistent storage).
-    /// Anyone may call; no state changes besides TTL.
     pub fn extend_entry_ttl(env: Env, owner: Address, system: Symbol, tier: Symbol) {
         let key = DataKey::Entry((owner, system, tier));
         if env.storage().persistent().has(&key) {
-            Self::bump_persistent_key_ttl(&env, &key);
+            Self::bump_persistent(&env, &key);
         }
     }
 
-    /// Extend TTL of a specific Groth16 VK (persistent storage).
-    /// Anyone may call; no state changes besides TTL.
     pub fn extend_vk_ttl(env: Env, vk_id: Symbol) {
         let key = DataKey::Groth16Vk(vk_id);
         if env.storage().persistent().has(&key) {
-            Self::bump_persistent_key_ttl(&env, &key);
+            Self::bump_persistent(&env, &key);
         }
     }
 
-    // --------------------------------------------------------------------
-    // Groth16 VK Registry (Admin-managed, Upgradeable)
-    // --------------------------------------------------------------------
+    // ── Groth16 VK Registry ─────────────────────────────────────────
 
-    /// Register or replace a Groth16 verification key under `vk_id`.
-    ///
-    /// This is the "universal" on-chain verification strategy for SMOL Labs:
-    /// anything that can be represented as a BN254 Groth16 proof (Circom, and
-    /// wrapped proofs like RISC0 receipts) can be verified here without new contracts.
     pub fn register_groth16_vk(env: Env, vk_id: Symbol, vk: Groth16VerificationKey) {
         let admin = Self::admin(env.clone());
         admin.require_auth();
         let key = DataKey::Groth16Vk(vk_id);
         env.storage().persistent().set(&key, &vk);
-        Self::bump_persistent_key_ttl(&env, &key);
-        Self::bump_instance_ttl(&env);
+        Self::bump_persistent(&env, &key);
+        Self::bump_instance(&env);
     }
 
     pub fn has_groth16_vk(env: Env, vk_id: Symbol) -> bool {
         env.storage().persistent().has(&DataKey::Groth16Vk(vk_id))
     }
 
-    // --------------------------------------------------------------------
-    // UltraHonk Bridge (Noir) - External Verifier Contract
-    // --------------------------------------------------------------------
+    // ── UltraHonk Bridge ────────────────────────────────────────────
 
-    /// Set the (upgradeable) UltraHonk verifier contract address used by `verify_ultrahonk_and_attest`.
-    ///
-    /// This is the "bridge" strategy: keep this contract as the SSOT for attestations,
-    /// while delegating UltraHonk verification to a dedicated verifier contract.
     pub fn set_ultrahonk_verifier(env: Env, verifier: Address) {
         let admin = Self::admin(env.clone());
         admin.require_auth();
-        env.storage().instance().set(&DataKey::UltraHonkVerifier, &verifier);
-        Self::bump_instance_ttl(&env);
+        env.storage()
+            .instance()
+            .set(&DataKey::UltraHonkVerifier, &verifier);
+        Self::bump_instance(&env);
     }
 
     pub fn get_ultrahonk_verifier(env: Env) -> Option<Address> {
         env.storage().instance().get(&DataKey::UltraHonkVerifier)
     }
 
-    /// Verify an UltraHonk proof via the configured verifier contract, then store an attestation record.
-    ///
-    /// IMPORTANT: this verifies *cryptographically* on-chain (in the verifier contract), not a digest-only record.
-    /// The proof system is still identified by `system`, typically "NOIR".
+    // ── Verified Attestation (UltraHonk) ────────────────────────────
+
     pub fn verify_ultrahonk_and_attest(
         env: Env,
         owner: Address,
@@ -184,61 +227,26 @@ impl FarmAttestations {
         proof_bytes: Bytes,
     ) -> Result<u64, UltraHonkError> {
         owner.require_auth();
-
         let verifier: Address = env
             .storage()
             .instance()
             .get(&DataKey::UltraHonkVerifier)
             .ok_or(UltraHonkError::NotConfigured)?;
 
-        // Cross-contract call into the verifier.
-        // Signature: verify_proof(public_inputs: Bytes, proof_bytes: Bytes) -> bool
         let mut args: Vec<Val> = Vec::new(&env);
         args.push_back(public_inputs.into_val(&env));
         args.push_back(proof_bytes.into_val(&env));
-
         let ok: bool = env.invoke_contract(
             &verifier,
             &Symbol::new(&env, "verify_proof"),
             args,
         );
-
         if !ok {
             return Err(UltraHonkError::VerificationFailed);
         }
-
-        let attestation_id = Self::next_nonce(&env);
-        let ledger = env.ledger().sequence();
-        let timestamp = env.ledger().timestamp();
-
-        let record = AttestationRecord {
-            owner: owner.clone(),
-            system: system.clone(),
-            tier: tier.clone(),
-            statement_hash: statement_hash.clone(),
-            verifier_hash: verifier_hash.clone(),
-            ledger,
-            timestamp,
-            attestation_id,
-        };
-
-        let key = DataKey::Entry((owner.clone(), system.clone(), tier.clone()));
-        env.storage().persistent().set(&key, &record);
-        Self::bump_persistent_key_ttl(&env, &key);
-        Self::bump_instance_ttl(&env);
-
-        env.events().publish(
-            (symbol_short!("attest"), owner, system, tier),
-            (statement_hash, verifier_hash, ledger, timestamp, attestation_id),
-        );
-
-        Ok(attestation_id)
+        Ok(Self::store(&env, owner, system, tier, statement_hash, verifier_hash, 0))
     }
 
-    /// Verify an UltraHonk proof via the configured verifier contract *and* a specific `vk_id`,
-    /// then store an attestation record.
-    ///
-    /// This is the multi-circuit-friendly variant: it targets `ultrahonk-verifier.verify_proof_vk`.
     pub fn verify_ultrahonk_vk_and_attest(
         env: Env,
         owner: Address,
@@ -251,58 +259,29 @@ impl FarmAttestations {
         proof_bytes: Bytes,
     ) -> Result<u64, UltraHonkError> {
         owner.require_auth();
-
         let verifier: Address = env
             .storage()
             .instance()
             .get(&DataKey::UltraHonkVerifier)
             .ok_or(UltraHonkError::NotConfigured)?;
 
-        // Signature: verify_proof_vk(vk_id: Symbol, public_inputs: Bytes, proof_bytes: Bytes) -> bool
         let mut args: Vec<Val> = Vec::new(&env);
         args.push_back(vk_id.into_val(&env));
         args.push_back(public_inputs.into_val(&env));
         args.push_back(proof_bytes.into_val(&env));
-
         let ok: bool = env.invoke_contract(
             &verifier,
             &Symbol::new(&env, "verify_proof_vk"),
             args,
         );
-
         if !ok {
             return Err(UltraHonkError::VerificationFailed);
         }
-
-        let attestation_id = Self::next_nonce(&env);
-        let ledger = env.ledger().sequence();
-        let timestamp = env.ledger().timestamp();
-
-        let record = AttestationRecord {
-            owner: owner.clone(),
-            system: system.clone(),
-            tier: tier.clone(),
-            statement_hash: statement_hash.clone(),
-            verifier_hash: verifier_hash.clone(),
-            ledger,
-            timestamp,
-            attestation_id,
-        };
-
-        let key = DataKey::Entry((owner.clone(), system.clone(), tier.clone()));
-        env.storage().persistent().set(&key, &record);
-        Self::bump_persistent_key_ttl(&env, &key);
-        Self::bump_instance_ttl(&env);
-
-        env.events().publish(
-            (symbol_short!("attest"), owner, system, tier),
-            (statement_hash, verifier_hash, ledger, timestamp, attestation_id),
-        );
-
-        Ok(attestation_id)
+        Ok(Self::store(&env, owner, system, tier, statement_hash, verifier_hash, 0))
     }
 
-    /// Verify Groth16 proof against registered VK, without storing anything.
+    // ── Verified Attestation (Groth16) ──────────────────────────────
+
     pub fn verify_groth16(
         env: Env,
         vk_id: Symbol,
@@ -314,15 +293,10 @@ impl FarmAttestations {
             .persistent()
             .get(&DataKey::Groth16Vk(vk_id))
             .ok_or(Groth16Error::UnknownVk)?;
-
-        Self::verify_groth16_internal(&env, &vk, &public_inputs, &proof)?;
+        Self::groth16_verify(&env, &vk, &public_inputs, &proof)?;
         Ok(true)
     }
 
-    /// Verify Groth16 proof and then store an attestation record (same schema as `attest`).
-    ///
-    /// This keeps the existing farm-attestations contract as the SSOT for "claims",
-    /// while making some claims *cryptographically* verified on-chain.
     pub fn verify_groth16_and_attest(
         env: Env,
         owner: Address,
@@ -335,44 +309,18 @@ impl FarmAttestations {
         proof: Groth16Proof,
     ) -> Result<u64, Groth16Error> {
         owner.require_auth();
-
         let vk: Groth16VerificationKey = env
             .storage()
             .persistent()
             .get(&DataKey::Groth16Vk(vk_id))
             .ok_or(Groth16Error::UnknownVk)?;
-
-        Self::verify_groth16_internal(&env, &vk, &public_inputs, &proof)?;
-
-        // Reuse existing attest storage/event shape (reviewer-proof: the proof was verified above).
-        let attestation_id = Self::next_nonce(&env);
-        let ledger = env.ledger().sequence();
-        let timestamp = env.ledger().timestamp();
-
-        let record = AttestationRecord {
-            owner: owner.clone(),
-            system: system.clone(),
-            tier: tier.clone(),
-            statement_hash: statement_hash.clone(),
-            verifier_hash: verifier_hash.clone(),
-            ledger,
-            timestamp,
-            attestation_id,
-        };
-
-        let key = DataKey::Entry((owner.clone(), system.clone(), tier.clone()));
-        env.storage().persistent().set(&key, &record);
-        Self::bump_persistent_key_ttl(&env, &key);
-        Self::bump_instance_ttl(&env);
-
-        env.events().publish(
-            (symbol_short!("attest"), owner, system, tier),
-            (statement_hash, verifier_hash, ledger, timestamp, attestation_id),
-        );
-
-        Ok(attestation_id)
+        Self::groth16_verify(&env, &vk, &public_inputs, &proof)?;
+        Ok(Self::store(&env, owner, system, tier, statement_hash, verifier_hash, 0))
     }
 
+    // ── Core Attestation ────────────────────────────────────────────
+
+    /// Digest-only attestation (no on-chain proof verification).
     pub fn attest(
         env: Env,
         owner: Address,
@@ -382,8 +330,217 @@ impl FarmAttestations {
         verifier_hash: BytesN<32>,
     ) -> u64 {
         owner.require_auth();
+        Self::store(&env, owner, system, tier, statement_hash, verifier_hash, 0)
+    }
 
-        let attestation_id = Self::next_nonce(&env);
+    /// Attestation carrying an explicit numeric score.
+    pub fn attest_with_score(
+        env: Env,
+        owner: Address,
+        system: Symbol,
+        tier: Symbol,
+        statement_hash: BytesN<32>,
+        verifier_hash: BytesN<32>,
+        score: u64,
+    ) -> u64 {
+        owner.require_auth();
+        Self::store(&env, owner, system, tier, statement_hash, verifier_hash, score)
+    }
+
+    /// Personal-best attestation: only writes if `score` exceeds the
+    /// existing record for this (owner, system, tier). Returns the
+    /// attestation_id on success, or 0 if the existing score is higher.
+    pub fn attest_if_best(
+        env: Env,
+        owner: Address,
+        system: Symbol,
+        tier: Symbol,
+        statement_hash: BytesN<32>,
+        verifier_hash: BytesN<32>,
+        score: u64,
+    ) -> u64 {
+        owner.require_auth();
+        let key = DataKey::Entry((owner.clone(), system.clone(), tier.clone()));
+        if let Some(existing) = env.storage().persistent().get::<DataKey, AttestationRecord>(&key) {
+            if existing.score >= score {
+                return 0;
+            }
+        }
+        Self::store(&env, owner, system, tier, statement_hash, verifier_hash, score)
+    }
+
+    /// Multiple attestations in a single authorization.
+    pub fn batch_attest(
+        env: Env,
+        owner: Address,
+        systems: Vec<Symbol>,
+        tiers: Vec<Symbol>,
+        statement_hashes: Vec<BytesN<32>>,
+        verifier_hashes: Vec<BytesN<32>>,
+        scores: Vec<u64>,
+    ) -> u64 {
+        owner.require_auth();
+        let n = systems.len();
+        assert!(n > 0, "empty batch");
+        assert!(
+            n == tiers.len()
+                && n == statement_hashes.len()
+                && n == verifier_hashes.len()
+                && n == scores.len(),
+            "mismatched lengths"
+        );
+        let mut last = 0u64;
+        for i in 0..n {
+            last = Self::store(
+                &env,
+                owner.clone(),
+                systems.get(i).unwrap(),
+                tiers.get(i).unwrap(),
+                statement_hashes.get(i).unwrap(),
+                verifier_hashes.get(i).unwrap(),
+                scores.get(i).unwrap(),
+            );
+        }
+        last
+    }
+
+    // ── Reads ───────────────────────────────────────────────────────
+
+    pub fn get(env: Env, owner: Address, system: Symbol, tier: Symbol) -> Option<AttestationRecord> {
+        env.storage()
+            .persistent()
+            .get(&DataKey::Entry((owner, system, tier)))
+    }
+
+    pub fn has(
+        env: Env,
+        owner: Address,
+        system: Symbol,
+        tier: Symbol,
+        statement_hash: BytesN<32>,
+    ) -> bool {
+        match env.storage().persistent().get::<DataKey, AttestationRecord>(
+            &DataKey::Entry((owner, system, tier)),
+        ) {
+            Some(r) => r.statement_hash == statement_hash,
+            None => false,
+        }
+    }
+
+    // ── #1  Passport (Pokemon Badges) ───────────────────────────────
+
+    /// Every system+tier an owner has attested to, collected like badges.
+    pub fn get_passport(env: Env, owner: Address) -> Vec<Badge> {
+        env.storage()
+            .persistent()
+            .get(&DataKey::OwnerIndex(owner))
+            .unwrap_or_else(|| Vec::new(&env))
+    }
+
+    // ── #3  Gate Check (Composable Access) ──────────────────────────
+
+    /// Returns true only if the owner holds attestations for every
+    /// (system, tier) pair in the provided lists. Useful as a
+    /// prerequisite check before granting access to gated content.
+    pub fn check_access(
+        env: Env,
+        owner: Address,
+        systems: Vec<Symbol>,
+        tiers: Vec<Symbol>,
+    ) -> bool {
+        let n = systems.len();
+        assert!(n == tiers.len(), "mismatched lengths");
+        for i in 0..n {
+            let key = DataKey::Entry((
+                owner.clone(),
+                systems.get(i).unwrap(),
+                tiers.get(i).unwrap(),
+            ));
+            if !env.storage().persistent().has(&key) {
+                return false;
+            }
+        }
+        true
+    }
+
+    // ── #4  Player Stats ────────────────────────────────────────────
+
+    /// Aggregate stats derived from the owner's badge passport.
+    pub fn get_stats(env: Env, owner: Address) -> OwnerStats {
+        let badges: Vec<Badge> = env
+            .storage()
+            .persistent()
+            .get(&DataKey::OwnerIndex(owner))
+            .unwrap_or_else(|| Vec::new(&env));
+
+        let total_badges = badges.len();
+
+        // Collect distinct systems
+        let mut systems: Vec<Symbol> = Vec::new(&env);
+        for i in 0..badges.len() {
+            let sys = badges.get(i).unwrap().system;
+            let mut seen = false;
+            for j in 0..systems.len() {
+                if systems.get(j).unwrap() == sys {
+                    seen = true;
+                    break;
+                }
+            }
+            if !seen {
+                systems.push_back(sys);
+            }
+        }
+
+        OwnerStats {
+            total_badges,
+            systems,
+        }
+    }
+
+    // ── #7  Global Records (World Bests) ────────────────────────────
+
+    /// The highest score recorded for a (system, verifier_hash) pair.
+    /// For example: the world record on a specific track.
+    pub fn get_record(env: Env, system: Symbol, verifier_hash: BytesN<32>) -> Option<RecordEntry> {
+        env.storage()
+            .persistent()
+            .get(&DataKey::Record((system, verifier_hash)))
+    }
+
+    // ── System Index (Leaderboard Enumeration) ──────────────────────
+
+    /// All (owner, tier) pairs that hold attestations under a system.
+    pub fn list_by_system(env: Env, system: Symbol) -> Vec<IndexEntry> {
+        env.storage()
+            .persistent()
+            .get(&DataKey::SystemIndex(system))
+            .unwrap_or_else(|| Vec::new(&env))
+    }
+
+    pub fn count_by_system(env: Env, system: Symbol) -> u32 {
+        let idx: Vec<IndexEntry> = env
+            .storage()
+            .persistent()
+            .get(&DataKey::SystemIndex(system))
+            .unwrap_or_else(|| Vec::new(&env));
+        idx.len()
+    }
+
+    // ════════════════════════════════════════════════════════════════
+    //  Internal
+    // ════════════════════════════════════════════════════════════════
+
+    /// Unified write path for all attestation variants.
+    fn store(
+        env: &Env,
+        owner: Address,
+        system: Symbol,
+        tier: Symbol,
+        statement_hash: BytesN<32>,
+        verifier_hash: BytesN<32>,
+        score: u64,
+    ) -> u64 {
+        let attestation_id = Self::next_nonce(env);
         let ledger = env.ledger().sequence();
         let timestamp = env.ledger().timestamp();
 
@@ -396,87 +553,171 @@ impl FarmAttestations {
             ledger,
             timestamp,
             attestation_id,
+            score,
         };
 
-        let key = DataKey::Entry((owner.clone(), system.clone(), tier.clone()));
-        env.storage().persistent().set(&key, &record);
-        Self::bump_persistent_key_ttl(&env, &key);
-        Self::bump_instance_ttl(&env);
+        // Write the entry
+        let entry_key = DataKey::Entry((owner.clone(), system.clone(), tier.clone()));
+        env.storage().persistent().set(&entry_key, &record);
+        Self::bump_persistent(env, &entry_key);
 
+        // Update indexes
+        Self::idx_system(env, &system, &owner, &tier);
+        Self::idx_owner(env, &owner, &system, &tier);
+
+        // Update global record if this score is the new best
+        if score > 0 {
+            Self::maybe_update_record(env, &system, &verifier_hash, &owner, score, attestation_id, ledger);
+        }
+
+        Self::bump_instance(env);
+
+        // ── #6  Rich Events ─────────────────────────────────────────
         env.events().publish(
-            (symbol_short!("attest"), owner, system, tier),
-            (statement_hash, verifier_hash, ledger, timestamp, attestation_id),
+            (symbol_short!("attest"), owner, system.clone(), tier),
+            (statement_hash, verifier_hash, attestation_id, score, ledger, timestamp),
         );
 
         attestation_id
     }
 
-    pub fn get(env: Env, owner: Address, system: Symbol, tier: Symbol) -> Option<AttestationRecord> {
-        let key = DataKey::Entry((owner, system, tier));
-        env.storage().persistent().get(&key)
+    /// Append to per-system index (deduped).
+    fn idx_system(env: &Env, system: &Symbol, owner: &Address, tier: &Symbol) {
+        let key = DataKey::SystemIndex(system.clone());
+        let mut idx: Vec<IndexEntry> = env
+            .storage()
+            .persistent()
+            .get(&key)
+            .unwrap_or_else(|| Vec::new(env));
+
+        let mut found = false;
+        for i in 0..idx.len() {
+            let e = idx.get(i).unwrap();
+            if e.owner == *owner && e.tier == *tier {
+                found = true;
+                break;
+            }
+        }
+        if !found {
+            idx.push_back(IndexEntry {
+                owner: owner.clone(),
+                tier: tier.clone(),
+            });
+            env.storage().persistent().set(&key, &idx);
+            Self::bump_persistent(env, &key);
+        }
     }
 
-    pub fn has(
-        env: Env,
-        owner: Address,
-        system: Symbol,
-        tier: Symbol,
-        statement_hash: BytesN<32>,
-    ) -> bool {
-        let key = DataKey::Entry((owner, system, tier));
-        match env.storage().persistent().get::<DataKey, AttestationRecord>(&key) {
-            Some(record) => record.statement_hash == statement_hash,
-            None => false,
+    /// Append to per-owner badge passport (deduped).
+    fn idx_owner(env: &Env, owner: &Address, system: &Symbol, tier: &Symbol) {
+        let key = DataKey::OwnerIndex(owner.clone());
+        let mut badges: Vec<Badge> = env
+            .storage()
+            .persistent()
+            .get(&key)
+            .unwrap_or_else(|| Vec::new(env));
+
+        let mut found = false;
+        for i in 0..badges.len() {
+            let b = badges.get(i).unwrap();
+            if b.system == *system && b.tier == *tier {
+                found = true;
+                break;
+            }
+        }
+        if !found {
+            badges.push_back(Badge {
+                system: system.clone(),
+                tier: tier.clone(),
+            });
+            env.storage().persistent().set(&key, &badges);
+            Self::bump_persistent(env, &key);
+        }
+    }
+
+    /// Update global record if this score beats the current best.
+    fn maybe_update_record(
+        env: &Env,
+        system: &Symbol,
+        verifier_hash: &BytesN<32>,
+        owner: &Address,
+        score: u64,
+        attestation_id: u64,
+        ledger: u32,
+    ) {
+        let key = DataKey::Record((system.clone(), verifier_hash.clone()));
+        let should_update = match env.storage().persistent().get::<DataKey, RecordEntry>(&key) {
+            Some(existing) => score > existing.score,
+            None => true,
+        };
+        if should_update {
+            let entry = RecordEntry {
+                owner: owner.clone(),
+                score,
+                attestation_id,
+                ledger,
+            };
+            env.storage().persistent().set(&key, &entry);
+            Self::bump_persistent(env, &key);
+
+            env.events().publish(
+                (symbol_short!("record"), system.clone()),
+                (owner.clone(), score, verifier_hash.clone(), ledger),
+            );
         }
     }
 
     fn next_nonce(env: &Env) -> u64 {
-        let current = env.storage().instance().get::<DataKey, u64>(&DataKey::Nonce).unwrap_or(0);
-        let next = current + 1;
-        env.storage().instance().set(&DataKey::Nonce, &next);
-        next
+        let n = env
+            .storage()
+            .instance()
+            .get::<DataKey, u64>(&DataKey::Nonce)
+            .unwrap_or(0)
+            + 1;
+        env.storage().instance().set(&DataKey::Nonce, &n);
+        n
     }
 
-    fn bump_instance_ttl(env: &Env) {
+    fn bump_instance(env: &Env) {
         let max = env.storage().max_ttl();
-        let threshold = if max > 1 { max / 2 } else { 1 };
-        env.storage().instance().extend_ttl(threshold, max);
+        env.storage()
+            .instance()
+            .extend_ttl(if max > 1 { max / 2 } else { 1 }, max);
     }
 
-    fn bump_persistent_key_ttl(env: &Env, key: &DataKey) {
+    fn bump_persistent(env: &Env, key: &DataKey) {
         let max = env.storage().max_ttl();
-        let threshold = if max > 1 { max / 2 } else { 1 };
-        env.storage().persistent().extend_ttl(key, threshold, max);
+        env.storage()
+            .persistent()
+            .extend_ttl(key, if max > 1 { max / 2 } else { 1 }, max);
     }
 
-    fn verify_groth16_internal(
+    // ── BN254 Groth16 Verification ──────────────────────────────────
+
+    fn groth16_verify(
         env: &Env,
         vk: &Groth16VerificationKey,
         public_inputs: &Vec<BytesN<32>>,
         proof: &Groth16Proof,
     ) -> Result<(), Groth16Error> {
-        // VK_IC length must be public_inputs.len()+1
         if vk.ic.len() != public_inputs.len() + 1 {
             return Err(Groth16Error::InvalidPublicInputs);
         }
 
-        let bn254 = env.crypto().bn254();
+        let bn = env.crypto().bn254();
 
         let pi_a = Bn254G1Affine::from_bytes(proof.pi_a.clone());
         let pi_b = Bn254G2Affine::from_bytes(proof.pi_b.clone());
         let pi_c = Bn254G1Affine::from_bytes(proof.pi_c.clone());
 
-        let alpha_g1 = Bn254G1Affine::from_bytes(vk.alpha_g1.clone());
-        let beta_g2 = Bn254G2Affine::from_bytes(vk.beta_g2.clone());
-        let gamma_g2 = Bn254G2Affine::from_bytes(vk.gamma_g2.clone());
-        let delta_g2 = Bn254G2Affine::from_bytes(vk.delta_g2.clone());
+        let alpha = Bn254G1Affine::from_bytes(vk.alpha_g1.clone());
+        let beta = Bn254G2Affine::from_bytes(vk.beta_g2.clone());
+        let gamma = Bn254G2Affine::from_bytes(vk.gamma_g2.clone());
+        let delta = Bn254G2Affine::from_bytes(vk.delta_g2.clone());
 
         let mut vk_x = Bn254G1Affine::from_bytes(vk.ic.get(0).unwrap());
         for i in 0..public_inputs.len() {
             let scalar_bytes = public_inputs.get(i).unwrap();
-            let scalar = Fr::from_bytes(scalar_bytes.clone());
-
-            // Skip multiplication if scalar is zero.
             let mut is_zero = true;
             for b in scalar_bytes.iter() {
                 if b != 0 {
@@ -485,41 +726,32 @@ impl FarmAttestations {
                 }
             }
             if !is_zero {
-                let ic_point = Bn254G1Affine::from_bytes(vk.ic.get(i + 1).unwrap());
-                let term = bn254.g1_mul(&ic_point, &scalar);
-                vk_x = bn254.g1_add(&vk_x, &term);
+                let ic = Bn254G1Affine::from_bytes(vk.ic.get(i + 1).unwrap());
+                let term = bn.g1_mul(&ic, &Fr::from_bytes(scalar_bytes));
+                vk_x = bn.g1_add(&vk_x, &term);
             }
         }
 
-        // Negate pi_a by multiplying with -1 mod r.
-        let r_minus_one = BytesN::from_array(env, &[
+        // Negate pi_a: multiply by (r - 1) where r is the BN254 scalar field order.
+        let neg_one = Fr::from_bytes(BytesN::from_array(env, &[
             0x30, 0x64, 0x4e, 0x72, 0xe1, 0x31, 0xa0, 0x29,
             0xb8, 0x50, 0x45, 0xb6, 0x81, 0x81, 0x58, 0x5d,
             0x28, 0x33, 0xe8, 0x48, 0x79, 0xb9, 0x70, 0x91,
             0x43, 0xe1, 0xf5, 0x93, 0xf0, 0x00, 0x00, 0x00,
-        ]);
-        let fr_neg_one = Fr::from_bytes(r_minus_one);
-        let pi_a_neg = bn254.g1_mul(&pi_a, &fr_neg_one);
+        ]));
+        let pi_a_neg = bn.g1_mul(&pi_a, &neg_one);
 
-        let mut g1_points: Vec<Bn254G1Affine> = Vec::new(env);
-        let mut g2_points: Vec<Bn254G2Affine> = Vec::new(env);
+        // e(-A, B) * e(alpha, beta) * e(vk_x, gamma) * e(C, delta) == 1
+        let mut g1 = Vec::new(env);
+        let mut g2 = Vec::new(env);
+        g1.push_back(pi_a_neg); g2.push_back(pi_b);
+        g1.push_back(alpha);    g2.push_back(beta);
+        g1.push_back(vk_x);    g2.push_back(gamma);
+        g1.push_back(pi_c);    g2.push_back(delta);
 
-        g1_points.push_back(pi_a_neg);
-        g2_points.push_back(pi_b);
-
-        g1_points.push_back(alpha_g1);
-        g2_points.push_back(beta_g2);
-
-        g1_points.push_back(vk_x);
-        g2_points.push_back(gamma_g2);
-
-        g1_points.push_back(pi_c);
-        g2_points.push_back(delta_g2);
-
-        if !bn254.pairing_check(g1_points, g2_points) {
+        if !bn.pairing_check(g1, g2) {
             return Err(Groth16Error::InvalidProof);
         }
-
         Ok(())
     }
 }
