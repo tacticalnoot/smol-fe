@@ -16,6 +16,8 @@ pub enum DataKey {
     Groth16Vk(Symbol),
     // Appended (do not reorder): External verifier addresses (upgrade bridge).
     UltraHonkVerifier,
+    // v3: Per-system index of (owner, tier) tuples for leaderboard enumeration.
+    SystemIndex(Symbol),
 }
 
 #[derive(Clone)]
@@ -29,6 +31,17 @@ pub struct AttestationRecord {
     pub ledger: u32,
     pub timestamp: u64,
     pub attestation_id: u64,
+    /// Optional numeric score for ranked attestations (e.g. Hero game scores).
+    /// Zero means "not scored" (backward-compatible with v2 records).
+    pub score: u64,
+}
+
+/// Lightweight tuple stored in the per-system index for leaderboard enumeration.
+#[derive(Clone)]
+#[contracttype]
+pub struct IndexEntry {
+    pub owner: Address,
+    pub tier: Symbol,
 }
 
 #[contracterror]
@@ -72,7 +85,7 @@ pub struct FarmAttestations;
 #[contractimpl]
 impl FarmAttestations {
     pub fn version() -> u32 {
-        2
+        3
     }
 
     pub fn is_initialized(env: Env) -> bool {
@@ -207,32 +220,7 @@ impl FarmAttestations {
             return Err(UltraHonkError::VerificationFailed);
         }
 
-        let attestation_id = Self::next_nonce(&env);
-        let ledger = env.ledger().sequence();
-        let timestamp = env.ledger().timestamp();
-
-        let record = AttestationRecord {
-            owner: owner.clone(),
-            system: system.clone(),
-            tier: tier.clone(),
-            statement_hash: statement_hash.clone(),
-            verifier_hash: verifier_hash.clone(),
-            ledger,
-            timestamp,
-            attestation_id,
-        };
-
-        let key = DataKey::Entry((owner.clone(), system.clone(), tier.clone()));
-        env.storage().persistent().set(&key, &record);
-        Self::bump_persistent_key_ttl(&env, &key);
-        Self::bump_instance_ttl(&env);
-
-        env.events().publish(
-            (symbol_short!("attest"), owner, system, tier),
-            (statement_hash, verifier_hash, ledger, timestamp, attestation_id),
-        );
-
-        Ok(attestation_id)
+        Ok(Self::store_attestation(&env, owner, system, tier, statement_hash, verifier_hash, 0))
     }
 
     /// Verify an UltraHonk proof via the configured verifier contract *and* a specific `vk_id`,
@@ -274,32 +262,7 @@ impl FarmAttestations {
             return Err(UltraHonkError::VerificationFailed);
         }
 
-        let attestation_id = Self::next_nonce(&env);
-        let ledger = env.ledger().sequence();
-        let timestamp = env.ledger().timestamp();
-
-        let record = AttestationRecord {
-            owner: owner.clone(),
-            system: system.clone(),
-            tier: tier.clone(),
-            statement_hash: statement_hash.clone(),
-            verifier_hash: verifier_hash.clone(),
-            ledger,
-            timestamp,
-            attestation_id,
-        };
-
-        let key = DataKey::Entry((owner.clone(), system.clone(), tier.clone()));
-        env.storage().persistent().set(&key, &record);
-        Self::bump_persistent_key_ttl(&env, &key);
-        Self::bump_instance_ttl(&env);
-
-        env.events().publish(
-            (symbol_short!("attest"), owner, system, tier),
-            (statement_hash, verifier_hash, ledger, timestamp, attestation_id),
-        );
-
-        Ok(attestation_id)
+        Ok(Self::store_attestation(&env, owner, system, tier, statement_hash, verifier_hash, 0))
     }
 
     /// Verify Groth16 proof against registered VK, without storing anything.
@@ -344,33 +307,7 @@ impl FarmAttestations {
 
         Self::verify_groth16_internal(&env, &vk, &public_inputs, &proof)?;
 
-        // Reuse existing attest storage/event shape (reviewer-proof: the proof was verified above).
-        let attestation_id = Self::next_nonce(&env);
-        let ledger = env.ledger().sequence();
-        let timestamp = env.ledger().timestamp();
-
-        let record = AttestationRecord {
-            owner: owner.clone(),
-            system: system.clone(),
-            tier: tier.clone(),
-            statement_hash: statement_hash.clone(),
-            verifier_hash: verifier_hash.clone(),
-            ledger,
-            timestamp,
-            attestation_id,
-        };
-
-        let key = DataKey::Entry((owner.clone(), system.clone(), tier.clone()));
-        env.storage().persistent().set(&key, &record);
-        Self::bump_persistent_key_ttl(&env, &key);
-        Self::bump_instance_ttl(&env);
-
-        env.events().publish(
-            (symbol_short!("attest"), owner, system, tier),
-            (statement_hash, verifier_hash, ledger, timestamp, attestation_id),
-        );
-
-        Ok(attestation_id)
+        Ok(Self::store_attestation(&env, owner, system, tier, statement_hash, verifier_hash, 0))
     }
 
     pub fn attest(
@@ -382,33 +319,65 @@ impl FarmAttestations {
         verifier_hash: BytesN<32>,
     ) -> u64 {
         owner.require_auth();
+        Self::store_attestation(&env, owner, system, tier, statement_hash, verifier_hash, 0)
+    }
 
-        let attestation_id = Self::next_nonce(&env);
-        let ledger = env.ledger().sequence();
-        let timestamp = env.ledger().timestamp();
+    /// Store an attestation with an explicit numeric score (for ranked leaderboards).
+    ///
+    /// Identical to `attest` but carries a `score` that can be queried on-chain
+    /// without parsing the statement hash.
+    pub fn attest_with_score(
+        env: Env,
+        owner: Address,
+        system: Symbol,
+        tier: Symbol,
+        statement_hash: BytesN<32>,
+        verifier_hash: BytesN<32>,
+        score: u64,
+    ) -> u64 {
+        owner.require_auth();
+        Self::store_attestation(&env, owner, system, tier, statement_hash, verifier_hash, score)
+    }
 
-        let record = AttestationRecord {
-            owner: owner.clone(),
-            system: system.clone(),
-            tier: tier.clone(),
-            statement_hash: statement_hash.clone(),
-            verifier_hash: verifier_hash.clone(),
-            ledger,
-            timestamp,
-            attestation_id,
-        };
+    /// Store multiple attestations in a single transaction.
+    ///
+    /// Each entry is (system, tier, statement_hash, verifier_hash, score).
+    /// All entries share the same `owner` who must authorize the call once.
+    /// Returns the last attestation_id.
+    pub fn batch_attest(
+        env: Env,
+        owner: Address,
+        systems: Vec<Symbol>,
+        tiers: Vec<Symbol>,
+        statement_hashes: Vec<BytesN<32>>,
+        verifier_hashes: Vec<BytesN<32>>,
+        scores: Vec<u64>,
+    ) -> u64 {
+        owner.require_auth();
 
-        let key = DataKey::Entry((owner.clone(), system.clone(), tier.clone()));
-        env.storage().persistent().set(&key, &record);
-        Self::bump_persistent_key_ttl(&env, &key);
-        Self::bump_instance_ttl(&env);
-
-        env.events().publish(
-            (symbol_short!("attest"), owner, system, tier),
-            (statement_hash, verifier_hash, ledger, timestamp, attestation_id),
+        let count = systems.len();
+        assert!(count > 0, "empty batch");
+        assert!(
+            count == tiers.len()
+                && count == statement_hashes.len()
+                && count == verifier_hashes.len()
+                && count == scores.len(),
+            "mismatched batch lengths"
         );
 
-        attestation_id
+        let mut last_id = 0u64;
+        for i in 0..count {
+            last_id = Self::store_attestation(
+                &env,
+                owner.clone(),
+                systems.get(i).unwrap(),
+                tiers.get(i).unwrap(),
+                statement_hashes.get(i).unwrap(),
+                verifier_hashes.get(i).unwrap(),
+                scores.get(i).unwrap(),
+            );
+        }
+        last_id
     }
 
     pub fn get(env: Env, owner: Address, system: Symbol, tier: Symbol) -> Option<AttestationRecord> {
@@ -427,6 +396,104 @@ impl FarmAttestations {
         match env.storage().persistent().get::<DataKey, AttestationRecord>(&key) {
             Some(record) => record.statement_hash == statement_hash,
             None => false,
+        }
+    }
+
+    /// Return the system index: a list of (owner, tier) pairs that have attestations
+    /// under this system. Useful for building off-chain leaderboards.
+    ///
+    /// Returns an empty vec if no attestations exist for the system.
+    pub fn list_by_system(env: Env, system: Symbol) -> Vec<IndexEntry> {
+        let key = DataKey::SystemIndex(system);
+        env.storage()
+            .persistent()
+            .get(&key)
+            .unwrap_or_else(|| Vec::new(&env))
+    }
+
+    /// Return the number of unique (owner, tier) attestations for a system.
+    pub fn count_by_system(env: Env, system: Symbol) -> u32 {
+        let key = DataKey::SystemIndex(system);
+        let index: Vec<IndexEntry> = env
+            .storage()
+            .persistent()
+            .get(&key)
+            .unwrap_or_else(|| Vec::new(&env));
+        index.len()
+    }
+
+    // --------------------------------------------------------------------
+    // Internal: shared attestation storage (v3 unified path)
+    // --------------------------------------------------------------------
+
+    fn store_attestation(
+        env: &Env,
+        owner: Address,
+        system: Symbol,
+        tier: Symbol,
+        statement_hash: BytesN<32>,
+        verifier_hash: BytesN<32>,
+        score: u64,
+    ) -> u64 {
+        let attestation_id = Self::next_nonce(env);
+        let ledger = env.ledger().sequence();
+        let timestamp = env.ledger().timestamp();
+
+        let record = AttestationRecord {
+            owner: owner.clone(),
+            system: system.clone(),
+            tier: tier.clone(),
+            statement_hash: statement_hash.clone(),
+            verifier_hash: verifier_hash.clone(),
+            ledger,
+            timestamp,
+            attestation_id,
+            score,
+        };
+
+        let entry_key = DataKey::Entry((owner.clone(), system.clone(), tier.clone()));
+        env.storage().persistent().set(&entry_key, &record);
+        Self::bump_persistent_key_ttl(env, &entry_key);
+
+        // Update system index (append if new owner+tier combo)
+        Self::index_entry(env, &system, &owner, &tier);
+
+        Self::bump_instance_ttl(env);
+
+        env.events().publish(
+            (symbol_short!("attest"), owner, system, tier),
+            (statement_hash, verifier_hash, ledger, timestamp, attestation_id),
+        );
+
+        attestation_id
+    }
+
+    /// Append (owner, tier) to the system index if not already present.
+    fn index_entry(env: &Env, system: &Symbol, owner: &Address, tier: &Symbol) {
+        let idx_key = DataKey::SystemIndex(system.clone());
+        let mut index: Vec<IndexEntry> = env
+            .storage()
+            .persistent()
+            .get(&idx_key)
+            .unwrap_or_else(|| Vec::new(env));
+
+        // Check for duplicate (same owner + tier already indexed)
+        let mut found = false;
+        for i in 0..index.len() {
+            let entry = index.get(i).unwrap();
+            if entry.owner == *owner && entry.tier == *tier {
+                found = true;
+                break;
+            }
+        }
+
+        if !found {
+            index.push_back(IndexEntry {
+                owner: owner.clone(),
+                tier: tier.clone(),
+            });
+            env.storage().persistent().set(&idx_key, &index);
+            Self::bump_persistent_key_ttl(env, &idx_key);
         }
     }
 
