@@ -144,6 +144,33 @@
     let attestResult = $state<{ ok: boolean; txHash?: string; error?: string } | null>(null);
     let isAttesting = $state(false);
 
+    // Volume & song progress
+    let volume = $state(0.7);
+    let songProgress = $state(0); // 0-1 progress through song
+    let trackDuration = $state(0); // seconds
+
+    // Previous best (for delta display on results screen)
+    let previousBest = $state<LocalScore | null>(null);
+
+    // Screen shake on combo break
+    let comboBreakShake = $state(false);
+
+    // Live derived stats
+    let totalNotes = $derived(stats.perfect + stats.great + stats.ok + stats.miss);
+    let liveAccuracy = $derived.by(() => {
+        if (totalNotes === 0) return 100;
+        const weighted = stats.perfect * 1.0 + stats.great * 0.7 + stats.ok * 0.4;
+        return Math.round((weighted / totalNotes) * 100);
+    });
+    let comboText = $derived.by(() => {
+        if (stats.combo >= 100) return "LEGENDARY";
+        if (stats.combo >= 50) return "UNSTOPPABLE";
+        if (stats.combo >= 25) return "ON FIRE";
+        if (stats.combo >= 10) return "GREAT STREAK";
+        return "";
+    });
+    let hitRate = $derived(totalNotes > 0 ? Math.round(((stats.perfect + stats.great + stats.ok) / totalNotes) * 100) : 0);
+
     // Beat detection state
     let isAnalyzing = $state(false);
     let animationFrameId: number | null = null;
@@ -431,6 +458,11 @@
 
         const currentTime = audio.currentTime;
 
+        // Update song progress
+        if (audio.duration) {
+            songProgress = currentTime / audio.duration;
+        }
+
         // Detect new onsets (real-time or from cache)
         if (cachedBeatmap) {
             detectOnsetsFromCache(currentTime);
@@ -484,8 +516,8 @@
         // Visual feedback
         pressedLanes[laneIndex] = true;
 
-        // Find closest unhit note in this lane
-        const currentTime = audio?.currentTime || 0;
+        // Find closest unhit note in this lane (apply calibration offset)
+        const currentTime = (audio?.currentTime || 0) + settings.calibrationOffset / 1000;
         const laneNotes = notes
             .filter((n) => n.lane === laneIndex && !n.hit)
             .sort(
@@ -613,6 +645,12 @@
     }
 
     function handleMiss(note: Note) {
+        // Screen shake on significant combo break
+        if (stats.combo >= 5) {
+            comboBreakShake = true;
+            setTimeout(() => comboBreakShake = false, 300);
+        }
+
         stats.miss++;
         stats.combo = 0; // Break combo
 
@@ -1048,7 +1086,12 @@
         audio = new Audio();
         audio.crossOrigin = "anonymous";
         audio.src = `${import.meta.env.PUBLIC_API_URL}/song/${currentTrack.Song_1}.mp3`;
-        audio.volume = 0.7;
+        audio.volume = volume;
+
+        // Track duration once metadata loads
+        audio.onloadedmetadata = () => {
+            trackDuration = audio?.duration || 0;
+        };
 
         // Init analysis (only if not using pre-computed beatmap)
         if (!cachedBeatmap) {
@@ -1103,6 +1146,9 @@
             score: stats.score,
             maxCombo: stats.maxCombo,
         });
+
+        // Capture previous best for delta display before saving
+        previousBest = currentTrack ? getLocalScore(currentTrack.Song_1, settings.difficulty) : null;
 
         // Save to localStorage (personal best tracking)
         if (currentTrack) {
@@ -1223,6 +1269,9 @@
         currentTrack = null;
         currentRating = null;
         isNewPersonalBest = false;
+        previousBest = null;
+        songProgress = 0;
+        trackDuration = 0;
         attestResult = null;
         attestStage = null;
         isAttesting = false;
@@ -1280,6 +1329,18 @@
     // ======================
     // LIFECYCLE
     // ======================
+
+    function formatDuration(seconds: number): string {
+        const m = Math.floor(seconds / 60);
+        const s = Math.floor(seconds % 60);
+        return `${m}:${s.toString().padStart(2, '0')}`;
+    }
+
+    function getCachedNoteCount(track: any): number | null {
+        const cacheKey = `${track.Song_1}-${settings.difficulty}`;
+        const beatmap = beatmapCache.get(cacheKey);
+        return beatmap ? beatmap.onsets.length : null;
+    }
 
     function getArtistDisplay(track: any) {
         if (!track) return "Unknown Artist";
@@ -1452,18 +1513,33 @@
                 {/if}
             </div>
 
-            <!-- Difficulty selector -->
-            <div class="flex gap-2 justify-center">
-                {#each difficultyOptions as d}
-                    <button
-                        onclick={() => (settings.difficulty = d)}
-                        class="px-4 py-2 text-[10px] uppercase tracking-wider border rounded-md transition-all {settings.difficulty === d
-                            ? 'bg-[#9ae600] text-black border-[#9ae600] font-bold shadow-[0_0_12px_rgba(154,230,0,0.3)]'
-                            : 'bg-[#0a0a0a] border-[#2a2a2a] text-[#555] hover:border-[#9ae600]/50 hover:text-[#9ae600]'}"
-                    >
-                        {d}
+            <!-- Difficulty selector + Volume -->
+            <div class="flex flex-col gap-3">
+                <div class="flex gap-2 justify-center">
+                    {#each difficultyOptions as d}
+                        <button
+                            onclick={() => (settings.difficulty = d)}
+                            class="px-4 py-2 text-[10px] uppercase tracking-wider border rounded-md transition-all {settings.difficulty === d
+                                ? 'bg-[#9ae600] text-black border-[#9ae600] font-bold shadow-[0_0_12px_rgba(154,230,0,0.3)]'
+                                : 'bg-[#0a0a0a] border-[#2a2a2a] text-[#555] hover:border-[#9ae600]/50 hover:text-[#9ae600]'}"
+                        >
+                            {d}
                     </button>
-                {/each}
+                    {/each}
+                </div>
+                <!-- Volume slider -->
+                <div class="flex items-center justify-center gap-2">
+                    <span class="text-[9px] text-[#444]">VOL</span>
+                    <input
+                        type="range"
+                        min="0"
+                        max="1"
+                        step="0.05"
+                        bind:value={volume}
+                        class="volume-slider w-24 h-1 accent-[#9ae600] cursor-pointer"
+                    />
+                    <span class="text-[9px] text-[#555] tabular-nums w-7">{Math.round(volume * 100)}%</span>
+                </div>
             </div>
 
             <!-- FILTERS -->
@@ -1529,6 +1605,7 @@
                 {#each playableTracks as track (track.Id)}
                     {@const isCached = beatmapCache.has(`${track.Song_1}-${settings.difficulty}`)}
                     {@const personalBest = getLocalScore(track.Song_1, settings.difficulty)}
+                    {@const noteCount = getCachedNoteCount(track)}
                     <div class="relative group">
                         <button
                             onclick={() => selectTrack(track)}
@@ -1553,6 +1630,9 @@
                                         <span>{getArtistDisplay(track)}</span>
                                         {#if isCached}
                                             <span class="text-[#9ae600]/60">&bull; cached</span>
+                                        {/if}
+                                        {#if noteCount !== null}
+                                            <span class="text-[#b026ff]/60">&bull; {noteCount} notes</span>
                                         {/if}
                                         {#if personalBest}
                                             <span class="inline-flex items-center gap-0.5 ml-auto">
@@ -1606,8 +1686,8 @@
         <div class="relative">
             <!-- HUD -->
             <div
-                class="flex justify-between items-center mb-3 px-3 py-2.5"
-                style="border-bottom: 1px solid #1a1a1a;"
+                class="flex justify-between items-center px-3 py-2.5"
+                style="border-bottom: none;"
             >
                 <div class="flex flex-col gap-0.5 min-w-0 flex-1">
                     <div class="text-sm text-white font-bold truncate">
@@ -1617,7 +1697,7 @@
                         {getArtistDisplay(currentTrack)} &bull; {settings.difficulty.toUpperCase()}
                     </div>
                 </div>
-                <div class="flex gap-5 text-right flex-shrink-0 ml-4">
+                <div class="flex gap-4 text-right flex-shrink-0 ml-4">
                     <div class="flex flex-col">
                         <span class="text-[9px] text-[#444] tracking-wider">SCORE</span>
                         <span class="text-lg text-[#9ae600] font-bold tabular-nums leading-tight"
@@ -1635,13 +1715,65 @@
                             >{stats.combo}x</span
                         >
                     </div>
+                    <div class="flex flex-col">
+                        <span class="text-[9px] text-[#444] tracking-wider">ACC</span>
+                        <span class="text-lg font-bold tabular-nums leading-tight"
+                            style="color: {liveAccuracy >= 90 ? '#9ae600' : liveAccuracy >= 70 ? '#FDDA24' : liveAccuracy >= 50 ? '#f91880' : '#555'};
+                                   transition: color 0.3s;"
+                            >{liveAccuracy}%</span
+                        >
+                    </div>
+                    <div class="flex flex-col">
+                        <span class="text-[9px] text-[#444] tracking-wider">MISS</span>
+                        <span class="text-lg font-bold tabular-nums leading-tight"
+                            style="color: {stats.miss > 0 ? '#f91880' : '#333'};
+                                   transition: color 0.15s;"
+                            >{stats.miss}</span
+                        >
+                    </div>
                 </div>
             </div>
+
+            <!-- Song Progress Bar + Time -->
+            <div class="relative mx-3 mb-2">
+                <div class="h-[3px] bg-[#111] rounded-full overflow-hidden">
+                    <div
+                        class="h-full rounded-full transition-[width] duration-150"
+                        style="width: {songProgress * 100}%;
+                               background: linear-gradient(90deg, #9ae600 0%, {songProgress > 0.7 ? '#f91880' : '#9ae600'} 100%);"
+                    ></div>
+                </div>
+                <div class="flex justify-between mt-0.5">
+                    <span class="text-[8px] text-[#333] tabular-nums">
+                        {trackDuration ? formatDuration(songProgress * trackDuration) : '--:--'}
+                    </span>
+                    <span class="text-[8px] text-[#333] tabular-nums">
+                        {trackDuration ? formatDuration(trackDuration) : '--:--'}
+                    </span>
+                </div>
+            </div>
+
+            <!-- Combo Milestone Text -->
+            {#if comboText}
+                <div class="absolute top-14 left-1/2 -translate-x-1/2 z-30 pointer-events-none combo-milestone-text"
+                    style="color: {stats.combo >= 100 ? '#FFD700' : stats.combo >= 50 ? '#f91880' : '#9ae600'};
+                           font-size: {stats.combo >= 100 ? 20 : stats.combo >= 50 ? 18 : 14}px;
+                           text-shadow: 0 0 20px currentColor, 0 0 40px currentColor;
+                           font-weight: bold;
+                           letter-spacing: 0.15em;
+                           animation: comboTextPulse 0.8s ease-in-out infinite;">
+                    {comboText}
+                </div>
+            {/if}
 
             <!-- GAME FIELD -->
             <div
                 class="game-field relative bg-black rounded-lg overflow-hidden"
-                style="height: {laneHeight}px; border: 1px solid #222;"
+                class:screen-shake={comboBreakShake}
+                style="height: {laneHeight}px;
+                       border: 1px solid {stats.combo >= 50 ? '#f91880' : stats.combo >= 25 ? '#9ae600' : '#222'};
+                       box-shadow: {stats.combo >= 50 ? '0 0 30px rgba(249, 24, 128, 0.2), inset 0 0 30px rgba(249, 24, 128, 0.05)' : stats.combo >= 25 ? '0 0 20px rgba(154, 230, 0, 0.15), inset 0 0 20px rgba(154, 230, 0, 0.03)' : 'none'};
+                       transition: border-color 0.3s, box-shadow 0.3s;"
             >
                 <!-- Scanline overlay for retro feel -->
                 <div class="absolute inset-0 pointer-events-none scanlines"></div>
@@ -1892,6 +2024,44 @@
                         </div>
                     </div>
 
+                    <!-- Volume + Calibration controls -->
+                    <div class="flex flex-col gap-3 mt-4 border-t border-[#333] pt-4">
+                        <div class="flex items-center justify-between">
+                            <span class="text-[10px] text-[#555] uppercase tracking-wider">Volume</span>
+                            <div class="flex items-center gap-2">
+                                <input
+                                    type="range"
+                                    min="0"
+                                    max="1"
+                                    step="0.05"
+                                    bind:value={volume}
+                                    oninput={() => { if (audio) audio.volume = volume; }}
+                                    class="volume-slider w-24 h-1 accent-[#9ae600] cursor-pointer"
+                                />
+                                <span class="text-[10px] text-[#555] tabular-nums w-8">{Math.round(volume * 100)}%</span>
+                            </div>
+                        </div>
+                        <div class="flex items-center justify-between">
+                            <span class="text-[10px] text-[#555] uppercase tracking-wider">Timing</span>
+                            <div class="flex items-center gap-2">
+                                <button
+                                    onclick={() => { settings.calibrationOffset = Math.max(-100, settings.calibrationOffset - 5); }}
+                                    class="w-6 h-6 text-xs border border-[#333] rounded text-[#777] hover:text-white hover:border-white transition-colors"
+                                >-</button>
+                                <span class="text-[10px] text-[#555] tabular-nums w-12 text-center">
+                                    {settings.calibrationOffset > 0 ? '+' : ''}{settings.calibrationOffset}ms
+                                </span>
+                                <button
+                                    onclick={() => { settings.calibrationOffset = Math.min(100, settings.calibrationOffset + 5); }}
+                                    class="w-6 h-6 text-xs border border-[#333] rounded text-[#777] hover:text-white hover:border-white transition-colors"
+                                >+</button>
+                            </div>
+                        </div>
+                        <p class="text-[8px] text-[#333] text-center">
+                            Adjust if hits feel early (-) or late (+)
+                        </p>
+                    </div>
+
                     <button
                         onclick={() => {
                             // Restart track
@@ -1961,7 +2131,17 @@
                         label={currentRating.label}
                     />
                     <div class="text-[10px] text-[#555] mt-1">
-                        {currentRating.accuracy}% weighted accuracy
+                        {currentRating.accuracy}% weighted accuracy &bull; {totalNotes} notes
+                    </div>
+                    <!-- Grade message -->
+                    <div class="text-xs font-bold mt-0.5" style="color: {currentRating.golden ? '#FFD700' : currentRating.stars >= 4 ? '#9ae600' : currentRating.stars >= 3 ? '#FDDA24' : '#f91880'};">
+                        {currentRating.golden ? 'FLAWLESS PERFORMANCE'
+                            : currentRating.stars === 5 ? 'ROCK STAR!'
+                            : currentRating.stars === 4 ? 'ALMOST PERFECT'
+                            : currentRating.stars === 3 ? 'SOLID PERFORMANCE'
+                            : currentRating.stars === 2 ? 'GETTING THERE'
+                            : currentRating.stars === 1 ? 'KEEP PRACTICING'
+                            : 'TOUGH TRACK'}
                     </div>
                     {#if isNewPersonalBest}
                         <div
@@ -1986,11 +2166,47 @@
                         style="color: {currentRating?.golden ? '#FFD700' : '#9ae600'};
                                text-shadow: 0 0 12px {currentRating?.golden ? 'rgba(255, 215, 0, 0.3)' : 'rgba(154, 230, 0, 0.3)'};"
                     >{stats.score.toLocaleString()}</span>
+                    <!-- Score delta vs previous best -->
+                    {#if previousBest}
+                        {@const delta = stats.score - previousBest.score}
+                        <span class="text-[10px] font-bold tabular-nums mt-0.5"
+                            style="color: {delta > 0 ? '#9ae600' : delta < 0 ? '#f91880' : '#555'};">
+                            {delta > 0 ? '+' : ''}{delta.toLocaleString()}
+                        </span>
+                    {:else}
+                        <span class="text-[10px] text-[#9ae600] font-bold mt-0.5">FIRST CLEAR!</span>
+                    {/if}
                 </div>
                 <div class="flex flex-col items-center p-3 border border-[#333] rounded bg-[#0a0a0a]">
                     <span class="text-[9px] text-[#555] uppercase tracking-wider">Max Combo</span>
                     <span class="text-2xl md:text-3xl text-[#f91880] font-bold tabular-nums"
                         >{stats.maxCombo}x</span>
+                    <span class="text-[10px] text-[#555] tabular-nums mt-0.5">
+                        / {totalNotes} notes
+                    </span>
+                </div>
+            </div>
+
+            <!-- Hit Rate Bar -->
+            <div class="px-1">
+                <div class="flex items-center gap-2 mb-1">
+                    <span class="text-[9px] text-[#555] uppercase tracking-wider">Hit Rate</span>
+                    <span class="text-[9px] text-white font-bold tabular-nums">{hitRate}%</span>
+                </div>
+                <div class="h-2 bg-[#0a0a0a] rounded-full overflow-hidden border border-[#222]">
+                    <div class="h-full flex">
+                        {#if totalNotes > 0}
+                            <div class="h-full bg-[#9ae600]" style="width: {(stats.perfect / totalNotes) * 100}%;"></div>
+                            <div class="h-full bg-[#FDDA24]" style="width: {(stats.great / totalNotes) * 100}%;"></div>
+                            <div class="h-full bg-[#f91880]" style="width: {(stats.ok / totalNotes) * 100}%;"></div>
+                        {/if}
+                    </div>
+                </div>
+                <div class="flex justify-between mt-1 text-[8px] text-[#444]">
+                    <span>{stats.perfect} perfect</span>
+                    <span>{stats.great} great</span>
+                    <span>{stats.ok} ok</span>
+                    <span>{stats.miss} miss</span>
                 </div>
             </div>
 
@@ -2148,5 +2364,58 @@
     @keyframes pbPulse {
         0%, 100% { opacity: 1; }
         50% { opacity: 0.6; }
+    }
+
+    /* Screen shake on combo break */
+    .screen-shake {
+        animation: shake 0.3s cubic-bezier(0.36, 0.07, 0.19, 0.97) both;
+    }
+
+    @keyframes shake {
+        0%, 100% { transform: translateX(0); }
+        10% { transform: translateX(-4px) rotate(-0.5deg); }
+        20% { transform: translateX(4px) rotate(0.5deg); }
+        30% { transform: translateX(-3px) rotate(-0.3deg); }
+        40% { transform: translateX(3px) rotate(0.3deg); }
+        50% { transform: translateX(-2px); }
+        60% { transform: translateX(2px); }
+        70% { transform: translateX(-1px); }
+        80% { transform: translateX(1px); }
+    }
+
+    /* Combo milestone text pulse */
+    @keyframes comboTextPulse {
+        0%, 100% { transform: translateX(-50%) scale(1); opacity: 0.9; }
+        50% { transform: translateX(-50%) scale(1.08); opacity: 1; }
+    }
+
+    /* Volume slider styling */
+    .volume-slider {
+        appearance: none;
+        -webkit-appearance: none;
+        background: #222;
+        border-radius: 2px;
+        outline: none;
+    }
+
+    .volume-slider::-webkit-slider-thumb {
+        appearance: none;
+        -webkit-appearance: none;
+        width: 10px;
+        height: 10px;
+        background: #9ae600;
+        border-radius: 50%;
+        cursor: pointer;
+        box-shadow: 0 0 6px rgba(154, 230, 0, 0.4);
+    }
+
+    .volume-slider::-moz-range-thumb {
+        width: 10px;
+        height: 10px;
+        background: #9ae600;
+        border-radius: 50%;
+        cursor: pointer;
+        border: none;
+        box-shadow: 0 0 6px rgba(154, 230, 0, 0.4);
     }
 </style>
