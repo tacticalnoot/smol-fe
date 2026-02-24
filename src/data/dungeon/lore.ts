@@ -101,6 +101,7 @@ export const dungeonLore: Record<DungeonRoomId, RoomLore> = {
       ].join(“\n\n”),
     protocolPlacard:
       “Policy: Two-Factor + Cold-Chain Lane. Door opens iff (tier_id >= MIN) AND (parity matches) AND (Lane matches).”,
+    verifierExplainer:
       “Verifier: RISC0 zkVM (WASM). Checks receipts locally in-browser. On-chain settlement fires when wallet is connected and the ADVANCED ON-CHAIN toggle is enabled — same toggle as Room 2. RISC0 compresses its STARK receipt into a Groth16 proof with five standard public inputs (control root hi/lo, claim digest hi/lo, BN254 control ID), and a Soroban contract runs the full pairing check on Stellar Mainnet. The prover service controls proof freshness only: if unavailable, the room falls back to a bundled training receipt and still submits that on-chain. Non-blocking. The contract routes through farm-attestations — a verification-key registry that tracks proof systems by ID (R0G16V1 for RISC0, NOIR_ROLE_V1 for Noir, with room for more). New circuits onboard by registering a key; the attestation layer never redeploys. One registry, many proof systems. Prove an off-chain ML result, a game outcome, a credit score, a sensor reading — anything a RISC0 program can compute, farm-attestations can record on Stellar.”,
     failureExplainersByReasonCode: {
       PROOF_INVALID:
