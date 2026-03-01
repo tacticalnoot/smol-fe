@@ -972,6 +972,17 @@
         </a>
 
         {#if audioState.currentSong.Id && audioState.currentSong.Song_1}
+          <!-- Previous Track -->
+          <button
+            onclick={playPrevSong}
+            class="w-8 h-8 flex items-center justify-center text-slate-400 hover:text-white active:scale-95 transition-all rounded-full"
+            title="Previous track"
+          >
+            <svg class="w-4 h-4" fill="currentColor" viewBox="0 0 24 24">
+              <path d="M6 6h2v12H6zm3.5 6l8.5 6V6z" />
+            </svg>
+          </button>
+
           <MiniAudioPlayer
             id={audioState.currentSong.Id}
             playing_id={audioState.playingId}
@@ -979,6 +990,17 @@
             songNext={playNextSong}
             progress={audioState.progress}
           />
+
+          <!-- Next Track -->
+          <button
+            onclick={playNextSong}
+            class="w-8 h-8 flex items-center justify-center text-slate-400 hover:text-white active:scale-95 transition-all rounded-full"
+            title="Next track"
+          >
+            <svg class="w-4 h-4" fill="currentColor" viewBox="0 0 24 24">
+              <path d="M6 18l8.5-6L6 6v12zM16 6v12h2V6h-2z" />
+            </svg>
+          </button>
         {/if}
       </div>
     </div>
