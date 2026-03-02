@@ -27,10 +27,68 @@
   let token = "";
   let bundle: ClientKeyBundle | null = null;
   let kit: any = null;
+  const WALLET_SELECTION_POLL_MS = 100;
+  const WALLET_SELECTION_TIMEOUT_MS = 4000;
+  const ADDRESS_RETRY_ATTEMPTS = 20;
+  const ADDRESS_RETRY_DELAY_MS = 200;
 
   onMount(async () => {
     bundle = await loadKeys();
   });
+
+  function sleep(ms: number) {
+    return new Promise((resolve) => setTimeout(resolve, ms));
+  }
+
+  function isClassicStellarAddress(address: string): boolean {
+    return /^G[A-Z2-7]{55}$/.test(address);
+  }
+
+  async function connectWalletAddress(walletKit: any): Promise<string> {
+    let selectedWalletId = "";
+
+    await walletKit.openModal({
+      onWalletSelected: async (option: any) => {
+        selectedWalletId = option?.id || "";
+        if (selectedWalletId) {
+          walletKit.setWallet(selectedWalletId);
+        }
+      },
+    });
+
+    if (!selectedWalletId) {
+      const polls = Math.ceil(
+        WALLET_SELECTION_TIMEOUT_MS / WALLET_SELECTION_POLL_MS
+      );
+      for (let i = 0; i < polls && !selectedWalletId; i += 1) {
+        await sleep(WALLET_SELECTION_POLL_MS);
+      }
+    }
+
+    if (!selectedWalletId) {
+      throw new Error("No wallet selected");
+    }
+
+    walletKit.setWallet(selectedWalletId);
+
+    for (let attempt = 0; attempt < ADDRESS_RETRY_ATTEMPTS; attempt += 1) {
+      try {
+        const { address } = await walletKit.getAddress();
+        if (address) return address;
+      } catch (err: any) {
+        const message = String(err?.message || "");
+        const isSetWalletRace = message
+          .toLowerCase()
+          .includes("set the wallet first");
+        if (!isSetWalletRace || attempt === ADDRESS_RETRY_ATTEMPTS - 1) {
+          throw err;
+        }
+      }
+      await sleep(ADDRESS_RETRY_DELAY_MS);
+    }
+
+    throw new Error("Wallet took too long to return an address");
+  }
 
   async function connectAndJoin() {
     if (!room || room.status !== "enabled") return;
@@ -41,26 +99,11 @@
       const { kit: loadedKit } = await loadWalletKit();
       kit = loadedKit;
       status = "auth";
-
-      await kit.openModal({
-        onWalletSelected: async (option: any) => {
-          kit.setWallet(option.id);
-          const { address } = await kit.getAddress();
-          walletAddress = address;
-        },
-      });
-
-      // Wait for walletAddress to be set via callback if not already
-      if (!walletAddress) {
-        // Fallback if modal closed without selection or callback async issue?
-        // Actually openModal awaits until closed. If user selected, callback ran.
-        // But let's check just in case.
-        try {
-          const { address } = await kit.getAddress();
-          walletAddress = address;
-        } catch (e) {
-          throw new Error("No wallet selected");
-        }
+      walletAddress = await connectWalletAddress(kit);
+      if (!isClassicStellarAddress(walletAddress)) {
+        throw new Error(
+          "THE VIP sign-in currently supports classic Stellar addresses (G...). Use Freighter, xBull, or Albedo."
+        );
       }
 
       status = "signing";

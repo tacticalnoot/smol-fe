@@ -24,9 +24,9 @@ function storedKeyId(): string | null {
 
 export const SMOL_ID_MODULE: ModuleInterface = {
     productId: 'smol-id',
-    productName: 'Smol ID 🥬',
+    productName: 'Smol ID',
     productUrl: 'https://smol.xyz',
-    productIcon: 'https://smol.xyz/favicon.ico',
+    productIcon: '/icons/smol-id.svg',
     moduleType: ModuleType.HW_WALLET,
 
     isAvailable: async () => true,

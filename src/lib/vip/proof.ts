@@ -10,6 +10,19 @@ export type VerifyResult = {
   reason?: string;
 };
 
+async function getErrorMessage(res: Response): Promise<string> {
+  try {
+    const body = await res.json();
+    if (typeof body?.error === "string") return body.error;
+    if (typeof body?.reason === "string") return body.reason;
+  } catch {
+    // Ignore parse errors and fall back to plain text/status.
+  }
+
+  const text = await res.text();
+  return text || `${res.status} ${res.statusText}`;
+}
+
 export async function fetchChallenge(params: {
   roomId: string;
   address: string;
@@ -20,7 +33,7 @@ export async function fetchChallenge(params: {
     body: JSON.stringify({ roomId: params.roomId, address: params.address }),
   });
   if (!res.ok) {
-    throw new Error(await res.text());
+    throw new Error(await getErrorMessage(res));
   }
   return res.json();
 }
@@ -50,7 +63,7 @@ export async function verifyProof(params: {
     body: JSON.stringify(params),
   });
   if (!res.ok) {
-    throw new Error(await res.text());
+    throw new Error(await getErrorMessage(res));
   }
   return res.json();
 }

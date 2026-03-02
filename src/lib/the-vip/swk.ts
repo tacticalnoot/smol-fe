@@ -1,13 +1,3 @@
-
-import {
-    StellarWalletsKit,
-    WalletNetwork,
-    FreighterModule,
-    xBullModule,
-    AlbedoModule
-} from '@creit.tech/stellar-wallets-kit';
-import { SMOL_ID_MODULE } from './smol-id-module';
-
 import {
     StellarWalletsKit,
     WalletNetwork,
