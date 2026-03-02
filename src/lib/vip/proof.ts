@@ -63,12 +63,7 @@ async function ensureSmolSession(contractAddress: string): Promise<void> {
   const afterLoginToken = extractBearerToken(afterLoginHeaders) || readCookieToken();
   if (afterLoginToken) {
     smolAuthTokenCache = afterLoginToken;
-    return;
   }
-
-  throw new Error(
-    `Smol ID session missing after login for ${contractAddress}. Please refresh and try again.`
-  );
 }
 
 async function getErrorMessage(res: Response): Promise<string> {
@@ -89,9 +84,6 @@ export async function fetchChallenge(params: {
   address: string;
 }): Promise<Challenge> {
   const isContract = isContractAddress(params.address);
-  if (isContract) {
-    await ensureSmolSession(params.address);
-  }
 
   let res = await fetch(`${VIP_API_BASE}/challenge`, {
     method: "POST",
@@ -145,9 +137,6 @@ export async function verifyProof(params: {
   xdr: string;
 }): Promise<VerifyResult> {
   const isContract = isContractAddress(params.address);
-  if (isContract) {
-    await ensureSmolSession(params.address);
-  }
 
   let res = await fetch(`${VIP_API_BASE}/verify`, {
     method: "POST",
