@@ -1,6 +1,7 @@
+import { StrKey } from "@stellar/stellar-sdk";
 import type { APIRoute } from "astro";
 import { findRoom } from "../../../lib/vip/rooms";
-import { verifyVipChallengeTx } from "../../../lib/vip/server/auth";
+import { verifyVipChallengeTx, verifyVipSmolTokenAuth } from "../../../lib/vip/server/auth";
 import { checkVipEligibility } from "../../../lib/vip/server/eligibility";
 import { createVipSession } from "../../../lib/vip/server/state";
 
@@ -18,9 +19,9 @@ export const POST: APIRoute = async ({ request }) => {
     const address = body?.address?.trim() || "";
     const xdr = body?.xdr?.trim() || "";
 
-    if (!roomId || !address || !xdr) {
+    if (!roomId || !address) {
       return new Response(
-        JSON.stringify({ token: "", roomStatus: "rejected", reason: "Missing roomId/address/xdr" }),
+        JSON.stringify({ token: "", roomStatus: "rejected", reason: "Missing roomId/address" }),
         { status: 400, headers: { "Content-Type": "application/json" } }
       );
     }
@@ -33,16 +34,46 @@ export const POST: APIRoute = async ({ request }) => {
       );
     }
 
-    const auth = verifyVipChallengeTx({
-      request,
-      challengeXdr: xdr,
-      clientAddress: address,
-    });
-    if (!auth.ok) {
+    const isClassic = StrKey.isValidEd25519PublicKey(address);
+    const isContract = StrKey.isValidContract(address);
+
+    if (!isClassic && !isContract) {
       return new Response(
-        JSON.stringify({ token: "", roomStatus: "rejected", reason: auth.error }),
-        { status: 401, headers: { "Content-Type": "application/json" } }
+        JSON.stringify({ token: "", roomStatus: "rejected", reason: "Valid Stellar address required" }),
+        { status: 400, headers: { "Content-Type": "application/json" } }
       );
+    }
+
+    if (isClassic) {
+      if (!xdr) {
+        return new Response(
+          JSON.stringify({ token: "", roomStatus: "rejected", reason: "Missing challenge signature" }),
+          { status: 400, headers: { "Content-Type": "application/json" } }
+        );
+      }
+
+      const auth = verifyVipChallengeTx({
+        request,
+        challengeXdr: xdr,
+        clientAddress: address,
+      });
+      if (!auth.ok) {
+        return new Response(
+          JSON.stringify({ token: "", roomStatus: "rejected", reason: auth.error }),
+          { status: 401, headers: { "Content-Type": "application/json" } }
+        );
+      }
+    } else {
+      const auth = await verifyVipSmolTokenAuth({
+        request,
+        contractAddress: address,
+      });
+      if (!auth.ok) {
+        return new Response(
+          JSON.stringify({ token: "", roomStatus: "rejected", reason: auth.error }),
+          { status: 401, headers: { "Content-Type": "application/json" } }
+        );
+      }
     }
 
     const eligible = await checkVipEligibility({ roomId, address });

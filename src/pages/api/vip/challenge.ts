@@ -1,6 +1,9 @@
 import type { APIRoute } from "astro";
 import { StrKey } from "@stellar/stellar-sdk";
-import { buildVipChallengeTxXdr } from "../../../lib/vip/server/auth";
+import {
+  buildVipChallengeTxXdr,
+  verifyVipSmolTokenAuth,
+} from "../../../lib/vip/server/auth";
 import { findRoom } from "../../../lib/vip/rooms";
 
 export const POST: APIRoute = async ({ request }) => {
@@ -31,15 +34,35 @@ export const POST: APIRoute = async ({ request }) => {
       });
     }
 
-    if (!address || !StrKey.isValidEd25519PublicKey(address)) {
+    const isClassic = StrKey.isValidEd25519PublicKey(address);
+    const isContract = StrKey.isValidContract(address);
+    if (!address || (!isClassic && !isContract)) {
       return new Response(JSON.stringify({ error: "Valid Stellar address required" }), {
         status: 400,
         headers: { "Content-Type": "application/json" },
       });
     }
 
+    if (isContract) {
+      const auth = await verifyVipSmolTokenAuth({
+        request,
+        contractAddress: address,
+      });
+      if (!auth.ok) {
+        return new Response(JSON.stringify({ error: auth.error }), {
+          status: 401,
+          headers: { "Content-Type": "application/json" },
+        });
+      }
+
+      return new Response(JSON.stringify({ authMode: "smol-token", xdr: "" }), {
+        status: 200,
+        headers: { "Content-Type": "application/json" },
+      });
+    }
+
     const xdr = buildVipChallengeTxXdr({ request, clientAddress: address });
-    return new Response(JSON.stringify({ xdr }), {
+    return new Response(JSON.stringify({ authMode: "sep10", xdr }), {
       status: 200,
       headers: { "Content-Type": "application/json" },
     });

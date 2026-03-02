@@ -1,6 +1,6 @@
 import { Networks, StrKey } from "@stellar/stellar-sdk";
 import { findRoom } from "../rooms";
-import { getVipNetworkPassphrase } from "./auth";
+import { contractExistsOnRpc, getVipNetworkPassphrase } from "./auth";
 
 function horizonBaseForNetwork(networkPassphrase: string): string {
   if (networkPassphrase === Networks.PUBLIC) return "https://horizon.stellar.org";
@@ -57,20 +57,35 @@ export async function checkVipEligibility(params: {
   if (room.status !== "enabled") {
     return { ok: false, reason: "This room is not enabled yet." };
   }
-  if (!StrKey.isValidEd25519PublicKey(params.address)) {
-    return { ok: false, reason: "Invalid Stellar public key." };
+  const isClassic = StrKey.isValidEd25519PublicKey(params.address);
+  const isContract = StrKey.isValidContract(params.address);
+  if (!isClassic && !isContract) {
+    return { ok: false, reason: "Invalid Stellar address." };
   }
 
   try {
     if (room.qualifier.type === "commons") {
-      const exists = await accountExists(params.address);
+      const exists = isClassic
+        ? await accountExists(params.address)
+        : await contractExistsOnRpc(params.address);
       if (!exists) {
-        return { ok: false, reason: "Account not found on this network." };
+        return {
+          ok: false,
+          reason: isClassic
+            ? "Account not found on this network."
+            : "Contract wallet not found on this network.",
+        };
       }
       return { ok: true };
     }
 
     if (room.qualifier.type === "lumenauts") {
+      if (!isClassic) {
+        return {
+          ok: false,
+          reason: "Lumenauts currently requires a classic Stellar account (G...).",
+        };
+      }
       const exists = await accountExists(params.address);
       if (!exists) {
         return { ok: false, reason: "Account not found on this network." };

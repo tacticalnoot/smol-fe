@@ -40,10 +40,6 @@
     return new Promise((resolve) => setTimeout(resolve, ms));
   }
 
-  function isClassicStellarAddress(address: string): boolean {
-    return /^G[A-Z2-7]{55}$/.test(address);
-  }
-
   async function connectWalletAddress(walletKit: any): Promise<string> {
     let selectedWalletId = "";
 
@@ -100,18 +96,13 @@
       kit = loadedKit;
       status = "auth";
       walletAddress = await connectWalletAddress(kit);
-      if (!isClassicStellarAddress(walletAddress)) {
-        throw new Error(
-          "THE VIP sign-in currently supports classic Stellar addresses (G...). Use Freighter, xBull, or Albedo."
-        );
-      }
 
       status = "signing";
       const challenge = await fetchChallenge({
         roomId: room.id,
         address: walletAddress,
       });
-      const signed = await signChallenge(kit, walletAddress, challenge.xdr);
+      const signed = await signChallenge(kit, walletAddress, challenge);
 
       status = "verifying";
       const verify = await verifyProof({
