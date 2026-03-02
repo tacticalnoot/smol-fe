@@ -16,10 +16,12 @@ import { safeLocalStorageGet, safeLocalStorageSet } from '../../utils/storage';
 let _cachedKeyId: string | null = null;
 
 function storedContractId(): string | null {
-    return safeLocalStorageGet('smol:contractId');
+    const v = safeLocalStorageGet('smol:contractId');
+    return v && v !== 'undefined' && v !== 'null' ? v : null;
 }
 function storedKeyId(): string | null {
-    return safeLocalStorageGet('smol:keyId');
+    const v = safeLocalStorageGet('smol:keyId');
+    return v && v !== 'undefined' && v !== 'null' ? v : null;
 }
 
 export const SMOL_ID_MODULE: ModuleInterface = {
@@ -61,6 +63,11 @@ export const SMOL_ID_MODULE: ModuleInterface = {
         // Fresh passkey prompt.
         const rpId = getSafeRpId(window.location.hostname);
         const result = await kit.connectWallet({ rpId });
+
+        if (!result || !result.contractId) {
+            throw new Error("No valid wallet contract found from passkey. Are you sure you signed up?");
+        }
+
         _cachedKeyId = result.keyIdBase64;
 
         // Persist so future calls (and page reloads) can skip the prompt.
