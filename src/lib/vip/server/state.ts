@@ -1,3 +1,12 @@
+/**
+ * CLOUDFLARE WORKERS LIMITATION
+ * Sessions and room state stored in globalThis are isolate-local.
+ * On Cloudflare Pages/Workers, different requests may be served by
+ * different isolates, causing intermittent 401s and state loss.
+ *
+ * MIGRATION PATH: Move to D1, KV, or Durable Objects for production.
+ * For local dev / single-instance deployments, this works fine.
+ */
 export type VipSession = {
   token: string;
   roomId: string;
@@ -16,25 +25,25 @@ export type VipRosterEntry = {
 
 export type VipEvent =
   | {
-      seq: number;
-      kind: "sender-key-share";
-      from: string;
-      to: string;
-      wrappedKey: string;
-      nonce: string;
-      keyVersion: number;
-      ts: number;
-    }
+    seq: number;
+    kind: "sender-key-share";
+    from: string;
+    to: string;
+    wrappedKey: string;
+    nonce: string;
+    keyVersion: number;
+    ts: number;
+  }
   | {
-      seq: number;
-      kind: "chat";
-      sender: string;
-      ciphertext: string;
-      nonce: string;
-      keyVersion: number;
-      signature: string;
-      ts: number;
-    }
+    seq: number;
+    kind: "chat";
+    sender: string;
+    ciphertext: string;
+    nonce: string;
+    keyVersion: number;
+    signature: string;
+    ts: number;
+  }
   | { seq: number; kind: "system"; message: string; ts: number };
 
 export type VipEventInput =

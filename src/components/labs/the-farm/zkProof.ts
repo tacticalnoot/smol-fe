@@ -642,7 +642,8 @@ async function _submitProofToContractOnce(
         txHash =
             result.transactionHash ||
             extractTxHashFromRelayerResponse(result.result) ||
-            extractTxHashFromRelayerResponse(result);
+            extractTxHashFromRelayerResponse(result) ||
+            "";
 
         if (!txHash) {
             throw new Error(`Verification succeeded but no transaction hash was returned.`);

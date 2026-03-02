@@ -1,6 +1,7 @@
 import type { APIRoute } from 'astro';
 import { getDb, initDb } from '../../../../lib/the-vip/db';
 import { getSession } from '../../../../lib/the-vip/auth';
+import { ROOMS } from '../../../../lib/the-vip/rooms';
 
 // Configuration
 const LUMENAUTS_CUTOFF_LEDGER = 29239400; // Approx 2019/2020? Need to check real cutoff. 
@@ -8,13 +9,6 @@ const LUMENAUTS_CUTOFF_LEDGER = 29239400; // Approx 2019/2020? Need to check rea
 // Let's pick a reasonable legacy date for "Lumenauts". 
 // Early 2020? Ledger ~27M.
 // Let's use env var or default.
-
-const ROOMS = [
-    { id: 'lumenauts', name: 'Lumenauts', description: 'Early adopters only.' },
-    { id: 'builders', name: 'Builders', description: 'Funded accounts.' },
-    { id: 'general', name: 'General', description: 'Everyone welcome.' },
-    { id: 'contact', name: 'Your chat here', description: 'Contact admin.', disabled: true }
-];
 
 export const GET: APIRoute = async (context) => {
     const { request, locals } = context;

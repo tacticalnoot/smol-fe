@@ -1,6 +1,7 @@
 import type { APIRoute } from 'astro';
 import { getDb } from '../../../../../lib/the-vip/db';
 import { getSession } from '../../../../../lib/the-vip/auth';
+import { ROOMS, isRoomAccessible } from '../../../../../lib/the-vip/rooms';
 
 export const GET: APIRoute = async (context) => {
     const { request, locals, params } = context;
@@ -16,12 +17,15 @@ export const GET: APIRoute = async (context) => {
     const roomId = params.id;
     if (!roomId) return new Response('Room ID required', { status: 400 });
 
-    // TODO: Verify Gating Access here too?
-    // Ideally Yes. For MVP, we might skip strictly repeating the Horizon check on every poll 
-    // IF the listing check was sufficient UI-wise.
-    // BUT Security rules say "gate required".
-    // We should cache the "Access Granted" bit in the Session 
-    // or just checking generic access for now.
+    // Validate room exists and is not disabled
+    const room = ROOMS.find(r => r.id === roomId);
+    if (!room) return new Response('Room not found', { status: 404 });
+    if (room.disabled) return new Response('Room is disabled', { status: 403 });
+
+    // Check room-level access (gated rooms require eligibility)
+    if (!isRoomAccessible(roomId, session.address)) {
+        return new Response('Room access denied', { status: 403 });
+    }
 
     // Fetch messages
     // Default limit 50
@@ -62,6 +66,18 @@ export const POST: APIRoute = async (context) => {
     if (!session) return new Response('Unauthorized', { status: 401 });
 
     const roomId = params.id;
+    if (!roomId) return new Response('Room ID required', { status: 400 });
+
+    // Validate room exists and is not disabled
+    const room = ROOMS.find(r => r.id === roomId);
+    if (!room) return new Response('Room not found', { status: 404 });
+    if (room.disabled) return new Response('Room is disabled', { status: 403 });
+
+    // Check room-level access
+    if (!isRoomAccessible(roomId, session.address)) {
+        return new Response('Room access denied', { status: 403 });
+    }
+
     const body = await request.json() as { ciphertext: string, nonce: string, senderHash?: string };
 
     if (!body.ciphertext || !body.nonce) {

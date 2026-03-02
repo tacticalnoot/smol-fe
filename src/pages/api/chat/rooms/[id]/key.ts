@@ -1,6 +1,7 @@
 import type { APIRoute } from 'astro';
 import { getDb } from '../../../../../lib/the-vip/db';
 import { getSession } from '../../../../../lib/the-vip/auth';
+import { getValidRoom, isRoomAccessible } from '../../../../../lib/the-vip/rooms';
 import nacl from 'tweetnacl';
 import { encodeBase64, decodeBase64 } from 'tweetnacl-util';
 import { Keypair } from '@stellar/stellar-sdk'; // Used for server secret -> keypair logic, BUT we need Curve25519 (Box) keys.
@@ -23,6 +24,14 @@ export const GET: APIRoute = async (context) => {
 
     const roomId = params.id;
     if (!roomId) return new Response('Room ID required', { status: 400 });
+
+    // Validate room exists, is enabled, and user has access
+    if (!getValidRoom(roomId)) {
+        return new Response(JSON.stringify({ error: 'Room not found or disabled' }), { status: 404 });
+    }
+    if (!isRoomAccessible(roomId, session.address)) {
+        return new Response(JSON.stringify({ error: 'Room access denied' }), { status: 403 });
+    }
 
     // 1. Get User's Public Key
     const userKeyRow = await db.prepare('SELECT x25519_pubkey FROM user_keys WHERE address = ?').bind(session.address).first();

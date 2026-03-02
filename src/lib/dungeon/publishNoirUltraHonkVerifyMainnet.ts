@@ -137,11 +137,11 @@ export async function publishNoirUltraHonkVerifyMainnet(input: {
     const farm = new Contract(farmId);
     const sourceAccount = net
       ? await (() => {
-          if (!StrKey.isValidEd25519PublicKey(input.owner)) {
-            throw new Error("Hackathon mode requires owner to be a testnet account address (G...).");
-          }
-          return server.getAccount(input.owner);
-        })()
+        if (!StrKey.isValidEd25519PublicKey(input.owner)) {
+          throw new Error("Hackathon mode requires owner to be a testnet account address (G...).");
+        }
+        return server.getAccount(input.owner);
+      })()
       : new Account(NULL_ACCOUNT, "0");
 
     // Prefer the multi-VK entrypoint when available (farm-attestations v2+).
@@ -215,7 +215,8 @@ export async function publishNoirUltraHonkVerifyMainnet(input: {
       txHash =
         result.transactionHash ||
         extractTxHashFromRelayerResponse(result.result) ||
-        extractTxHashFromRelayerResponse(result);
+        extractTxHashFromRelayerResponse(result) ||
+        "";
       if (!txHash) {
         throw new Error(`Relayer success but no hash discovered in result: ${JSON.stringify(result.result)}`);
       }

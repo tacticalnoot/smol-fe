@@ -94,11 +94,11 @@ export async function publishDungeonStampMainnet(input: {
     const contract = new Contract(contractId);
     const sourceAccount = net
       ? await (() => {
-          if (!StrKey.isValidEd25519PublicKey(input.owner)) {
-            throw new Error("Hackathon mode requires owner to be a testnet account address (G...).");
-          }
-          return server.getAccount(input.owner);
-        })()
+        if (!StrKey.isValidEd25519PublicKey(input.owner)) {
+          throw new Error("Hackathon mode requires owner to be a testnet account address (G...).");
+        }
+        return server.getAccount(input.owner);
+      })()
       : new Account(NULL_ACCOUNT, "0");
 
     // We store dungeon stamps as: system="DUNGEON", tier="ENTRY"|"WITHDRAW".
@@ -152,7 +152,8 @@ export async function publishDungeonStampMainnet(input: {
       txHash =
         result.transactionHash ||
         extractTxHashFromRelayerResponse(result.result) ||
-        extractTxHashFromRelayerResponse(result);
+        extractTxHashFromRelayerResponse(result) ||
+        "";
       if (!txHash) {
         throw new Error(`Relayer success but no hash discovered in result: ${JSON.stringify(result.result)}`);
       }
