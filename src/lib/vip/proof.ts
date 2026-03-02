@@ -33,40 +33,42 @@ function readCookieToken(): string | null {
   }
 }
 
-async function refreshSmolAuthToken(contractAddress: string): Promise<string | null> {
-  if (typeof window === "undefined") return null;
-
-  const storedContractId = localStorage.getItem("smol:contractId")?.trim() || "";
-  const storedKeyId = localStorage.getItem("smol:keyId")?.trim() || "";
-  if (!storedContractId || !storedKeyId || storedContractId !== contractAddress) {
-    return null;
-  }
-
-  const apiBase = import.meta.env.PUBLIC_API_URL || "https://api.smol.xyz";
-  const res = await fetch(`${apiBase}/login`, {
-    method: "POST",
-    credentials: "include",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({
-      type: "connect",
-      keyId: storedKeyId,
-      contractId: storedContractId,
-      response: null,
-    }),
-  });
-  if (!res.ok) return null;
-
-  const token = (await res.text()).trim();
-  if (token) {
-    smolAuthTokenCache = token;
-    return token;
-  }
-  return null;
-}
-
 function getSmolAuthHeaders(): Record<string, string> {
   const token = readCookieToken() || smolAuthTokenCache;
   return token ? { Authorization: `Bearer ${token}` } : {};
+}
+
+function extractBearerToken(headers: Record<string, string>): string | null {
+  const auth = headers.Authorization || headers.authorization;
+  if (!auth || !auth.toLowerCase().startsWith("bearer ")) return null;
+  const token = auth.slice(7).trim();
+  return token || null;
+}
+
+async function ensureSmolSession(contractAddress: string): Promise<void> {
+  if (typeof window === "undefined") return;
+
+  const existing = getSmolAuthHeaders();
+  const existingToken = extractBearerToken(existing);
+  if (existingToken) {
+    smolAuthTokenCache = existingToken;
+    return;
+  }
+
+  const { useAuthentication } = await import("../../hooks/useAuthentication");
+  const auth = useAuthentication();
+  await auth.login();
+
+  const afterLoginHeaders = auth.getAuthHeaders();
+  const afterLoginToken = extractBearerToken(afterLoginHeaders) || readCookieToken();
+  if (afterLoginToken) {
+    smolAuthTokenCache = afterLoginToken;
+    return;
+  }
+
+  throw new Error(
+    `Smol ID session missing after login for ${contractAddress}. Please refresh and try again.`
+  );
 }
 
 async function getErrorMessage(res: Response): Promise<string> {
@@ -86,11 +88,12 @@ export async function fetchChallenge(params: {
   roomId: string;
   address: string;
 }): Promise<Challenge> {
-  if (isContractAddress(params.address) && !getSmolAuthHeaders().Authorization) {
-    await refreshSmolAuthToken(params.address);
+  const isContract = isContractAddress(params.address);
+  if (isContract) {
+    await ensureSmolSession(params.address);
   }
 
-  const res = await fetch(`${VIP_API_BASE}/challenge`, {
+  let res = await fetch(`${VIP_API_BASE}/challenge`, {
     method: "POST",
     credentials: "include",
     headers: {
@@ -99,6 +102,19 @@ export async function fetchChallenge(params: {
     },
     body: JSON.stringify({ roomId: params.roomId, address: params.address }),
   });
+  if (isContract && res.status === 401) {
+    await ensureSmolSession(params.address);
+    res = await fetch(`${VIP_API_BASE}/challenge`, {
+      method: "POST",
+      credentials: "include",
+      headers: {
+        "Content-Type": "application/json",
+        ...getSmolAuthHeaders(),
+      },
+      body: JSON.stringify({ roomId: params.roomId, address: params.address }),
+    });
+  }
+
   if (!res.ok) {
     throw new Error(await getErrorMessage(res));
   }
@@ -128,11 +144,12 @@ export async function verifyProof(params: {
   address: string;
   xdr: string;
 }): Promise<VerifyResult> {
-  if (isContractAddress(params.address) && !getSmolAuthHeaders().Authorization) {
-    await refreshSmolAuthToken(params.address);
+  const isContract = isContractAddress(params.address);
+  if (isContract) {
+    await ensureSmolSession(params.address);
   }
 
-  const res = await fetch(`${VIP_API_BASE}/verify`, {
+  let res = await fetch(`${VIP_API_BASE}/verify`, {
     method: "POST",
     credentials: "include",
     headers: {
@@ -141,6 +158,19 @@ export async function verifyProof(params: {
     },
     body: JSON.stringify(params),
   });
+  if (isContract && res.status === 401) {
+    await ensureSmolSession(params.address);
+    res = await fetch(`${VIP_API_BASE}/verify`, {
+      method: "POST",
+      credentials: "include",
+      headers: {
+        "Content-Type": "application/json",
+        ...getSmolAuthHeaders(),
+      },
+      body: JSON.stringify(params),
+    });
+  }
+
   if (!res.ok) {
     throw new Error(await getErrorMessage(res));
   }
