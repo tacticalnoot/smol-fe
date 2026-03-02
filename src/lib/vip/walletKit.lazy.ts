@@ -1,8 +1,10 @@
+import { SMOL_ID_MODULE } from '../the-vip/smol-id-module';
+
 let kitPromise:
   | Promise<{
-      kit: any;
-      WalletNetwork: any;
-    }>
+    kit: any;
+    WalletNetwork: any;
+  }>
   | null = null;
 
 export async function loadWalletKit() {
@@ -12,7 +14,7 @@ export async function loadWalletKit() {
     const { StellarWalletsKit, WalletNetwork, allowAllModules } = await import(
       "@creit.tech/stellar-wallets-kit"
     );
-    const modules = allowAllModules();
+    const modules = [SMOL_ID_MODULE, ...allowAllModules()];
     const kit = new StellarWalletsKit({
       modules,
       network: WalletNetwork.PUBLIC,
