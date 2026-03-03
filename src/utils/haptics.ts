@@ -25,3 +25,12 @@ export const triggerHaptic = (
         console.warn("Haptic trigger failed", error);
     }
 };
+
+/**
+ * Crisp MPC/Launchpad rubber-pad press.
+ * Sharp initial snap + quick damped bounce-back.
+ */
+export const PAD_PRESS = [
+    { duration: 12, intensity: 1.0 },
+    { delay: 10, duration: 8, intensity: 0.3 },
+];

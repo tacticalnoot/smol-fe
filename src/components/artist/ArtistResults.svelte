@@ -26,6 +26,7 @@
     import { flip } from "svelte/animate";
     import { backOut } from "svelte/easing";
     import { RPC_URL } from "../../utils/rpc";
+    import { triggerHaptic, PAD_PRESS } from "../../utils/haptics";
 
     const API_URL = import.meta.env.PUBLIC_API_URL || "https://api.smol.xyz";
     const isBrowser = typeof window !== "undefined";
@@ -1302,7 +1303,10 @@
                         <!-- Prev Button -->
                         <button
                             class="tech-button w-7 h-7 flex items-center justify-center text-white/60 hover:text-white active:scale-95 border border-white/5 hover:border-white/20 rounded-full bg-white/5"
-                            onclick={handlePrev}
+                            onclick={() => {
+                                handlePrev();
+                                triggerHaptic(50);
+                            }}
                             title="Previous"
                         >
                             <svg
@@ -1317,7 +1321,10 @@
                         <!-- Play/Pause Button -->
                         <button
                             class="tech-button w-9 h-9 flex items-center justify-center active:scale-95 transition-all rounded-full backdrop-blur-xl border border-[#089981] text-[#089981] bg-[#089981]/10 shadow-[0_0_20px_rgba(8,153,129,0.4)] hover:bg-[#089981]/20 hover:text-white"
-                            onclick={togglePlayPause}
+                            onclick={() => {
+                                togglePlayPause();
+                                triggerHaptic(50);
+                            }}
                             title={isPlaying() ? "Pause" : "Play"}
                         >
                             {#if isPlaying()}
@@ -1342,7 +1349,10 @@
                         <!-- Next Button -->
                         <button
                             class="tech-button w-7 h-7 flex items-center justify-center text-white/60 hover:text-white active:scale-95 border border-white/5 hover:border-white/20 rounded-full bg-white/5"
-                            onclick={handleNext}
+                            onclick={() => {
+                                handleNext();
+                                triggerHaptic(50);
+                            }}
                             title="Next"
                         >
                             <svg
@@ -1357,7 +1367,10 @@
                         <!-- Regenerate/Shuffle Button (Orange) - Reshuffles playlist -->
                         <button
                             class="tech-button w-7 h-7 flex items-center justify-center active:scale-95 border rounded-full transition-all border-[#f7931a] bg-[#f7931a]/10 text-[#f7931a] hover:bg-[#f7931a]/20 shadow-[0_0_15px_rgba(247,147,26,0.2)]"
-                            onclick={generateArtistMix}
+                            onclick={() => {
+                                generateArtistMix();
+                                triggerHaptic(50);
+                            }}
                             disabled={isGeneratingMix}
                             title="Regenerate Shuffle"
                         >
@@ -1475,6 +1488,7 @@
                         activeModule = "discography";
                         shuffleEnabled = false;
                         selectedArtistTags = [];
+                        triggerHaptic("selection");
                     }}
                     class="py-1.5 text-[8px] font-pixel transition-colors {activeModule ===
                     'discography'
@@ -1488,6 +1502,7 @@
                         activeModule = "minted";
                         shuffleEnabled = false;
                         selectedArtistTags = [];
+                        triggerHaptic("selection");
                     }}
                     class="py-1.5 text-[8px] font-pixel transition-colors {activeModule ===
                     'minted'
@@ -1501,6 +1516,7 @@
                         activeModule = "collected";
                         shuffleEnabled = false;
                         selectedArtistTags = [];
+                        triggerHaptic("selection");
                     }}
                     class="py-1.5 text-[8px] font-pixel transition-colors {activeModule ===
                     'collected'
@@ -1941,6 +1957,7 @@
                                         currentIndex = index;
                                         selectSong(song);
                                     }
+                                    triggerHaptic(PAD_PRESS);
                                     // Keep grid view open
                                 }}
                             >

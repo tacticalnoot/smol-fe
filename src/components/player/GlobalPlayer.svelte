@@ -33,7 +33,7 @@
     import { backOut } from "svelte/easing";
     import type { Smol } from "../../types/domain";
     import { RPC_URL } from "../../utils/rpc";
-    import { triggerHaptic } from "../../utils/haptics";
+    import { triggerHaptic, PAD_PRESS } from "../../utils/haptics";
 
     const API_URL = import.meta.env.PUBLIC_API_URL || "https://api.smol.xyz";
 
@@ -1396,7 +1396,7 @@
                                 style="will-change: transform, opacity"
                                 onclick={() => {
                                     handleSelect(index);
-                                    triggerHaptic("nudge");
+                                    triggerHaptic(PAD_PRESS);
                                 }}
                                 onkeydown={() => {}}
                             >
