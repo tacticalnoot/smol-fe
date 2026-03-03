@@ -14,7 +14,47 @@ import logger, { LogCategory } from '../utils/debug-logger';
 export function useAuthentication() {
   const API_URL = import.meta.env.PUBLIC_API_URL || "https://api.smol.xyz";
 
-  async function login() {
+  function parseAuthToken(rawBody: string, response: Response): string {
+    const trimmedBody = rawBody.trim();
+    if (trimmedBody) {
+      if (trimmedBody.startsWith("{")) {
+        try {
+          const parsed = JSON.parse(trimmedBody) as Record<string, unknown>;
+          const tokenFromJson = [parsed.token, parsed.authToken, parsed.accessToken].find(
+            (value): value is string => typeof value === "string" && value.trim().length > 0
+          );
+          if (tokenFromJson) return tokenFromJson.trim();
+        } catch {
+          // Fall through to plain-text handling.
+        }
+        throw new Error("Login response JSON did not include a session token.");
+      }
+
+      if (trimmedBody.startsWith('"') && trimmedBody.endsWith('"')) {
+        try {
+          const unquoted = JSON.parse(trimmedBody);
+          if (typeof unquoted === "string" && unquoted.trim()) {
+            return unquoted.trim();
+          }
+        } catch {
+          // Fall through to raw body.
+        }
+      }
+
+      return trimmedBody;
+    }
+
+    const authHeader =
+      response.headers.get("authorization") || response.headers.get("Authorization");
+    if (authHeader?.toLowerCase().startsWith("bearer ")) {
+      const token = authHeader.slice(7).trim();
+      if (token) return token;
+    }
+
+    throw new Error("Login response did not include a usable session token.");
+  }
+
+  async function login(): Promise<string> {
     console.log('[Auth] Login attempt...');
     const hostname = window.location.hostname;
     const primaryRpId = getSafeRpId(hostname);
@@ -36,8 +76,7 @@ export function useAuthentication() {
       console.log('[Auth] connectWallet succeeded:', { contractId: result.contractId });
 
       const { rawResponse, keyIdBase64, contractId: cid } = result;
-      await performLogin(cid, keyIdBase64, rawResponse, 'connect', undefined, primaryRpId);
-      return;
+      return await performLogin(cid, keyIdBase64, rawResponse, 'connect', undefined, primaryRpId);
     } catch (err: any) {
       console.warn("[Auth] Login failed with RP ID:", primaryRpId, "Error:", err.message);
 
@@ -65,8 +104,7 @@ export function useAuthentication() {
           console.log('[Auth] Fallback succeeded with hostname RP ID:', { contractId: result.contractId });
 
           const { rawResponse, keyIdBase64, contractId: cid } = result;
-          await performLogin(cid, keyIdBase64, rawResponse, 'connect', undefined, hostname);
-          return;
+          return await performLogin(cid, keyIdBase64, rawResponse, 'connect', undefined, hostname);
         } catch (fallbackErr: any) {
           console.warn("[Auth] Fallback also failed:", fallbackErr.message);
           // Fall through to throw original error
@@ -78,7 +116,7 @@ export function useAuthentication() {
     }
   }
 
-  async function performLogin(cid: string, keyIdBase64: string, rawResponse: any, type: 'connect' | 'create', username?: string, rpId?: string) {
+  async function performLogin(cid: string, keyIdBase64: string, rawResponse: any, type: 'connect' | 'create', username?: string, rpId?: string): Promise<string> {
     const payload = {
       type,
       keyId: keyIdBase64,
@@ -109,7 +147,8 @@ export function useAuthentication() {
       throw new Error(`Login failed: ${errorMsg}`);
     }
 
-    const authToken = await res.text();
+    const responseBody = await res.text();
+    const authToken = parseAuthToken(responseBody, res);
 
     setUserAuth(cid, keyIdBase64);
     userState.walletConnected = true;
@@ -136,6 +175,7 @@ export function useAuthentication() {
     }
 
     Cookies.set('smol_token', authToken, cookieOptions);
+    return authToken;
   }
 
   async function signUp(username: string, turnstileToken: string) {

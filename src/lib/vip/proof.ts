@@ -45,6 +45,20 @@ function extractBearerToken(headers: Record<string, string>): string | null {
   return token || null;
 }
 
+function normalizeErrorMessage(error: unknown, fallback: string): string {
+  if (error instanceof Error && error.message) return error.message;
+  if (typeof error === "string" && error.trim()) return error.trim();
+  if (error && typeof error === "object") {
+    try {
+      const serialized = JSON.stringify(error);
+      if (serialized && serialized !== "{}") return serialized;
+    } catch {
+      // Ignore serialization issues and fall back.
+    }
+  }
+  return fallback;
+}
+
 async function ensureSmolSession(contractAddress: string): Promise<void> {
   if (typeof window === "undefined") return;
 
@@ -57,26 +71,50 @@ async function ensureSmolSession(contractAddress: string): Promise<void> {
 
   const { useAuthentication } = await import("../../hooks/useAuthentication");
   const auth = useAuthentication();
-  await auth.login();
+  try {
+    const loginToken = await auth.login();
+    if (loginToken?.trim()) {
+      smolAuthTokenCache = loginToken.trim();
+      return;
+    }
 
-  const afterLoginHeaders = auth.getAuthHeaders();
-  const afterLoginToken = extractBearerToken(afterLoginHeaders) || readCookieToken();
-  if (afterLoginToken) {
-    smolAuthTokenCache = afterLoginToken;
+    const afterLoginHeaders = auth.getAuthHeaders();
+    const afterLoginToken =
+      extractBearerToken(afterLoginHeaders) || readCookieToken();
+    if (afterLoginToken) {
+      smolAuthTokenCache = afterLoginToken;
+      return;
+    }
+  } catch (error) {
+    const message = normalizeErrorMessage(
+      error,
+      `Smol ID session refresh failed for ${contractAddress}.`
+    );
+    throw new Error(message);
   }
+
+  throw new Error(
+    `Smol ID session token was not available after login for ${contractAddress}.`
+  );
 }
 
 async function getErrorMessage(res: Response): Promise<string> {
+  const fallback = `${res.status} ${res.statusText}`;
+  let text = "";
+
   try {
-    const body = await res.json();
+    text = await res.text();
+    if (!text) return fallback;
+
+    const body = JSON.parse(text);
     if (typeof body?.error === "string") return body.error;
     if (typeof body?.reason === "string") return body.reason;
+    if (typeof body?.message === "string") return body.message;
+    return text;
   } catch {
-    // Ignore parse errors and fall back to plain text/status.
+    // Fall back to raw text/status when JSON parsing fails.
+    return text || fallback;
   }
-
-  const text = await res.text();
-  return text || `${res.status} ${res.statusText}`;
 }
 
 export async function fetchChallenge(params: {

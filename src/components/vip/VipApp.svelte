@@ -40,6 +40,20 @@
     return new Promise((resolve) => setTimeout(resolve, ms));
   }
 
+  function toErrorMessage(err: unknown): string {
+    if (err instanceof Error && err.message) return err.message;
+    if (typeof err === "string" && err.trim()) return err.trim();
+    if (err && typeof err === "object") {
+      try {
+        const serialized = JSON.stringify(err);
+        if (serialized && serialized !== "{}") return serialized;
+      } catch {
+        // Ignore serialization failures and fall through.
+      }
+    }
+    return "Unable to join";
+  }
+
   async function connectWalletAddress(walletKit: any): Promise<string> {
     let selectedWalletId = "";
 
@@ -118,9 +132,9 @@
       }
       token = verify.token;
       status = "ready";
-    } catch (err: any) {
+    } catch (err) {
       console.error(err);
-      error = err?.message || "Unable to join";
+      error = toErrorMessage(err);
       status = "idle";
     }
   }
