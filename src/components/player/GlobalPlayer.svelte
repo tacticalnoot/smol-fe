@@ -33,6 +33,7 @@
     import { backOut } from "svelte/easing";
     import type { Smol } from "../../types/domain";
     import { RPC_URL } from "../../utils/rpc";
+    import { triggerHaptic } from "../../utils/haptics";
 
     const API_URL = import.meta.env.PUBLIC_API_URL || "https://api.smol.xyz";
 
@@ -222,7 +223,7 @@
             const base = shuffleArray(
                 liveDiscography
                     .filter((s) => s.Id)
-                    .map((s) => `${API_URL}/image/${s.Id}.png?scale=16`)
+                    .map((s) => `${API_URL}/image/${s.Id}.png?scale=16`),
             ).slice(0, 12); // Reduced from 40 to 12
             collageImages = [...base, ...base]; // 24 total instead of 80
         }
@@ -453,7 +454,7 @@
     let pendingTimeouts = new Set<ReturnType<typeof setTimeout>>();
 
     onDestroy(() => {
-        pendingTimeouts.forEach(t => clearTimeout(t));
+        pendingTimeouts.forEach((t) => clearTimeout(t));
         pendingTimeouts.clear();
     });
     const displayPlaylist = $derived.by(() => {
@@ -469,7 +470,10 @@
         const el = e.currentTarget as HTMLElement;
         const { scrollTop, scrollHeight, clientHeight } = el;
         if (scrollHeight - scrollTop - clientHeight < 800) {
-            if (gridLimit < displayPlaylist.length && gridLimit < GRID_LIMIT_MAX) {
+            if (
+                gridLimit < displayPlaylist.length &&
+                gridLimit < GRID_LIMIT_MAX
+            ) {
                 gridLimit = Math.min(gridLimit + 50, GRID_LIMIT_MAX);
             }
         }
@@ -821,7 +825,10 @@
                             <!-- Previous Button -->
                             <button
                                 class="w-7 h-7 flex items-center justify-center active:scale-95 transition-all rounded-full text-white/60 hover:text-white"
-                                onclick={playPreviousSong}
+                                onclick={() => {
+                                    playPreviousSong();
+                                    triggerHaptic(50);
+                                }}
                             >
                                 <svg
                                     class="w-3.5 h-3.5"
@@ -837,7 +844,10 @@
                             <!-- Play/Pause Button -->
                             <button
                                 class="tech-button w-8 h-8 flex items-center justify-center active:scale-95 transition-all rounded-full backdrop-blur-xl border border-[#089981] text-[#089981] bg-[#089981]/10 hover:text-white"
-                                onclick={togglePlayPause}
+                                onclick={() => {
+                                    togglePlayPause();
+                                    triggerHaptic(50);
+                                }}
                             >
                                 {#if isPlaying()}
                                     <svg
@@ -861,7 +871,10 @@
                             <!-- Next Button -->
                             <button
                                 class="w-7 h-7 flex items-center justify-center active:scale-95 transition-all rounded-full text-white/60 hover:text-white"
-                                onclick={playNextSong}
+                                onclick={() => {
+                                    playNextSong();
+                                    triggerHaptic(50);
+                                }}
                             >
                                 <svg
                                     class="w-3.5 h-3.5"

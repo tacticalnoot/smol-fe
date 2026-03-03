@@ -3,6 +3,7 @@
     import Loader from "./Loader.svelte";
     import { userState, isAuthenticated } from "../../stores/user.state.svelte";
     import { toggleLike } from "../../utils/like";
+    import { triggerHaptic } from "../../utils/haptics";
 
     interface Props {
         smolId: string;
@@ -49,6 +50,7 @@
                 window.dispatchEvent(new CustomEvent("smol:action-like"));
                 // Trigger heartbeat animation
                 heartBeat = true;
+                triggerHaptic("success");
                 setTimeout(() => (heartBeat = false), 400);
             }
         } catch (error) {

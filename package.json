@@ -50,7 +50,8 @@
     "three": "^0.182.0",
     "tldts": "^7.0.16",
     "tweetnacl": "^1.0.3",
-    "tweetnacl-util": "^0.15.1"
+    "tweetnacl-util": "^0.15.1",
+    "web-haptics": "^0.0.6"
   },
   "devDependencies": {
     "@astrojs/cloudflare": "^12.6.9",

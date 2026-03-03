@@ -12,6 +12,7 @@
     mixtapeModeState,
     mixtapeTrackIds,
   } from "../../stores/mixtape.svelte.ts";
+  import { triggerHaptic } from "../../utils/haptics";
 
   interface Props {
     smol: Smol;
@@ -52,7 +53,7 @@
 
   function handlePointerDown() {
     if (preferences.renderMode === "thinking") {
-      if (navigator.vibrate) navigator.vibrate(50); // Synth pad "thud"
+      triggerHaptic(50); // Synth pad "thud"
     }
   }
 

@@ -18,6 +18,7 @@
   } from "../utils/tradeCalculations";
   import { RPC_URL } from "../utils/rpc";
   import { Turnstile } from "svelte-turnstile";
+  import { triggerHaptic } from "../utils/haptics";
 
   // PROD FIX: If we have an OZ API key, use direct relayer regardless of hostname.
   // This allows noot.smol.xyz to use OZ Channels directly without Turnstile.
@@ -370,6 +371,7 @@
         amountOut: expectedOut,
       });
 
+      triggerHaptic("success");
       close();
     } catch (error) {
       console.error("Swap failed", error);

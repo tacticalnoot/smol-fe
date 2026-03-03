@@ -95,6 +95,9 @@ importers:
       tweetnacl-util:
         specifier: ^0.15.1
         version: 0.15.1
+      web-haptics:
+        specifier: ^0.0.6
+        version: 0.0.6(react@18.3.1)(svelte@5.39.9)
     devDependencies:
       '@astrojs/cloudflare':
         specifier: ^12.6.9
@@ -5537,6 +5540,23 @@ packages:
 
   wasmcurves@0.2.2:
     resolution: {integrity: sha512-JRY908NkmKjFl4ytnTu5ED6AwPD+8VJ9oc94kdq7h5bIwbj0L4TDJ69mG+2aLs2SoCmGfqIesMWTEJjtYsoQXQ==}
+
+  web-haptics@0.0.6:
+    resolution: {integrity: sha512-eCzcf1LDi20+Fr0x9V3OkX92k0gxEQXaHajmhXHitsnk6SxPeshv8TBtBRqxyst8HI1uf2FyFVE7QS3jo1gkrw==}
+    peerDependencies:
+      react: '>=18'
+      react-dom: '>=18'
+      svelte: '>=4'
+      vue: '>=3'
+    peerDependenciesMeta:
+      react:
+        optional: true
+      react-dom:
+        optional: true
+      svelte:
+        optional: true
+      vue:
+        optional: true
 
   web-namespaces@2.0.1:
     resolution: {integrity: sha512-bKr1DkiNa2krS7qxNtdrtHAmzuYGFQLiQ13TsorsdT6ULTkPLKuu5+GsFpDlg6JFjUTwX2DyhMPG2be8uPrqsQ==}
@@ -12484,6 +12504,11 @@ snapshots:
   wasmcurves@0.2.2:
     dependencies:
       wasmbuilder: 0.0.16
+
+  web-haptics@0.0.6(react@18.3.1)(svelte@5.39.9):
+    optionalDependencies:
+      react: 18.3.1
+      svelte: 5.39.9
 
   web-namespaces@2.0.1: {}
 

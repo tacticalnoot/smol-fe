@@ -13,6 +13,7 @@
         safeLocalStorageGet,
         safeLocalStorageSet,
     } from "../../utils/storage";
+    import { triggerHaptic } from "../../utils/haptics";
 
     console.log("[PasskeySplash] All imports loaded");
 
@@ -191,7 +192,7 @@
             await authHook.login();
             logEvent("passkey_login_success");
             step = "success";
-            if (navigator.vibrate) navigator.vibrate(200);
+            triggerHaptic(200);
             setTimeout(() => {
                 window.location.href = "/";
             }, 500);
@@ -224,7 +225,8 @@
             ) {
                 // Provide more helpful error message based on error type
                 if (isNoCredentials) {
-                    error = "No passkey found for this device. Try creating a new account.";
+                    error =
+                        "No passkey found for this device. Try creating a new account.";
                     logger.debug(
                         LogCategory.PASSKEY,
                         "No passkey credentials found for login",
@@ -262,7 +264,7 @@
             await authHook.signUp(username, turnstileToken);
             logEvent("passkey_create_success");
             step = "success";
-            if (navigator.vibrate) navigator.vibrate(200);
+            triggerHaptic(200);
             // Redirect after short delay
             setTimeout(() => {
                 window.location.href = "/";
@@ -457,7 +459,6 @@
                         >
                             Enter as Guest
                         </button>
-
                     </div>
                 {:else if step === "username"}
                     <div

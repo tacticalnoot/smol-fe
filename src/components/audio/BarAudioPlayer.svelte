@@ -16,6 +16,7 @@
     seek,
   } from "../../stores/audio.svelte.ts";
   import { onDestroy } from "svelte";
+  import { triggerHaptic } from "../../utils/haptics";
 
   const API_URL = import.meta.env.PUBLIC_API_URL || "https://api.smol.xyz";
 
@@ -974,7 +975,10 @@
         {#if audioState.currentSong.Id && audioState.currentSong.Song_1}
           <!-- Previous Track -->
           <button
-            onclick={playPrevSong}
+            onclick={() => {
+              playPrevSong();
+              triggerHaptic(50);
+            }}
             class="w-8 h-8 flex items-center justify-center text-slate-400 hover:text-white active:scale-95 transition-all rounded-full"
             title="Previous track"
           >
@@ -986,14 +990,23 @@
           <MiniAudioPlayer
             id={audioState.currentSong.Id}
             playing_id={audioState.playingId}
-            songToggle={togglePlayPause}
-            songNext={playNextSong}
+            songToggle={() => {
+              togglePlayPause();
+              triggerHaptic(50);
+            }}
+            songNext={() => {
+              playNextSong();
+              triggerHaptic(50);
+            }}
             progress={audioState.progress}
           />
 
           <!-- Next Track -->
           <button
-            onclick={playNextSong}
+            onclick={() => {
+              playNextSong();
+              triggerHaptic(50);
+            }}
             class="w-8 h-8 flex items-center justify-center text-slate-400 hover:text-white active:scale-95 transition-all rounded-full"
             title="Next track"
           >
