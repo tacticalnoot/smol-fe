@@ -72,9 +72,17 @@ export const POST: APIRoute = async ({ request, params }) => {
       { maxEvents: MAX_EVENTS }
     );
 
+    const historyLimit = Math.max(
+      0,
+      Math.min(MAX_EVENTS, room.e2eePolicy?.history ?? 0)
+    );
+    const recentEvents =
+      historyLimit > 0 ? state.events.slice(-historyLimit) : [];
+
     return new Response(
       JSON.stringify({
         roster: Array.from(state.rosterByAccount.values()),
+        events: recentEvents,
         cursor: state.nextSeq - 1,
       }),
       { status: 200, headers: { "Content-Type": "application/json" } }

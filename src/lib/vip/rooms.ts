@@ -134,7 +134,7 @@ export const VIP_ROOMS: VipRoom[] = [
     e2eePolicy: {
       rotateEveryMessages: 20,
       rotateEveryMinutes: 10,
-      history: 0,
+      history: 50,
     },
   },
   {
@@ -160,7 +160,7 @@ export const VIP_ROOMS: VipRoom[] = [
     e2eePolicy: {
       rotateEveryMessages: 20,
       rotateEveryMinutes: 10,
-      history: 0,
+      history: 50,
     },
   },
   {

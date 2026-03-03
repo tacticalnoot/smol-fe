@@ -94,10 +94,20 @@
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ account, e2ee: publicBundle }),
       });
-      const data = (await res.json()) as { roster?: RosterEntry[]; cursor?: number };
+      const data = (await res.json()) as {
+        roster?: RosterEntry[];
+        events?: Incoming[];
+        cursor?: number;
+      };
       roster = Array.isArray(data.roster) ? data.roster : [];
       cursor = typeof data.cursor === "number" ? data.cursor : 0;
       senderKeys[account] = bundle.sender;
+
+      const history = Array.isArray(data.events) ? data.events : [];
+      for (const evt of history) {
+        await handleIncoming(evt);
+      }
+
       status = "connected";
       await sendKeyShares(roster);
     } catch (err: any) {
