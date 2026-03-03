@@ -26,19 +26,19 @@ export const GET: APIRoute = async ({ request, params }) => {
   const token = getBearerToken(request);
   if (!token) return new Response("Unauthorized", { status: 401 });
 
-  const session = getVipSession(token);
+  const session = await getVipSession(token);
   if (!session) return new Response("Unauthorized", { status: 401 });
   if (session.roomId !== roomId) return new Response("Unauthorized", { status: 401 });
 
   const url = new URL(request.url);
   const cursor = parseCursor(url.searchParams.get("cursor"));
 
-  const state = getVipRoom(roomId);
+  const state = await getVipRoom(roomId);
   const events = state.events.filter((evt) => evt.seq > cursor);
 
   return new Response(
     JSON.stringify({
-      roster: Array.from(state.rosterByAccount.values()),
+      roster: state.roster,
       events,
       cursor: state.nextSeq - 1,
     }),
@@ -56,7 +56,7 @@ export const POST: APIRoute = async ({ request, params }) => {
   const token = getBearerToken(request);
   if (!token) return new Response("Unauthorized", { status: 401 });
 
-  const session = getVipSession(token);
+  const session = await getVipSession(token);
   if (!session) return new Response("Unauthorized", { status: 401 });
   if (session.roomId !== roomId) return new Response("Unauthorized", { status: 401 });
 
@@ -78,7 +78,7 @@ export const POST: APIRoute = async ({ request, params }) => {
         return new Response("Malformed sender-key-share", { status: 400 });
       }
 
-      addVipEvent(
+      await addVipEvent(
         roomId,
         {
           kind: "sender-key-share",
@@ -92,7 +92,8 @@ export const POST: APIRoute = async ({ request, params }) => {
         { maxEvents: MAX_EVENTS }
       );
 
-      return new Response(JSON.stringify({ ok: true, cursor: getVipRoom(roomId).nextSeq - 1 }), {
+      const updated = await getVipRoom(roomId);
+      return new Response(JSON.stringify({ ok: true, cursor: updated.nextSeq - 1 }), {
         status: 200,
         headers: { "Content-Type": "application/json" },
       });
@@ -112,7 +113,7 @@ export const POST: APIRoute = async ({ request, params }) => {
       }
       if (ciphertext.length > 20000) return new Response("Message too large", { status: 400 });
 
-      addVipEvent(
+      await addVipEvent(
         roomId,
         {
           kind: "chat",
@@ -126,7 +127,8 @@ export const POST: APIRoute = async ({ request, params }) => {
         { maxEvents: MAX_EVENTS }
       );
 
-      return new Response(JSON.stringify({ ok: true, cursor: getVipRoom(roomId).nextSeq - 1 }), {
+      const updated = await getVipRoom(roomId);
+      return new Response(JSON.stringify({ ok: true, cursor: updated.nextSeq - 1 }), {
         status: 200,
         headers: { "Content-Type": "application/json" },
       });

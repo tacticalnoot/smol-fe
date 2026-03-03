@@ -5,6 +5,7 @@ import {
   getBearerToken,
   getVipRoom,
   getVipSession,
+  saveVipRoom,
   type VipRosterEntry,
 } from "../../../../../lib/vip/server/state";
 
@@ -21,7 +22,7 @@ export const POST: APIRoute = async ({ request, params }) => {
   const token = getBearerToken(request);
   if (!token) return new Response("Unauthorized", { status: 401 });
 
-  const session = getVipSession(token);
+  const session = await getVipSession(token);
   if (!session) return new Response("Unauthorized", { status: 401 });
   if (session.roomId !== roomId) return new Response("Unauthorized", { status: 401 });
 
@@ -42,10 +43,10 @@ export const POST: APIRoute = async ({ request, params }) => {
       return new Response("Missing E2EE public bundle", { status: 400 });
     }
 
-    const state = getVipRoom(roomId);
+    const state = await getVipRoom(roomId);
     const now = Date.now();
 
-    const existing = state.rosterByAccount.get(account);
+    const existing = state.roster.find((entry) => entry.account === account);
     const entry: VipRosterEntry = existing
       ? {
           ...existing,
@@ -60,9 +61,12 @@ export const POST: APIRoute = async ({ request, params }) => {
           lastSeenAt: now,
         };
 
-    state.rosterByAccount.set(account, entry);
+    state.roster = state.roster
+      .filter((rosterEntry) => rosterEntry.account !== account)
+      .concat(entry);
+    await saveVipRoom(state);
 
-    addVipEvent(
+    await addVipEvent(
       roomId,
       {
         kind: "system",
@@ -72,18 +76,20 @@ export const POST: APIRoute = async ({ request, params }) => {
       { maxEvents: MAX_EVENTS }
     );
 
+    const refreshed = await getVipRoom(roomId);
+
     const historyLimit = Math.max(
       0,
       Math.min(MAX_EVENTS, room.e2eePolicy?.history ?? 0)
     );
     const recentEvents =
-      historyLimit > 0 ? state.events.slice(-historyLimit) : [];
+      historyLimit > 0 ? refreshed.events.slice(-historyLimit) : [];
 
     return new Response(
       JSON.stringify({
-        roster: Array.from(state.rosterByAccount.values()),
+        roster: refreshed.roster,
         events: recentEvents,
-        cursor: state.nextSeq - 1,
+        cursor: refreshed.nextSeq - 1,
       }),
       { status: 200, headers: { "Content-Type": "application/json" } }
     );

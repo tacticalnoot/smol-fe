@@ -1,11 +1,14 @@
 /**
- * CLOUDFLARE WORKERS LIMITATION
- * Sessions and room state stored in globalThis are isolate-local.
- * On Cloudflare Pages/Workers, different requests may be served by
- * different isolates, causing intermittent 401s and state loss.
+ * VIP state store with Cloudflare-compatible shared persistence.
  *
- * MIGRATION PATH: Move to D1, KV, or Durable Objects for production.
- * For local dev / single-instance deployments, this works fine.
+ * Priority order:
+ * 1) Cloudflare Cache API (`caches.default`) for cross-isolate sharing.
+ * 2) In-memory Maps as fallback for local dev/non-Worker runtimes.
+ *
+ * Notes:
+ * - Cache API is shared across isolates, eliminating isolate-local session drops.
+ * - Cache writes are eventually consistent and not transactional.
+ * - For strict guarantees, migrate this module to Durable Objects.
  */
 export type VipSession = {
   token: string;
@@ -25,25 +28,25 @@ export type VipRosterEntry = {
 
 export type VipEvent =
   | {
-    seq: number;
-    kind: "sender-key-share";
-    from: string;
-    to: string;
-    wrappedKey: string;
-    nonce: string;
-    keyVersion: number;
-    ts: number;
-  }
+      seq: number;
+      kind: "sender-key-share";
+      from: string;
+      to: string;
+      wrappedKey: string;
+      nonce: string;
+      keyVersion: number;
+      ts: number;
+    }
   | {
-    seq: number;
-    kind: "chat";
-    sender: string;
-    ciphertext: string;
-    nonce: string;
-    keyVersion: number;
-    signature: string;
-    ts: number;
-  }
+      seq: number;
+      kind: "chat";
+      sender: string;
+      ciphertext: string;
+      nonce: string;
+      keyVersion: number;
+      signature: string;
+      ts: number;
+    }
   | { seq: number; kind: "system"; message: string; ts: number };
 
 export type VipEventInput =
@@ -53,24 +56,48 @@ export type VipEventInput =
 
 export type VipRoomState = {
   roomId: string;
-  rosterByAccount: Map<string, VipRosterEntry>;
+  roster: VipRosterEntry[];
   events: VipEvent[];
   nextSeq: number;
 };
 
-export type VipStore = {
+type VipMemoryStore = {
   sessionsByToken: Map<string, VipSession>;
   roomsById: Map<string, VipRoomState>;
 };
 
 const STORE_KEY = "__smolVipStore";
+const CACHE_KEY_PREFIX = "smol-vip-v1";
+const CACHE_BASE_URL = "https://vip-state.smol.local";
+const ROOM_TTL_SECONDS = 12 * 60 * 60; // 12h rolling room state retention
 
-function getGlobalStore(): VipStore {
+function cloneRoomState(room: VipRoomState): VipRoomState {
+  return {
+    roomId: room.roomId,
+    roster: room.roster.map((entry) => ({
+      ...entry,
+      e2ee: { ...entry.e2ee },
+    })),
+    events: room.events.map((evt) => ({ ...evt })),
+    nextSeq: room.nextSeq,
+  };
+}
+
+function createEmptyRoom(roomId: string): VipRoomState {
+  return {
+    roomId,
+    roster: [],
+    events: [],
+    nextSeq: 1,
+  };
+}
+
+function getMemoryStore(): VipMemoryStore {
   const g = globalThis as unknown as Record<string, unknown>;
-  const existing = g[STORE_KEY] as VipStore | undefined;
+  const existing = g[STORE_KEY] as VipMemoryStore | undefined;
   if (existing) return existing;
 
-  const created: VipStore = {
+  const created: VipMemoryStore = {
     sessionsByToken: new Map(),
     roomsById: new Map(),
   };
@@ -78,67 +105,155 @@ function getGlobalStore(): VipStore {
   return created;
 }
 
-export function getVipStore(): VipStore {
-  return getGlobalStore();
+function getCache(): Cache | null {
+  const maybeCaches = (globalThis as any)?.caches;
+  const cache = maybeCaches?.default;
+  return cache || null;
 }
 
-export function getVipRoom(roomId: string): VipRoomState {
-  const store = getVipStore();
-  const existing = store.roomsById.get(roomId);
-  if (existing) return existing;
+function cacheRequest(key: string): Request {
+  return new Request(`${CACHE_BASE_URL}/${encodeURIComponent(key)}`);
+}
 
-  const created: VipRoomState = {
-    roomId,
-    rosterByAccount: new Map(),
-    events: [],
-    nextSeq: 1,
+async function cacheGetJson<T>(key: string): Promise<T | null> {
+  const cache = getCache();
+  if (!cache) return null;
+
+  const res = await cache.match(cacheRequest(key));
+  if (!res) return null;
+  try {
+    return (await res.json()) as T;
+  } catch {
+    return null;
+  }
+}
+
+async function cachePutJson(key: string, value: unknown, ttlSeconds: number): Promise<void> {
+  const cache = getCache();
+  if (!cache) return;
+
+  await cache.put(
+    cacheRequest(key),
+    new Response(JSON.stringify(value), {
+      headers: {
+        "Content-Type": "application/json",
+        "Cache-Control": `max-age=${Math.max(1, Math.floor(ttlSeconds))}`,
+      },
+    })
+  );
+}
+
+async function cacheDelete(key: string): Promise<void> {
+  const cache = getCache();
+  if (!cache) return;
+  await cache.delete(cacheRequest(key));
+}
+
+function sessionKey(token: string): string {
+  return `${CACHE_KEY_PREFIX}:session:${token}`;
+}
+
+function roomKey(roomId: string): string {
+  return `${CACHE_KEY_PREFIX}:room:${roomId}`;
+}
+
+export async function getVipRoom(roomId: string): Promise<VipRoomState> {
+  const key = roomKey(roomId);
+  const cached = await cacheGetJson<VipRoomState>(key);
+  if (cached?.roomId === roomId && Array.isArray(cached.roster) && Array.isArray(cached.events)) {
+    return {
+      roomId,
+      roster: cached.roster,
+      events: cached.events,
+      nextSeq: Number.isFinite(cached.nextSeq) && cached.nextSeq > 0 ? cached.nextSeq : 1,
+    };
+  }
+
+  const memory = getMemoryStore();
+  const existing = memory.roomsById.get(roomId);
+  if (existing) return cloneRoomState(existing);
+
+  return createEmptyRoom(roomId);
+}
+
+export async function saveVipRoom(room: VipRoomState): Promise<void> {
+  const normalized: VipRoomState = {
+    roomId: room.roomId,
+    roster: Array.isArray(room.roster) ? room.roster : [],
+    events: Array.isArray(room.events) ? room.events : [],
+    nextSeq: Number.isFinite(room.nextSeq) && room.nextSeq > 0 ? room.nextSeq : 1,
   };
-  store.roomsById.set(roomId, created);
-  return created;
+
+  const memory = getMemoryStore();
+  memory.roomsById.set(normalized.roomId, cloneRoomState(normalized));
+  await cachePutJson(roomKey(normalized.roomId), normalized, ROOM_TTL_SECONDS);
 }
 
-export function addVipEvent(
+export async function addVipEvent(
   roomId: string,
   event: VipEventInput,
-  opts: { maxEvents: number },
-): VipEvent {
-  const room = getVipRoom(roomId);
-  const next = { ...event, seq: room.nextSeq++ } as VipEvent;
+  opts: { maxEvents: number }
+): Promise<VipEvent> {
+  const room = await getVipRoom(roomId);
+  const seq = room.nextSeq > 0 ? room.nextSeq : 1;
+  const next = { ...event, seq } as VipEvent;
+
   room.events.push(next);
-  if (room.events.length > opts.maxEvents) {
-    room.events.splice(0, room.events.length - opts.maxEvents);
+  room.nextSeq = seq + 1;
+
+  const maxEvents = Math.max(1, opts.maxEvents);
+  if (room.events.length > maxEvents) {
+    room.events = room.events.slice(-maxEvents);
   }
+
+  await saveVipRoom(room);
   return next;
 }
 
-export function createVipSession(params: {
+export async function createVipSession(params: {
   roomId: string;
   account: string;
   ttlMs: number;
-}): VipSession {
-  const store = getVipStore();
+}): Promise<VipSession> {
   const token = crypto.randomUUID();
   const now = Date.now();
+  const ttlMs = Math.max(1_000, params.ttlMs);
   const session: VipSession = {
     token,
     roomId: params.roomId,
     account: params.account,
     createdAt: now,
-    expiresAt: now + params.ttlMs,
+    expiresAt: now + ttlMs,
   };
-  store.sessionsByToken.set(token, session);
+
+  const memory = getMemoryStore();
+  memory.sessionsByToken.set(token, session);
+
+  await cachePutJson(sessionKey(token), session, Math.ceil(ttlMs / 1000));
   return session;
 }
 
-export function getVipSession(token: string): VipSession | null {
-  const store = getVipStore();
-  const session = store.sessionsByToken.get(token);
-  if (!session) return null;
-  if (Date.now() > session.expiresAt) {
-    store.sessionsByToken.delete(token);
+export async function getVipSession(token: string): Promise<VipSession | null> {
+  const key = sessionKey(token);
+  const cached = await cacheGetJson<VipSession>(key);
+  if (cached) {
+    if (Date.now() > cached.expiresAt) {
+      await cacheDelete(key);
+      getMemoryStore().sessionsByToken.delete(token);
+      return null;
+    }
+    getMemoryStore().sessionsByToken.set(token, cached);
+    return cached;
+  }
+
+  const memory = getMemoryStore();
+  const existing = memory.sessionsByToken.get(token);
+  if (!existing) return null;
+  if (Date.now() > existing.expiresAt) {
+    memory.sessionsByToken.delete(token);
     return null;
   }
-  return session;
+  return existing;
 }
 
 export function getBearerToken(request: Request): string | null {

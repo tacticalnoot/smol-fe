@@ -84,7 +84,11 @@ export const POST: APIRoute = async ({ request }) => {
       );
     }
 
-    const session = createVipSession({ roomId, account: address, ttlMs: SESSION_TTL_MS });
+    const session = await createVipSession({
+      roomId,
+      account: address,
+      ttlMs: SESSION_TTL_MS,
+    });
 
     return new Response(JSON.stringify({ token: session.token, roomStatus: "ok" }), {
       status: 200,
