@@ -911,7 +911,10 @@
         >
             <!-- Primary Grid Toggle with Rainbow Glow -->
             <button
-                onclick={() => (showGridView = !showGridView)}
+                onclick={() => {
+                    showGridView = !showGridView;
+                    triggerHaptic(50);
+                }}
                 class="relative group shrink-0 w-10 h-10 flex items-center justify-center rounded-xl overflow-hidden transition-all active:scale-95 hover:shadow-[0_0_20px_rgba(168,85,247,0.4)]"
                 title={showGridView ? "Back to Player" : "Grid View"}
             >
@@ -967,7 +970,10 @@
             >
                 <div class="flex items-center gap-1 bg-white/5 rounded-lg p-1">
                     <button
-                        onclick={() => (activeModule = "all")}
+                        onclick={() => {
+                            activeModule = "all";
+                            triggerHaptic("selection");
+                        }}
                         class="px-3 py-1.5 rounded-md text-[9px] font-pixel transition-all {activeModule ===
                         'all'
                             ? 'bg-white/10 text-white shadow-sm'
@@ -975,7 +981,10 @@
                         >ALL</button
                     >
                     <button
-                        onclick={() => (activeModule = "minted")}
+                        onclick={() => {
+                            activeModule = "minted";
+                            triggerHaptic("selection");
+                        }}
                         class="px-3 py-1.5 rounded-md text-[9px] font-pixel transition-all {activeModule ===
                         'minted'
                             ? 'bg-[#d836ff]/20 text-[#d836ff] shadow-[0_0_10px_rgba(216,54,255,0.2)]'
@@ -986,6 +995,7 @@
                         onclick={() => {
                             activeModule = "tags";
                             tagsExpanded = true;
+                            triggerHaptic("selection");
                         }}
                         class="px-3 py-1.5 rounded-md text-[9px] font-pixel transition-all {activeModule ===
                         'tags'
@@ -1057,7 +1067,10 @@
                     <div class="flex flex-wrap gap-2">
                         {#each allTags.slice(0, maxTagCount) as tag}
                             <button
-                                onclick={() => toggleArtistTag(tag)}
+                                onclick={() => {
+                                    toggleArtistTag(tag);
+                                    triggerHaptic("light");
+                                }}
                                 class="px-2.5 py-1 rounded-full text-[9px] font-pixel border transition-all duration-300 {selectedTags.includes(
                                     tag,
                                 )
@@ -1302,7 +1315,10 @@
                 <!-- Sort Dropdown -->
                 <div class="relative">
                     <button
-                        onclick={() => (showSortDropdown = !showSortDropdown)}
+                        onclick={() => {
+                            showSortDropdown = !showSortDropdown;
+                            triggerHaptic("selection");
+                        }}
                         class="h-9 px-3 flex items-center gap-2 rounded-lg transition-all active:scale-95 text-white/60 bg-white/5 border border-white/10 hover:bg-white/10 hover:text-white"
                         title="Sort Order"
                     >
@@ -1378,7 +1394,10 @@
                                     ? 'opacity-40 hover:opacity-100'
                                     : 'opacity-100'}"
                                 style="will-change: transform, opacity"
-                                onclick={() => handleSelect(index)}
+                                onclick={() => {
+                                    handleSelect(index);
+                                    triggerHaptic("nudge");
+                                }}
                                 onkeydown={() => {}}
                             >
                                 <!-- Outer Ambient Glow (Disabled in Fast Mode) -->
@@ -1450,6 +1469,7 @@
                                                 : 'opacity-0 group-hover:opacity-100'}"
                                             onclick={(e) => {
                                                 e.stopPropagation();
+                                                triggerHaptic(50);
                                                 navigate(
                                                     `/artist/${song.Address}`,
                                                 );
@@ -1489,6 +1509,7 @@
                                                 : 'opacity-0 group-hover:opacity-100'}"
                                             onclick={(e) => {
                                                 e.stopPropagation();
+                                                triggerHaptic(50);
                                                 navigate(buildRadioUrl(song));
                                             }}
                                             onkeydown={(e) => {
@@ -1551,6 +1572,7 @@
                                                 : 'opacity-0 group-hover:opacity-100'}"
                                             onclick={(e) => {
                                                 e.stopPropagation();
+                                                triggerHaptic(50);
                                                 navigate(
                                                     `/${song.Id}?from=artist`,
                                                 );
@@ -1587,6 +1609,7 @@
                                                 onclick={(e) => {
                                                     e.stopPropagation();
                                                     togglePlayPause();
+                                                    triggerHaptic(50);
                                                 }}
                                                 onkeydown={(e) => {
                                                     if (e.key === "Enter") {
