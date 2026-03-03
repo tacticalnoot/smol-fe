@@ -8,10 +8,14 @@ import { findRoom } from "../../../lib/vip/rooms";
 import {
   createRateLimitResponse,
   enforceRateLimit,
+  enforceSameOrigin,
   parseJsonBodyWithLimit,
 } from "../../../lib/guardrails";
 
 export const POST: APIRoute = async ({ request }) => {
+  const originError = enforceSameOrigin(request);
+  if (originError) return originError;
+
   const rate = await enforceRateLimit(request, {
     bucket: "api-vip-challenge",
     limit: 40,

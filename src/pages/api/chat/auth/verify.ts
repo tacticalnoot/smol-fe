@@ -6,12 +6,16 @@ import { initDb, getDb } from "../../../../lib/the-vip/db";
 import {
   createRateLimitResponse,
   enforceRateLimit,
+  enforceSameOrigin,
   parseJsonBodyWithLimit,
   trimString,
 } from "../../../../lib/guardrails";
 
 export const POST: APIRoute = async (context) => {
   const { request, locals } = context;
+  const originError = enforceSameOrigin(request);
+  if (originError) return originError;
+
   const rate = await enforceRateLimit(request, {
     bucket: "api-chat-auth-verify",
     limit: 40,

@@ -5,10 +5,14 @@ import { getProverEnv, proverFetch } from "../../../../lib/dungeon/prover/proxy"
 import {
   createRateLimitResponse,
   enforceRateLimit,
+  enforceSameOrigin,
   parseJsonBodyWithLimit,
 } from "../../../../lib/guardrails";
 
 export async function POST({ request, locals }: APIContext) {
+  const originError = enforceSameOrigin(request);
+  if (originError) return originError;
+
   const rate = await enforceRateLimit(request, {
     bucket: "api-dungeon-prover-noir",
     limit: 12,

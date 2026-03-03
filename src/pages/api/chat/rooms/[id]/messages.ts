@@ -5,6 +5,7 @@ import { ROOMS, isRoomAccessible } from '../../../../../lib/the-vip/rooms';
 import {
     createRateLimitResponse,
     enforceRateLimit,
+    enforceSameOrigin,
     parseJsonBodyWithLimit,
     trimString,
 } from '../../../../../lib/guardrails';
@@ -75,6 +76,9 @@ export const GET: APIRoute = async (context) => {
 
 export const POST: APIRoute = async (context) => {
     const { request, locals, params } = context;
+    const originError = enforceSameOrigin(request);
+    if (originError) return originError;
+
     const rate = await enforceRateLimit(request, {
         bucket: "api-chat-room-messages-post",
         limit: 120,

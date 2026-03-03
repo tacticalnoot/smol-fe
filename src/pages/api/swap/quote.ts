@@ -5,6 +5,7 @@ import {
     createErrorResponse,
     createRateLimitResponse,
     enforceRateLimit,
+    enforceSameOrigin,
     parseJsonBodyWithLimit,
     trimString,
 } from "../../../lib/guardrails";
@@ -13,6 +14,9 @@ const SOROSWAP_API_URL = 'https://api.soroswap.finance';
 const SUPPORTED_PROTOCOLS = ['soroswap', 'aqua', 'phoenix'];
 
 export async function POST({ request, locals }: APIContext) {
+    const originError = enforceSameOrigin(request);
+    if (originError) return originError;
+
     const rate = await enforceRateLimit(request, {
         bucket: "api-swap-quote",
         limit: 120,

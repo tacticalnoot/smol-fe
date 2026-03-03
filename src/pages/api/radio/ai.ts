@@ -5,6 +5,7 @@ import {
     createJsonResponse,
     createRateLimitResponse,
     enforceRateLimit,
+    enforceSameOrigin,
     parseJsonBodyWithLimit,
     trimString,
 } from "../../../lib/guardrails";
@@ -13,6 +14,9 @@ import {
 const apiKey = import.meta.env.GEMINI_API_KEY || process.env.GEMINI_API_KEY;
 
 export const POST: APIRoute = async ({ request }) => {
+    const originError = enforceSameOrigin(request);
+    if (originError) return originError;
+
     const rate = await enforceRateLimit(request, {
         bucket: "api-radio-ai",
         limit: 30,

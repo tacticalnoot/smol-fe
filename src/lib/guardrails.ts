@@ -187,6 +187,23 @@ export function createRateLimitResponse(retryAfterSec: number): Response {
   );
 }
 
+export function enforceSameOrigin(request: Request): Response | null {
+  const origin = request.headers.get("origin");
+  if (!origin) return null;
+
+  try {
+    const originUrl = new URL(origin);
+    const requestUrl = new URL(request.url);
+    if (originUrl.protocol === requestUrl.protocol && originUrl.host === requestUrl.host) {
+      return null;
+    }
+  } catch {
+    return createErrorResponse("Invalid Origin header", 400);
+  }
+
+  return createErrorResponse("Cross-origin requests are not allowed", 403);
+}
+
 export async function parseJsonBodyWithLimit<T>(
   request: Request,
   maxBytes: number

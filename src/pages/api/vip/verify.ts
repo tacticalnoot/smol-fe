@@ -7,12 +7,16 @@ import { createVipSession } from "../../../lib/vip/server/state";
 import {
   createRateLimitResponse,
   enforceRateLimit,
+  enforceSameOrigin,
   parseJsonBodyWithLimit,
 } from "../../../lib/guardrails";
 
 const SESSION_TTL_MS = 2 * 60 * 60 * 1000; // 2 hours (Labs-only)
 
 export const POST: APIRoute = async ({ request }) => {
+  const originError = enforceSameOrigin(request);
+  if (originError) return originError;
+
   const rate = await enforceRateLimit(request, {
     bucket: "api-vip-verify",
     limit: 40,

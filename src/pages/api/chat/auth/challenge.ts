@@ -4,12 +4,16 @@ import { StrKey } from '@stellar/stellar-sdk';
 import {
     createRateLimitResponse,
     enforceRateLimit,
+    enforceSameOrigin,
     parseJsonBodyWithLimit,
     trimString,
 } from "../../../../lib/guardrails";
 
 export const POST: APIRoute = async (context) => {
     const { request, locals } = context;
+    const originError = enforceSameOrigin(request);
+    if (originError) return originError;
+
     const rate = await enforceRateLimit(request, {
         bucket: "api-chat-auth-challenge",
         limit: 40,
