@@ -1,28 +1,39 @@
 import type { APIRoute } from 'astro';
 import { GoogleGenAI } from '@google/genai';
+import {
+    createErrorResponse,
+    createJsonResponse,
+    createRateLimitResponse,
+    enforceRateLimit,
+    parseJsonBodyWithLimit,
+    trimString,
+} from "../../../lib/guardrails";
 
 // Initialize Gemini
 const apiKey = import.meta.env.GEMINI_API_KEY || process.env.GEMINI_API_KEY;
 
 export const POST: APIRoute = async ({ request }) => {
+    const rate = await enforceRateLimit(request, {
+        bucket: "api-radio-ai",
+        limit: 30,
+        windowMs: 60_000,
+    });
+    if (!rate.allowed) {
+        return createRateLimitResponse(rate.retryAfterSec);
+    }
+
     if (!apiKey) {
         console.warn("No GEMINI_API_KEY found. Returning fallback/demo data.");
-        return new Response(JSON.stringify({
+        return createJsonResponse({
             playlistName: "Smol Dream (Demo)",
             tags: ["dream", "demo", "lofi", "chill"],
             confidence: 1.0,
             notes: "Demo mode: Set GEMINI_API_KEY to enable AI."
-        }), {
-            status: 200,
-            headers: { 'Content-Type': 'application/json' }
         });
     }
 
     const requestId = crypto.randomUUID().split('-')[0];
-    const timestamp = new Date().toISOString();
-    const clientIp = request.headers.get('x-forwarded-for') || request.headers.get('cf-connecting-ip') || 'unknown';
-
-    console.log(`[API ${requestId}] ${timestamp} | IP: ${clientIp} | Key Present: ${!!apiKey}`);
+    console.log(`[API ${requestId}] radio/ai request accepted`);
 
     // Global In-Memory Cache (simple LRU-ish via Map)
     const CACHE_TTL_MS = 1000 * 60 * 60; // 1 hour
@@ -30,20 +41,20 @@ export const POST: APIRoute = async ({ request }) => {
     (globalThis as any).__AI_CACHE__ = globalCache;
 
     try {
-        const body = await request.json();
-        const { context } = body;
-        console.log(`[API ${requestId}] Context: "${context}"`);
+        const parsed = await parseJsonBodyWithLimit<{ context?: unknown }>(request, 4096);
+        if (!parsed.ok) return parsed.response;
+
+        const context = trimString(parsed.data?.context, 300);
+        if (!context) {
+            return createErrorResponse("context is required", 400);
+        }
 
         // 1. Check Cache
         const cacheKey = `ctx_${context.toLowerCase().trim()}`;
         const cached = globalCache.get(cacheKey);
 
         if (cached && (Date.now() - cached.timestamp < CACHE_TTL_MS)) {
-            console.log(`[API ${requestId}] ⚡ CACHE HIT for "${context}"`);
-            return new Response(cached.data, {
-                status: 200,
-                headers: { 'Content-Type': 'application/json' }
-            });
+            return new Response(cached.data, { status: 200, headers: { 'Content-Type': 'application/json', 'Cache-Control': 'no-store' } });
         }
 
         const ai = new GoogleGenAI({ apiKey });
@@ -115,21 +126,15 @@ export const POST: APIRoute = async ({ request }) => {
         });
         console.log(`[API ${requestId}] Saved to cache. Key count: ${globalCache.size}`);
 
-        return new Response(jsonStr, {
-            status: 200,
-            headers: { 'Content-Type': 'application/json' }
-        });
+        return new Response(jsonStr, { status: 200, headers: { 'Content-Type': 'application/json', 'Cache-Control': 'no-store' } });
 
     } catch (error: any) {
         console.error('Gemini API Error:', error);
-        return new Response(JSON.stringify({
+        return createJsonResponse({
             playlistName: "Smol Radio Backup",
             tags: ["smol", "vibes", "chill", "community", "music"],
             confidence: 0.1,
             notes: `Fallback error: ${error.message || error}`
-        }), {
-            status: 200,
-            headers: { 'Content-Type': 'application/json' }
         });
     }
 }

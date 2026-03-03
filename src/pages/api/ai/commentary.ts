@@ -1,20 +1,34 @@
 
 import type { APIRoute } from 'astro';
 import { GoogleGenAI } from '@google/genai';
+import {
+    createErrorResponse,
+    createJsonResponse,
+    createRateLimitResponse,
+    enforceRateLimit,
+    parseJsonBodyWithLimit,
+    trimString,
+} from "../../../lib/guardrails";
 
 // Initialize Gemini
 // We use the same key variable name as radio/ai.ts for consistency
 const apiKey = import.meta.env.GEMINI_API_KEY || process.env.GEMINI_API_KEY;
 
 export const POST: APIRoute = async ({ request }) => {
+    const rate = await enforceRateLimit(request, {
+        bucket: "api-ai-commentary",
+        limit: 30,
+        windowMs: 60_000,
+    });
+    if (!rate.allowed) {
+        return createRateLimitResponse(rate.retryAfterSec);
+    }
+
     if (!apiKey) {
         console.warn("No GEMINI_API_KEY found. Returning fallback commentary.");
-        return new Response(JSON.stringify({
+        return createJsonResponse({
             comment: "This setup looks solid. Waiting for the mix to drop.",
             mood: "waiting"
-        }), {
-            status: 200,
-            headers: { 'Content-Type': 'application/json' }
         });
     }
 
@@ -26,10 +40,20 @@ export const POST: APIRoute = async ({ request }) => {
     (globalThis as any).__AI_DIRECTOR_CACHE__ = globalCache;
 
     try {
-        const body = await request.json();
-        const { context, type } = body;
+        const parsed = await parseJsonBodyWithLimit<{ context?: unknown; type?: unknown }>(request, 4096);
+        if (!parsed.ok) return parsed.response;
+
+        const context = trimString(parsed.data?.context, 300);
+        const type = trimString(parsed.data?.type, 24).toLowerCase();
         // context: string (lyrics or prompt)
         // type: 'lyrics' | 'prompt' | 'status'
+
+        if (!context) {
+            return createErrorResponse("context is required", 400);
+        }
+        if (!["lyrics", "prompt", "status"].includes(type)) {
+            return createErrorResponse("type must be one of: lyrics, prompt, status", 400);
+        }
 
         const cacheKey = `dir_${type}_${context.slice(0, 50).toLowerCase().trim()}`;
         const cached = globalCache.get(cacheKey);
@@ -37,7 +61,7 @@ export const POST: APIRoute = async ({ request }) => {
         if (cached && (Date.now() - cached.timestamp < CACHE_TTL_MS)) {
             return new Response(cached.data, {
                 status: 200,
-                headers: { 'Content-Type': 'application/json' }
+                headers: { 'Content-Type': 'application/json', 'Cache-Control': 'no-store' }
             });
         }
 
@@ -87,10 +111,10 @@ export const POST: APIRoute = async ({ request }) => {
             JSON.parse(jsonStr);
         } catch (e) {
             // fallback if JSON broken
-            return new Response(JSON.stringify({
+            return createJsonResponse({
                 comment: "Processing this masterpiece... sounds promising.",
                 mood: "analyzing"
-            }), { status: 200 });
+            });
         }
 
         globalCache.set(cacheKey, {
@@ -100,17 +124,14 @@ export const POST: APIRoute = async ({ request }) => {
 
         return new Response(jsonStr, {
             status: 200,
-            headers: { 'Content-Type': 'application/json' }
+            headers: { 'Content-Type': 'application/json', 'Cache-Control': 'no-store' }
         });
 
     } catch (error: any) {
         console.error('Gemini Director Error:', error);
-        return new Response(JSON.stringify({
+        return createJsonResponse({
             comment: "System crunching... stand by.",
             mood: "error"
-        }), {
-            status: 200,
-            headers: { 'Content-Type': 'application/json' }
         });
     }
 }

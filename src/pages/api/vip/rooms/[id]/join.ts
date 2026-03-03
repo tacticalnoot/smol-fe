@@ -8,12 +8,26 @@ import {
   saveVipRoom,
   type VipRosterEntry,
 } from "../../../../../lib/vip/server/state";
+import {
+  createRateLimitResponse,
+  enforceRateLimit,
+  parseJsonBodyWithLimit,
+} from "../../../../../lib/guardrails";
 
 const MAX_EVENTS = 200;
 
 export const POST: APIRoute = async ({ request, params }) => {
   const roomId = params.id || "";
   if (!roomId) return new Response("Room id required", { status: 400 });
+
+  const rate = await enforceRateLimit(request, {
+    bucket: "api-vip-room-join",
+    limit: 60,
+    windowMs: 60_000,
+  });
+  if (!rate.allowed) {
+    return createRateLimitResponse(rate.retryAfterSec);
+  }
 
   const room = findRoom(roomId);
   if (!room) return new Response("Unknown room", { status: 404 });
@@ -27,10 +41,13 @@ export const POST: APIRoute = async ({ request, params }) => {
   if (session.roomId !== roomId) return new Response("Unauthorized", { status: 401 });
 
   try {
-    const body = (await request.json()) as {
+    const parsed = await parseJsonBodyWithLimit<{
       account?: string;
       e2ee?: { identity?: string; dh?: string };
-    };
+    }>(request, 16_000);
+    if (!parsed.ok) return parsed.response;
+
+    const body = parsed.data;
 
     const account = body?.account?.trim() || "";
     const identity = body?.e2ee?.identity || "";
@@ -91,13 +108,13 @@ export const POST: APIRoute = async ({ request, params }) => {
         events: recentEvents,
         cursor: refreshed.nextSeq - 1,
       }),
-      { status: 200, headers: { "Content-Type": "application/json" } }
+      { status: 200, headers: { "Content-Type": "application/json", "Cache-Control": "no-store" } }
     );
   } catch (error) {
     const message = error instanceof Error ? error.message : "Join failed";
     return new Response(JSON.stringify({ error: message }), {
       status: 500,
-      headers: { "Content-Type": "application/json" },
+      headers: { "Content-Type": "application/json", "Cache-Control": "no-store" },
     });
   }
 };

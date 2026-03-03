@@ -7,6 +7,11 @@ import {
   getVipSession,
   type VipEvent,
 } from "../../../../../lib/vip/server/state";
+import {
+  createRateLimitResponse,
+  enforceRateLimit,
+  parseJsonBodyWithLimit,
+} from "../../../../../lib/guardrails";
 
 const MAX_EVENTS = 200;
 
@@ -19,6 +24,15 @@ function parseCursor(value: string | null): number {
 export const GET: APIRoute = async ({ request, params }) => {
   const roomId = params.id || "";
   if (!roomId) return new Response("Room id required", { status: 400 });
+
+  const rate = await enforceRateLimit(request, {
+    bucket: "api-vip-room-events-get",
+    limit: 180,
+    windowMs: 60_000,
+  });
+  if (!rate.allowed) {
+    return createRateLimitResponse(rate.retryAfterSec);
+  }
 
   const room = findRoom(roomId);
   if (!room) return new Response("Unknown room", { status: 404 });
@@ -42,13 +56,22 @@ export const GET: APIRoute = async ({ request, params }) => {
       events,
       cursor: state.nextSeq - 1,
     }),
-    { status: 200, headers: { "Content-Type": "application/json" } }
+    { status: 200, headers: { "Content-Type": "application/json", "Cache-Control": "no-store" } }
   );
 };
 
 export const POST: APIRoute = async ({ request, params }) => {
   const roomId = params.id || "";
   if (!roomId) return new Response("Room id required", { status: 400 });
+
+  const rate = await enforceRateLimit(request, {
+    bucket: "api-vip-room-events-post",
+    limit: 120,
+    windowMs: 60_000,
+  });
+  if (!rate.allowed) {
+    return createRateLimitResponse(rate.retryAfterSec);
+  }
 
   const room = findRoom(roomId);
   if (!room) return new Response("Unknown room", { status: 404 });
@@ -63,7 +86,9 @@ export const POST: APIRoute = async ({ request, params }) => {
   const now = Date.now();
 
   try {
-    const body = (await request.json()) as Partial<VipEvent>;
+    const parsed = await parseJsonBodyWithLimit<Partial<VipEvent>>(request, 32_000);
+    if (!parsed.ok) return parsed.response;
+    const body = parsed.data;
     if (!body?.kind) return new Response("Missing kind", { status: 400 });
 
     if (body.kind === "sender-key-share") {
@@ -95,7 +120,7 @@ export const POST: APIRoute = async ({ request, params }) => {
       const updated = await getVipRoom(roomId);
       return new Response(JSON.stringify({ ok: true, cursor: updated.nextSeq - 1 }), {
         status: 200,
-        headers: { "Content-Type": "application/json" },
+        headers: { "Content-Type": "application/json", "Cache-Control": "no-store" },
       });
     }
 
@@ -130,7 +155,7 @@ export const POST: APIRoute = async ({ request, params }) => {
       const updated = await getVipRoom(roomId);
       return new Response(JSON.stringify({ ok: true, cursor: updated.nextSeq - 1 }), {
         status: 200,
-        headers: { "Content-Type": "application/json" },
+        headers: { "Content-Type": "application/json", "Cache-Control": "no-store" },
       });
     }
 
@@ -144,7 +169,7 @@ export const POST: APIRoute = async ({ request, params }) => {
     const message = error instanceof Error ? error.message : "Event write failed";
     return new Response(JSON.stringify({ error: message }), {
       status: 500,
-      headers: { "Content-Type": "application/json" },
+      headers: { "Content-Type": "application/json", "Cache-Control": "no-store" },
     });
   }
 };

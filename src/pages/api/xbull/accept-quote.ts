@@ -1,9 +1,31 @@
 
 import type { APIRoute } from 'astro';
+import {
+    createErrorResponse,
+    createRateLimitResponse,
+    enforceRateLimit,
+    parseJsonBodyWithLimit,
+} from "../../../lib/guardrails";
 
 export const POST: APIRoute = async ({ request }) => {
+    const rate = await enforceRateLimit(request, {
+        bucket: "api-xbull-accept-quote",
+        limit: 60,
+        windowMs: 60_000,
+    });
+    if (!rate.allowed) {
+        return createRateLimitResponse(rate.retryAfterSec);
+    }
+
     try {
-        const body = await request.json();
+        const parsed = await parseJsonBodyWithLimit<Record<string, unknown>>(request, 32_000);
+        if (!parsed.ok) return parsed.response;
+        const body = parsed.data;
+
+        if (typeof body !== "object" || body === null) {
+            return createErrorResponse("Invalid quote payload", 400);
+        }
+
         const targetUrl = `https://swap.apis.xbull.app/swaps/accept-quote`;
 
         const response = await fetch(targetUrl, {
@@ -20,6 +42,7 @@ export const POST: APIRoute = async ({ request }) => {
             status: response.status,
             headers: {
                 'Content-Type': 'application/json',
+                'Cache-Control': 'no-store',
             },
         });
     } catch (error) {
