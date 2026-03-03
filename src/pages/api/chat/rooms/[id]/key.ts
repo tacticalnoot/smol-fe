@@ -1,10 +1,10 @@
 import type { APIRoute } from 'astro';
-import { getDb } from '../../../../../lib/the-vip/db';
+import { getDb, initDb } from '../../../../../lib/the-vip/db';
 import { getSession } from '../../../../../lib/the-vip/auth';
 import { getValidRoom, isRoomAccessible } from '../../../../../lib/the-vip/rooms';
+import { createRateLimitResponse, enforceRateLimit } from '../../../../../lib/guardrails';
 import nacl from 'tweetnacl';
-import { encodeBase64, decodeBase64 } from 'tweetnacl-util';
-import { Keypair } from '@stellar/stellar-sdk'; // Used for server secret -> keypair logic, BUT we need Curve25519 (Box) keys.
+import { encodeBase64 } from 'tweetnacl-util';
 // Stellar uses Ed25519 (Sign).
 // tweetnacl uses X25519 (Box). 
 // We cannot easily convert Ed25519 Secret -> X25519 Secret safely without libraries (or just using `nacl.box.keyPair.fromSecretKey` if strictly compatible).
@@ -13,12 +13,22 @@ import { Keypair } from '@stellar/stellar-sdk'; // Used for server secret -> key
 
 export const GET: APIRoute = async (context) => {
     const { request, locals, params } = context;
+    const rate = await enforceRateLimit(request, {
+        bucket: "api-chat-room-key-get",
+        limit: 120,
+        windowMs: 60_000,
+    });
+    if (!rate.allowed) {
+        return createRateLimitResponse(rate.retryAfterSec);
+    }
+
     const env = (locals as any).runtime?.env;
     if (!env?.DB) {
         return new Response('Server not configured (missing DB binding)', { status: 500 });
     }
 
     const db = await getDb(env);
+    await initDb(db);
     const session = await getSession(request, db);
     if (!session) return new Response('Unauthorized', { status: 401 });
 
@@ -39,6 +49,9 @@ export const GET: APIRoute = async (context) => {
         return new Response(JSON.stringify({ error: 'User public key not found. Please PUT /keys first.' }), { status: 412 }); // Precondition Failed
     }
     const userPubKeyHex = userKeyRow.x25519_pubkey as string;
+    if (!/^[0-9a-fA-F]{64}$/.test(userPubKeyHex)) {
+        return new Response(JSON.stringify({ error: 'Stored user public key is invalid.' }), { status: 400 });
+    }
 
     // 2. Get or Create Room Key
     let roomKeyRow = await db.prepare('SELECT key_material, epoch FROM room_keys WHERE room_id = ?').bind(roomId).first();
@@ -101,5 +114,5 @@ export const GET: APIRoute = async (context) => {
         encryptedKey: encodeBase64(box), // Base64 for transport
         nonce: encodeBase64(nonce),
         serverPublicKey: encodeBase64(serverBoxKeypair.publicKey) // Send server pubkey so client can open it
-    }), { status: 200 });
+    }), { status: 200, headers: { 'Content-Type': 'application/json', 'Cache-Control': 'no-store' } });
 };

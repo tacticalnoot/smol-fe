@@ -1,16 +1,32 @@
 import type { APIRoute } from 'astro';
-import { getDb } from '../../../../../lib/the-vip/db';
+import { getDb, initDb } from '../../../../../lib/the-vip/db';
 import { getSession } from '../../../../../lib/the-vip/auth';
 import { ROOMS, isRoomAccessible } from '../../../../../lib/the-vip/rooms';
+import {
+    createRateLimitResponse,
+    enforceRateLimit,
+    parseJsonBodyWithLimit,
+    trimString,
+} from '../../../../../lib/guardrails';
 
 export const GET: APIRoute = async (context) => {
     const { request, locals, params } = context;
+    const rate = await enforceRateLimit(request, {
+        bucket: "api-chat-room-messages-get",
+        limit: 180,
+        windowMs: 60_000,
+    });
+    if (!rate.allowed) {
+        return createRateLimitResponse(rate.retryAfterSec);
+    }
+
     const env = (locals as any).runtime?.env;
     if (!env?.DB) {
         return new Response('Server not configured (missing DB binding)', { status: 500 });
     }
 
     const db = await getDb(env);
+    await initDb(db);
     const session = await getSession(request, db);
     if (!session) return new Response('Unauthorized', { status: 401 });
 
@@ -36,8 +52,11 @@ export const GET: APIRoute = async (context) => {
     const args: any[] = [roomId];
 
     if (cursor) {
+        if (!/^\d+$/.test(cursor)) {
+            return new Response('Invalid cursor', { status: 400 });
+        }
         query += ` AND id < ?`;
-        args.push(parseInt(cursor)); // Simple ID cursor
+        args.push(parseInt(cursor, 10)); // Simple ID cursor
     }
 
     query += ` ORDER BY id DESC LIMIT 50`;
@@ -51,17 +70,27 @@ export const GET: APIRoute = async (context) => {
     return new Response(JSON.stringify({
         messages: results.reverse(),
         meta: { currentEpoch }
-    }), { status: 200 });
+    }), { status: 200, headers: { 'Content-Type': 'application/json', 'Cache-Control': 'no-store' } });
 };
 
 export const POST: APIRoute = async (context) => {
     const { request, locals, params } = context;
+    const rate = await enforceRateLimit(request, {
+        bucket: "api-chat-room-messages-post",
+        limit: 120,
+        windowMs: 60_000,
+    });
+    if (!rate.allowed) {
+        return createRateLimitResponse(rate.retryAfterSec);
+    }
+
     const env = (locals as any).runtime?.env;
     if (!env?.DB) {
         return new Response('Server not configured (missing DB binding)', { status: 500 });
     }
 
     const db = await getDb(env);
+    await initDb(db);
     const session = await getSession(request, db);
     if (!session) return new Response('Unauthorized', { status: 401 });
 
@@ -78,15 +107,22 @@ export const POST: APIRoute = async (context) => {
         return new Response('Room access denied', { status: 403 });
     }
 
-    const body = await request.json() as { ciphertext: string, nonce: string, senderHash?: string };
+    const parsed = await parseJsonBodyWithLimit<{ ciphertext?: unknown; nonce?: unknown }>(
+        request,
+        24_000
+    );
+    if (!parsed.ok) return parsed.response;
+    const body = parsed.data;
+    const ciphertext = trimString(body.ciphertext, 20_000);
+    const nonce = trimString(body.nonce, 256);
 
-    if (!body.ciphertext || !body.nonce) {
+    if (!ciphertext || !nonce) {
         return new Response('Missing ciphertext or nonce', { status: 400 });
     }
 
     // Rate limit?
     // Size limit?
-    if (body.ciphertext.length > 10000) {
+    if (ciphertext.length > 10000) {
         return new Response('Message too large', { status: 400 });
     }
 
@@ -103,7 +139,10 @@ export const POST: APIRoute = async (context) => {
     await db.prepare(`
         INSERT INTO messages (room_id, sender_hash, ciphertext, nonce, created_at)
         VALUES (?, ?, ?, ?, ?)
-    `).bind(roomId, senderHash, body.ciphertext, body.nonce, Date.now()).run();
+    `).bind(roomId, senderHash, ciphertext, nonce, Date.now()).run();
 
-    return new Response(JSON.stringify({ success: true, id: 'pending' }), { status: 200 });
+    return new Response(JSON.stringify({ success: true, id: 'pending' }), {
+        status: 200,
+        headers: { 'Content-Type': 'application/json', 'Cache-Control': 'no-store' }
+    });
 };

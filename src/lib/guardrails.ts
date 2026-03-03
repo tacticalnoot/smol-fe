@@ -18,6 +18,7 @@ type RateLimitResult = {
 const RL_MEMORY_KEY = "__smolRateLimitMemory";
 const RL_CACHE_PREFIX = "smol-rl-v1";
 const RL_CACHE_BASE_URL = "https://guardrails.smol.local";
+const RL_MAX_RECORDS = 20_000;
 
 function getMemoryStore(): Map<string, RateRecord> {
   const g = globalThis as unknown as Record<string, unknown>;
@@ -26,6 +27,24 @@ function getMemoryStore(): Map<string, RateRecord> {
   const created = new Map<string, RateRecord>();
   g[RL_MEMORY_KEY] = created;
   return created;
+}
+
+function pruneMemoryStore(store: Map<string, RateRecord>, now: number): void {
+  if (store.size <= RL_MAX_RECORDS) return;
+
+  for (const [key, record] of store.entries()) {
+    if (record.resetAt <= now) {
+      store.delete(key);
+    }
+  }
+
+  if (store.size <= RL_MAX_RECORDS) return;
+
+  const targetSize = Math.floor(RL_MAX_RECORDS * 0.9);
+  for (const key of store.keys()) {
+    if (store.size <= targetSize) break;
+    store.delete(key);
+  }
 }
 
 function getCache(): Cache | null {
@@ -136,6 +155,7 @@ export async function enforceRateLimit(
   const now = Date.now();
 
   const memory = getMemoryStore();
+  pruneMemoryStore(memory, now);
   const memoryRecord = memory.get(key);
   const cachedRecord = await readCachedRecord(key);
   const current = cachedRecord || memoryRecord;

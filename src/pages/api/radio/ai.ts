@@ -37,6 +37,7 @@ export const POST: APIRoute = async ({ request }) => {
 
     // Global In-Memory Cache (simple LRU-ish via Map)
     const CACHE_TTL_MS = 1000 * 60 * 60; // 1 hour
+    const CACHE_MAX_ENTRIES = 500;
     const globalCache = (globalThis as any).__AI_CACHE__ || new Map();
     (globalThis as any).__AI_CACHE__ = globalCache;
 
@@ -124,6 +125,15 @@ export const POST: APIRoute = async ({ request }) => {
             timestamp: Date.now(),
             data: jsonStr
         });
+        if (globalCache.size > CACHE_MAX_ENTRIES) {
+            const overflow = globalCache.size - CACHE_MAX_ENTRIES;
+            let removed = 0;
+            for (const key of globalCache.keys()) {
+                globalCache.delete(key);
+                removed += 1;
+                if (removed >= overflow) break;
+            }
+        }
         console.log(`[API ${requestId}] Saved to cache. Key count: ${globalCache.size}`);
 
         return new Response(jsonStr, { status: 200, headers: { 'Content-Type': 'application/json', 'Cache-Control': 'no-store' } });

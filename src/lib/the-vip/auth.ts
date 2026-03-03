@@ -43,7 +43,9 @@ export async function getSession(request: Request, db: D1Database) {
     if (!authHeader || !authHeader.startsWith('Bearer ')) {
         return null;
     }
-    const token = authHeader.split(' ')[1];
+    const token = authHeader.split(' ')[1]?.trim();
+    if (!token) return null;
+    if (!/^[0-9a-fA-F-]{36}$/.test(token)) return null;
 
     // Check DB
     // We assume `initDb` has run at least once globally or we catch error
@@ -53,7 +55,7 @@ export async function getSession(request: Request, db: D1Database) {
         if (!session) return null;
 
         if (Date.now() > (session.expires_at as number)) {
-            // cleanup?
+            await db.prepare('DELETE FROM sessions WHERE token = ?').bind(token).run();
             return null;
         }
         return { address: session.address as string };

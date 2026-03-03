@@ -1,11 +1,25 @@
 import type { APIRoute } from "astro";
-import { Keypair } from "@stellar/stellar-sdk";
+import { Keypair, StrKey } from "@stellar/stellar-sdk";
 
 import { verifyChallengeTx } from "../../../../lib/the-vip/auth";
 import { initDb, getDb } from "../../../../lib/the-vip/db";
+import {
+  createRateLimitResponse,
+  enforceRateLimit,
+  parseJsonBodyWithLimit,
+  trimString,
+} from "../../../../lib/guardrails";
 
 export const POST: APIRoute = async (context) => {
   const { request, locals } = context;
+  const rate = await enforceRateLimit(request, {
+    bucket: "api-chat-auth-verify",
+    limit: 40,
+    windowMs: 60_000,
+  });
+  if (!rate.allowed) {
+    return createRateLimitResponse(rate.retryAfterSec);
+  }
 
   try {
     const env = (locals as any).runtime?.env;
@@ -15,11 +29,13 @@ export const POST: APIRoute = async (context) => {
       });
     }
 
-    const body = (await request.json()) as {
+    const parsed = await parseJsonBodyWithLimit<{
       xdr?: string;
       address?: string;
       zkProof?: unknown;
-    };
+    }>(request, 8192);
+    if (!parsed.ok) return parsed.response;
+    const body = parsed.data;
 
     if (body.zkProof) {
       // This endpoint previously attempted server-side Noir proof verification. It was incomplete and
@@ -30,10 +46,19 @@ export const POST: APIRoute = async (context) => {
       });
     }
 
-    if (!body.xdr || !body.address) {
+    const xdr = trimString(body.xdr, 6000);
+    const address = trimString(body.address, 80);
+
+    if (!xdr || !address) {
       return new Response(JSON.stringify({ error: "Invalid auth request" }), {
         status: 400,
-        headers: { "Content-Type": "application/json" },
+        headers: { "Content-Type": "application/json", "Cache-Control": "no-store" },
+      });
+    }
+    if (!StrKey.isValidEd25519PublicKey(address)) {
+      return new Response(JSON.stringify({ error: "Invalid Stellar address" }), {
+        status: 400,
+        headers: { "Content-Type": "application/json", "Cache-Control": "no-store" },
       });
     }
 
@@ -52,8 +77,8 @@ export const POST: APIRoute = async (context) => {
       "Public Global Stellar Network ; September 2015";
 
     const result = await verifyChallengeTx(
-      body.xdr,
-      body.address,
+      xdr,
+      address,
       networkPassphrase,
       serverKeypair.publicKey(),
     );
@@ -61,7 +86,7 @@ export const POST: APIRoute = async (context) => {
     if (!result.valid) {
       return new Response(JSON.stringify({ error: result.error }), {
         status: 401,
-        headers: { "Content-Type": "application/json" },
+        headers: { "Content-Type": "application/json", "Cache-Control": "no-store" },
       });
     }
 
@@ -82,12 +107,12 @@ export const POST: APIRoute = async (context) => {
 
     await db
       .prepare("INSERT INTO sessions (token, address, type, expires_at) VALUES (?, ?, ?, ?)")
-      .bind(token, body.address, "wallet", expiresAt)
+      .bind(token, address, "wallet", expiresAt)
       .run();
 
-    return new Response(JSON.stringify({ token, address: body.address }), {
+    return new Response(JSON.stringify({ token, address }), {
       status: 200,
-      headers: { "Content-Type": "application/json" },
+      headers: { "Content-Type": "application/json", "Cache-Control": "no-store" },
     });
   } catch (e: any) {
     console.error("Chat auth verify error:", e);

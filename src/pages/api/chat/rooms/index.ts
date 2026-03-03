@@ -2,6 +2,7 @@ import type { APIRoute } from 'astro';
 import { getDb, initDb } from '../../../../lib/the-vip/db';
 import { getSession } from '../../../../lib/the-vip/auth';
 import { ROOMS } from '../../../../lib/the-vip/rooms';
+import { createRateLimitResponse, enforceRateLimit } from '../../../../lib/guardrails';
 
 // Configuration
 const LUMENAUTS_CUTOFF_LEDGER = 29239400; // Approx 2019/2020? Need to check real cutoff. 
@@ -12,12 +13,22 @@ const LUMENAUTS_CUTOFF_LEDGER = 29239400; // Approx 2019/2020? Need to check rea
 
 export const GET: APIRoute = async (context) => {
     const { request, locals } = context;
+    const rate = await enforceRateLimit(request, {
+        bucket: "api-chat-rooms-list",
+        limit: 120,
+        windowMs: 60_000,
+    });
+    if (!rate.allowed) {
+        return createRateLimitResponse(rate.retryAfterSec);
+    }
+
     const env = (locals as any).runtime?.env;
     if (!env?.DB) {
         return new Response('Server not configured (missing DB binding)', { status: 500 });
     }
 
     const db = await getDb(env);
+    await initDb(db);
     const session = await getSession(request, db);
 
     // If no session, return rooms with "locked: true" (or allow viewing list but not joining)
@@ -74,5 +85,5 @@ export const GET: APIRoute = async (context) => {
             ...r,
             unlocked: session ? (accessMap[r.id] || false) : false
         }))
-    }), { status: 200 });
+    }), { status: 200, headers: { 'Content-Type': 'application/json', 'Cache-Control': 'no-store' } });
 };

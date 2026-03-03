@@ -36,6 +36,7 @@ export const POST: APIRoute = async ({ request }) => {
 
     // Global In-Memory Cache to prevent spamming generic prompts
     const CACHE_TTL_MS = 1000 * 60 * 30; // 30 mins
+    const CACHE_MAX_ENTRIES = 500;
     const globalCache = (globalThis as any).__AI_DIRECTOR_CACHE__ || new Map();
     (globalThis as any).__AI_DIRECTOR_CACHE__ = globalCache;
 
@@ -121,6 +122,15 @@ export const POST: APIRoute = async ({ request }) => {
             timestamp: Date.now(),
             data: jsonStr
         });
+        if (globalCache.size > CACHE_MAX_ENTRIES) {
+            const overflow = globalCache.size - CACHE_MAX_ENTRIES;
+            let removed = 0;
+            for (const key of globalCache.keys()) {
+                globalCache.delete(key);
+                removed += 1;
+                if (removed >= overflow) break;
+            }
+        }
 
         return new Response(jsonStr, {
             status: 200,
