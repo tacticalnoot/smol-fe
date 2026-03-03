@@ -33,7 +33,6 @@
                         })
                         .join(" ");
                     logs.push(`[${method.toUpperCase()}] ${msg}`);
-                    if (logs.length > 2000) logs.shift(); // Keep last 2000
                 } catch (e) {}
 
                 originals[method].apply(console, args);
