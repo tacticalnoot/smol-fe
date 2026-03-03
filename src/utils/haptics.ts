@@ -15,12 +15,12 @@ export const triggerHaptic = (
     input?: Parameters<typeof haptics.trigger>[0],
     options?: Parameters<typeof haptics.trigger>[1]
 ) => {
-    // We can wrap this in a try-catch to ensure haptic failures (e.g., feature policy, unsupported)
-    // don't crash any interactions. web-haptics handles feature detection, but it's safe to be sure.
+    // Always call trigger() — web-haptics handles iOS internally via a hidden
+    // DOM label click fallback when the Vibration API isn't available.
+    // Do NOT gate on WebHaptics.isSupported; that only checks navigator.vibrate
+    // which iOS lacks, but the library still provides tactile feedback there.
     try {
-        if (WebHaptics.isSupported) {
-            haptics.trigger(input, options).catch(() => { });
-        }
+        haptics.trigger(input, options).catch(() => { });
     } catch (error) {
         console.warn("Haptic trigger failed", error);
     }
