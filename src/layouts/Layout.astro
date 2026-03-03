@@ -9,6 +9,7 @@ import OnboardingGuard from '../components/onboarding/OnboardingGuard.svelte'
 import PasskeyReprompt from '../components/retention/PasskeyReprompt.svelte'
 import DynamicBackground from '../components/layout/DynamicBackground.svelte'
 import DebugPanel from '../components/dev/DebugPanel.svelte'
+import LogCatcher from '../components/dev/LogCatcher.svelte'
 import AppInitializer from '../components/AppInitializer.svelte'
 import Toast from '../components/ui/Toast.svelte'
 import '../styles/global.css'
@@ -302,6 +303,7 @@ const fullSchema = [...siteSchema, ...schema];
 
 		<!-- Debug Panel (only shows in dev mode or with ?debug=true) -->
 		<DebugPanel client:only="svelte" />
+		<LogCatcher client:only="svelte" />
 
 		<!-- Toast Notifications -->
 		<Toast client:load transition:persist="toast" />
