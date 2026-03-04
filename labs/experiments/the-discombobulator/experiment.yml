@@ -1,0 +1,22 @@
+id: lab_the_discombobulator
+title: "The Discombobulator"
+owner: "Smol Labs"
+status_color: ORANGE
+readiness_score: 68
+risk_level: HIGH
+blast_radius: LABS_ONLY
+env: TESTNET
+feature_flag: "labs.the_discombobulator.enabled"
+last_reviewed: "2026-03-04"
+dependencies:
+  - "soroswap-router-sdk"
+links:
+  spec: ""
+  pr: ""
+  docs: []
+definition_of_done:
+  - "Quote fetching"
+  - "Swap execution"
+notes: |
+  Experimental Proof of Nethermind Private Payments (POC).
+  Isolated clone of Swapper for Labs research only.

@@ -68,6 +68,24 @@
         "isLocked": false
     },
     {
+        "id": "lab_the_discombobulator",
+        "title": "The Discombobulator",
+        "badge": "POC-001",
+        "status_color": "ORANGE",
+        "readiness_score": 68,
+        "last_reviewed": "2026-03-04",
+        "blast_radius": "LABS_ONLY",
+        "path": "experiments/the-discombobulator/experiment.yml",
+        "href": "/labs/the-discombobulator",
+        "description": "Experimental Proof of Nethermind Private Payments (POC). Isolated Swapper-equivalent track for Labs privacy research.",
+        "tags": [
+            "DeFi",
+            "Privacy",
+            "POC"
+        ],
+        "isLocked": false
+    },
+    {
         "id": "lab_kale_or_fail",
         "title": "Kale or Fail",
         "badge": "EXP-004",
