@@ -146,14 +146,48 @@ export async function send<T>(txn: any /* AssembledTransaction<T> | Tx | string 
         return new Promise((resolve) => setTimeout(resolve, ms));
     }
 
+    function redactHeaders(rawHeaders: Record<string, string>): Record<string, string> {
+        const next = { ...rawHeaders };
+        if (next.Authorization) {
+            next.Authorization = "Bearer [REDACTED]";
+        }
+        if (next.authorization) {
+            next.authorization = "Bearer [REDACTED]";
+        }
+        if (next["X-Turnstile-Response"]) {
+            next["X-Turnstile-Response"] = "[REDACTED]";
+        }
+        return next;
+    }
+
+    function summarizeBody(rawBody: unknown): Record<string, unknown> {
+        if (!rawBody || typeof rawBody !== "object") {
+            return { hasBody: !!rawBody };
+        }
+
+        const body = rawBody as Record<string, unknown>;
+        const xdrCandidate =
+            typeof body.xdr === "string"
+                ? body.xdr
+                : typeof (body.params as any)?.xdr === "string"
+                  ? (body.params as any).xdr
+                  : "";
+
+        return {
+            keys: Object.keys(body),
+            hasParams: !!body.params,
+            xdrLength: xdrCandidate.length || xdr.length,
+        };
+    }
+
     async function attemptSend(useDirect: boolean) {
         const config = getRelayerConfig(useDirect);
 
         const requestDebug = {
             url: config.url,
             method: 'POST',
-            headers: config.headers,
-            body: config.body
+            headers: redactHeaders(config.headers),
+            body: summarizeBody(config.body),
         };
 
         const response = await fetch(config.url, {
@@ -167,7 +201,8 @@ export async function send<T>(txn: any /* AssembledTransaction<T> | Tx | string 
             status: response.status,
             statusText: response.statusText,
             headers: Object.fromEntries(response.headers.entries()),
-            body: responseText
+            bodyPreview: responseText.slice(0, 600),
+            bodyLength: responseText.length,
         };
 
         logger.info(LogCategory.RELAYER, `Relayer Interaction (${useDirect ? 'DIRECT' : 'PROXY'})`, {
