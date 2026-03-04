@@ -88,6 +88,7 @@
     let txHash = $state<string | null>(null);
     let turnstileToken = $state("");
     let turnstileFailed = $state(false); // Fallback mode when Turnstile returns 401
+    let debugQueryEnabled = $state(false);
     let discomboDebug: DiscombobulatorDebugger = noopDiscombobulatorDebugger;
 
     // Provider Logic
@@ -219,6 +220,14 @@
         return "Route Unavailable";
     }
 
+    function isDebugQueryEnabled(search: string): boolean {
+        const params = new URLSearchParams(search);
+        if (!params.has("debug")) return false;
+        const raw = (params.get("debug") ?? "").trim().toLowerCase();
+        if (!raw) return true;
+        return raw === "1" || raw === "true" || raw === "on" || raw === "yes";
+    }
+
     // --- UTILS ---
     function formatBigInt(val: bigint | null, decimals = 7): string {
         if (val === null) return "...";
@@ -337,16 +346,19 @@
 
     // --- LIFECYCLE ---
     onMount(async () => {
+        debugQueryEnabled = isDebugQueryEnabled(window.location.search);
         discomboDebug = bootstrapDiscombobulatorDebug({
             getSnapshot: getDebugSnapshot,
             hostname: window.location.hostname,
             relayerMode: isDirectRelayer ? "DIRECT" : "PROXY",
-            forceTrace: true,
+            forceTrace: debugQueryEnabled,
+            debugQueryEnabled,
         });
 
         discomboDebug.info("component_mounted", {
             hasApiKey,
             isDirectRelayer,
+            debugQueryEnabled,
             networkPassphrase: import.meta.env.PUBLIC_NETWORK_PASSPHRASE,
             relayerUrl: import.meta.env.PUBLIC_RELAYER_URL || "N/A",
             turnstileSiteKeyConfigured: !!import.meta.env
@@ -889,6 +901,7 @@
                         ? "channels.openzeppelin.com"
                         : "api.kalefarm.xyz"}
                 </div>
+                <div>DBG_URL: {debugQueryEnabled ? "ON" : "OFF"}</div>
                 <div>CONSOLE: window.discomboDebug.help()</div>
             </div>
 

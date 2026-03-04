@@ -64,6 +64,7 @@ export interface DiscombobulatorDebugBootstrapOptions {
     hostname: string;
     relayerMode: "DIRECT" | "PROXY";
     forceTrace?: boolean;
+    debugQueryEnabled?: boolean;
 }
 
 declare global {
@@ -143,15 +144,48 @@ function resolveLogLevel(level: string): LogLevel | null {
     return typeof result === "number" ? result : null;
 }
 
+function isDebugQueryEnabledFromUrl(): boolean {
+    if (typeof window === "undefined") return false;
+
+    const params = new URLSearchParams(window.location.search);
+    if (!params.has("debug")) return false;
+
+    const raw = (params.get("debug") ?? "").trim().toLowerCase();
+    if (!raw) return true;
+    return raw === "1" || raw === "true" || raw === "on" || raw === "yes";
+}
+
+function getDebugLevelFromUrl(): LogLevel | null {
+    if (typeof window === "undefined") return null;
+
+    const params = new URLSearchParams(window.location.search);
+    const raw =
+        params.get("debugLevel") ??
+        params.get("logLevel") ??
+        params.get("level");
+
+    if (!raw) return null;
+    return resolveLogLevel(raw);
+}
+
 export function bootstrapDiscombobulatorDebug(
     options: DiscombobulatorDebugBootstrapOptions,
 ): DiscombobulatorDebugger {
     const runCount = nextRunCount();
     const sessionId = `discombo-${Date.now().toString(36)}-${runCount}`;
-    let verbose = readVerboseFlag();
-    const traceEnabled = options.forceTrace ?? true;
+    const debugQueryEnabled =
+        options.debugQueryEnabled ?? isDebugQueryEnabledFromUrl();
+    let verbose = debugQueryEnabled ? true : readVerboseFlag();
+    const urlDebugLevel = getDebugLevelFromUrl();
+    const traceEnabled = options.forceTrace ?? debugQueryEnabled;
 
-    if (traceEnabled) {
+    if (debugQueryEnabled) {
+        writeVerboseFlag(true);
+    }
+
+    if (urlDebugLevel !== null) {
+        logger.setLevel(urlDebugLevel);
+    } else if (traceEnabled) {
         logger.setLevel(LogLevel.TRACE);
     }
 
@@ -278,8 +312,11 @@ export function bootstrapDiscombobulatorDebug(
         );
         console.log("Run window.discomboDebug.help() for command list.");
         console.log(
-            "Verbose console tracing is ON for this experiment by default.",
+            `Debug URL mode: ${debugQueryEnabled ? "ON" : "OFF"} (?debug=true)`,
         );
+        if (debugQueryEnabled) {
+            console.log("Verbose trace mode is enabled for this session.");
+        }
         console.groupEnd();
     }
 
@@ -289,6 +326,9 @@ export function bootstrapDiscombobulatorDebug(
         traceLevel: LogLevel[logger.getLevel()],
         relayerMode: options.relayerMode,
         hostname: options.hostname,
+        debugQueryEnabled,
+        urlDebugLevel:
+            urlDebugLevel === null ? "none" : LogLevel[urlDebugLevel],
     });
 
     return {
