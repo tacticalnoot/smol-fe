@@ -17,8 +17,6 @@ export interface DiscombobulatorSnapshot {
     sendToken: string;
     sendAmount: string;
     sendToMasked: string;
-    receiveToken: string;
-    receiveAmount: string;
     hasQuote: boolean;
     statusMessage: string;
     hasTurnstileToken: boolean;
@@ -97,8 +95,6 @@ export const noopDiscombobulatorDebugger: DiscombobulatorDebugger = {
         sendToken: "unknown",
         sendAmount: "",
         sendToMasked: "",
-        receiveToken: "unknown",
-        receiveAmount: "",
         hasQuote: false,
         statusMessage: "",
         hasTurnstileToken: false,
