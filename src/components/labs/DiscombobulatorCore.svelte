@@ -746,7 +746,8 @@
             const sendResult = await signSendAndVerify(tx, {
                 keyId: userState.keyId,
                 turnstileToken,
-                updateBalance: true,
+                // Keep one refresh path to avoid duplicate balance spam.
+                updateBalance: false,
                 contractId: userState.contractId,
                 onProgress: (message, meta) => {
                     setStatusMessageTracked(message, "swap_progress_update", {
@@ -873,7 +874,8 @@
             const sendResult = await signSendAndVerify(tx, {
                 keyId: userState.keyId,
                 turnstileToken,
-                updateBalance: true,
+                // Keep one refresh path to avoid duplicate balance spam.
+                updateBalance: false,
                 contractId: userState.contractId,
                 onProgress: (message, meta) => {
                     setStatusMessageTracked(message, "send_progress_update", {
