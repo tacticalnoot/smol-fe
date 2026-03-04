@@ -113,7 +113,8 @@ class DebugLogger {
         return (
             normalized.includes("authorization") ||
             normalized.includes("x-turnstile-response") ||
-            normalized.includes("turnstiletoken") ||
+            (normalized.includes("turnstiletoken") &&
+                !normalized.startsWith("has")) ||
             normalized === "xdr" ||
             normalized.endsWith("_xdr") ||
             normalized === "signature" ||
