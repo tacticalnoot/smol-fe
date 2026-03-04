@@ -38,7 +38,11 @@ export async function POST({ request, locals }: APIContext) {
 
         const tokenIn = trimString(parsed.data.tokenIn, 80);
         const tokenOut = trimString(parsed.data.tokenOut, 80);
-        const amountIn = trimString(parsed.data.amountIn, 80);
+        const amountRaw = parsed.data.amountIn;
+        const amountIn =
+            typeof amountRaw === "number" && Number.isFinite(amountRaw)
+                ? Math.trunc(amountRaw).toString()
+                : trimString(amountRaw, 80);
         const tradeTypeRaw = trimString(parsed.data.tradeType, 16).toUpperCase();
         const slippageRaw = parsed.data.slippageBps;
         const slippageBps =

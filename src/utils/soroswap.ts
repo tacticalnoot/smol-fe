@@ -19,7 +19,7 @@ export function safeStringify(obj: unknown, space?: number): string {
 export interface QuoteRequest {
     tokenIn: string;
     tokenOut: string;
-    amountIn: number;
+    amountIn: number | string;
     tradeType: 'EXACT_IN' | 'EXACT_OUT';
     protocols?: string[];
     parts?: number;
@@ -71,11 +71,12 @@ export interface SendResponse {
  */
 export async function getQuote(request: QuoteRequest, network: 'mainnet' | 'testnet' = 'mainnet'): Promise<QuoteResponse> {
     const url = '/api/swap/quote';
+    const amountIn = String(request.amountIn);
 
     const body = {
         tokenIn: request.tokenIn,
         tokenOut: request.tokenOut,
-        amountIn: request.amountIn, // API expects this name
+        amountIn, // API expects this name as an integer string
         tradeType: request.tradeType, // Critical: Missing this caused EXACT_OUT issues
         slippageBps: request.slippageBps ?? 500,
     };
