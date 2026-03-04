@@ -9,6 +9,10 @@ import { balanceState } from './balance.state.svelte';
 // Re-export state and getters
 export * from './balance.state.svelte';
 
+const BALANCE_DEDUPE_WINDOW_MS = 1000;
+const balanceRefreshInFlight = new Map<string, Promise<void>>();
+const balanceRefreshLastAt = new Map<string, number>();
+
 /**
  * Acquire transaction lock to prevent concurrent balance updates
  */
@@ -149,47 +153,67 @@ export async function updateAllBalances(address: string | null): Promise<void> {
     return;
   }
 
-  console.log('[Balance] Updating all balances for:', address.slice(0, 4));
-  balanceState.loading = true;
-
-  try {
-    // Run fetches in parallel using internal helpers to avoid individual loading state updates
-    const [kaleRes, xlmRes, usdcRes] = await Promise.allSettled([
-      _fetchKale(address),
-      _fetchXlm(address),
-      _fetchUsdc(address)
-    ]);
-
-    // Apply Results
-    if (kaleRes.status === 'fulfilled') {
-      balanceState.balance = kaleRes.value;
-    } else {
-      console.error('[Balance] KALE fetch failed:', kaleRes.reason);
-      balanceState.balance = null;
-    }
-
-    if (xlmRes.status === 'fulfilled') {
-      balanceState.xlmBalance = xlmRes.value;
-    } else {
-      console.error('[Balance] XLM fetch failed:', xlmRes.reason);
-      balanceState.xlmBalance = null;
-    }
-
-    if (usdcRes.status === 'fulfilled') {
-      balanceState.usdcBalance = usdcRes.value;
-    } else {
-      console.error('[Balance] USDC fetch failed:', usdcRes.reason);
-      balanceState.usdcBalance = null;
-    }
-
-    balanceState.lastUpdated = new Date();
-    // console.log('[Balance] All updated.');
-
-  } catch (error) {
-    console.error('[Balance] Critical error in updateAllBalances:', error);
-  } finally {
-    balanceState.loading = false;
+  const inflight = balanceRefreshInFlight.get(address);
+  if (inflight) {
+    console.log('[Balance] Reusing in-flight all balances update for:', address.slice(0, 4));
+    await inflight;
+    return;
   }
+
+  const lastAt = balanceRefreshLastAt.get(address) ?? 0;
+  if (Date.now() - lastAt < BALANCE_DEDUPE_WINDOW_MS) {
+    console.log('[Balance] Skipping duplicate all balances update (cooldown) for:', address.slice(0, 4));
+    return;
+  }
+
+  const run = (async () => {
+    console.log('[Balance] Updating all balances for:', address.slice(0, 4));
+    balanceState.loading = true;
+
+    try {
+      // Run fetches in parallel using internal helpers to avoid individual loading state updates
+      const [kaleRes, xlmRes, usdcRes] = await Promise.allSettled([
+        _fetchKale(address),
+        _fetchXlm(address),
+        _fetchUsdc(address)
+      ]);
+
+      // Apply Results
+      if (kaleRes.status === 'fulfilled') {
+        balanceState.balance = kaleRes.value;
+      } else {
+        console.error('[Balance] KALE fetch failed:', kaleRes.reason);
+        balanceState.balance = null;
+      }
+
+      if (xlmRes.status === 'fulfilled') {
+        balanceState.xlmBalance = xlmRes.value;
+      } else {
+        console.error('[Balance] XLM fetch failed:', xlmRes.reason);
+        balanceState.xlmBalance = null;
+      }
+
+      if (usdcRes.status === 'fulfilled') {
+        balanceState.usdcBalance = usdcRes.value;
+      } else {
+        console.error('[Balance] USDC fetch failed:', usdcRes.reason);
+        balanceState.usdcBalance = null;
+      }
+
+      balanceState.lastUpdated = new Date();
+      // console.log('[Balance] All updated.');
+
+    } catch (error) {
+      console.error('[Balance] Critical error in updateAllBalances:', error);
+    } finally {
+      balanceState.loading = false;
+      balanceRefreshLastAt.set(address, Date.now());
+      balanceRefreshInFlight.delete(address);
+    }
+  })();
+
+  balanceRefreshInFlight.set(address, run);
+  await run;
 }
 
 /**

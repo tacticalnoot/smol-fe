@@ -108,6 +108,42 @@ class DebugLogger {
         return level <= this.currentLevel;
     }
 
+    private isSensitiveKey(key: string): boolean {
+        const normalized = key.toLowerCase();
+        return (
+            normalized.includes("authorization") ||
+            normalized.includes("x-turnstile-response") ||
+            normalized.includes("turnstiletoken") ||
+            normalized === "xdr" ||
+            normalized.endsWith("_xdr") ||
+            normalized === "signature" ||
+            normalized === "client_data_json" ||
+            normalized === "authenticator_data"
+        );
+    }
+
+    private redactSensitiveValue(key: string, value: any): string {
+        const normalized = key.toLowerCase();
+        const stringValue = typeof value === "string" ? value : JSON.stringify(value);
+        if (normalized.includes("authorization")) {
+            return "Bearer [REDACTED]";
+        }
+        if (normalized.includes("turnstile")) {
+            return "[REDACTED_TURNSTILE]";
+        }
+        if (normalized.includes("xdr")) {
+            const len = typeof stringValue === "string" ? stringValue.length : 0;
+            return `[REDACTED_XDR len=${len}]`;
+        }
+        if (normalized === "signature") {
+            return "[REDACTED_SIGNATURE]";
+        }
+        if (normalized === "client_data_json" || normalized === "authenticator_data") {
+            return "[REDACTED_WEBAUTHN_DATA]";
+        }
+        return "[REDACTED]";
+    }
+
     private truncateData(data: any): any {
         if (!data) return data;
 
@@ -131,15 +167,15 @@ class DebugLogger {
             if (Object.prototype.hasOwnProperty.call(data, key)) {
                 const value = data[key];
 
+                if (this.isSensitiveKey(key)) {
+                    sanitized[key] = this.redactSensitiveValue(key, value);
+                    continue;
+                }
+
                 // Truncate lyrics specifically
                 if (key.toLowerCase().includes('lyrics') && typeof value === 'string') {
                     sanitized[key] = value.length > 100
                         ? value.substring(0, 100) + `... (${value.length} chars truncated)`
-                        : value;
-                } else if (key.toLowerCase().includes('xdr') && typeof value === 'string') {
-                    // Allow full XDR strings up to 5000 chars for debugging
-                    sanitized[key] = value.length > 5000
-                        ? value.substring(0, 5000) + `... (${value.length} chars truncated)`
                         : value;
                 } else {
                     sanitized[key] = this.truncateData(value);
