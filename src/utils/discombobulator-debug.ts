@@ -22,6 +22,8 @@ export interface DiscombobulatorSnapshot {
     hasTurnstileToken: boolean;
     turnstileFailed: boolean;
     isAuthenticated: boolean;
+    privacyWrapperMode: string;
+    lowGpuMode: boolean;
     contractIdMasked: string;
     keyIdMasked: string;
     walletConnected: boolean;
@@ -98,6 +100,8 @@ export const noopDiscombobulatorDebugger: DiscombobulatorDebugger = {
         hasTurnstileToken: false,
         turnstileFailed: false,
         isAuthenticated: false,
+        privacyWrapperMode: "public",
+        lowGpuMode: false,
         contractIdMasked: "",
         keyIdMasked: "",
         walletConnected: false,

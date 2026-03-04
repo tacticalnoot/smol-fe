@@ -62,6 +62,11 @@
         | "confirmed"
         | "failed";
     type SwapDirection = "XLM_TO_KALE" | "KALE_TO_XLM";
+    type PrivacyWrapperMode =
+        | "public"
+        | "shield_before_swap"
+        | "shield_after_swap"
+        | "wrap_around_swap";
 
     // --- STATE ---
     let appState = $state<AppState>("intro");
@@ -89,6 +94,8 @@
     let turnstileToken = $state("");
     let turnstileFailed = $state(false); // Fallback mode when Turnstile returns 401
     let debugQueryEnabled = $state(false);
+    let lowGpuMode = $state(false);
+    let privacyWrapperMode = $state<PrivacyWrapperMode>("public");
     let discomboDebug: DiscombobulatorDebugger = noopDiscombobulatorDebugger;
 
     // Provider Logic
@@ -126,6 +133,80 @@
         return `${value.slice(0, 6)}...${value.slice(-6)}`;
     }
 
+    function parsePrivacyWrapperMode(
+        raw: string | null | undefined,
+    ): PrivacyWrapperMode | null {
+        const normalized = (raw ?? "").trim().toLowerCase();
+        if (!normalized) return null;
+        if (
+            normalized === "public" ||
+            normalized === "shield_before_swap" ||
+            normalized === "before"
+        ) {
+            return normalized === "before"
+                ? "shield_before_swap"
+                : (normalized as PrivacyWrapperMode);
+        }
+        if (normalized === "shield_after_swap" || normalized === "after") {
+            return normalized === "after"
+                ? "shield_after_swap"
+                : (normalized as PrivacyWrapperMode);
+        }
+        if (normalized === "wrap_around_swap" || normalized === "wrapper") {
+            return normalized === "wrapper"
+                ? "wrap_around_swap"
+                : (normalized as PrivacyWrapperMode);
+        }
+        return null;
+    }
+
+    function getPrivacyWrapperLabel(modeValue: PrivacyWrapperMode): string {
+        if (modeValue === "shield_before_swap") return "BEFORE";
+        if (modeValue === "shield_after_swap") return "AFTER";
+        if (modeValue === "wrap_around_swap") return "WRAP";
+        return "PUBLIC";
+    }
+
+    function getPrivacyWrapperSummary(modeValue: PrivacyWrapperMode): string {
+        if (modeValue === "shield_before_swap") {
+            return "POC flow: private deposit then public swap.";
+        }
+        if (modeValue === "shield_after_swap") {
+            return "POC flow: public swap then private withdrawal.";
+        }
+        if (modeValue === "wrap_around_swap") {
+            return "POC flow: private in and private out wrapper around swap.";
+        }
+        return "Current flow is fully public swap semantics.";
+    }
+
+    function setPrivacyWrapperModeTracked(
+        nextMode: PrivacyWrapperMode,
+        reason: string,
+        context: Record<string, unknown> = {},
+    ): void {
+        const previousMode = privacyWrapperMode;
+        privacyWrapperMode = nextMode;
+        discomboDebug.transition(
+            "privacy_wrapper_mode",
+            previousMode,
+            nextMode,
+            {
+                reason,
+                ...context,
+            },
+        );
+    }
+
+    function logPrivacyEnvelopeContext(phase: "swap" | "send"): void {
+        discomboDebug.info("privacy_wrapper_context", {
+            phase,
+            privacyWrapperMode,
+            summary: getPrivacyWrapperSummary(privacyWrapperMode),
+            isPocOnly: true,
+        });
+    }
+
     function getDebugSnapshot(): DiscombobulatorSnapshot {
         return {
             appState,
@@ -143,6 +224,8 @@
             hasTurnstileToken: !!turnstileToken,
             turnstileFailed,
             isAuthenticated,
+            privacyWrapperMode,
+            lowGpuMode,
             contractIdMasked: maskIdentifier(userState.contractId),
             keyIdMasked: maskIdentifier(userState.keyId),
             walletConnected: userState.walletConnected,
@@ -326,6 +409,10 @@
     }
 
     function triggerSuccessConfetti() {
+        if (lowGpuMode) {
+            discomboDebug.debug("confetti_skipped", { reason: "low_gpu_mode" });
+            return;
+        }
         const btn = document.querySelector(".action-btn");
         const rect = btn?.getBoundingClientRect();
 
@@ -346,7 +433,18 @@
 
     // --- LIFECYCLE ---
     onMount(async () => {
+        const params = new URLSearchParams(window.location.search);
         debugQueryEnabled = isDebugQueryEnabled(window.location.search);
+        const gpuParam = (params.get("gpu") ?? "").trim().toLowerCase();
+        lowGpuMode =
+            debugQueryEnabled || gpuParam === "lite" || gpuParam === "safe";
+
+        const requestedPrivacyMode = params.get("privacy");
+        const parsedPrivacyMode = parsePrivacyWrapperMode(requestedPrivacyMode);
+        if (parsedPrivacyMode) {
+            privacyWrapperMode = parsedPrivacyMode;
+        }
+
         discomboDebug = bootstrapDiscombobulatorDebug({
             getSnapshot: getDebugSnapshot,
             hostname: window.location.hostname,
@@ -359,13 +457,25 @@
             hasApiKey,
             isDirectRelayer,
             debugQueryEnabled,
+            lowGpuMode,
+            privacyWrapperMode,
             networkPassphrase: import.meta.env.PUBLIC_NETWORK_PASSPHRASE,
             relayerUrl: import.meta.env.PUBLIC_RELAYER_URL || "N/A",
             turnstileSiteKeyConfigured: !!import.meta.env
                 .PUBLIC_TURNSTILE_SITE_KEY,
         });
 
-        const params = new URLSearchParams(window.location.search);
+        if (requestedPrivacyMode && !parsedPrivacyMode) {
+            discomboDebug.warn("privacy_wrapper_url_param_ignored", {
+                requestedPrivacyMode,
+            });
+        } else if (parsedPrivacyMode) {
+            discomboDebug.info("privacy_wrapper_seeded_from_url", {
+                requestedPrivacyMode,
+                parsedPrivacyMode,
+            });
+        }
+
         if (params.get("demo") === "true") {
             isDemoMode = true;
             discomboDebug.warn("demo_mode_enabled");
@@ -565,6 +675,8 @@
             hasQuote: !!quote,
             hasTurnstileToken: !!turnstileToken,
             turnstileFailed,
+            privacyWrapperMode,
+            lowGpuMode,
         });
 
         if (mode === "swap") {
@@ -579,6 +691,8 @@
             setStatusMessageTracked("No quote available", "missing_quote_or_auth");
             return;
         }
+
+        logPrivacyEnvelopeContext("swap");
 
         const useFallback = turnstileFailed && !turnstileToken;
         if (!turnstileToken && !useFallback && !isDirectRelayer) {
@@ -600,6 +714,7 @@
             amountOut: quote.amountOut,
             useFallback,
             hasTurnstileToken: !!turnstileToken,
+            privacyWrapperMode,
         });
 
         try {
@@ -701,6 +816,8 @@
             return;
         }
 
+        logPrivacyEnvelopeContext("send");
+
         const recipient = sendTo.trim();
         const amountNum = parseFloat(sendAmount);
         if (!recipient || isNaN(amountNum) || amountNum <= 0) {
@@ -732,6 +849,7 @@
             recipient: maskIdentifier(recipient),
             useFallback,
             hasTurnstileToken: !!turnstileToken,
+            privacyWrapperMode,
         });
 
         try {
@@ -901,6 +1019,8 @@
                         ? "channels.openzeppelin.com"
                         : "api.kalefarm.xyz"}
                 </div>
+                <div>PRIVACY: {getPrivacyWrapperLabel(privacyWrapperMode)}</div>
+                <div>GPU_SAFE: {lowGpuMode ? "ON" : "OFF"}</div>
                 <div>DBG_URL: {debugQueryEnabled ? "ON" : "OFF"}</div>
                 <div>CONSOLE: window.discomboDebug.help()</div>
             </div>
@@ -924,6 +1044,67 @@
                         >SEND</button
                     >
                 </div>
+
+                {#if mode === "swap"}
+                    <div
+                        class="mx-6 mt-4 rounded-xl border border-[#1e293b] bg-[#020617]/50 p-3"
+                    >
+                        <div
+                            class="text-[8px] uppercase tracking-[0.2em] text-[#7dd3fc]"
+                        >
+                            Privacy Wrapper (Labs POC)
+                        </div>
+                        <div class="mt-2 grid grid-cols-2 gap-2">
+                            <button
+                                class={`privacy-chip ${privacyWrapperMode === "public" ? "active" : ""}`}
+                                onclick={() =>
+                                    setPrivacyWrapperModeTracked(
+                                        "public",
+                                        "privacy_chip_click",
+                                    )}
+                            >
+                                PUBLIC
+                            </button>
+                            <button
+                                class={`privacy-chip ${privacyWrapperMode === "shield_before_swap" ? "active" : ""}`}
+                                onclick={() =>
+                                    setPrivacyWrapperModeTracked(
+                                        "shield_before_swap",
+                                        "privacy_chip_click",
+                                    )}
+                            >
+                                BEFORE
+                            </button>
+                            <button
+                                class={`privacy-chip ${privacyWrapperMode === "shield_after_swap" ? "active" : ""}`}
+                                onclick={() =>
+                                    setPrivacyWrapperModeTracked(
+                                        "shield_after_swap",
+                                        "privacy_chip_click",
+                                    )}
+                            >
+                                AFTER
+                            </button>
+                            <button
+                                class={`privacy-chip ${privacyWrapperMode === "wrap_around_swap" ? "active" : ""}`}
+                                onclick={() =>
+                                    setPrivacyWrapperModeTracked(
+                                        "wrap_around_swap",
+                                        "privacy_chip_click",
+                                    )}
+                            >
+                                WRAP
+                            </button>
+                        </div>
+                        <div class="mt-2 text-[9px] text-[#94a3b8]">
+                            {getPrivacyWrapperSummary(privacyWrapperMode)}
+                        </div>
+                        <div class="mt-1 text-[8px] text-[#fbbf24]">
+                            Telemetry-only scaffold. No private proofs or shielded
+                            balances are executed yet.
+                        </div>
+                    </div>
+                {/if}
 
                 <div class="p-6 md:p-8 flex flex-col gap-6">
                     {#if mode === "swap"}
@@ -1229,6 +1410,33 @@
     .tab-btn:hover:not(.active) {
         color: #94a3b8;
         background: rgba(255, 255, 255, 0.02);
+    }
+
+    .privacy-chip {
+        border: 1px solid #1e293b;
+        border-radius: 8px;
+        background: rgba(15, 23, 42, 0.55);
+        color: #64748b;
+        font-family: "Press Start 2P", cursive;
+        font-size: 8px;
+        letter-spacing: 0.12em;
+        padding: 10px 8px;
+        transition: all 0.15s ease;
+    }
+    .privacy-chip:hover {
+        color: #e2e8f0;
+        border-color: #7dd3fc66;
+        background: rgba(15, 23, 42, 0.85);
+    }
+    .privacy-chip.active {
+        color: #f8fafc;
+        border-color: #7dd3fc;
+        background: linear-gradient(
+            180deg,
+            rgba(2, 132, 199, 0.4) 0%,
+            rgba(15, 23, 42, 0.8) 100%
+        );
+        box-shadow: 0 0 0 1px rgba(125, 211, 252, 0.2) inset;
     }
 
     /* INPUT GROUP */

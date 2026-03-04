@@ -4,6 +4,9 @@ import DiscombobulatorCore from "../../components/labs/DiscombobulatorCore.svelt
 import KaleForestScene from "../../components/labs/KaleForestScene.svelte";
 
 // LABS-101: Shell Only
+const debugMode = Astro.url.searchParams.has("debug");
+const lowGpuMode =
+  debugMode || Astro.url.searchParams.get("gpu") === "lite";
 ---
 
 <Layout title="The Discombobulator | Smol Labs">
@@ -15,7 +18,21 @@ import KaleForestScene from "../../components/labs/KaleForestScene.svelte";
 
     <!-- Global Background Scene (Fixed) -->
     <div class="fixed inset-0 z-0 pointer-events-auto">
-        <KaleForestScene client:load />
+        {
+            lowGpuMode ? (
+                <div
+                    class="absolute inset-0 bg-cover bg-center"
+                    style="background-image: url('/kale-forest-bg-v2.jpg');"
+                />
+            ) : (
+                <KaleForestScene client:load />
+            )
+        }
+        {lowGpuMode && (
+            <div class="absolute top-3 right-3 z-20 text-[8px] md:text-[9px] uppercase tracking-[0.2em] text-[#fdda24] bg-black/70 border border-[#fdda24]/40 rounded-full px-2 py-1">
+                GPU-Safe Debug Scene
+            </div>
+        )}
     </div>
     
     <!-- Nav Back -->
