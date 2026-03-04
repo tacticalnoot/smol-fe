@@ -16,6 +16,10 @@ export interface SignAndSendOptions {
     updateBalance?: boolean;
     contractId?: string;
     useLock?: boolean;
+    onProgress?: (
+        message: string,
+        meta?: Record<string, unknown>,
+    ) => void;
 }
 
 export interface SignAndSendResult {
@@ -96,7 +100,8 @@ export async function signAndSend(
     transaction: any,
     options: SignAndSendOptions,
 ): Promise<SignAndSendResult> {
-    const { keyId, turnstileToken, updateBalance, contractId } = options;
+    const { keyId, turnstileToken, updateBalance, contractId, onProgress } =
+        options;
 
     console.log("[DiscomboSignAndSend] Starting:", {
         hasKeyId: !!keyId,
@@ -132,38 +137,56 @@ export async function signAndSend(
             );
         }
 
+        onProgress?.("Requesting passkey signature...", {
+            stage: "signing",
+        });
         console.log("[DiscomboSignAndSend] Signing transaction...");
         const signedTx = await kit.sign(transaction, {
             rpId,
             keyId,
             expiration: sequence + 60,
         });
+        onProgress?.("Submitting to relayer...", {
+            stage: "relayer_submit",
+        });
         console.log(
             "[DiscomboSignAndSend] Transaction signed, sending to relayer...",
         );
 
-        const result = await send(signedTx, turnstileToken);
+        let relayerQueueHintTimer: ReturnType<typeof setTimeout> | null = null;
+        try {
+            relayerQueueHintTimer = setTimeout(() => {
+                onProgress?.("Relayer is busy, still submitting...", {
+                    stage: "relayer_wait",
+                });
+            }, 8000);
+            const result = await send(signedTx, turnstileToken);
 
-        if (updateBalance && contractId) {
-            console.log("[DiscomboSignAndSend] Updating all balances...");
-            await updateAllBalances(contractId);
+            if (updateBalance && contractId) {
+                console.log("[DiscomboSignAndSend] Updating all balances...");
+                await updateAllBalances(contractId);
+            }
+
+            const txHash = extractTxHashFromRelayerResponse(result);
+            console.log("[DiscomboSignAndSend] SUCCESS:", {
+                hash:
+                    result?.hash ||
+                    result?.transactionHash ||
+                    result?.data?.hash ||
+                    result?.data?.transactionHash,
+                extractedHash: txHash,
+            });
+
+            return {
+                success: true,
+                result,
+                transactionHash: txHash,
+            };
+        } finally {
+            if (relayerQueueHintTimer) {
+                clearTimeout(relayerQueueHintTimer);
+            }
         }
-
-        const txHash = extractTxHashFromRelayerResponse(result);
-        console.log("[DiscomboSignAndSend] SUCCESS:", {
-            hash:
-                result?.hash ||
-                result?.transactionHash ||
-                result?.data?.hash ||
-                result?.data?.transactionHash,
-            extractedHash: txHash,
-        });
-
-        return {
-            success: true,
-            result,
-            transactionHash: txHash,
-        };
     } catch (error: any) {
         if (isDuplicateNonceError(error)) {
             console.warn(

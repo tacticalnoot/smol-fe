@@ -201,6 +201,24 @@
         });
     }
 
+    function getQuoteFailureStatus(error: unknown): string {
+        const message = String(error instanceof Error ? error.message : error)
+            .toLowerCase();
+
+        if (message.includes("no path found") || message.includes("quote failed")) {
+            if (lastEdited === "out") {
+                return "No exact-out route. Try top input or a larger amount.";
+            }
+            return "No route for this pair/amount. Try another amount.";
+        }
+
+        if (message.includes("missing required parameters")) {
+            return "Quote request invalid. Please retry.";
+        }
+
+        return "Route Unavailable";
+    }
+
     // --- UTILS ---
     function formatBigInt(val: bigint | null, decimals = 7): string {
         if (val === null) return "...";
@@ -503,15 +521,17 @@
                 setSwapStateTracked("simulated_ok", "quote_simulation_succeeded");
             } catch (e) {
                 console.error("Quote error:", e);
+                const quoteFailureStatus = getQuoteFailureStatus(e);
                 discomboDebug.error("quote_failed", {
                     error: e instanceof Error ? e.message : String(e),
                     swapInToken,
                     swapOutToken,
                     swapAmount,
                     swapOutputAmount,
+                    quoteFailureStatus,
                 });
                 setSwapStateTracked("simulated_error", "quote_simulation_failed");
-                setStatusMessageTracked("Route Unavailable", "quote_error");
+                setStatusMessageTracked(quoteFailureStatus, "quote_error");
             }
         }, 500);
     }
@@ -601,6 +621,15 @@
                 turnstileToken,
                 updateBalance: true,
                 contractId: userState.contractId,
+                onProgress: (message, meta) => {
+                    setStatusMessageTracked(message, "swap_progress_update", {
+                        stage: meta?.stage ?? "unknown",
+                    });
+                    discomboDebug.debug("swap_progress_update", {
+                        message,
+                        ...(meta ?? {}),
+                    });
+                },
             });
 
             if (!sendResult.success) {
@@ -716,6 +745,15 @@
                 turnstileToken,
                 updateBalance: true,
                 contractId: userState.contractId,
+                onProgress: (message, meta) => {
+                    setStatusMessageTracked(message, "send_progress_update", {
+                        stage: meta?.stage ?? "unknown",
+                    });
+                    discomboDebug.debug("send_progress_update", {
+                        message,
+                        ...(meta ?? {}),
+                    });
+                },
             });
 
             if (!sendResult.success) {
