@@ -31,7 +31,7 @@
     import {
         signSendAndVerify,
         isUserCancellation,
-    } from "../../utils/transaction-helpers";
+    } from "../../utils/discombobulator-transaction-helpers";
     import {
         bootstrapDiscombobulatorDebug,
         noopDiscombobulatorDebugger,
@@ -609,7 +609,20 @@
 
             txHash = sendResult.transactionHash ?? null;
             setSwapStateTracked("confirmed", "swap_submission_succeeded");
-            setStatusMessageTracked("Swap complete!", "swap_submission_succeeded");
+            if (sendResult.softSuccessReason === "duplicate_nonce") {
+                setStatusMessageTracked(
+                    "Swap likely complete (duplicate nonce replay guarded).",
+                    "swap_submission_soft_success",
+                );
+                discomboDebug.warn("swap_flow_soft_success", {
+                    reason: sendResult.softSuccessReason,
+                });
+            } else {
+                setStatusMessageTracked(
+                    "Swap complete!",
+                    "swap_submission_succeeded",
+                );
+            }
             triggerSuccessConfetti();
             discomboDebug.info("swap_flow_succeeded", {
                 txHash,
@@ -711,10 +724,20 @@
 
             txHash = sendResult.transactionHash ?? null;
             setSwapStateTracked("confirmed", "send_submission_succeeded");
-            setStatusMessageTracked(
-                `Sent ${amountNum} ${sendToken}!`,
-                "send_submission_succeeded",
-            );
+            if (sendResult.softSuccessReason === "duplicate_nonce") {
+                setStatusMessageTracked(
+                    `${sendToken} transfer likely complete (duplicate nonce replay guarded).`,
+                    "send_submission_soft_success",
+                );
+                discomboDebug.warn("send_flow_soft_success", {
+                    reason: sendResult.softSuccessReason,
+                });
+            } else {
+                setStatusMessageTracked(
+                    `Sent ${amountNum} ${sendToken}!`,
+                    "send_submission_succeeded",
+                );
+            }
             triggerSuccessConfetti();
             discomboDebug.info("send_flow_succeeded", {
                 txHash,
