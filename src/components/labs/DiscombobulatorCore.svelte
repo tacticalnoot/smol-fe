@@ -50,7 +50,7 @@
 
     // --- TYPES ---
     type AppState = "intro" | "transition" | "main";
-    type Mode = "swap" | "send";
+    type Mode = "swap" | "send" | "receive";
 
     type SwapState =
         | "idle"
@@ -105,13 +105,23 @@
     let sendAmount = $state("");
     let sendToken = $state<"XLM" | "KALE" | "USDC">("XLM");
 
+    // Receive Logic
+    let receiveToken = $state<"XLM" | "KALE" | "USDC">("XLM");
+    let receiveAmount = $state("");
+
     // Balances
     let xlmBalance = $derived(balanceState.xlmBalance);
     let kaleBalance = $derived(balanceState.balance);
     let usdcBalance = $derived(balanceState.usdcBalance);
 
     // Derived Display
-    let tokenInSymbol = $derived(mode === "swap" ? swapInToken : sendToken);
+    let tokenInSymbol = $derived(
+        mode === "swap"
+            ? swapInToken
+            : mode === "send"
+              ? sendToken
+              : receiveToken,
+    );
     let tokenOutSymbol = $derived(swapOutToken);
     let balanceIn = $derived(
         mode === "swap"
@@ -219,6 +229,8 @@
             sendToken,
             sendAmount,
             sendToMasked: maskIdentifier(sendTo),
+            receiveToken,
+            receiveAmount,
             hasQuote: !!quote,
             statusMessage,
             hasTurnstileToken: !!turnstileToken,
@@ -660,7 +672,10 @@
 
     // --- ACTIONS ---
     async function handleAction() {
-        if (!userState.contractId || !userState.keyId) {
+        if (
+            !userState.contractId ||
+            (mode !== "receive" && !userState.keyId)
+        ) {
             setStatusMessageTracked(
                 "Connect wallet first",
                 "missing_wallet_credentials",
@@ -681,8 +696,10 @@
 
         if (mode === "swap") {
             await executeSwap();
-        } else {
+        } else if (mode === "send") {
             await executeSend();
+        } else {
+            await executeReceive();
         }
     }
 
@@ -936,6 +953,91 @@
             turnstileToken = "";
         }
     }
+
+    function buildReceiveRequestText(): string {
+        const address = userState.contractId ?? "";
+        const amountText = receiveAmount.trim()
+            ? `${receiveAmount.trim()} ${receiveToken}`
+            : receiveToken;
+        return `Send ${amountText} to ${address}`;
+    }
+
+    async function copyTextToClipboard(value: string): Promise<boolean> {
+        if (!value) return false;
+        if (!navigator?.clipboard?.writeText) return false;
+        await navigator.clipboard.writeText(value);
+        return true;
+    }
+
+    async function copyReceiveRequest(): Promise<void> {
+        if (!userState.contractId) {
+            setStatusMessageTracked(
+                "Connect wallet first",
+                "receive_request_missing_wallet",
+            );
+            return;
+        }
+
+        try {
+            const requestText = buildReceiveRequestText();
+            const copied = await copyTextToClipboard(requestText);
+            if (!copied) throw new Error("Clipboard unavailable");
+
+            discomboDebug.info("receive_request_copied", {
+                token: receiveToken,
+                amount: receiveAmount || null,
+                requestPreview: requestText.slice(0, 80),
+            });
+            setStatusMessageTracked(
+                "Receive request copied",
+                "receive_request_copied",
+            );
+        } catch (e) {
+            discomboDebug.warn("receive_request_copy_failed", {
+                error: e instanceof Error ? e.message : String(e),
+            });
+            setStatusMessageTracked(
+                "Could not copy request. Copy manually below.",
+                "receive_request_copy_failed",
+            );
+        }
+    }
+
+    async function executeReceive() {
+        if (!userState.contractId) {
+            setStatusMessageTracked(
+                "Connect wallet first",
+                "receive_missing_wallet",
+            );
+            return;
+        }
+
+        const address = userState.contractId;
+        try {
+            const copied = await copyTextToClipboard(address);
+            discomboDebug.info("receive_address_copy_attempt", {
+                copied,
+                token: receiveToken,
+                amount: receiveAmount || null,
+                contractId: maskIdentifier(address),
+            });
+
+            setStatusMessageTracked(
+                copied
+                    ? "Receive address copied"
+                    : "Clipboard unavailable. Copy address manually.",
+                copied ? "receive_address_copied" : "receive_address_copy_manual",
+            );
+        } catch (e) {
+            discomboDebug.error("receive_address_copy_failed", {
+                error: e instanceof Error ? e.message : String(e),
+            });
+            setStatusMessageTracked(
+                "Could not copy address. Copy manually below.",
+                "receive_address_copy_failed",
+            );
+        }
+    }
 </script>
 
 <!-- MOONLIGHT UI -->
@@ -1044,6 +1146,13 @@
                         onclick={() =>
                             setModeTracked("send", "tab_click_send")}
                         >SEND</button
+                    >
+                    <button
+                        class="tab-btn"
+                        class:active={mode === "receive"}
+                        onclick={() =>
+                            setModeTracked("receive", "tab_click_receive")}
+                        >RECEIVE</button
                     >
                 </div>
 
@@ -1170,7 +1279,7 @@
                                 </button>
                             </div>
                         </div>
-                    {:else}
+                    {:else if mode === "send"}
                         <!-- SEND MODE -->
                         <div class="flex flex-col gap-4">
                             <!-- TOKEN SELECT -->
@@ -1231,6 +1340,78 @@
                                     >{sendToken}</span
                                 >
                             </div>
+                        </div>
+                    {:else}
+                        <!-- RECEIVE MODE -->
+                        <div class="flex flex-col gap-4">
+                            <!-- TOKEN SELECT -->
+                            <div
+                                class="flex bg-[#0f172a]/40 p-1.5 rounded-xl border border-[#1e293b]"
+                            >
+                                <button
+                                    class="flex-1 py-3 text-[10px] rounded-lg transition-all {receiveToken ===
+                                    'XLM'
+                                        ? 'bg-[#334155] text-white shadow-sm'
+                                        : 'text-[#64748b]'}"
+                                    onclick={() => (receiveToken = "XLM")}
+                                    >XLM</button
+                                >
+                                <button
+                                    class="flex-1 py-3 text-[10px] rounded-lg transition-all {receiveToken ===
+                                    'KALE'
+                                        ? 'bg-[#0284c7] text-white shadow-sm'
+                                        : 'text-[#64748b]'}"
+                                    onclick={() => (receiveToken = "KALE")}
+                                    >KALE</button
+                                >
+                                <button
+                                    class="flex-1 py-3 text-[10px] rounded-lg transition-all {receiveToken ===
+                                    'USDC'
+                                        ? 'bg-[#2775ca] text-white shadow-sm'
+                                        : 'text-[#64748b]'}"
+                                    onclick={() => (receiveToken = "USDC")}
+                                    >USDC</button
+                                >
+                            </div>
+
+                            <div
+                                class="bg-[#0f172a]/40 p-4 rounded-xl border border-[#1e293b]"
+                            >
+                                <label
+                                    class="text-[9px] uppercase text-[#64748b] mb-2 block tracking-widest"
+                                    >Requested Amount ({receiveToken})</label
+                                >
+                                <input
+                                    type="number"
+                                    bind:value={receiveAmount}
+                                    placeholder="optional"
+                                    class="w-full bg-transparent text-[#f1f5f9] text-xl focus:outline-none font-[inherit] placeholder-[#334155]"
+                                />
+                            </div>
+
+                            <div
+                                class="bg-[#0f172a]/40 p-4 rounded-xl border border-[#1e293b]"
+                            >
+                                <div
+                                    class="text-[9px] uppercase text-[#64748b] mb-2 tracking-widest"
+                                >
+                                    Receive Address (Smart Account)
+                                </div>
+                                <div
+                                    class="text-[10px] text-[#e2e8f0] break-all leading-relaxed"
+                                >
+                                    {userState.contractId ||
+                                        "Connect wallet to reveal address"}
+                                </div>
+                            </div>
+
+                            <button
+                                class="text-[9px] py-3 rounded-lg border border-[#1e293b] bg-[#0f172a]/50 text-[#7dd3fc] hover:bg-[#0f172a]/80 hover:border-[#7dd3fc]/40 transition-all"
+                                onclick={copyReceiveRequest}
+                                disabled={!userState.contractId}
+                            >
+                                Copy Receive Request
+                            </button>
                         </div>
                     {/if}
 
@@ -1326,17 +1507,20 @@
                     <button
                         onclick={handleAction}
                         class="action-btn w-full py-5 text-sm font-bold shadow-lg"
-                        disabled={swapState === "submitting" ||
+                        disabled={(mode !== "receive" &&
+                            swapState === "submitting") ||
                             (mode === "swap" &&
                                 quote &&
                                 !turnstileToken &&
                                 !turnstileFailed &&
                                 !isDirectRelayer)}
                     >
-                        {#if swapState === "submitting"}
+                        {#if mode !== "receive" && swapState === "submitting"}
                             {mode === "swap" ? "Swapping..." : "Sending..."}
                         {:else if mode === "swap" && turnstileFailed && !turnstileToken}
                             Swap (pay fee)
+                        {:else if mode === "receive"}
+                            Copy Receive Address
                         {:else}
                             {mode === "swap" ? "Swap" : "Send"}
                         {/if}
