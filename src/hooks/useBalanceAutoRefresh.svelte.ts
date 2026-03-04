@@ -2,6 +2,34 @@ import { onMount } from "svelte";
 import { userState } from "../stores/user.state.svelte";
 import { updateAllBalances, isTransactionInProgress } from "../stores/balance.svelte";
 
+const AUTO_REFRESH_COOLDOWN_MS = 2500;
+let lastAutoRefreshAt = 0;
+let autoRefreshInFlight = false;
+
+async function runAutoRefresh(reason: "auth_change" | "visibility" | "focus") {
+    if (!userState.contractId) return;
+
+    if (isTransactionInProgress()) {
+        console.log(`[Balance] Auto refresh skipped (${reason}) - transaction in progress`);
+        return;
+    }
+
+    const now = Date.now();
+    if (autoRefreshInFlight || now - lastAutoRefreshAt < AUTO_REFRESH_COOLDOWN_MS) {
+        console.log(`[Balance] Auto refresh throttled (${reason})`);
+        return;
+    }
+
+    autoRefreshInFlight = true;
+    lastAutoRefreshAt = now;
+
+    try {
+        await updateAllBalances(userState.contractId);
+    } finally {
+        autoRefreshInFlight = false;
+    }
+}
+
 /**
  * Hook to automatically refresh balances when:
  * 1. The component mounts (and user is authenticated)
@@ -13,9 +41,13 @@ export function useBalanceAutoRefresh() {
     $effect(() => {
         if (userState.contractId && !isTransactionInProgress()) {
             // Slight delay to allow any pending state to settle
-            setTimeout(() => {
-                updateAllBalances(userState.contractId);
+            const timer = setTimeout(() => {
+                void runAutoRefresh("auth_change");
             }, 100);
+
+            return () => {
+                clearTimeout(timer);
+            };
         }
     });
 
@@ -24,17 +56,14 @@ export function useBalanceAutoRefresh() {
         const handleVisibilityChange = () => {
             if (document.visibilityState === "visible" && userState.contractId) {
                 console.log("[Balance] Window focused, refreshing balances...");
-                updateAllBalances(userState.contractId);
+                void runAutoRefresh("visibility");
             }
         };
 
         // 3. Handle window focus (sometimes visibilitychange isn't enough)
         const handleFocus = () => {
             if (userState.contractId) {
-                // Debounce slightly to avoid double-firing with visibilitychange
-                if (!isTransactionInProgress()) {
-                    updateAllBalances(userState.contractId);
-                }
+                void runAutoRefresh("focus");
             }
         };
 
