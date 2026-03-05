@@ -33,6 +33,10 @@ export interface DiscombobulatorSnapshot {
     privacyPolicyDescriptor: string;
     privacyPolicyPreEnabled: boolean;
     privacyPolicyPostEnabled: boolean;
+    sppTraceCount: number;
+    sppActiveIntentId: string;
+    sppLastIntentId: string;
+    sppLastIntentStatus: string;
     lowGpuMode: boolean;
     contractIdMasked: string;
     keyIdMasked: string;
@@ -43,6 +47,9 @@ export interface DiscombobulatorSnapshot {
 export interface DiscombobulatorConsoleHelpers {
     help: () => void;
     snapshot: () => DiscombobulatorSnapshot;
+    spp: (limit?: number) => unknown[];
+    exportSpp: () => string;
+    clearSpp: () => void;
     setVerbose: (nextValue: boolean) => void;
     enableVerbose: () => void;
     disableVerbose: () => void;
@@ -77,6 +84,9 @@ export interface DiscombobulatorDebugBootstrapOptions {
     relayerMode: "DIRECT" | "PROXY";
     forceTrace?: boolean;
     debugQueryEnabled?: boolean;
+    getSppTrace?: (limit?: number) => unknown[];
+    exportSppTrace?: () => string;
+    clearSppTrace?: () => void;
 }
 
 declare global {
@@ -121,6 +131,10 @@ export const noopDiscombobulatorDebugger: DiscombobulatorDebugger = {
         privacyPolicyDescriptor: "public_only",
         privacyPolicyPreEnabled: false,
         privacyPolicyPostEnabled: false,
+        sppTraceCount: 0,
+        sppActiveIntentId: "",
+        sppLastIntentId: "",
+        sppLastIntentStatus: "",
         lowGpuMode: false,
         contractIdMasked: "",
         keyIdMasked: "",
@@ -257,6 +271,9 @@ export function bootstrapDiscombobulatorDebug(
         help: () => {
             console.group("[Discombobulator] Console Helpers");
             console.log("window.discomboDebug.snapshot()");
+            console.log("window.discomboDebug.spp(50)");
+            console.log("window.discomboDebug.exportSpp()");
+            console.log("window.discomboDebug.clearSpp()");
             console.log("window.discomboDebug.mark('label', { any: 'context' })");
             console.log("window.discomboDebug.traceOn() / traceOff()");
             console.log("window.discomboDebug.setTraceLevel('TRACE' | 'DEBUG' | 'INFO' | 'WARN' | 'ERROR')");
@@ -268,6 +285,40 @@ export function bootstrapDiscombobulatorDebug(
             console.groupEnd();
         },
         snapshot: () => options.getSnapshot(),
+        spp: (limit = 50) => {
+            if (!options.getSppTrace) {
+                console.warn("[Discombobulator] SPP trace provider is not configured.");
+                return [];
+            }
+
+            const entries = options.getSppTrace(limit);
+            if (Array.isArray(entries) && entries.length > 0) {
+                console.table(
+                    entries.map((entry: any) => ({
+                        intentId: entry.intentId ?? "unknown",
+                        phase: entry.phase ?? "unknown",
+                        mode: entry.mode ?? "unknown",
+                        policy: entry.policy ?? "unknown",
+                        status: entry.status ?? "unknown",
+                        stages: entry.stageReceipts?.length ?? 0,
+                        txHash: entry.txHash ?? "",
+                        updatedAt: entry.updatedAt ?? "",
+                    })),
+                );
+            }
+            return entries;
+        },
+        exportSpp: () => {
+            if (!options.exportSppTrace) {
+                console.warn("[Discombobulator] SPP export provider is not configured.");
+                return "";
+            }
+            return options.exportSppTrace();
+        },
+        clearSpp: () => {
+            options.clearSppTrace?.();
+            emit("info", "spp_trace_cleared");
+        },
         setVerbose: (nextValue: boolean) => {
             verbose = !!nextValue;
             writeVerboseFlag(verbose);

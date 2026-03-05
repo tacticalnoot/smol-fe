@@ -38,6 +38,17 @@
         type DiscombobulatorDebugger,
         type DiscombobulatorSnapshot,
     } from "../../utils/discombobulator-debug";
+    import {
+        appendSppStageReceipt,
+        createSppIntentTrace,
+        exportSppTraceJson,
+        finalizeSppIntentTrace,
+        type SppIntentTrace,
+        type SppPhase,
+        type SppPolicyDescriptor,
+        type SppTraceStage,
+        type SppTraceStageStatus,
+    } from "../../utils/discombobulator-spp";
     import KaleEmoji from "../ui/KaleEmoji.svelte";
     import { Turnstile } from "svelte-turnstile";
     import { Transaction, Networks } from "@stellar/stellar-sdk/minimal";
@@ -70,14 +81,10 @@
         | "shield_before_swap"
         | "shield_after_swap"
         | "wrap_around_swap";
-    type PrivacyPhase = "swap" | "send" | "receive";
+    type PrivacyPhase = SppPhase;
     type PrivacyEnvelopeStage = "pre" | "post";
     type PrivacyPolicy = {
-        descriptor:
-            | "public_only"
-            | "pre_envelope_poc"
-            | "post_envelope_poc"
-            | "pre_and_post_envelope_poc";
+        descriptor: SppPolicyDescriptor;
         preEnabled: boolean;
         postEnabled: boolean;
     };
@@ -111,6 +118,8 @@
     let lowGpuMode = $state(false);
     let privacyWrapperMode = $state<PrivacyWrapperMode>("public");
     let discomboDebug: DiscombobulatorDebugger = noopDiscombobulatorDebugger;
+    let sppTraceHistory = $state<SppIntentTrace[]>([]);
+    let activeSppIntentId = $state<string | null>(null);
 
     // Provider Logic
 
@@ -327,12 +336,124 @@
         return `${base} (${getPrivacyWrapperLabel(privacyWrapperMode)} POC)`;
     }
 
+    function toSppStage(stage: PrivacyEnvelopeStage): SppTraceStage {
+        return stage === "pre" ? "pre_envelope" : "post_envelope";
+    }
+
+    function summarizeIntentPayload(
+        phase: PrivacyPhase,
+        payload: Record<string, unknown>,
+    ): string {
+        if (phase === "swap") {
+            return `Swap ${String(payload.swapInToken ?? "?")} -> ${String(payload.swapOutToken ?? "?")}`;
+        }
+        if (phase === "send") {
+            return `Send ${String(payload.sendToken ?? "?")}`;
+        }
+        return `Receive ${String(payload.receiveToken ?? "?")}`;
+    }
+
+    function updateSppTraceById(
+        intentId: string,
+        updater: (trace: SppIntentTrace) => SppIntentTrace,
+    ): void {
+        const index = sppTraceHistory.findIndex((trace) => trace.intentId === intentId);
+        if (index === -1) return;
+
+        const next = [...sppTraceHistory];
+        next[index] = updater(next[index]);
+        sppTraceHistory = next.slice(-40);
+    }
+
+    function addSppStageReceipt(
+        intentId: string,
+        stage: SppTraceStage,
+        status: SppTraceStageStatus,
+        details: Record<string, unknown> = {},
+        durationMs?: number,
+    ): void {
+        const receipt = {
+            stage,
+            status,
+            at: new Date().toISOString(),
+            durationMs,
+            details,
+        };
+        updateSppTraceById(intentId, (trace) => appendSppStageReceipt(trace, receipt));
+    }
+
+    async function startSppIntent(
+        phase: PrivacyPhase,
+        payload: Record<string, unknown>,
+    ): Promise<SppIntentTrace> {
+        const policy = getPrivacyPolicy(privacyWrapperMode);
+        const summary = summarizeIntentPayload(phase, payload);
+        const trace = await createSppIntentTrace({
+            phase,
+            mode: privacyWrapperMode,
+            policy: policy.descriptor,
+            summary,
+            payload,
+        });
+        sppTraceHistory = [...sppTraceHistory, trace].slice(-40);
+        activeSppIntentId = trace.intentId;
+        discomboDebug.info("spp_intent_started", {
+            intentId: trace.intentId,
+            intentHash: trace.intentHash,
+            phase,
+            mode: privacyWrapperMode,
+            policy: policy.descriptor,
+            summary,
+        });
+        return trace;
+    }
+
+    function completeSppIntent(
+        intentId: string,
+        status: "succeeded" | "failed",
+        patch: { txHash?: string | null; error?: string | null } = {},
+    ): void {
+        updateSppTraceById(intentId, (trace) =>
+            finalizeSppIntentTrace(trace, status, {
+                txHash: patch.txHash ?? trace.txHash,
+                error: patch.error ?? trace.error,
+            }),
+        );
+
+        if (activeSppIntentId === intentId) {
+            activeSppIntentId = null;
+        }
+
+        discomboDebug.info("spp_intent_completed", {
+            intentId,
+            status,
+            txHash: patch.txHash ?? null,
+            error: patch.error ?? null,
+        });
+    }
+
+    function getSppTrace(limit = 50): SppIntentTrace[] {
+        const safeLimit = Math.max(1, Math.floor(limit));
+        return [...sppTraceHistory].slice(-safeLimit);
+    }
+
+    function clearSppTrace(): void {
+        sppTraceHistory = [];
+        activeSppIntentId = null;
+    }
+
+    function exportSppTrace(): string {
+        return exportSppTraceJson(sppTraceHistory);
+    }
+
     async function runPrivacyEnvelopeStageIfEnabled(
         phase: PrivacyPhase,
         stage: PrivacyEnvelopeStage,
+        intentId?: string,
     ): Promise<void> {
         const policy = getPrivacyPolicy(privacyWrapperMode);
         const enabled = stage === "pre" ? policy.preEnabled : policy.postEnabled;
+        const stageLabel = toSppStage(stage);
 
         if (!enabled) {
             discomboDebug.trace("privacy_stage_skipped", {
@@ -341,6 +462,13 @@
                 privacyWrapperMode,
                 policy: policy.descriptor,
             });
+            if (intentId) {
+                addSppStageReceipt(intentId, stageLabel, "skipped", {
+                    phase,
+                    mode: privacyWrapperMode,
+                    policy: policy.descriptor,
+                });
+            }
             return;
         }
 
@@ -357,16 +485,39 @@
             privacyWrapperMode,
             policy: policy.descriptor,
         });
+        if (intentId) {
+            addSppStageReceipt(intentId, stageLabel, "started", {
+                phase,
+                mode: privacyWrapperMode,
+                policy: policy.descriptor,
+            });
+        }
 
+        const startedAt = Date.now();
         await tick();
         await new Promise<void>((resolve) => setTimeout(resolve, 220));
+        const durationMs = Date.now() - startedAt;
 
         discomboDebug.info("privacy_stage_completed", {
             phase,
             stage,
             privacyWrapperMode,
             policy: policy.descriptor,
+            durationMs,
         });
+        if (intentId) {
+            addSppStageReceipt(
+                intentId,
+                stageLabel,
+                "completed",
+                {
+                    phase,
+                    mode: privacyWrapperMode,
+                    policy: policy.descriptor,
+                },
+                durationMs,
+            );
+        }
     }
 
     function persistPrivacyWrapperMode(
@@ -422,6 +573,10 @@
 
     function getDebugSnapshot(): DiscombobulatorSnapshot {
         const privacyPolicy = getPrivacyPolicy(privacyWrapperMode);
+        const lastSppTrace =
+            sppTraceHistory.length > 0
+                ? sppTraceHistory[sppTraceHistory.length - 1]
+                : null;
         return {
             appState,
             mode,
@@ -449,6 +604,10 @@
             privacyPolicyDescriptor: privacyPolicy.descriptor,
             privacyPolicyPreEnabled: privacyPolicy.preEnabled,
             privacyPolicyPostEnabled: privacyPolicy.postEnabled,
+            sppTraceCount: sppTraceHistory.length,
+            sppActiveIntentId: activeSppIntentId ?? "",
+            sppLastIntentId: lastSppTrace?.intentId ?? "",
+            sppLastIntentStatus: lastSppTrace?.status ?? "",
             lowGpuMode,
             contractIdMasked: maskIdentifier(userState.contractId),
             keyIdMasked: maskIdentifier(userState.keyId),
@@ -554,12 +713,13 @@
         return human.replace(/\.?0+$/, "");
     }
 
-    function buildReceiveRequestText(): string {
+    function buildReceiveRequestText(intentId?: string): string {
         const destination = userState.contractId ?? "";
         const amount = receiveAmount.trim();
         const amountLabel = amount ? `${amount} ${receiveToken}` : receiveToken;
         const policy = getPrivacyPolicy(privacyWrapperMode);
         const privacyLabel = getPrivacyWrapperLabel(privacyWrapperMode);
+        const effectiveIntentId = intentId ?? activeSppIntentId ?? "none";
 
         return [
             "The Discombobulator receive request",
@@ -567,6 +727,7 @@
             `Requested: ${amountLabel}`,
             `Privacy Mode (POC): ${privacyLabel}`,
             `Privacy Policy (POC): ${policy.descriptor}`,
+            `SPP Intent (POC): ${effectiveIntentId}`,
             "Note: Requested amount is advisory (sender can send any amount).",
         ].join("\n");
     }
@@ -728,6 +889,9 @@
             relayerMode: isDirectRelayer ? "DIRECT" : "PROXY",
             forceTrace: debugQueryEnabled,
             debugQueryEnabled,
+            getSppTrace: getSppTrace,
+            exportSppTrace: exportSppTrace,
+            clearSppTrace: clearSppTrace,
         });
 
         discomboDebug.info("component_mounted", {
@@ -1093,8 +1257,23 @@
             return;
         }
 
+        let intentId: string | null = null;
+        const swapIntent = await startSppIntent("swap", {
+            swapInToken,
+            swapOutToken,
+            amountIn: quote.amountIn,
+            amountOut: quote.amountOut,
+            tradeType: quote.tradeType,
+            routeHops: quote.routePlan?.length ?? 0,
+        });
+        intentId = swapIntent.intentId;
+
         setSwapStateTracked("awaiting_passkey", "swap_building_started");
-        await runPrivacyEnvelopeStageIfEnabled("swap", "pre");
+        await runPrivacyEnvelopeStageIfEnabled("swap", "pre", intentId);
+        addSppStageReceipt(intentId, "action", "started", {
+            phase: "swap",
+            operation: "swap_transaction",
+        });
         setStatusMessageTracked(
             getSwapStatusMessage(privacyWrapperMode, "building"),
             "swap_building_started",
@@ -1164,7 +1343,16 @@
             }
 
             txHash = sendResult.transactionHash ?? null;
-            await runPrivacyEnvelopeStageIfEnabled("swap", "post");
+            await runPrivacyEnvelopeStageIfEnabled("swap", "post", intentId);
+            addSppStageReceipt(intentId, "action", "completed", {
+                phase: "swap",
+                operation: "swap_transaction",
+                txHash: txHash ?? null,
+                softSuccessReason: sendResult.softSuccessReason ?? null,
+            });
+            completeSppIntent(intentId, "succeeded", {
+                txHash: txHash ?? null,
+            });
             setSwapStateTracked("confirmed", "swap_submission_succeeded");
             if (sendResult.softSuccessReason === "duplicate_nonce") {
                 setStatusMessageTracked(
@@ -1202,6 +1390,16 @@
                 : e instanceof Error
                   ? e.message
                   : "Swap failed";
+            if (intentId) {
+                const finalError = e instanceof Error ? e.message : String(e);
+                addSppStageReceipt(intentId, "action", "failed", {
+                    phase: "swap",
+                    operation: "swap_transaction",
+                    error: finalError,
+                    userCancelled: isUserCancellation(e),
+                });
+                completeSppIntent(intentId, "failed", { error: finalError });
+            }
             discomboDebug.error("swap_flow_failed", {
                 error: e instanceof Error ? e.message : String(e),
                 userCancelled: isUserCancellation(e),
@@ -1243,8 +1441,23 @@
             return;
         }
 
+        let intentId: string | null = null;
+        const sendIntent = await startSppIntent("send", {
+            sendToken,
+            amount: sendAmount,
+            recipientMasked: maskIdentifier(recipient),
+            amountInStroops: amountInStroops.toString(),
+        });
+        intentId = sendIntent.intentId;
+
         setSwapStateTracked("awaiting_passkey", "send_building_started");
-        await runPrivacyEnvelopeStageIfEnabled("send", "pre");
+        await runPrivacyEnvelopeStageIfEnabled("send", "pre", intentId);
+        addSppStageReceipt(intentId, "action", "started", {
+            phase: "send",
+            operation: "token_transfer",
+            token: sendToken,
+            amount: sendAmount,
+        });
         setStatusMessageTracked(
             withPrivacyModeSuffix(`Sending ${sendToken}...`),
             "send_building_started",
@@ -1300,7 +1513,18 @@
             }
 
             txHash = sendResult.transactionHash ?? null;
-            await runPrivacyEnvelopeStageIfEnabled("send", "post");
+            await runPrivacyEnvelopeStageIfEnabled("send", "post", intentId);
+            addSppStageReceipt(intentId, "action", "completed", {
+                phase: "send",
+                operation: "token_transfer",
+                txHash: txHash ?? null,
+                token: sendToken,
+                amount: sendAmount,
+                softSuccessReason: sendResult.softSuccessReason ?? null,
+            });
+            completeSppIntent(intentId, "succeeded", {
+                txHash: txHash ?? null,
+            });
             setSwapStateTracked("confirmed", "send_submission_succeeded");
             if (sendResult.softSuccessReason === "duplicate_nonce") {
                 setStatusMessageTracked(
@@ -1339,6 +1563,18 @@
                 : e instanceof Error
                   ? e.message
                   : "Send failed";
+            if (intentId) {
+                const finalError = e instanceof Error ? e.message : String(e);
+                addSppStageReceipt(intentId, "action", "failed", {
+                    phase: "send",
+                    operation: "token_transfer",
+                    token: sendToken,
+                    amount: sendAmount,
+                    error: finalError,
+                    userCancelled: isUserCancellation(e),
+                });
+                completeSppIntent(intentId, "failed", { error: finalError });
+            }
             discomboDebug.error("send_flow_failed", {
                 error: e instanceof Error ? e.message : String(e),
                 userCancelled: isUserCancellation(e),
@@ -1380,7 +1616,7 @@
         }
     }
 
-    async function copyReceiveRequest(): Promise<void> {
+    async function copyReceiveRequest(intentId?: string): Promise<void> {
         if (!userState.contractId) {
             setStatusMessageTracked(
                 "Connect wallet first",
@@ -1390,7 +1626,7 @@
         }
 
         try {
-            const requestText = buildReceiveRequestText();
+            const requestText = buildReceiveRequestText(intentId);
             const copied = await copyTextToClipboard(requestText);
             if (!copied) throw new Error("Clipboard unavailable");
 
@@ -1459,14 +1695,52 @@
 
     async function executeReceive(): Promise<void> {
         logPrivacyEnvelopeContext("receive");
-        await runPrivacyEnvelopeStageIfEnabled("receive", "pre");
-        await copyReceiveRequest();
-        await runPrivacyEnvelopeStageIfEnabled("receive", "post");
-        setStatusMessageTracked(
-            withPrivacyModeSuffix("Receive request ready"),
-            "receive_request_ready",
-            { privacyWrapperMode },
-        );
+        let intentId: string | null = null;
+        try {
+            const receiveIntent = await startSppIntent("receive", {
+                receiveToken,
+                requestedAmount: receiveAmount.trim() || null,
+                destinationMasked: maskIdentifier(userState.contractId),
+                action: "copy_receive_request",
+            });
+            intentId = receiveIntent.intentId;
+
+            await runPrivacyEnvelopeStageIfEnabled("receive", "pre", intentId);
+            addSppStageReceipt(intentId, "action", "started", {
+                phase: "receive",
+                operation: "copy_receive_request",
+            });
+            await copyReceiveRequest(intentId);
+            addSppStageReceipt(intentId, "action", "completed", {
+                phase: "receive",
+                operation: "copy_receive_request",
+            });
+            await runPrivacyEnvelopeStageIfEnabled("receive", "post", intentId);
+            completeSppIntent(intentId, "succeeded");
+
+            setStatusMessageTracked(
+                withPrivacyModeSuffix("Receive request ready"),
+                "receive_request_ready",
+                { privacyWrapperMode },
+            );
+        } catch (e) {
+            if (intentId) {
+                const finalError = e instanceof Error ? e.message : String(e);
+                addSppStageReceipt(intentId, "action", "failed", {
+                    phase: "receive",
+                    operation: "copy_receive_request",
+                    error: finalError,
+                });
+                completeSppIntent(intentId, "failed", { error: finalError });
+            }
+            discomboDebug.error("receive_flow_failed", {
+                error: e instanceof Error ? e.message : String(e),
+            });
+            setStatusMessageTracked(
+                "Receive request failed",
+                "receive_request_failed",
+            );
+        }
     }
 </script>
 
