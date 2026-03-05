@@ -17,6 +17,13 @@ export interface DiscombobulatorSnapshot {
     sendToken: string;
     sendAmount: string;
     sendToMasked: string;
+    receiveToken: string;
+    receiveAmount: string;
+    receiveWatchActive: boolean;
+    receiveWatchFulfilled: boolean;
+    receiveWatchToken: string;
+    receiveWatchTarget: string;
+    receiveWatchReceived: string;
     hasQuote: boolean;
     statusMessage: string;
     hasTurnstileToken: boolean;
@@ -95,6 +102,13 @@ export const noopDiscombobulatorDebugger: DiscombobulatorDebugger = {
         sendToken: "unknown",
         sendAmount: "",
         sendToMasked: "",
+        receiveToken: "unknown",
+        receiveAmount: "",
+        receiveWatchActive: false,
+        receiveWatchFulfilled: false,
+        receiveWatchToken: "unknown",
+        receiveWatchTarget: "0",
+        receiveWatchReceived: "0",
         hasQuote: false,
         statusMessage: "",
         hasTurnstileToken: false,

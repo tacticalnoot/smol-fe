@@ -52,7 +52,8 @@
 
     // --- TYPES ---
     type AppState = "intro" | "transition" | "main";
-    type Mode = "swap" | "send";
+    type Mode = "swap" | "send" | "receive";
+    type TokenSymbol = "XLM" | "KALE" | "USDC";
 
     type SwapState =
         | "idle"
@@ -81,8 +82,8 @@
     // Swap Logic
     let swapState = $state<SwapState>("idle");
     // Refactored from fixed direction to flexible tokens
-    let swapInToken = $state<"XLM" | "KALE" | "USDC">("XLM");
-    let swapOutToken = $state<"XLM" | "KALE" | "USDC">("KALE");
+    let swapInToken = $state<TokenSymbol>("XLM");
+    let swapOutToken = $state<TokenSymbol>("KALE");
 
     // Bi-Directional Input State
     let swapAmount = $state(""); // Top Input (Sell)
@@ -105,7 +106,17 @@
     // Send Logic
     let sendTo = $state("");
     let sendAmount = $state("");
-    let sendToken = $state<"XLM" | "KALE" | "USDC">("XLM");
+    let sendToken = $state<TokenSymbol>("XLM");
+
+    // Receive Logic
+    let receiveToken = $state<TokenSymbol>("XLM");
+    let receiveAmount = $state("");
+    let receiveWatchActive = $state(false);
+    let receiveWatchFulfilled = $state(false);
+    let receiveWatchToken = $state<TokenSymbol>("XLM");
+    let receiveWatchTargetStroops = $state<bigint | null>(null);
+    let receiveWatchBaselineStroops = $state<bigint | null>(null);
+    let receiveWatchDeltaStroops = $state<bigint | null>(null);
 
     // Balances
     let xlmBalance = $derived(balanceState.xlmBalance);
@@ -113,7 +124,9 @@
     let usdcBalance = $derived(balanceState.usdcBalance);
 
     // Derived Display
-    let tokenInSymbol = $derived(mode === "swap" ? swapInToken : sendToken);
+    let tokenInSymbol = $derived(
+        mode === "swap" ? swapInToken : mode === "send" ? sendToken : receiveToken,
+    );
     let tokenOutSymbol = $derived(swapOutToken);
     let balanceIn = $derived(
         mode === "swap"
@@ -122,11 +135,17 @@
                 : swapInToken === "KALE"
                   ? kaleBalance
                   : usdcBalance
-            : sendToken === "XLM"
-              ? xlmBalance
-              : sendToken === "KALE"
-                ? kaleBalance
-                : usdcBalance,
+            : mode === "send"
+              ? sendToken === "XLM"
+                  ? xlmBalance
+                  : sendToken === "KALE"
+                    ? kaleBalance
+                    : usdcBalance
+              : receiveToken === "XLM"
+                ? xlmBalance
+                : receiveToken === "KALE"
+                  ? kaleBalance
+                  : usdcBalance,
     );
 
     function maskIdentifier(value: string | null | undefined): string {
@@ -236,7 +255,9 @@
         persistPrivacyWrapperMode(nextMode, reason);
     }
 
-    function logPrivacyEnvelopeContext(phase: "swap" | "send"): void {
+    function logPrivacyEnvelopeContext(
+        phase: "swap" | "send" | "receive",
+    ): void {
         discomboDebug.info("privacy_wrapper_context", {
             phase,
             privacyWrapperMode,
@@ -257,6 +278,13 @@
             sendToken,
             sendAmount,
             sendToMasked: maskIdentifier(sendTo),
+            receiveToken,
+            receiveAmount,
+            receiveWatchActive,
+            receiveWatchFulfilled,
+            receiveWatchToken,
+            receiveWatchTarget: formatTokenAmount(receiveWatchTargetStroops),
+            receiveWatchReceived: formatTokenAmount(receiveWatchDeltaStroops),
             hasQuote: !!quote,
             statusMessage,
             hasTurnstileToken: !!turnstileToken,
@@ -354,6 +382,38 @@
         if (val === null) return "...";
         const str = Number(val) / 10_000_000;
         return str.toLocaleString(undefined, { maximumFractionDigits: 2 });
+    }
+
+    function getTokenBalance(token: TokenSymbol): bigint | null {
+        if (token === "XLM") return xlmBalance;
+        if (token === "KALE") return kaleBalance;
+        return usdcBalance;
+    }
+
+    function formatTokenAmount(stroops: bigint | null): string {
+        if (stroops === null) return "0";
+        const human = formatAmount(stroops);
+        return human.replace(/\.?0+$/, "");
+    }
+
+    function buildReceiveRequestText(): string {
+        const destination = userState.contractId ?? "";
+        const amount = receiveAmount.trim();
+        const amountLabel = amount ? `${amount} ${receiveToken}` : receiveToken;
+
+        return [
+            "The Discombobulator receive request",
+            `Destination: ${destination}`,
+            `Requested: ${amountLabel}`,
+            "Note: Requested amount is advisory (sender can send any amount).",
+        ].join("\n");
+    }
+
+    async function copyTextToClipboard(value: string): Promise<boolean> {
+        if (!value) return false;
+        if (!navigator?.clipboard?.writeText) return false;
+        await navigator.clipboard.writeText(value);
+        return true;
     }
 
     // Rate Calculation Helper
@@ -625,6 +685,107 @@
             kaleBalance: kaleBalance?.toString(),
             usdcBalance: usdcBalance?.toString(),
         });
+        evaluateReceiveWatchProgress();
+    }
+
+    function startReceiveWatch(): void {
+        if (!userState.contractId) {
+            setStatusMessageTracked(
+                "Connect wallet first",
+                "receive_watch_missing_wallet",
+            );
+            return;
+        }
+
+        const amountRaw = receiveAmount.trim();
+        if (!amountRaw || parseFloat(amountRaw) <= 0) {
+            setStatusMessageTracked(
+                "Enter requested amount first",
+                "receive_watch_invalid_amount",
+            );
+            return;
+        }
+
+        const baseline = getTokenBalance(receiveToken);
+        if (baseline === null) {
+            setStatusMessageTracked(
+                "Balance unavailable. Refresh and retry.",
+                "receive_watch_missing_balance",
+            );
+            return;
+        }
+
+        const targetStroops = BigInt(toStroops(amountRaw));
+        if (targetStroops <= 0n) {
+            setStatusMessageTracked(
+                "Requested amount must be greater than zero",
+                "receive_watch_non_positive_amount",
+            );
+            return;
+        }
+
+        receiveWatchActive = true;
+        receiveWatchFulfilled = false;
+        receiveWatchToken = receiveToken;
+        receiveWatchBaselineStroops = baseline;
+        receiveWatchTargetStroops = targetStroops;
+        receiveWatchDeltaStroops = 0n;
+
+        discomboDebug.info("receive_watch_started", {
+            token: receiveWatchToken,
+            requestedAmount: amountRaw,
+            baseline: baseline.toString(),
+            targetStroops: targetStroops.toString(),
+        });
+        setStatusMessageTracked(
+            `Watching for +${amountRaw} ${receiveToken}...`,
+            "receive_watch_started",
+        );
+    }
+
+    function stopReceiveWatch(reason = "receive_watch_stopped"): void {
+        receiveWatchActive = false;
+        receiveWatchFulfilled = false;
+        receiveWatchBaselineStroops = null;
+        receiveWatchTargetStroops = null;
+        receiveWatchDeltaStroops = null;
+        discomboDebug.debug(reason, { token: receiveWatchToken });
+    }
+
+    function evaluateReceiveWatchProgress(): void {
+        if (
+            !receiveWatchActive ||
+            receiveWatchFulfilled ||
+            receiveWatchBaselineStroops === null ||
+            receiveWatchTargetStroops === null
+        ) {
+            return;
+        }
+
+        const current = getTokenBalance(receiveWatchToken);
+        if (current === null) return;
+
+        const delta = current - receiveWatchBaselineStroops;
+        receiveWatchDeltaStroops = delta > 0n ? delta : 0n;
+
+        if (delta >= receiveWatchTargetStroops) {
+            receiveWatchFulfilled = true;
+            discomboDebug.info("receive_watch_fulfilled", {
+                token: receiveWatchToken,
+                targetStroops: receiveWatchTargetStroops.toString(),
+                deltaStroops: (delta > 0n ? delta : 0n).toString(),
+            });
+            setStatusMessageTracked(
+                `Requested amount received for ${receiveWatchToken}`,
+                "receive_watch_fulfilled",
+            );
+        } else {
+            discomboDebug.trace("receive_watch_progress", {
+                token: receiveWatchToken,
+                targetStroops: receiveWatchTargetStroops.toString(),
+                deltaStroops: (delta > 0n ? delta : 0n).toString(),
+            });
+        }
     }
 
     // --- SWAP QUOTING ---
@@ -725,7 +886,7 @@
 
     // --- ACTIONS ---
     async function handleAction() {
-        if (!userState.contractId || !userState.keyId) {
+        if (!userState.contractId || (mode !== "receive" && !userState.keyId)) {
             setStatusMessageTracked(
                 "Connect wallet first",
                 "missing_wallet_credentials",
@@ -746,8 +907,10 @@
 
         if (mode === "swap") {
             await executeSwap();
-        } else {
+        } else if (mode === "send") {
             await executeSend();
+        } else {
+            await executeReceive();
         }
     }
 
@@ -1010,6 +1173,113 @@
             turnstileToken = "";
         }
     }
+
+    async function copyReceiveAddress(): Promise<void> {
+        if (!userState.contractId) {
+            setStatusMessageTracked(
+                "Connect wallet first",
+                "receive_address_missing_wallet",
+            );
+            return;
+        }
+
+        try {
+            const copied = await copyTextToClipboard(userState.contractId);
+            if (!copied) throw new Error("Clipboard unavailable");
+            discomboDebug.info("receive_address_copied", {
+                contractId: maskIdentifier(userState.contractId),
+            });
+            setStatusMessageTracked(
+                "Receive address copied",
+                "receive_address_copied",
+            );
+        } catch (e) {
+            discomboDebug.warn("receive_address_copy_failed", {
+                error: e instanceof Error ? e.message : String(e),
+            });
+            setStatusMessageTracked(
+                "Could not copy address",
+                "receive_address_copy_failed",
+            );
+        }
+    }
+
+    async function copyReceiveRequest(): Promise<void> {
+        if (!userState.contractId) {
+            setStatusMessageTracked(
+                "Connect wallet first",
+                "receive_request_missing_wallet",
+            );
+            return;
+        }
+
+        try {
+            const requestText = buildReceiveRequestText();
+            const copied = await copyTextToClipboard(requestText);
+            if (!copied) throw new Error("Clipboard unavailable");
+
+            discomboDebug.info("receive_request_copied", {
+                token: receiveToken,
+                requestedAmount: receiveAmount || null,
+                requestPreview: requestText.slice(0, 120),
+            });
+            setStatusMessageTracked(
+                "Receive request copied",
+                "receive_request_copied",
+            );
+        } catch (e) {
+            discomboDebug.warn("receive_request_copy_failed", {
+                error: e instanceof Error ? e.message : String(e),
+            });
+            setStatusMessageTracked(
+                "Could not copy request",
+                "receive_request_copy_failed",
+            );
+        }
+    }
+
+    async function shareReceiveRequest(): Promise<void> {
+        if (!userState.contractId) {
+            setStatusMessageTracked(
+                "Connect wallet first",
+                "receive_share_missing_wallet",
+            );
+            return;
+        }
+        if (typeof navigator === "undefined" || !navigator.share) {
+            setStatusMessageTracked(
+                "Share unavailable on this device",
+                "receive_share_unavailable",
+            );
+            return;
+        }
+
+        try {
+            const text = buildReceiveRequestText();
+            await navigator.share({
+                title: "Discombobulator Receive Request",
+                text,
+            });
+            discomboDebug.info("receive_request_shared", {
+                token: receiveToken,
+                requestedAmount: receiveAmount || null,
+            });
+            setStatusMessageTracked("Request shared", "receive_request_shared");
+        } catch (e) {
+            discomboDebug.warn("receive_request_share_failed", {
+                error: e instanceof Error ? e.message : String(e),
+            });
+            setStatusMessageTracked(
+                "Share cancelled or failed",
+                "receive_request_share_failed",
+            );
+        }
+    }
+
+    async function executeReceive(): Promise<void> {
+        logPrivacyEnvelopeContext("receive");
+        await copyReceiveRequest();
+    }
 </script>
 
 <!-- MOONLIGHT UI -->
@@ -1118,6 +1388,13 @@
                         onclick={() =>
                             setModeTracked("send", "tab_click_send")}
                         >SEND</button
+                    >
+                    <button
+                        class="tab-btn"
+                        class:active={mode === "receive"}
+                        onclick={() =>
+                            setModeTracked("receive", "tab_click_receive")}
+                        >RECEIVE</button
                     >
                 </div>
 
@@ -1245,7 +1522,7 @@
                                 </button>
                             </div>
                         </div>
-                    {:else}
+                    {:else if mode === "send"}
                         <!-- SEND MODE -->
                         <div class="flex flex-col gap-4">
                             <!-- TOKEN SELECT -->
@@ -1288,7 +1565,7 @@
                                 <input
                                     type="text"
                                     bind:value={sendTo}
-                                    placeholder="G..."
+                                    placeholder="G... or C..."
                                     class="w-full bg-transparent text-xs text-[#f1f5f9] focus:outline-none font-[inherit] placeholder-[#334155]"
                                 />
                             </div>
@@ -1306,6 +1583,144 @@
                                     >{sendToken}</span
                                 >
                             </div>
+                        </div>
+                    {:else}
+                        <!-- RECEIVE MODE -->
+                        <div class="flex flex-col gap-4">
+                            <!-- TOKEN SELECT -->
+                            <div
+                                class="flex bg-[#0f172a]/40 p-1.5 rounded-xl border border-[#1e293b]"
+                            >
+                                <button
+                                    class="flex-1 py-3 text-[10px] rounded-lg transition-all {receiveToken ===
+                                    'XLM'
+                                        ? 'bg-[#334155] text-white shadow-sm'
+                                        : 'text-[#64748b]'}"
+                                    onclick={() => (receiveToken = "XLM")}
+                                    >XLM</button
+                                >
+                                <button
+                                    class="flex-1 py-3 text-[10px] rounded-lg transition-all {receiveToken ===
+                                    'KALE'
+                                        ? 'bg-[#0284c7] text-white shadow-sm'
+                                        : 'text-[#64748b]'}"
+                                    onclick={() => (receiveToken = "KALE")}
+                                    >KALE</button
+                                >
+                                <button
+                                    class="flex-1 py-3 text-[10px] rounded-lg transition-all {receiveToken ===
+                                    'USDC'
+                                        ? 'bg-[#2775ca] text-white shadow-sm'
+                                        : 'text-[#64748b]'}"
+                                    onclick={() => (receiveToken = "USDC")}
+                                    >USDC</button
+                                >
+                            </div>
+
+                            <div
+                                class="bg-[#0f172a]/40 p-4 rounded-xl border border-[#1e293b]"
+                            >
+                                <label
+                                    class="text-[9px] uppercase text-[#64748b] mb-2 block tracking-widest"
+                                    >Requested Amount ({receiveToken})</label
+                                >
+                                <input
+                                    type="number"
+                                    bind:value={receiveAmount}
+                                    placeholder="optional"
+                                    class="w-full bg-transparent text-[#f1f5f9] text-xl focus:outline-none font-[inherit] placeholder-[#334155]"
+                                />
+                                <div class="mt-2 text-[8px] text-[#94a3b8]">
+                                    Advisory only. Amount is not enforced on-chain.
+                                </div>
+                            </div>
+
+                            <div
+                                class="bg-[#0f172a]/40 p-4 rounded-xl border border-[#1e293b]"
+                            >
+                                <div
+                                    class="text-[9px] uppercase text-[#64748b] mb-2 tracking-widest"
+                                >
+                                    Receive Address (Smart Account)
+                                </div>
+                                <div
+                                    class="text-[10px] text-[#e2e8f0] break-all leading-relaxed"
+                                >
+                                    {userState.contractId ||
+                                        "Connect wallet to reveal address"}
+                                </div>
+                            </div>
+
+                            <div class="grid grid-cols-2 gap-2">
+                                <button
+                                    class="text-[9px] py-3 rounded-lg border border-[#1e293b] bg-[#0f172a]/50 text-[#7dd3fc] hover:bg-[#0f172a]/80 hover:border-[#7dd3fc]/40 transition-all"
+                                    onclick={copyReceiveAddress}
+                                    disabled={!userState.contractId}
+                                >
+                                    Copy Address
+                                </button>
+                                <button
+                                    class="text-[9px] py-3 rounded-lg border border-[#1e293b] bg-[#0f172a]/50 text-[#7dd3fc] hover:bg-[#0f172a]/80 hover:border-[#7dd3fc]/40 transition-all"
+                                    onclick={copyReceiveRequest}
+                                    disabled={!userState.contractId}
+                                >
+                                    Copy Request
+                                </button>
+                            </div>
+
+                            <div class="grid grid-cols-2 gap-2">
+                                <button
+                                    class="text-[9px] py-3 rounded-lg border border-[#1e293b] bg-[#0f172a]/50 text-[#7dd3fc] hover:bg-[#0f172a]/80 hover:border-[#7dd3fc]/40 transition-all"
+                                    onclick={shareReceiveRequest}
+                                    disabled={!userState.contractId}
+                                >
+                                    Share Request
+                                </button>
+                                <button
+                                    class="text-[9px] py-3 rounded-lg border border-[#1e293b] bg-[#0f172a]/50 text-[#7dd3fc] hover:bg-[#0f172a]/80 hover:border-[#7dd3fc]/40 transition-all"
+                                    onclick={() =>
+                                        receiveWatchActive
+                                            ? stopReceiveWatch()
+                                            : startReceiveWatch()}
+                                    disabled={!userState.contractId}
+                                >
+                                    {receiveWatchActive
+                                        ? "Stop Watch"
+                                        : "Watch Amount"}
+                                </button>
+                            </div>
+
+                            {#if receiveWatchActive}
+                                <div
+                                    class="bg-[#0f172a]/40 p-4 rounded-xl border border-[#1e293b]"
+                                >
+                                    <div
+                                        class="text-[9px] uppercase tracking-widest text-[#64748b]"
+                                    >
+                                        Receive Watch
+                                    </div>
+                                    <div class="mt-2 text-[10px] text-[#cbd5e1]">
+                                        Token: {receiveWatchToken}
+                                    </div>
+                                    <div class="text-[10px] text-[#cbd5e1]">
+                                        Target: {formatTokenAmount(
+                                            receiveWatchTargetStroops,
+                                        )}
+                                    </div>
+                                    <div class="text-[10px] text-[#cbd5e1]">
+                                        Received: {formatTokenAmount(
+                                            receiveWatchDeltaStroops,
+                                        )}
+                                    </div>
+                                    <div class="mt-2 text-[9px] text-[#fbbf24]">
+                                        {#if receiveWatchFulfilled}
+                                            Request fulfilled.
+                                        {:else}
+                                            Waiting for incoming transfer...
+                                        {/if}
+                                    </div>
+                                </div>
+                            {/if}
                         </div>
                     {/if}
 
@@ -1401,17 +1816,20 @@
                     <button
                         onclick={handleAction}
                         class="action-btn w-full py-5 text-sm font-bold shadow-lg"
-                        disabled={swapState === "submitting" ||
+                        disabled={(mode !== "receive" &&
+                            swapState === "submitting") ||
                             (mode === "swap" &&
                                 quote &&
                                 !turnstileToken &&
                                 !turnstileFailed &&
                                 !isDirectRelayer)}
                     >
-                        {#if swapState === "submitting"}
+                        {#if mode !== "receive" && swapState === "submitting"}
                             {mode === "swap" ? "Swapping..." : "Sending..."}
                         {:else if mode === "swap" && turnstileFailed && !turnstileToken}
                             Swap (pay fee)
+                        {:else if mode === "receive"}
+                            Copy Request
                         {:else}
                             {mode === "swap" ? "Swap" : "Send"}
                         {/if}
