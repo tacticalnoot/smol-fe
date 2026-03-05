@@ -218,38 +218,38 @@
     ): string {
         if (phase === "swap") {
             if (modeValue === "shield_before_swap") {
-                return "POC intent: private deposit then public swap.";
+                return "Research intent: a pre-swap envelope would be staged before the public swap.";
             }
             if (modeValue === "shield_after_swap") {
-                return "POC intent: public swap then private withdrawal.";
+                return "Research intent: a post-swap envelope would be staged after the public swap.";
             }
             if (modeValue === "wrap_around_swap") {
-                return "POC intent: private-in and private-out wrappers around swap.";
+                return "Research intent: pre/post envelopes would be staged around the public swap.";
             }
             return "Current flow is fully public swap semantics.";
         }
 
         if (phase === "send") {
             if (modeValue === "shield_before_swap") {
-                return "POC intent: private source before public send.";
+                return "Research intent: a pre-send envelope would be staged before the public send.";
             }
             if (modeValue === "shield_after_swap") {
-                return "POC intent: public send then private post-send shielding.";
+                return "Research intent: a post-send envelope would be staged after the public send.";
             }
             if (modeValue === "wrap_around_swap") {
-                return "POC intent: private wrappers around send lifecycle.";
+                return "Research intent: pre/post envelopes would be staged around the send lifecycle.";
             }
             return "Current flow is fully public send semantics.";
         }
 
         if (modeValue === "shield_before_swap") {
-            return "POC intent: sender privately sources before transfer to you.";
+            return "Research intent: a pre-receive envelope would be staged before funds are sent to you.";
         }
         if (modeValue === "shield_after_swap") {
-            return "POC intent: receipt then private shielding after funds arrive.";
+            return "Research intent: a post-receive envelope would be staged after funds arrive.";
         }
         if (modeValue === "wrap_around_swap") {
-            return "POC intent: private wrappers around receive lifecycle.";
+            return "Research intent: pre/post envelopes would be staged around the receive lifecycle.";
         }
         return "Current flow is fully public receive-request semantics.";
     }
@@ -257,7 +257,7 @@
     function getPrivacyPolicy(modeValue: PrivacyWrapperMode): PrivacyPolicy {
         if (modeValue === "shield_before_swap") {
             return {
-                descriptor: "pre_envelope_poc",
+                descriptor: "pre_envelope_research",
                 preEnabled: true,
                 postEnabled: false,
             };
@@ -265,7 +265,7 @@
 
         if (modeValue === "shield_after_swap") {
             return {
-                descriptor: "post_envelope_poc",
+                descriptor: "post_envelope_research",
                 preEnabled: false,
                 postEnabled: true,
             };
@@ -273,7 +273,7 @@
 
         if (modeValue === "wrap_around_swap") {
             return {
-                descriptor: "pre_and_post_envelope_poc",
+                descriptor: "pre_and_post_envelope_research",
                 preEnabled: true,
                 postEnabled: true,
             };
@@ -286,18 +286,22 @@
         };
     }
 
-    function getPrivacyPolicyLabel(modeValue: PrivacyWrapperMode): string {
+    function getPrivacyPolicyDisplayName(modeValue: PrivacyWrapperMode): string {
         const policy = getPrivacyPolicy(modeValue);
-        if (policy.descriptor === "pre_envelope_poc") {
-            return "Policy: pre-envelope intent";
+        if (policy.descriptor === "pre_envelope_research") {
+            return "pre-envelope intent";
         }
-        if (policy.descriptor === "post_envelope_poc") {
-            return "Policy: post-envelope intent";
+        if (policy.descriptor === "post_envelope_research") {
+            return "post-envelope intent";
         }
-        if (policy.descriptor === "pre_and_post_envelope_poc") {
-            return "Policy: pre+post envelope intent";
+        if (policy.descriptor === "pre_and_post_envelope_research") {
+            return "pre+post envelope intent";
         }
-        return "Policy: public-only flow";
+        return "public-only flow";
+    }
+
+    function getPrivacyPolicyLabel(modeValue: PrivacyWrapperMode): string {
+        return `Research policy: ${getPrivacyPolicyDisplayName(modeValue)}`;
     }
 
     function getPrivacyStageMessage(
@@ -306,17 +310,17 @@
     ): string {
         if (phase === "swap") {
             return stage === "pre"
-                ? "POC privacy: preparing pre-swap envelope..."
-                : "POC privacy: preparing post-swap envelope...";
+                ? "Research envelope: staging pre-swap step..."
+                : "Research envelope: staging post-swap step...";
         }
         if (phase === "send") {
             return stage === "pre"
-                ? "POC privacy: preparing pre-send envelope..."
-                : "POC privacy: preparing post-send envelope...";
+                ? "Research envelope: staging pre-send step..."
+                : "Research envelope: staging post-send step...";
         }
         return stage === "pre"
-            ? "POC privacy: preparing pre-receive envelope..."
-            : "POC privacy: preparing post-receive envelope...";
+            ? "Research envelope: staging pre-receive step..."
+            : "Research envelope: staging post-receive step...";
     }
 
     function getSwapStatusMessage(
@@ -330,14 +334,14 @@
         }
 
         const label = getPrivacyWrapperLabel(modeValue);
-        if (phase === "building") return `Building swap (${label} POC)...`;
-        if (phase === "submitting") return `Submitting swap (${label} POC)...`;
-        return `Swap complete (${label} POC)!`;
+        if (phase === "building") return `Building swap (${label} research)...`;
+        if (phase === "submitting") return `Submitting swap (${label} research)...`;
+        return `Swap complete (${label} research)!`;
     }
 
     function withPrivacyModeSuffix(base: string): string {
         if (privacyWrapperMode === "public") return base;
-        return `${base} (${getPrivacyWrapperLabel(privacyWrapperMode)} POC)`;
+        return `${base} (${getPrivacyWrapperLabel(privacyWrapperMode)} research)`;
     }
 
     function toSppStage(stage: PrivacyEnvelopeStage): SppTraceStage {
@@ -721,7 +725,6 @@
         const destination = userState.contractId ?? "";
         const amount = receiveAmount.trim();
         const amountLabel = amount ? `${amount} ${receiveToken}` : receiveToken;
-        const policy = getPrivacyPolicy(privacyWrapperMode);
         const privacyLabel = getPrivacyWrapperLabel(privacyWrapperMode);
         const effectiveIntentId = intentId ?? activeSppIntentId ?? "none";
 
@@ -729,9 +732,10 @@
             "The Discombobulator receive request",
             `Destination: ${destination}`,
             `Requested: ${amountLabel}`,
-            `Privacy Mode (POC): ${privacyLabel}`,
-            `Privacy Policy (POC): ${policy.descriptor}`,
-            `SPP Intent (POC): ${effectiveIntentId}`,
+            `Research Mode (Labs): ${privacyLabel}`,
+            `Research Policy: ${getPrivacyPolicyDisplayName(privacyWrapperMode)}`,
+            `SPP Intent: ${effectiveIntentId}`,
+            "Settlement: public on-chain in the current Labs build.",
             "Note: Requested amount is advisory (sender can send any amount).",
         ].join("\n");
     }
@@ -1717,7 +1721,8 @@
             discomboDebug.info("receive_request_copied", {
                 token: receiveToken,
                 requestedAmount: receiveAmount || null,
-                requestPreview: requestText.slice(0, 120),
+                hasRequestedAmount: !!receiveAmount,
+                requestLength: requestText.length,
             });
             setStatusMessageTracked(
                 withPrivacyModeSuffix("Receive request copied"),
@@ -1893,7 +1898,7 @@
                         ? "channels.openzeppelin.com"
                         : "api.kalefarm.xyz"}
                 </div>
-                <div>PRIVACY: {getPrivacyWrapperLabel(privacyWrapperMode)}</div>
+                <div>MODE: {getPrivacyWrapperLabel(privacyWrapperMode)}</div>
                 <div>GPU_SAFE: {lowGpuMode ? "ON" : "OFF"}</div>
                 <div>DBG_URL: {debugQueryEnabled ? "ON" : "OFF"}</div>
                 <div>CONSOLE: window.discomboDebug.help()</div>
@@ -1932,7 +1937,7 @@
                     <div
                         class="text-[8px] uppercase tracking-[0.2em] text-[#7dd3fc]"
                     >
-                        Privacy Mode (Labs POC)
+                        SPP Research Mode (Labs)
                     </div>
                     <div class="mt-2 grid grid-cols-2 gap-2">
                         <button
@@ -1982,10 +1987,22 @@
                     <div class="mt-1 text-[8px] text-[#7dd3fc]">
                         {getPrivacyPolicyLabel(privacyWrapperMode)}
                     </div>
-                    <div class="mt-1 text-[8px] text-[#fbbf24]">
-                        Live in Labs: mode persists and is visible in swap/send/receive
-                        flows. No private proofs or shielded balances are executed
-                        yet.
+                    <div
+                        class="mt-2 rounded-lg border border-[#fbbf24]/30 bg-[#1f1300]/35 p-2"
+                    >
+                        <div
+                            class="text-[8px] uppercase tracking-[0.18em] text-[#fbbf24]"
+                        >
+                            Compliance Guardrails
+                        </div>
+                        <div class="mt-1 text-[8px] text-[#fde68a]">
+                            Public settlement only. This mode changes research telemetry,
+                            status copy, and request metadata.
+                        </div>
+                        <div class="mt-1 text-[8px] text-[#cbd5e1]">
+                            No shielded balances, private proofs, or anonymity guarantees
+                            are executed in this Labs build.
+                        </div>
                     </div>
                 </div>
 
@@ -2054,6 +2071,22 @@
                     {:else if mode === "send"}
                         <!-- SEND MODE -->
                         <div class="flex flex-col gap-4">
+                            <div
+                                class="rounded-xl border border-[#1e293b] bg-[#0f172a]/35 p-3"
+                            >
+                                <div
+                                    class="text-[8px] uppercase tracking-[0.18em] text-[#7dd3fc]"
+                                >
+                                    Research Mode for Send
+                                </div>
+                                <div class="mt-1 text-[8px] text-[#94a3b8]">
+                                    {getPrivacyWrapperSummary(privacyWrapperMode, "send")}
+                                </div>
+                                <div class="mt-1 text-[8px] text-[#fbbf24]">
+                                    Public settlement still applies in the current Labs build.
+                                </div>
+                            </div>
+
                             <!-- TOKEN SELECT -->
                             <div
                                 class="flex bg-[#0f172a]/40 p-1.5 rounded-xl border border-[#1e293b]"
@@ -2116,6 +2149,23 @@
                     {:else}
                         <!-- RECEIVE MODE -->
                         <div class="flex flex-col gap-4">
+                            <div
+                                class="rounded-xl border border-[#1e293b] bg-[#0f172a]/35 p-3"
+                            >
+                                <div
+                                    class="text-[8px] uppercase tracking-[0.18em] text-[#7dd3fc]"
+                                >
+                                    Research Mode for Receive
+                                </div>
+                                <div class="mt-1 text-[8px] text-[#94a3b8]">
+                                    {getPrivacyWrapperSummary(privacyWrapperMode, "receive")}
+                                </div>
+                                <div class="mt-1 text-[8px] text-[#fbbf24]">
+                                    Receive requests stay advisory and public in the current
+                                    Labs build.
+                                </div>
+                            </div>
+
                             <!-- TOKEN SELECT -->
                             <div
                                 class="flex bg-[#0f172a]/40 p-1.5 rounded-xl border border-[#1e293b]"

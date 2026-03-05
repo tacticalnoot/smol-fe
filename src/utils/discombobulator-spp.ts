@@ -5,9 +5,9 @@ export type SppIntentStatus = "active" | "succeeded" | "failed";
 
 export type SppPolicyDescriptor =
     | "public_only"
-    | "pre_envelope_poc"
-    | "post_envelope_poc"
-    | "pre_and_post_envelope_poc";
+    | "pre_envelope_research"
+    | "post_envelope_research"
+    | "pre_and_post_envelope_research";
 
 export interface SppStageReceipt {
     stage: SppTraceStage;
