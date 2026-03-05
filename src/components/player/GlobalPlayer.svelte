@@ -449,6 +449,11 @@
 
     let gridLimit = $state(50);
     const GRID_LIMIT_MAX = 500; // Cap to prevent unbounded DOM growth
+    const GRID_LOADING_PLACEHOLDER_COUNT = 24;
+    const gridLoadingPlaceholders = Array.from(
+        { length: GRID_LOADING_PLACEHOLDER_COUNT },
+        (_, index) => index,
+    );
 
     // Track pending timeouts for cleanup
     let pendingTimeouts = new Set<ReturnType<typeof setTimeout>>();
@@ -464,6 +469,11 @@
         return basePlaylist;
     });
     const visiblePlaylist = $derived(displayPlaylist.slice(0, gridLimit));
+    const showHomepageGridLoader = $derived(
+        showGridView &&
+            displayPlaylist.length === 0 &&
+            (isLoadingLive || !isUrlStateLoaded),
+    );
 
     // Scroll Handler
     function handleGridScroll(e: any) {
@@ -1380,10 +1390,50 @@
                     onscroll={handleGridScroll}
                     style="contain: content;"
                 >
-                    <div
-                        class="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-6 lg:grid-cols-8 gap-2 md:gap-4 pb-20"
-                    >
-                        {#each visiblePlaylist as song, index (song.Id)}
+                    {#if showHomepageGridLoader}
+                        <div class="flex flex-col gap-6 pb-20">
+                            <div
+                                class="flex items-center gap-3 rounded-2xl border border-white/10 bg-white/[0.03] px-4 py-3 text-white/80"
+                            >
+                                <div
+                                    class="h-5 w-5 rounded-full border-2 border-white/15 border-t-lime-400 animate-spin"
+                                ></div>
+                                <div class="min-w-0">
+                                    <p class="text-sm font-medium">
+                                        Loading grid
+                                    </p>
+                                    <p class="text-xs text-white/45">
+                                        Preparing the latest smols
+                                    </p>
+                                </div>
+                            </div>
+
+                            <div
+                                class="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-6 lg:grid-cols-8 gap-2 md:gap-4"
+                                aria-hidden="true"
+                            >
+                                {#each gridLoadingPlaceholders as placeholder (placeholder)}
+                                    <div class="flex flex-col gap-2 animate-pulse">
+                                        <div
+                                            class="aspect-square rounded-xl border border-white/8 bg-white/[0.04] shadow-md"
+                                        ></div>
+                                        <div class="space-y-1 px-0.5">
+                                            <div
+                                                class="h-3 rounded-full bg-white/[0.08]"
+                                            ></div>
+                                            <div
+                                                class="h-3 w-2/3 rounded-full bg-white/[0.05]"
+                                            ></div>
+                                        </div>
+                                    </div>
+                                {/each}
+                            </div>
+                        </div>
+                    {:else}
+                        <div
+                            class="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-6 lg:grid-cols-8 gap-2 md:gap-4 pb-20"
+                        >
+                            {#each visiblePlaylist as song, index (song.Id)}
                             <div
                                 role="button"
                                 tabindex="0"
@@ -1627,8 +1677,9 @@
                                     {song.Title || "Untitled"}
                                 </span>
                             </div>
-                        {/each}
-                    </div>
+                            {/each}
+                        </div>
+                    {/if}
                 </div>
             {/if}
 

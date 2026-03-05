@@ -92,22 +92,35 @@
       const playPromise = audio.play();
       if (playPromise !== undefined) {
         playPromise.catch((error: unknown) => {
-          console.error("Error playing audio:", error);
+          const errorName =
+            error instanceof Error && error.name
+              ? error.name
+              : error instanceof DOMException && error.name
+                ? error.name
+                : "UnknownError";
+          const errorMessage =
+            error instanceof Error && error.message
+              ? error.message
+              : error instanceof DOMException && error.message
+                ? error.message
+                : "";
 
           // Circuit Breaker: If we fail, STOP trying immediately
           audioState.isBuffering = false;
           audioState.playIntentId = null;
 
           // Preserve intent on autoplay restrictions (NotAllowedError) so we can resume later
-          if (
-            error instanceof DOMException &&
-            error.name === "NotAllowedError"
-          ) {
+          if (errorName === "NotAllowedError") {
+            console.log("[Audio] Autoplay blocked until user interaction");
             audioState.wasInterrupted = true;
             // CRITICAL: We MUST clear playingId to stop the toggle -> play -> error -> toggle loop
             // The UI will revert to "Paused", user must click Play again (which checks out for interaction)
             audioState.playingId = null;
           } else {
+            console.error("Error playing audio:", {
+              name: errorName,
+              message: errorMessage,
+            });
             // FATAL ERROR: Stop everything to prevent crash loop
             audioState.playingId = null;
             // Optional: Show a toast or small UI error here if we had a toast system
