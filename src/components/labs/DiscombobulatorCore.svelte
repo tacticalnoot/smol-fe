@@ -131,6 +131,16 @@
     let activeSppIntentId = $state<string | null>(null);
     let privacyExecutionHistory = $state<PrivacyExecutionArtifact[]>([]);
     let aspPolicyHistory = $state<AspPolicyReceipt[]>([]);
+    let latestPrivacyArtifact = $derived(
+        privacyExecutionHistory.length > 0
+            ? privacyExecutionHistory[privacyExecutionHistory.length - 1]
+            : null,
+    );
+    let latestAspPolicyReceipt = $derived(
+        aspPolicyHistory.length > 0
+            ? aspPolicyHistory[aspPolicyHistory.length - 1]
+            : null,
+    );
 
     // Provider Logic
 
@@ -827,8 +837,15 @@
         const amountLabel = amount ? `${amount} ${receiveToken}` : receiveToken;
         const privacyLabel = getPrivacyWrapperLabel(privacyWrapperMode);
         const effectiveIntentId = intentId ?? activeSppIntentId ?? "none";
+        const receiveArtifact = getLatestPrivacyArtifactForContext({
+            phase: "receive",
+            intentId,
+        });
+        const receivePolicyReceipt =
+            receiveArtifact?.policyReceipt ??
+            getLatestAspPolicyReceiptForPhase("receive");
 
-        return [
+        const lines = [
             "The Discombobulator receive request",
             `Destination: ${destination}`,
             `Requested: ${amountLabel}`,
@@ -837,7 +854,19 @@
             `SPP Intent: ${effectiveIntentId}`,
             "Settlement: public on-chain in the current Labs build.",
             "Note: Requested amount is advisory (sender can send any amount).",
-        ].join("\n");
+        ];
+
+        if (receivePolicyReceipt) {
+            lines.push(`SPP Decision: ${receivePolicyReceipt.decision}`);
+            lines.push(`SPP Audit: ${receivePolicyReceipt.auditLevel}`);
+        }
+
+        if (receiveArtifact) {
+            lines.push(`SPP Commitment: ${receiveArtifact.commitment.commitmentId}`);
+            lines.push(`SPP Disclosure: ${receiveArtifact.disclosure.disclosureHandle}`);
+        }
+
+        return lines.join("\n");
     }
 
     async function copyTextToClipboard(value: string): Promise<boolean> {
@@ -845,6 +874,142 @@
         if (!navigator?.clipboard?.writeText) return false;
         await navigator.clipboard.writeText(value);
         return true;
+    }
+
+    function formatPrivacyTimestamp(value: string | null | undefined): string {
+        if (!value) return "--";
+        try {
+            return new Date(value).toLocaleString();
+        } catch {
+            return value;
+        }
+    }
+
+    function getLatestPrivacyArtifactForContext({
+        phase,
+        intentId,
+    }: {
+        phase?: PrivacyPhase;
+        intentId?: string | null;
+    } = {}): PrivacyExecutionArtifact | null {
+        for (let index = privacyExecutionHistory.length - 1; index >= 0; index -= 1) {
+            const artifact = privacyExecutionHistory[index];
+            if (intentId && artifact.commitment.intentId !== intentId) continue;
+            if (phase && artifact.commitment.phase !== phase) continue;
+            return artifact;
+        }
+        return null;
+    }
+
+    function getLatestAspPolicyReceiptForPhase(
+        phase?: PrivacyPhase,
+    ): AspPolicyReceipt | null {
+        for (let index = aspPolicyHistory.length - 1; index >= 0; index -= 1) {
+            const receipt = aspPolicyHistory[index];
+            if (phase && receipt.phase !== phase) continue;
+            return receipt;
+        }
+        return null;
+    }
+
+    function buildPrivacyReceiptText(): string {
+        if (!latestAspPolicyReceipt && !latestPrivacyArtifact) {
+            return "No SPP receipt generated yet.";
+        }
+
+        const lines = [
+            "Discombobulator SPP receipt",
+            `Mode: ${getPrivacyWrapperLabel(privacyWrapperMode)}`,
+            `Settlement: ${latestAspPolicyReceipt?.settlementMode ?? "public"}`,
+            `Policy ID: ${latestAspPolicyReceipt?.policyId ?? "n/a"}`,
+            `Decision: ${latestAspPolicyReceipt?.decision ?? "n/a"}`,
+            `Audit: ${latestAspPolicyReceipt?.auditLevel ?? "n/a"}`,
+            `Risk score: ${latestAspPolicyReceipt?.riskScore ?? "n/a"}`,
+            `Phase: ${latestPrivacyArtifact?.commitment.phase ?? latestAspPolicyReceipt?.phase ?? "n/a"}`,
+            `Stage: ${latestPrivacyArtifact?.commitment.stage ?? "n/a"}`,
+            `Commitment: ${latestPrivacyArtifact?.commitment.commitmentId ?? "n/a"}`,
+            `Disclosure: ${latestPrivacyArtifact?.disclosure.disclosureHandle ?? "n/a"}`,
+            `Summary: ${latestPrivacyArtifact?.disclosure.summary ?? "n/a"}`,
+            `Checked: ${formatPrivacyTimestamp(latestAspPolicyReceipt?.checkedAt)}`,
+            `Created: ${formatPrivacyTimestamp(latestPrivacyArtifact?.commitment.createdAt)}`,
+        ];
+
+        if (latestAspPolicyReceipt?.reasons?.length) {
+            lines.push(
+                `Reasons: ${latestAspPolicyReceipt.reasons.join("; ")}`,
+            );
+        }
+
+        return lines.join("\n");
+    }
+
+    async function copyLatestPrivacyReceipt(): Promise<void> {
+        try {
+            const copied = await copyTextToClipboard(buildPrivacyReceiptText());
+            if (!copied) throw new Error("Clipboard unavailable");
+            setStatusMessageTracked(
+                withPrivacyModeSuffix("SPP receipt copied"),
+                "privacy_receipt_copied",
+                { privacyWrapperMode },
+            );
+        } catch (e) {
+            const errorMessage = e instanceof Error ? e.message : String(e);
+            discomboDebug.warn("privacy_receipt_copy_failed", {
+                error: errorMessage,
+            });
+            setStatusMessageTracked(
+                "Could not copy SPP receipt",
+                "privacy_receipt_copy_failed",
+            );
+        }
+    }
+
+    async function copyPrivacyExport(): Promise<void> {
+        try {
+            const copied = await copyTextToClipboard(exportPrivacyArtifacts());
+            if (!copied) throw new Error("Clipboard unavailable");
+            setStatusMessageTracked(
+                withPrivacyModeSuffix("SPP export copied"),
+                "privacy_export_copied",
+                { privacyWrapperMode },
+            );
+        } catch (e) {
+            const errorMessage = e instanceof Error ? e.message : String(e);
+            discomboDebug.warn("privacy_export_copy_failed", {
+                error: errorMessage,
+            });
+            setStatusMessageTracked(
+                "Could not copy SPP export",
+                "privacy_export_copy_failed",
+            );
+        }
+    }
+
+    function downloadPrivacyExport(): void {
+        try {
+            const json = exportPrivacyArtifacts();
+            const blob = new Blob([json], { type: "application/json" });
+            const url = URL.createObjectURL(blob);
+            const anchor = document.createElement("a");
+            anchor.href = url;
+            anchor.download = `discombo-spp-${Date.now()}.json`;
+            anchor.click();
+            URL.revokeObjectURL(url);
+            setStatusMessageTracked(
+                withPrivacyModeSuffix("SPP export downloaded"),
+                "privacy_export_downloaded",
+                { privacyWrapperMode },
+            );
+        } catch (e) {
+            const errorMessage = e instanceof Error ? e.message : String(e);
+            discomboDebug.warn("privacy_export_download_failed", {
+                error: errorMessage,
+            });
+            setStatusMessageTracked(
+                "Could not download SPP export",
+                "privacy_export_download_failed",
+            );
+        }
     }
 
     // Rate Calculation Helper
@@ -2173,6 +2338,112 @@
                             Shielded balances and private value transfer are not executed
                             in this Labs build.
                         </div>
+                    </div>
+
+                    <div
+                        class="mt-2 rounded-lg border border-[#1e293b] bg-[#0b1120]/70 p-3"
+                    >
+                        <div
+                            class="flex items-center justify-between gap-3 text-[8px] uppercase tracking-[0.18em] text-[#7dd3fc]"
+                        >
+                            <span>Latest SPP Receipt</span>
+                            <span class="text-[#64748b]"
+                                >{privacyExecutionHistory.length} artifacts / {aspPolicyHistory.length}
+                                policies</span
+                            >
+                        </div>
+
+                        {#if latestAspPolicyReceipt || latestPrivacyArtifact}
+                            <div class="mt-2 grid grid-cols-2 gap-2 text-[8px] text-[#cbd5e1]">
+                                <div>
+                                    <span class="text-[#64748b]">Decision</span>
+                                    <div class="mt-1 text-[#e2e8f0]">
+                                        {latestAspPolicyReceipt?.decision ?? "n/a"}
+                                    </div>
+                                </div>
+                                <div>
+                                    <span class="text-[#64748b]">Audit</span>
+                                    <div class="mt-1 text-[#e2e8f0]">
+                                        {latestAspPolicyReceipt?.auditLevel ?? "n/a"}
+                                    </div>
+                                </div>
+                                <div>
+                                    <span class="text-[#64748b]">Commitment</span>
+                                    <div class="mt-1 text-[#e2e8f0]">
+                                        {maskIdentifier(
+                                            latestPrivacyArtifact?.commitment.commitmentId,
+                                        ) || "n/a"}
+                                    </div>
+                                </div>
+                                <div>
+                                    <span class="text-[#64748b]">Disclosure</span>
+                                    <div class="mt-1 text-[#e2e8f0]">
+                                        {maskIdentifier(
+                                            latestPrivacyArtifact?.disclosure
+                                                .disclosureHandle,
+                                        ) || "n/a"}
+                                    </div>
+                                </div>
+                                <div>
+                                    <span class="text-[#64748b]">Phase</span>
+                                    <div class="mt-1 text-[#e2e8f0]">
+                                        {latestPrivacyArtifact?.commitment.phase ??
+                                            latestAspPolicyReceipt?.phase ??
+                                            "n/a"}
+                                    </div>
+                                </div>
+                                <div>
+                                    <span class="text-[#64748b]">Settlement</span>
+                                    <div class="mt-1 text-[#e2e8f0]">
+                                        {latestAspPolicyReceipt?.settlementMode ?? "public"}
+                                    </div>
+                                </div>
+                            </div>
+
+                            {#if latestPrivacyArtifact?.disclosure.summary}
+                                <div class="mt-2 text-[8px] text-[#94a3b8]">
+                                    {latestPrivacyArtifact.disclosure.summary}
+                                </div>
+                            {/if}
+
+                            {#if latestAspPolicyReceipt?.reasons?.length}
+                                <div class="mt-2 flex flex-wrap gap-1">
+                                    {#each latestAspPolicyReceipt.reasons.slice(0, 3) as reason}
+                                        <span
+                                            class="rounded-md border border-[#1e293b] bg-[#0f172a]/70 px-2 py-1 text-[8px] text-[#94a3b8]"
+                                        >
+                                            {reason}
+                                        </span>
+                                    {/each}
+                                </div>
+                            {/if}
+
+                            <div class="mt-3 grid grid-cols-3 gap-2">
+                                <button
+                                    class="rounded-lg border border-[#1e293b] bg-[#0f172a]/50 px-2 py-2 text-[8px] text-[#7dd3fc] transition-all hover:border-[#7dd3fc]/40 hover:bg-[#0f172a]/80"
+                                    onclick={copyLatestPrivacyReceipt}
+                                >
+                                    Copy Receipt
+                                </button>
+                                <button
+                                    class="rounded-lg border border-[#1e293b] bg-[#0f172a]/50 px-2 py-2 text-[8px] text-[#7dd3fc] transition-all hover:border-[#7dd3fc]/40 hover:bg-[#0f172a]/80"
+                                    onclick={copyPrivacyExport}
+                                >
+                                    Copy Export
+                                </button>
+                                <button
+                                    class="rounded-lg border border-[#1e293b] bg-[#0f172a]/50 px-2 py-2 text-[8px] text-[#7dd3fc] transition-all hover:border-[#7dd3fc]/40 hover:bg-[#0f172a]/80"
+                                    onclick={downloadPrivacyExport}
+                                >
+                                    Download JSON
+                                </button>
+                            </div>
+                        {:else}
+                            <div class="mt-2 text-[8px] text-[#94a3b8]">
+                                No SPP artifacts yet. Run a swap, send, or receive action to
+                                generate mainnet-safe policy and commitment receipts.
+                            </div>
+                        {/if}
                     </div>
                 </div>
 
