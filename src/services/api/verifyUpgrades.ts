@@ -11,6 +11,9 @@ const SMOL_MART_AMOUNTS = {
     SHOWCASE_REEL: 1000000,
     VIBE_MATRIX: 250000
 };
+const VERIFICATION_COOLDOWN_MS = 60_000;
+const recentVerificationAt = new Map<string, number>();
+const inFlightVerifications = new Map<string, Promise<void>>();
 
 /**
  * Scan account history to see if they already paid for upgrades.
@@ -33,66 +36,85 @@ export async function verifyPastPurchases(userAddress: string): Promise<void> {
         return;
     }
 
-    // VIP check - instant unlock for whitelisted addresses (granular)
-    const vipAccess = getVIPAccess(trimmedAddress);
-    if (vipAccess) {
-        if (vipAccess.premiumHeader) unlockUpgrade('premiumHeader');
-        if (vipAccess.goldenKale) unlockUpgrade('goldenKale');
-        if (vipAccess.showcaseReel) unlockUpgrade('showcaseReel');
-        if (vipAccess.vibeMatrix) unlockUpgrade('vibeMatrix');
+    const existing = inFlightVerifications.get(trimmedAddress);
+    if (existing) {
+        return existing;
+    }
+
+    const lastVerifiedAt = recentVerificationAt.get(trimmedAddress) ?? 0;
+    if (Date.now() - lastVerifiedAt < VERIFICATION_COOLDOWN_MS) {
         return;
     }
 
-    try {
-        const kaleContractId = import.meta.env.PUBLIC_KALE_SAC_ID;
-        if (!kaleContractId) {
-            console.error('[SmolMart] Missing PUBLIC_KALE_SAC_ID');
+    const verificationTask = (async () => {
+        // VIP check - instant unlock for whitelisted addresses (granular)
+        const vipAccess = getVIPAccess(trimmedAddress);
+        if (vipAccess) {
+            if (vipAccess.premiumHeader) unlockUpgrade('premiumHeader');
+            if (vipAccess.goldenKale) unlockUpgrade('goldenKale');
+            if (vipAccess.showcaseReel) unlockUpgrade('showcaseReel');
+            if (vipAccess.vibeMatrix) unlockUpgrade('vibeMatrix');
+            recentVerificationAt.set(trimmedAddress, Date.now());
             return;
         }
 
-        // Use RPC Events to find transfers (works for both Smart Wallets and G-accounts)
-        const foundTransfers = await findTokenTransfers(
-            trimmedAddress,
-            ADMIN_ADDRESS,
-            kaleContractId,
-            {
-                limit: 100 // Check last 100 transfer events between these addresses
-            }
-        );
-
-        // Check if any transfer matches our target amounts
-        for (const transfer of foundTransfers) {
-            // Check for tolerance (e.g. 0.0000001 difference)
-            const amount = transfer.amount;
-
-            if (isApproximateMatch(amount, SMOL_MART_AMOUNTS.PREMIUM_HEADER)) {
-                unlockUpgrade('premiumHeader');
-                console.log('[SmolMart] Unlocked Premium Header');
+        try {
+            const kaleContractId = import.meta.env.PUBLIC_KALE_SAC_ID;
+            if (!kaleContractId) {
+                console.error('[SmolMart] Missing PUBLIC_KALE_SAC_ID');
+                return;
             }
 
-            if (isApproximateMatch(amount, SMOL_MART_AMOUNTS.GOLDEN_KALE)) {
-                unlockUpgrade('goldenKale');
-                console.log('[SmolMart] Unlocked Golden Kale');
+            // Use RPC Events to find transfers (works for both Smart Wallets and G-accounts)
+            const foundTransfers = await findTokenTransfers(
+                trimmedAddress,
+                ADMIN_ADDRESS,
+                kaleContractId,
+                {
+                    limit: 100 // Check last 100 transfer events between these addresses
+                }
+            );
+
+            // Check if any transfer matches our target amounts
+            for (const transfer of foundTransfers) {
+                // Check for tolerance (e.g. 0.0000001 difference)
+                const amount = transfer.amount;
+
+                if (isApproximateMatch(amount, SMOL_MART_AMOUNTS.PREMIUM_HEADER)) {
+                    unlockUpgrade('premiumHeader');
+                    console.log('[SmolMart] Unlocked Premium Header');
+                }
+
+                if (isApproximateMatch(amount, SMOL_MART_AMOUNTS.GOLDEN_KALE)) {
+                    unlockUpgrade('goldenKale');
+                    console.log('[SmolMart] Unlocked Golden Kale');
+                }
+
+                if (isApproximateMatch(amount, SMOL_MART_AMOUNTS.SHOWCASE_REEL)) {
+                    unlockUpgrade('showcaseReel');
+                    // Bundle unlock
+                    unlockUpgrade('premiumHeader');
+                    unlockUpgrade('goldenKale');
+                    unlockUpgrade('vibeMatrix');
+                    console.log('[SmolMart] Unlocked Showcase Reel Bundle');
+                }
+
+                if (isApproximateMatch(amount, SMOL_MART_AMOUNTS.VIBE_MATRIX)) {
+                    unlockUpgrade('vibeMatrix');
+                    console.log('[SmolMart] Unlocked Vibe Matrix');
+                }
             }
 
-            if (isApproximateMatch(amount, SMOL_MART_AMOUNTS.SHOWCASE_REEL)) {
-                unlockUpgrade('showcaseReel');
-                // Bundle unlock
-                unlockUpgrade('premiumHeader');
-                unlockUpgrade('goldenKale');
-                unlockUpgrade('vibeMatrix');
-                console.log('[SmolMart] Unlocked Showcase Reel Bundle');
-            }
-
-            if (isApproximateMatch(amount, SMOL_MART_AMOUNTS.VIBE_MATRIX)) {
-                unlockUpgrade('vibeMatrix');
-                console.log('[SmolMart] Unlocked Vibe Matrix');
-            }
+            recentVerificationAt.set(trimmedAddress, Date.now());
+        } catch (err) {
+            console.error('[SmolMart] Verification failed', err);
         }
+    })().finally(() => {
+        inFlightVerifications.delete(trimmedAddress);
+    });
 
-    } catch (err) {
-        console.error('[SmolMart] Verification failed', err);
-    }
+    inFlightVerifications.set(trimmedAddress, verificationTask);
+    return verificationTask;
 }
 
 function isApproximateMatch(val1: number, val2: number, tolerance = 0.1): boolean {

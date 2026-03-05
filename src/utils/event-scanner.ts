@@ -55,6 +55,7 @@ export interface TokenTransfer {
  */
 // Cache the last known valid start ledger to avoid repetitive "range" errors
 let cachedSafeStartLedger = 0;
+const inFlightTransferScans = new Map<string, Promise<TokenTransfer[]>>();
 
 export async function findTokenTransfers(
     fromAddress: string,
@@ -67,124 +68,143 @@ export async function findTokenTransfers(
 ): Promise<TokenTransfer[]> {
     const log = logger;
     const { limit = 100, startLedger } = options;
+    const requestKey = JSON.stringify({
+        fromAddress,
+        toAddress,
+        tokenContractId,
+        limit,
+        startLedger: startLedger ?? null,
+    });
 
-    log.debug(LogCategory.RPC, 'findTokenTransfers called', { fromAddress, toAddress, tokenContractId });
+    const existingScan = inFlightTransferScans.get(requestKey);
+    if (existingScan) {
+        return existingScan;
+    }
 
-    try {
-        // Encode topics for filtering: ['transfer', from, to]
-        // This is the standard Soroban Token Interface event structure
-        const topic0 = xdr.ScVal.scvSymbol('transfer').toXDR('base64');
-        const topic1 = new Address(fromAddress).toScVal().toXDR('base64');
-        const topic2 = new Address(toAddress).toScVal().toXDR('base64');
+    const scanPromise = (async (): Promise<TokenTransfer[]> => {
+        log.debug(LogCategory.RPC, 'findTokenTransfers called', { fromAddress, toAddress, tokenContractId });
 
-        const requestBody: GetEventsRequest = {
-            // OPTIMIZATION: Use cached safe ledger if no explicit start provided.
-            // Defaulting to 1 often causes "ledger range" errors on archived nodes, forcing a retry.
-            startLedger: startLedger || (cachedSafeStartLedger > 0 ? cachedSafeStartLedger : 1),
-            filters: [{
-                type: 'contract',
-                contractIds: [tokenContractId],
-                topics: [
-                    [topic0], // Function name: "transfer"
-                    [topic1], // From
-                    [topic2]  // To
-                ]
-            }],
-            pagination: {
-                limit: limit
-            }
-        };
+        try {
+            // Encode topics for filtering: ['transfer', from, to]
+            // This is the standard Soroban Token Interface event structure
+            const topic0 = xdr.ScVal.scvSymbol('transfer').toXDR('base64');
+            const topic1 = new Address(fromAddress).toScVal().toXDR('base64');
+            const topic2 = new Address(toAddress).toScVal().toXDR('base64');
 
-        const rpcUrl = getBestRpcUrl();
-        log.debug(LogCategory.RPC, 'Querying getEvents', { rpcUrl });
+            const requestBody: GetEventsRequest = {
+                // OPTIMIZATION: Use cached safe ledger if no explicit start provided.
+                // Defaulting to 1 often causes "ledger range" errors on archived nodes, forcing a retry.
+                startLedger: startLedger || (cachedSafeStartLedger > 0 ? cachedSafeStartLedger : 1),
+                filters: [{
+                    type: 'contract',
+                    contractIds: [tokenContractId],
+                    topics: [
+                        [topic0], // Function name: "transfer"
+                        [topic1], // From
+                        [topic2]  // To
+                    ]
+                }],
+                pagination: {
+                    limit: limit
+                }
+            };
 
-        // Helper to perform the fetch with one automatic retry for ledger range errors
-        const fetchEvents = async (forceStartLedger?: number): Promise<EventResponse> => {
-            requestBody.startLedger = forceStartLedger ?? requestBody.startLedger;
+            const rpcUrl = getBestRpcUrl();
+            log.debug(LogCategory.RPC, 'Querying getEvents', { rpcUrl });
 
-            const response = await fetch(rpcUrl, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                    jsonrpc: '2.0',
-                    id: 1,
-                    method: RPC_METHOD,
-                    params: requestBody
-                })
-            });
+            // Helper to perform the fetch with one automatic retry for ledger range errors
+            const fetchEvents = async (forceStartLedger?: number): Promise<EventResponse> => {
+                requestBody.startLedger = forceStartLedger ?? requestBody.startLedger;
 
-            if (!response.ok) {
-                throw new Error(`RPC HTTP error: ${response.status} ${response.statusText}`);
-            }
+                const response = await fetch(rpcUrl, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        jsonrpc: '2.0',
+                        id: 1,
+                        method: RPC_METHOD,
+                        params: requestBody
+                    })
+                });
 
-            const json = await response.json();
+                if (!response.ok) {
+                    throw new Error(`RPC HTTP error: ${response.status} ${response.statusText}`);
+                }
 
-            if (json.error) {
-                // "startLedger must be within the ledger range: 60792655 - 60913614"
-                if (json.error.code === -32600 && json.error.message.includes('ledger range')) {
-                    const match = json.error.message.match(/range: (\d+) -/);
-                    if (match && match[1]) {
-                        const validStart = parseInt(match[1], 10) + 10; // Add buffer to avoid race condition
+                const json = await response.json();
 
-                        // Update cache so next call succeeds immediately
-                        if (validStart > cachedSafeStartLedger) {
-                            cachedSafeStartLedger = validStart;
-                            log.debug(LogCategory.RPC, `Updated cached safe startLedger to ${cachedSafeStartLedger}`);
-                        }
+                if (json.error) {
+                    // "startLedger must be within the ledger range: 60792655 - 60913614"
+                    if (json.error.code === -32600 && json.error.message.includes('ledger range')) {
+                        const match = json.error.message.match(/range: (\d+) -/);
+                        if (match && match[1]) {
+                            const validStart = parseInt(match[1], 10) + 10; // Add buffer to avoid race condition
 
-                        // Only retry if we haven't already forced a start ledger (prevent infinite loop)
-                        if (!forceStartLedger) {
-                            log.warn(LogCategory.RPC, `RPC requires recent startLedger. Retrying with ${validStart}...`);
-                            return fetchEvents(validStart);
+                            // Update cache so next call succeeds immediately
+                            if (validStart > cachedSafeStartLedger) {
+                                cachedSafeStartLedger = validStart;
+                                log.debug(LogCategory.RPC, `Updated cached safe startLedger to ${cachedSafeStartLedger}`);
+                            }
+
+                            // Only retry if we haven't already forced a start ledger (prevent infinite loop)
+                            if (!forceStartLedger) {
+                                log.warn(LogCategory.RPC, `RPC requires recent startLedger. Retrying with ${validStart}...`);
+                                return fetchEvents(validStart);
+                            }
                         }
                     }
+                    throw new Error(`RPC error: ${json.error.message} (code ${json.error.code})`);
                 }
-                throw new Error(`RPC error: ${json.error.message} (code ${json.error.code})`);
+
+                return json.result as EventResponse;
+            };
+
+            const result = await fetchEvents(startLedger);
+
+            if (!result.events || result.events.length === 0) {
+                log.debug(LogCategory.RPC, 'No transfer events found');
+                return [];
             }
 
-            return json.result as EventResponse;
-        };
+            log.debug(LogCategory.RPC, `Found ${result.events.length} events`);
 
-        const result = await fetchEvents(startLedger);
+            const transfers: TokenTransfer[] = [];
 
-        if (!result.events || result.events.length === 0) {
-            log.debug(LogCategory.RPC, 'No transfer events found');
+            for (const event of result.events) {
+                try {
+                    // Parse value (amount)
+                    const amountScVal = xdr.ScVal.fromXDR(event.value, 'base64');
+                    const rawAmount = scValToNative(amountScVal);
+
+                    // Assuming standard 7 decimals for Stellar tokens like KALE/XLM
+                    // Only if it's the KALE contract we know about.
+                    // Ideally we check decimals, but hardcoding for known contracts is safe for this specific utility.
+                    const decimals = 7;
+                    const amount = Number(rawAmount) / Math.pow(10, decimals);
+
+                    transfers.push({
+                        from: fromAddress,
+                        to: toAddress,
+                        amount: amount,
+                        contractId: event.contractId,
+                        ledger: event.ledger,
+                        timestamp: new Date(event.ledgerClosedAt)
+                    });
+                } catch (parseErr) {
+                    log.warn(LogCategory.RPC, 'Failed to parse event value', { error: parseErr });
+                }
+            }
+
+            return transfers;
+
+        } catch (error) {
+            log.error(LogCategory.RPC, 'findTokenTransfers failed', undefined, error as Error);
             return [];
+        } finally {
+            inFlightTransferScans.delete(requestKey);
         }
+    })();
 
-        log.debug(LogCategory.RPC, `Found ${result.events.length} events`);
-
-        const transfers: TokenTransfer[] = [];
-
-        for (const event of result.events) {
-            try {
-                // Parse value (amount)
-                const amountScVal = xdr.ScVal.fromXDR(event.value, 'base64');
-                const rawAmount = scValToNative(amountScVal);
-
-                // Assuming standard 7 decimals for Stellar tokens like KALE/XLM
-                // Only if it's the KALE contract we know about. 
-                // Ideally we check decimals, but hardcoding for known contracts is safe for this specific utility.
-                const decimals = 7;
-                const amount = Number(rawAmount) / Math.pow(10, decimals);
-
-                transfers.push({
-                    from: fromAddress,
-                    to: toAddress,
-                    amount: amount,
-                    contractId: event.contractId,
-                    ledger: event.ledger,
-                    timestamp: new Date(event.ledgerClosedAt)
-                });
-            } catch (parseErr) {
-                log.warn(LogCategory.RPC, 'Failed to parse event value', { error: parseErr });
-            }
-        }
-
-        return transfers;
-
-    } catch (error) {
-        log.error(LogCategory.RPC, 'findTokenTransfers failed', undefined, error as Error);
-        return [];
-    }
+    inFlightTransferScans.set(requestKey, scanPromise);
+    return scanPromise;
 }

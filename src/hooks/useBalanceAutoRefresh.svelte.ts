@@ -5,6 +5,7 @@ import { updateAllBalances, isTransactionInProgress } from "../stores/balance.sv
 const AUTO_REFRESH_COOLDOWN_MS = 2500;
 let lastAutoRefreshAt = 0;
 let autoRefreshInFlight = false;
+let autoRefreshHookInstalled = false;
 
 async function runAutoRefresh(reason: "auth_change" | "visibility" | "focus") {
     if (!userState.contractId) return;
@@ -38,6 +39,9 @@ async function runAutoRefresh(reason: "auth_change" | "visibility" | "focus") {
  * 3. The user logs in (reactive to userState.contractId)
  */
 export function useBalanceAutoRefresh() {
+    if (autoRefreshHookInstalled) return;
+    autoRefreshHookInstalled = true;
+
     // 1. Reactive effect to fetch on auth change
     $effect(() => {
         if (userState.contractId && !isTransactionInProgress()) {
@@ -73,6 +77,7 @@ export function useBalanceAutoRefresh() {
         return () => {
             document.removeEventListener("visibilitychange", handleVisibilityChange);
             window.removeEventListener("focus", handleFocus);
+            autoRefreshHookInstalled = false;
         };
     });
 }

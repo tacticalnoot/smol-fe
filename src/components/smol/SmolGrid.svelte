@@ -39,6 +39,11 @@
   }: Props = $props();
 
   const API_URL = import.meta.env.PUBLIC_API_URL || "https://api.smol.xyz";
+  const GRID_PLACEHOLDER_COUNT = 18;
+  const gridPlaceholders = Array.from(
+    { length: GRID_PLACEHOLDER_COUNT },
+    (_, index) => index,
+  );
 
   let results = $state<Smol[]>([]);
   let cursor = $state<string | null>(null);
@@ -463,8 +468,54 @@
 </script>
 
 {#if loading}
-  <div class="flex justify-center items-center py-20">
-    <div class="text-lime-500">Loading...</div>
+  <div class="mx-2 mb-10 rounded-3xl border border-lime-400/20 bg-slate-900/80 p-4 shadow-[0_0_0_1px_rgba(132,204,22,0.05)] sm:p-5">
+    <div
+      class="mb-4 flex items-center justify-between gap-4 rounded-2xl border border-slate-700/80 bg-slate-950/80 px-4 py-3"
+      role="status"
+      aria-live="polite"
+    >
+      <div class="flex items-center gap-3">
+        <div class="relative h-10 w-10 shrink-0">
+          <div class="absolute inset-0 rounded-full border border-lime-400/20" />
+          <div
+            class="absolute inset-0 animate-spin rounded-full border-2 border-transparent border-t-lime-400 border-r-lime-300"
+          />
+          <div
+            class="absolute inset-[0.45rem] rounded-full bg-lime-400/15 shadow-[0_0_20px_rgba(163,230,53,0.15)]"
+          />
+        </div>
+        <div>
+          <div class="text-sm font-semibold uppercase tracking-[0.28em] text-lime-300">
+            Loading Grid
+          </div>
+          <div class="text-sm text-slate-400">
+            Warming up the latest smols without changing the feed.
+          </div>
+        </div>
+      </div>
+      <div class="hidden text-right text-xs uppercase tracking-[0.24em] text-slate-500 sm:block">
+        Grid mode
+      </div>
+    </div>
+
+    <div
+      class="grid grid-cols-2 gap-2 sm:grid-cols-4 lg:grid-cols-6 xl:grid-cols-8 2xl:grid-cols-10"
+      aria-hidden="true"
+    >
+      {#each gridPlaceholders as placeholder (placeholder)}
+        <div class="overflow-hidden rounded bg-slate-700/70">
+          <div class="aspect-square bg-slate-800">
+            <div
+              class="h-full w-full animate-pulse bg-[linear-gradient(135deg,rgba(163,230,53,0.10),rgba(15,23,42,0.05),rgba(255,255,255,0.02))]"
+            />
+          </div>
+          <div class="space-y-2 p-3">
+            <div class="h-3 w-4/5 rounded-full bg-slate-600/80" />
+            <div class="h-3 w-2/5 rounded-full bg-slate-700/90" />
+          </div>
+        </div>
+      {/each}
+    </div>
   </div>
 {:else if error}
   <div class="flex justify-center items-center py-20">
@@ -516,7 +567,16 @@
 {#if canLoadMore || loadingMore}
   <div bind:this={scrollTrigger} class="flex justify-center mb-20 py-8">
     {#if loadingMore}
-      <div class="text-lime-500">Loading...</div>
+      <div
+        class="inline-flex items-center gap-3 rounded-full border border-lime-400/20 bg-slate-950/85 px-4 py-2 text-sm text-lime-300 shadow-[0_0_0_1px_rgba(132,204,22,0.05)]"
+        role="status"
+        aria-live="polite"
+      >
+        <div
+          class="h-4 w-4 animate-spin rounded-full border-2 border-transparent border-t-lime-400 border-r-lime-300"
+        />
+        <span>Loading more smols...</span>
+      </div>
     {/if}
   </div>
 {/if}
