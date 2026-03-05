@@ -131,6 +131,7 @@
     let activeSppIntentId = $state<string | null>(null);
     let privacyExecutionHistory = $state<PrivacyExecutionArtifact[]>([]);
     let aspPolicyHistory = $state<AspPolicyReceipt[]>([]);
+    let showPrivacyHistory = $state(false);
     let latestPrivacyArtifact = $derived(
         privacyExecutionHistory.length > 0
             ? privacyExecutionHistory[privacyExecutionHistory.length - 1]
@@ -140,6 +141,19 @@
         aspPolicyHistory.length > 0
             ? aspPolicyHistory[aspPolicyHistory.length - 1]
             : null,
+    );
+    let recentPrivacyArtifacts = $derived(
+        [...privacyExecutionHistory].slice(-8).reverse(),
+    );
+    let activeReceiptPhase = $derived<PrivacyPhase>(
+        mode === "swap" ? "swap" : mode === "send" ? "send" : "receive",
+    );
+    let activePhaseArtifact = $derived(
+        getLatestPrivacyArtifactForContext({ phase: activeReceiptPhase }),
+    );
+    let activePhasePolicyReceipt = $derived(
+        activePhaseArtifact?.policyReceipt ??
+            getLatestAspPolicyReceiptForPhase(activeReceiptPhase),
     );
 
     // Provider Logic
@@ -885,6 +899,10 @@
         }
     }
 
+    function getPhaseLabel(phase: PrivacyPhase): string {
+        return phase.charAt(0).toUpperCase() + phase.slice(1);
+    }
+
     function getLatestPrivacyArtifactForContext({
         phase,
         intentId,
@@ -912,45 +930,69 @@
         return null;
     }
 
-    function buildPrivacyReceiptText(): string {
-        if (!latestAspPolicyReceipt && !latestPrivacyArtifact) {
+    function buildPrivacyReceiptTextForContext({
+        phase,
+        intentId,
+    }: {
+        phase?: PrivacyPhase;
+        intentId?: string | null;
+    } = {}): string {
+        const artifact = getLatestPrivacyArtifactForContext({ phase, intentId });
+        const policyReceipt =
+            artifact?.policyReceipt ?? getLatestAspPolicyReceiptForPhase(phase);
+
+        if (!policyReceipt && !artifact) {
             return "No SPP receipt generated yet.";
         }
 
         const lines = [
             "Discombobulator SPP receipt",
             `Mode: ${getPrivacyWrapperLabel(privacyWrapperMode)}`,
-            `Settlement: ${latestAspPolicyReceipt?.settlementMode ?? "public"}`,
-            `Policy ID: ${latestAspPolicyReceipt?.policyId ?? "n/a"}`,
-            `Decision: ${latestAspPolicyReceipt?.decision ?? "n/a"}`,
-            `Audit: ${latestAspPolicyReceipt?.auditLevel ?? "n/a"}`,
-            `Risk score: ${latestAspPolicyReceipt?.riskScore ?? "n/a"}`,
-            `Phase: ${latestPrivacyArtifact?.commitment.phase ?? latestAspPolicyReceipt?.phase ?? "n/a"}`,
-            `Stage: ${latestPrivacyArtifact?.commitment.stage ?? "n/a"}`,
-            `Commitment: ${latestPrivacyArtifact?.commitment.commitmentId ?? "n/a"}`,
-            `Disclosure: ${latestPrivacyArtifact?.disclosure.disclosureHandle ?? "n/a"}`,
-            `Summary: ${latestPrivacyArtifact?.disclosure.summary ?? "n/a"}`,
-            `Checked: ${formatPrivacyTimestamp(latestAspPolicyReceipt?.checkedAt)}`,
-            `Created: ${formatPrivacyTimestamp(latestPrivacyArtifact?.commitment.createdAt)}`,
+            `Settlement: ${policyReceipt?.settlementMode ?? "public"}`,
+            `Policy ID: ${policyReceipt?.policyId ?? "n/a"}`,
+            `Decision: ${policyReceipt?.decision ?? "n/a"}`,
+            `Audit: ${policyReceipt?.auditLevel ?? "n/a"}`,
+            `Risk score: ${policyReceipt?.riskScore ?? "n/a"}`,
+            `Phase: ${artifact?.commitment.phase ?? policyReceipt?.phase ?? "n/a"}`,
+            `Stage: ${artifact?.commitment.stage ?? "n/a"}`,
+            `Commitment: ${artifact?.commitment.commitmentId ?? "n/a"}`,
+            `Disclosure: ${artifact?.disclosure.disclosureHandle ?? "n/a"}`,
+            `Summary: ${artifact?.disclosure.summary ?? "n/a"}`,
+            `Checked: ${formatPrivacyTimestamp(policyReceipt?.checkedAt)}`,
+            `Created: ${formatPrivacyTimestamp(artifact?.commitment.createdAt)}`,
         ];
 
-        if (latestAspPolicyReceipt?.reasons?.length) {
+        if (policyReceipt?.reasons?.length) {
             lines.push(
-                `Reasons: ${latestAspPolicyReceipt.reasons.join("; ")}`,
+                `Reasons: ${policyReceipt.reasons.join("; ")}`,
             );
         }
 
         return lines.join("\n");
     }
 
-    async function copyLatestPrivacyReceipt(): Promise<void> {
+    function buildPrivacyReceiptText(): string {
+        return buildPrivacyReceiptTextForContext();
+    }
+
+    async function copyPrivacyReceiptForContext({
+        phase,
+        intentId,
+        successMessage = withPrivacyModeSuffix("SPP receipt copied"),
+    }: {
+        phase?: PrivacyPhase;
+        intentId?: string | null;
+        successMessage?: string;
+    } = {}): Promise<void> {
         try {
-            const copied = await copyTextToClipboard(buildPrivacyReceiptText());
+            const copied = await copyTextToClipboard(
+                buildPrivacyReceiptTextForContext({ phase, intentId }),
+            );
             if (!copied) throw new Error("Clipboard unavailable");
             setStatusMessageTracked(
-                withPrivacyModeSuffix("SPP receipt copied"),
+                successMessage,
                 "privacy_receipt_copied",
-                { privacyWrapperMode },
+                { privacyWrapperMode, phase: phase ?? null },
             );
         } catch (e) {
             const errorMessage = e instanceof Error ? e.message : String(e);
@@ -962,6 +1004,10 @@
                 "privacy_receipt_copy_failed",
             );
         }
+    }
+
+    async function copyLatestPrivacyReceipt(): Promise<void> {
+        await copyPrivacyReceiptForContext();
     }
 
     async function copyPrivacyExport(): Promise<void> {
@@ -983,6 +1029,47 @@
                 "privacy_export_copy_failed",
             );
         }
+    }
+
+    function downloadPrivacyReceiptForContext({
+        phase,
+        intentId,
+        filenamePrefix = "discombo-spp-receipt",
+        successMessage = withPrivacyModeSuffix("SPP receipt downloaded"),
+    }: {
+        phase?: PrivacyPhase;
+        intentId?: string | null;
+        filenamePrefix?: string;
+        successMessage?: string;
+    } = {}): void {
+        try {
+            const receipt = buildPrivacyReceiptTextForContext({ phase, intentId });
+            const blob = new Blob([receipt], { type: "text/plain" });
+            const url = URL.createObjectURL(blob);
+            const anchor = document.createElement("a");
+            anchor.href = url;
+            anchor.download = `${filenamePrefix}-${Date.now()}.txt`;
+            anchor.click();
+            URL.revokeObjectURL(url);
+            setStatusMessageTracked(
+                successMessage,
+                "privacy_receipt_downloaded",
+                { privacyWrapperMode, phase: phase ?? null },
+            );
+        } catch (e) {
+            const errorMessage = e instanceof Error ? e.message : String(e);
+            discomboDebug.warn("privacy_receipt_download_failed", {
+                error: errorMessage,
+            });
+            setStatusMessageTracked(
+                "Could not download SPP receipt",
+                "privacy_receipt_download_failed",
+            );
+        }
+    }
+
+    function downloadLatestPrivacyReceipt(): void {
+        downloadPrivacyReceiptForContext();
     }
 
     function downloadPrivacyExport(): void {
@@ -2347,10 +2434,18 @@
                             class="flex items-center justify-between gap-3 text-[8px] uppercase tracking-[0.18em] text-[#7dd3fc]"
                         >
                             <span>Latest SPP Receipt</span>
-                            <span class="text-[#64748b]"
-                                >{privacyExecutionHistory.length} artifacts / {aspPolicyHistory.length}
-                                policies</span
-                            >
+                            <div class="flex items-center gap-2">
+                                <span class="text-[#64748b]"
+                                    >{privacyExecutionHistory.length} artifacts / {aspPolicyHistory.length}
+                                    policies</span
+                                >
+                                <button
+                                    class="rounded-md border border-[#1e293b] bg-[#0f172a]/50 px-2 py-1 text-[8px] text-[#7dd3fc] transition-all hover:border-[#7dd3fc]/40 hover:bg-[#0f172a]/80"
+                                    onclick={() => (showPrivacyHistory = !showPrivacyHistory)}
+                                >
+                                    {showPrivacyHistory ? "Hide History" : "Show History"}
+                                </button>
+                            </div>
                         </div>
 
                         {#if latestAspPolicyReceipt || latestPrivacyArtifact}
@@ -2427,6 +2522,15 @@
                                 </button>
                                 <button
                                     class="rounded-lg border border-[#1e293b] bg-[#0f172a]/50 px-2 py-2 text-[8px] text-[#7dd3fc] transition-all hover:border-[#7dd3fc]/40 hover:bg-[#0f172a]/80"
+                                    onclick={downloadLatestPrivacyReceipt}
+                                >
+                                    Download Receipt
+                                </button>
+                            </div>
+
+                            <div class="mt-2 grid grid-cols-2 gap-2">
+                                <button
+                                    class="rounded-lg border border-[#1e293b] bg-[#0f172a]/50 px-2 py-2 text-[8px] text-[#7dd3fc] transition-all hover:border-[#7dd3fc]/40 hover:bg-[#0f172a]/80"
                                     onclick={copyPrivacyExport}
                                 >
                                     Copy Export
@@ -2444,10 +2548,164 @@
                                 generate mainnet-safe policy and commitment receipts.
                             </div>
                         {/if}
+
+                        {#if showPrivacyHistory}
+                            <div class="mt-3 border-t border-[#1e293b] pt-3">
+                                <div
+                                    class="text-[8px] uppercase tracking-[0.18em] text-[#7dd3fc]"
+                                >
+                                    Recent SPP Audit Trail
+                                </div>
+
+                                {#if recentPrivacyArtifacts.length > 0}
+                                    <div class="mt-2 flex flex-col gap-2">
+                                        {#each recentPrivacyArtifacts as artifact}
+                                            <div
+                                                class="rounded-lg border border-[#1e293b] bg-[#0f172a]/40 p-2"
+                                            >
+                                                <div class="flex items-center justify-between gap-2">
+                                                    <div class="text-[8px] text-[#e2e8f0]">
+                                                        {getPhaseLabel(artifact.commitment.phase)}
+                                                        · {artifact.commitment.stage}
+                                                        · {artifact.policyReceipt.decision}
+                                                    </div>
+                                                    <button
+                                                        class="rounded-md border border-[#1e293b] bg-[#020617]/60 px-2 py-1 text-[8px] text-[#7dd3fc] transition-all hover:border-[#7dd3fc]/40 hover:bg-[#0f172a]/80"
+                                                        onclick={() =>
+                                                            copyPrivacyReceiptForContext({
+                                                                phase: artifact.commitment.phase,
+                                                                intentId:
+                                                                    artifact.commitment.intentId,
+                                                                successMessage:
+                                                                    withPrivacyModeSuffix(
+                                                                        `${getPhaseLabel(
+                                                                            artifact.commitment.phase,
+                                                                        )} receipt copied`,
+                                                                    ),
+                                                            })}
+                                                    >
+                                                        Copy
+                                                    </button>
+                                                </div>
+                                                <div
+                                                    class="mt-2 grid grid-cols-2 gap-2 text-[8px] text-[#94a3b8]"
+                                                >
+                                                    <div>
+                                                        Commitment:
+                                                        {maskIdentifier(
+                                                            artifact.commitment.commitmentId,
+                                                        )}
+                                                    </div>
+                                                    <div>
+                                                        Disclosure:
+                                                        {maskIdentifier(
+                                                            artifact.disclosure
+                                                                .disclosureHandle,
+                                                        )}
+                                                    </div>
+                                                    <div>
+                                                        Audit: {artifact.policyReceipt.auditLevel}
+                                                    </div>
+                                                    <div>
+                                                        Created:
+                                                        {formatPrivacyTimestamp(
+                                                            artifact.commitment.createdAt,
+                                                        )}
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        {/each}
+                                    </div>
+                                {:else}
+                                    <div class="mt-2 text-[8px] text-[#94a3b8]">
+                                        No audit history yet.
+                                    </div>
+                                {/if}
+                            </div>
+                        {/if}
                     </div>
                 </div>
 
                 <div class="p-6 md:p-8 flex flex-col gap-6">
+                    <div
+                        class="rounded-xl border border-[#1e293b] bg-[#0f172a]/35 p-3"
+                    >
+                        <div
+                            class="text-[8px] uppercase tracking-[0.18em] text-[#7dd3fc]"
+                        >
+                            Latest {getPhaseLabel(activeReceiptPhase)} Receipt
+                        </div>
+                        {#if activePhaseArtifact || activePhasePolicyReceipt}
+                            <div class="mt-2 grid grid-cols-2 gap-2 text-[8px] text-[#cbd5e1]">
+                                <div>
+                                    <span class="text-[#64748b]">Decision</span>
+                                    <div class="mt-1 text-[#e2e8f0]">
+                                        {activePhasePolicyReceipt?.decision ?? "n/a"}
+                                    </div>
+                                </div>
+                                <div>
+                                    <span class="text-[#64748b]">Audit</span>
+                                    <div class="mt-1 text-[#e2e8f0]">
+                                        {activePhasePolicyReceipt?.auditLevel ?? "n/a"}
+                                    </div>
+                                </div>
+                                <div>
+                                    <span class="text-[#64748b]">Commitment</span>
+                                    <div class="mt-1 text-[#e2e8f0]">
+                                        {maskIdentifier(
+                                            activePhaseArtifact?.commitment.commitmentId,
+                                        ) || "n/a"}
+                                    </div>
+                                </div>
+                                <div>
+                                    <span class="text-[#64748b]">Disclosure</span>
+                                    <div class="mt-1 text-[#e2e8f0]">
+                                        {maskIdentifier(
+                                            activePhaseArtifact?.disclosure
+                                                .disclosureHandle,
+                                        ) || "n/a"}
+                                    </div>
+                                </div>
+                            </div>
+                            <div class="mt-2 text-[8px] text-[#94a3b8]">
+                                {activePhaseArtifact?.disclosure.summary ??
+                                    `No ${activeReceiptPhase} artifact summary yet.`}
+                            </div>
+                            <div class="mt-3 grid grid-cols-2 gap-2">
+                                <button
+                                    class="rounded-lg border border-[#1e293b] bg-[#0f172a]/50 px-2 py-2 text-[8px] text-[#7dd3fc] transition-all hover:border-[#7dd3fc]/40 hover:bg-[#0f172a]/80"
+                                    onclick={() =>
+                                        copyPrivacyReceiptForContext({
+                                            phase: activeReceiptPhase,
+                                            successMessage: withPrivacyModeSuffix(
+                                                `${getPhaseLabel(activeReceiptPhase)} receipt copied`,
+                                            ),
+                                        })}
+                                >
+                                    Copy {getPhaseLabel(activeReceiptPhase)}
+                                </button>
+                                <button
+                                    class="rounded-lg border border-[#1e293b] bg-[#0f172a]/50 px-2 py-2 text-[8px] text-[#7dd3fc] transition-all hover:border-[#7dd3fc]/40 hover:bg-[#0f172a]/80"
+                                    onclick={() =>
+                                        downloadPrivacyReceiptForContext({
+                                            phase: activeReceiptPhase,
+                                            filenamePrefix: `discombo-${activeReceiptPhase}-receipt`,
+                                            successMessage: withPrivacyModeSuffix(
+                                                `${getPhaseLabel(activeReceiptPhase)} receipt downloaded`,
+                                            ),
+                                        })}
+                                >
+                                    Download {getPhaseLabel(activeReceiptPhase)}
+                                </button>
+                            </div>
+                        {:else}
+                            <div class="mt-2 text-[8px] text-[#94a3b8]">
+                                No {activeReceiptPhase} receipt yet. Run the current flow to generate
+                                one.
+                            </div>
+                        {/if}
+                    </div>
+
                     {#if mode === "swap"}
                         <!-- SWAP MODE -->
                         <div class="flex flex-col gap-2">
