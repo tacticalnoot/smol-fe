@@ -476,13 +476,13 @@
     >
       <div class="flex items-center gap-3">
         <div class="relative h-10 w-10 shrink-0">
-          <div class="absolute inset-0 rounded-full border border-lime-400/20" />
+          <div class="absolute inset-0 rounded-full border border-lime-400/20"></div>
           <div
             class="absolute inset-0 animate-spin rounded-full border-2 border-transparent border-t-lime-400 border-r-lime-300"
-          />
+          ></div>
           <div
             class="absolute inset-[0.45rem] rounded-full bg-lime-400/15 shadow-[0_0_20px_rgba(163,230,53,0.15)]"
-          />
+          ></div>
         </div>
         <div>
           <div class="text-sm font-semibold uppercase tracking-[0.28em] text-lime-300">
@@ -507,11 +507,11 @@
           <div class="aspect-square bg-slate-800">
             <div
               class="h-full w-full animate-pulse bg-[linear-gradient(135deg,rgba(163,230,53,0.10),rgba(15,23,42,0.05),rgba(255,255,255,0.02))]"
-            />
+            ></div>
           </div>
           <div class="space-y-2 p-3">
-            <div class="h-3 w-4/5 rounded-full bg-slate-600/80" />
-            <div class="h-3 w-2/5 rounded-full bg-slate-700/90" />
+            <div class="h-3 w-4/5 rounded-full bg-slate-600/80"></div>
+            <div class="h-3 w-2/5 rounded-full bg-slate-700/90"></div>
           </div>
         </div>
       {/each}
@@ -574,7 +574,7 @@
       >
         <div
           class="h-4 w-4 animate-spin rounded-full border-2 border-transparent border-t-lime-400 border-r-lime-300"
-        />
+        ></div>
         <span>Loading more smols...</span>
       </div>
     {/if}
