@@ -188,17 +188,46 @@
         return "PUBLIC";
     }
 
-    function getPrivacyWrapperSummary(modeValue: PrivacyWrapperMode): string {
+    function getPrivacyWrapperSummary(
+        modeValue: PrivacyWrapperMode,
+        phase: "swap" | "send" | "receive",
+    ): string {
+        if (phase === "swap") {
+            if (modeValue === "shield_before_swap") {
+                return "POC intent: private deposit then public swap.";
+            }
+            if (modeValue === "shield_after_swap") {
+                return "POC intent: public swap then private withdrawal.";
+            }
+            if (modeValue === "wrap_around_swap") {
+                return "POC intent: private-in and private-out wrappers around swap.";
+            }
+            return "Current flow is fully public swap semantics.";
+        }
+
+        if (phase === "send") {
+            if (modeValue === "shield_before_swap") {
+                return "POC intent: private source before public send.";
+            }
+            if (modeValue === "shield_after_swap") {
+                return "POC intent: public send then private post-send shielding.";
+            }
+            if (modeValue === "wrap_around_swap") {
+                return "POC intent: private wrappers around send lifecycle.";
+            }
+            return "Current flow is fully public send semantics.";
+        }
+
         if (modeValue === "shield_before_swap") {
-            return "POC flow: private deposit then public swap.";
+            return "POC intent: sender privately sources before transfer to you.";
         }
         if (modeValue === "shield_after_swap") {
-            return "POC flow: public swap then private withdrawal.";
+            return "POC intent: receipt then private shielding after funds arrive.";
         }
         if (modeValue === "wrap_around_swap") {
-            return "POC flow: private in and private out wrapper around swap.";
+            return "POC intent: private wrappers around receive lifecycle.";
         }
-        return "Current flow is fully public swap semantics.";
+        return "Current flow is fully public receive-request semantics.";
     }
 
     function getSwapStatusMessage(
@@ -215,6 +244,11 @@
         if (phase === "building") return `Building swap (${label} POC)...`;
         if (phase === "submitting") return `Submitting swap (${label} POC)...`;
         return `Swap complete (${label} POC)!`;
+    }
+
+    function withPrivacyModeSuffix(base: string): string {
+        if (privacyWrapperMode === "public") return base;
+        return `${base} (${getPrivacyWrapperLabel(privacyWrapperMode)} POC)`;
     }
 
     function persistPrivacyWrapperMode(
@@ -261,7 +295,7 @@
         discomboDebug.info("privacy_wrapper_context", {
             phase,
             privacyWrapperMode,
-            summary: getPrivacyWrapperSummary(privacyWrapperMode),
+            summary: getPrivacyWrapperSummary(privacyWrapperMode, phase),
             isPocOnly: true,
         });
     }
@@ -1078,8 +1112,9 @@
 
         setSwapStateTracked("awaiting_passkey", "send_building_started");
         setStatusMessageTracked(
-            `Sending ${sendToken}...`,
+            withPrivacyModeSuffix(`Sending ${sendToken}...`),
             "send_building_started",
+            { privacyWrapperMode },
         );
         discomboDebug.info("send_flow_started", {
             token: sendToken,
@@ -1104,8 +1139,9 @@
 
             setSwapStateTracked("submitting", "send_sign_and_submit");
             setStatusMessageTracked(
-                "Submitting transfer...",
+                withPrivacyModeSuffix("Submitting transfer..."),
                 "send_sign_and_submit",
+                { privacyWrapperMode },
             );
 
             const sendResult = await signSendAndVerify(tx, {
@@ -1133,16 +1169,20 @@
             setSwapStateTracked("confirmed", "send_submission_succeeded");
             if (sendResult.softSuccessReason === "duplicate_nonce") {
                 setStatusMessageTracked(
-                    `${sendToken} transfer likely complete (duplicate nonce replay guarded).`,
+                    withPrivacyModeSuffix(
+                        `${sendToken} transfer likely complete (duplicate nonce replay guarded).`,
+                    ),
                     "send_submission_soft_success",
+                    { privacyWrapperMode },
                 );
                 discomboDebug.warn("send_flow_soft_success", {
                     reason: sendResult.softSuccessReason,
                 });
             } else {
                 setStatusMessageTracked(
-                    `Sent ${amountNum} ${sendToken}!`,
+                    withPrivacyModeSuffix(`Sent ${amountNum} ${sendToken}!`),
                     "send_submission_succeeded",
+                    { privacyWrapperMode },
                 );
             }
             triggerSuccessConfetti();
@@ -1190,8 +1230,9 @@
                 contractId: maskIdentifier(userState.contractId),
             });
             setStatusMessageTracked(
-                "Receive address copied",
+                withPrivacyModeSuffix("Receive address copied"),
                 "receive_address_copied",
+                { privacyWrapperMode },
             );
         } catch (e) {
             discomboDebug.warn("receive_address_copy_failed", {
@@ -1224,8 +1265,9 @@
                 requestPreview: requestText.slice(0, 120),
             });
             setStatusMessageTracked(
-                "Receive request copied",
+                withPrivacyModeSuffix("Receive request copied"),
                 "receive_request_copied",
+                { privacyWrapperMode },
             );
         } catch (e) {
             discomboDebug.warn("receive_request_copy_failed", {
@@ -1264,7 +1306,11 @@
                 token: receiveToken,
                 requestedAmount: receiveAmount || null,
             });
-            setStatusMessageTracked("Request shared", "receive_request_shared");
+            setStatusMessageTracked(
+                withPrivacyModeSuffix("Request shared"),
+                "receive_request_shared",
+                { privacyWrapperMode },
+            );
         } catch (e) {
             discomboDebug.warn("receive_request_share_failed", {
                 error: e instanceof Error ? e.message : String(e),
@@ -1398,67 +1444,65 @@
                     >
                 </div>
 
-                {#if mode === "swap"}
+                <div
+                    class="mx-6 mt-4 rounded-xl border border-[#1e293b] bg-[#020617]/50 p-3"
+                >
                     <div
-                        class="mx-6 mt-4 rounded-xl border border-[#1e293b] bg-[#020617]/50 p-3"
+                        class="text-[8px] uppercase tracking-[0.2em] text-[#7dd3fc]"
                     >
-                        <div
-                            class="text-[8px] uppercase tracking-[0.2em] text-[#7dd3fc]"
-                        >
-                            Privacy Wrapper (Labs POC)
-                        </div>
-                        <div class="mt-2 grid grid-cols-2 gap-2">
-                            <button
-                                class={`privacy-chip ${privacyWrapperMode === "public" ? "active" : ""}`}
-                                onclick={() =>
-                                    setPrivacyWrapperModeTracked(
-                                        "public",
-                                        "privacy_chip_click",
-                                    )}
-                            >
-                                PUBLIC
-                            </button>
-                            <button
-                                class={`privacy-chip ${privacyWrapperMode === "shield_before_swap" ? "active" : ""}`}
-                                onclick={() =>
-                                    setPrivacyWrapperModeTracked(
-                                        "shield_before_swap",
-                                        "privacy_chip_click",
-                                    )}
-                            >
-                                BEFORE
-                            </button>
-                            <button
-                                class={`privacy-chip ${privacyWrapperMode === "shield_after_swap" ? "active" : ""}`}
-                                onclick={() =>
-                                    setPrivacyWrapperModeTracked(
-                                        "shield_after_swap",
-                                        "privacy_chip_click",
-                                    )}
-                            >
-                                AFTER
-                            </button>
-                            <button
-                                class={`privacy-chip ${privacyWrapperMode === "wrap_around_swap" ? "active" : ""}`}
-                                onclick={() =>
-                                    setPrivacyWrapperModeTracked(
-                                        "wrap_around_swap",
-                                        "privacy_chip_click",
-                                    )}
-                            >
-                                WRAP
-                            </button>
-                        </div>
-                        <div class="mt-2 text-[9px] text-[#94a3b8]">
-                            {getPrivacyWrapperSummary(privacyWrapperMode)}
-                        </div>
-                        <div class="mt-1 text-[8px] text-[#fbbf24]">
-                            Live in Labs: mode persists and drives swap status
-                            flow. Still POC-only: no private proofs or shielded
-                            balances are executed yet.
-                        </div>
+                        Privacy Mode (Labs POC)
                     </div>
-                {/if}
+                    <div class="mt-2 grid grid-cols-2 gap-2">
+                        <button
+                            class={`privacy-chip ${privacyWrapperMode === "public" ? "active" : ""}`}
+                            onclick={() =>
+                                setPrivacyWrapperModeTracked(
+                                    "public",
+                                    "privacy_chip_click",
+                                )}
+                        >
+                            PUBLIC
+                        </button>
+                        <button
+                            class={`privacy-chip ${privacyWrapperMode === "shield_before_swap" ? "active" : ""}`}
+                            onclick={() =>
+                                setPrivacyWrapperModeTracked(
+                                    "shield_before_swap",
+                                    "privacy_chip_click",
+                                )}
+                        >
+                            BEFORE
+                        </button>
+                        <button
+                            class={`privacy-chip ${privacyWrapperMode === "shield_after_swap" ? "active" : ""}`}
+                            onclick={() =>
+                                setPrivacyWrapperModeTracked(
+                                    "shield_after_swap",
+                                    "privacy_chip_click",
+                                )}
+                        >
+                            AFTER
+                        </button>
+                        <button
+                            class={`privacy-chip ${privacyWrapperMode === "wrap_around_swap" ? "active" : ""}`}
+                            onclick={() =>
+                                setPrivacyWrapperModeTracked(
+                                    "wrap_around_swap",
+                                    "privacy_chip_click",
+                                )}
+                        >
+                            WRAP
+                        </button>
+                    </div>
+                    <div class="mt-2 text-[9px] text-[#94a3b8]">
+                        {getPrivacyWrapperSummary(privacyWrapperMode, mode)}
+                    </div>
+                    <div class="mt-1 text-[8px] text-[#fbbf24]">
+                        Live in Labs: mode persists and is visible in swap/send/receive
+                        flows. No private proofs or shielded balances are executed
+                        yet.
+                    </div>
+                </div>
 
                 <div class="p-6 md:p-8 flex flex-col gap-6">
                     {#if mode === "swap"}
