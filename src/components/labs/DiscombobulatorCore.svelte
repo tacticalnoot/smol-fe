@@ -132,6 +132,13 @@
     let privacyExecutionHistory = $state<PrivacyExecutionArtifact[]>([]);
     let aspPolicyHistory = $state<AspPolicyReceipt[]>([]);
     let showPrivacyHistory = $state(false);
+    let showDisclosurePreview = $state(false);
+    let privacyHistoryPhaseFilter = $state<
+        "all" | PrivacyPhase
+    >("all");
+    let privacyHistoryDecisionFilter = $state<
+        "all" | "allow" | "allow_with_audit"
+    >("all");
     let latestPrivacyArtifact = $derived(
         privacyExecutionHistory.length > 0
             ? privacyExecutionHistory[privacyExecutionHistory.length - 1]
@@ -145,6 +152,23 @@
     let recentPrivacyArtifacts = $derived(
         [...privacyExecutionHistory].slice(-8).reverse(),
     );
+    let filteredPrivacyArtifacts = $derived(
+        recentPrivacyArtifacts.filter((artifact) => {
+            if (
+                privacyHistoryPhaseFilter !== "all" &&
+                artifact.commitment.phase !== privacyHistoryPhaseFilter
+            ) {
+                return false;
+            }
+            if (
+                privacyHistoryDecisionFilter !== "all" &&
+                artifact.policyReceipt.decision !== privacyHistoryDecisionFilter
+            ) {
+                return false;
+            }
+            return true;
+        }),
+    );
     let activeReceiptPhase = $derived<PrivacyPhase>(
         mode === "swap" ? "swap" : mode === "send" ? "send" : "receive",
     );
@@ -154,6 +178,9 @@
     let activePhasePolicyReceipt = $derived(
         activePhaseArtifact?.policyReceipt ??
             getLatestAspPolicyReceiptForPhase(activeReceiptPhase),
+    );
+    let latestCompletedActiveArtifact = $derived(
+        activeSppIntentId === null ? activePhaseArtifact : null,
     );
 
     // Provider Logic
@@ -903,6 +930,14 @@
         return phase.charAt(0).toUpperCase() + phase.slice(1);
     }
 
+    function formatPrivacyJson(value: unknown): string {
+        try {
+            return JSON.stringify(value, null, 2);
+        } catch {
+            return "{}";
+        }
+    }
+
     function getLatestPrivacyArtifactForContext({
         phase,
         intentId,
@@ -927,6 +962,114 @@
             if (phase && receipt.phase !== phase) continue;
             return receipt;
         }
+        return null;
+    }
+
+    function getPrivacyReceiptSummaryForContext(
+        phase?: PrivacyPhase,
+    ): Record<string, unknown> | null {
+        const artifact = getLatestPrivacyArtifactForContext({ phase });
+        const policyReceipt =
+            artifact?.policyReceipt ?? getLatestAspPolicyReceiptForPhase(phase);
+
+        if (!artifact && !policyReceipt) {
+            return null;
+        }
+
+        return {
+            phase: artifact?.commitment.phase ?? policyReceipt?.phase ?? phase ?? null,
+            stage: artifact?.commitment.stage ?? null,
+            mode: artifact?.commitment.mode ?? policyReceipt?.mode ?? privacyWrapperMode,
+            settlementMode: policyReceipt?.settlementMode ?? "public",
+            policyId: policyReceipt?.policyId ?? null,
+            receiptId: policyReceipt?.receiptId ?? null,
+            decision: policyReceipt?.decision ?? null,
+            auditLevel: policyReceipt?.auditLevel ?? null,
+            riskScore: policyReceipt?.riskScore ?? null,
+            reasons: policyReceipt?.reasons ?? [],
+            commitmentId: artifact?.commitment.commitmentId ?? null,
+            intentId: artifact?.commitment.intentId ?? null,
+            disclosureHandle: artifact?.disclosure.disclosureHandle ?? null,
+            algorithm: artifact?.disclosure.algorithm ?? null,
+            keyFingerprint: artifact?.disclosure.keyFingerprint ?? null,
+            summary: artifact?.disclosure.summary ?? null,
+            checkedAt: policyReceipt?.checkedAt ?? null,
+            createdAt:
+                artifact?.commitment.createdAt ??
+                artifact?.disclosure.createdAt ??
+                null,
+            receiptText: buildPrivacyReceiptTextForContext({ phase }),
+        };
+    }
+
+    function exportPrivacyReceiptForPhase(phase?: PrivacyPhase): string {
+        return buildPrivacyReceiptTextForContext({ phase });
+    }
+
+    function findPrivacyArtifactForDebug(
+        query:
+            | string
+            | {
+                  phase?: PrivacyPhase;
+                  stage?: ExecutorPrivacyEnvelopeStage;
+                  decision?: "allow" | "allow_with_audit";
+                  intentId?: string | null;
+                  commitmentId?: string;
+                  disclosureHandle?: string;
+              },
+    ):
+        | {
+              artifact: PrivacyExecutionArtifact;
+              receipt: Record<string, unknown> | null;
+          }
+        | null {
+        const matchString =
+            typeof query === "string" ? query.trim().toLowerCase() : null;
+
+        for (let index = privacyExecutionHistory.length - 1; index >= 0; index -= 1) {
+            const artifact = privacyExecutionHistory[index];
+            if (matchString) {
+                const haystacks = [
+                    artifact.commitment.commitmentId,
+                    artifact.commitment.intentId,
+                    artifact.disclosure.disclosureHandle,
+                    artifact.policyReceipt.receiptId,
+                    artifact.policyReceipt.policyId,
+                ]
+                    .filter(Boolean)
+                    .map((value) => String(value).toLowerCase());
+                if (
+                    !haystacks.some(
+                        (value) => value === matchString || value.includes(matchString),
+                    )
+                ) {
+                    continue;
+                }
+            } else {
+                if (query.phase && artifact.commitment.phase !== query.phase) continue;
+                if (query.stage && artifact.commitment.stage !== query.stage) continue;
+                if (query.decision && artifact.policyReceipt.decision !== query.decision)
+                    continue;
+                if (query.intentId && artifact.commitment.intentId !== query.intentId)
+                    continue;
+                if (
+                    query.commitmentId &&
+                    artifact.commitment.commitmentId !== query.commitmentId
+                )
+                    continue;
+                if (
+                    query.disclosureHandle &&
+                    artifact.disclosure.disclosureHandle !== query.disclosureHandle
+                )
+                    continue;
+            }
+
+            return {
+                artifact,
+                receipt: getPrivacyReceiptSummaryForContext(artifact.commitment.phase),
+            };
+        }
+
         return null;
     }
 
@@ -1027,6 +1170,72 @@
             setStatusMessageTracked(
                 "Could not copy SPP export",
                 "privacy_export_copy_failed",
+            );
+        }
+    }
+
+    async function copyDisclosurePreviewForContext({
+        phase,
+        intentId,
+        successMessage = withPrivacyModeSuffix("Disclosure preview copied"),
+    }: {
+        phase?: PrivacyPhase;
+        intentId?: string | null;
+        successMessage?: string;
+    } = {}): Promise<void> {
+        try {
+            const artifact = getLatestPrivacyArtifactForContext({ phase, intentId });
+            if (!artifact) throw new Error("No disclosure artifact available");
+            const copied = await copyTextToClipboard(
+                formatPrivacyJson(artifact.disclosure.redactedPayload),
+            );
+            if (!copied) throw new Error("Clipboard unavailable");
+            setStatusMessageTracked(
+                successMessage,
+                "privacy_disclosure_preview_copied",
+                { privacyWrapperMode, phase: phase ?? null },
+            );
+        } catch (e) {
+            const errorMessage = e instanceof Error ? e.message : String(e);
+            discomboDebug.warn("privacy_disclosure_preview_copy_failed", {
+                error: errorMessage,
+            });
+            setStatusMessageTracked(
+                "Could not copy disclosure preview",
+                "privacy_disclosure_preview_copy_failed",
+            );
+        }
+    }
+
+    async function copyDisclosureDigestForContext({
+        phase,
+        intentId,
+        successMessage = withPrivacyModeSuffix("Disclosure digest copied"),
+    }: {
+        phase?: PrivacyPhase;
+        intentId?: string | null;
+        successMessage?: string;
+    } = {}): Promise<void> {
+        try {
+            const artifact = getLatestPrivacyArtifactForContext({ phase, intentId });
+            if (!artifact) throw new Error("No disclosure artifact available");
+            const copied = await copyTextToClipboard(
+                artifact.disclosure.fullPayloadDigest,
+            );
+            if (!copied) throw new Error("Clipboard unavailable");
+            setStatusMessageTracked(
+                successMessage,
+                "privacy_disclosure_digest_copied",
+                { privacyWrapperMode, phase: phase ?? null },
+            );
+        } catch (e) {
+            const errorMessage = e instanceof Error ? e.message : String(e);
+            discomboDebug.warn("privacy_disclosure_digest_copy_failed", {
+                error: errorMessage,
+            });
+            setStatusMessageTracked(
+                "Could not copy disclosure digest",
+                "privacy_disclosure_digest_copy_failed",
             );
         }
     }
@@ -1255,6 +1464,9 @@
             getPrivacyArtifacts: getPrivacyArtifacts,
             exportPrivacyArtifacts: exportPrivacyArtifacts,
             clearPrivacyArtifacts: clearPrivacyArtifacts,
+            getPrivacyReceipt: getPrivacyReceiptSummaryForContext,
+            exportPrivacyReceipt: exportPrivacyReceiptForPhase,
+            findPrivacyArtifact: findPrivacyArtifactForDebug,
         });
 
         discomboDebug.info("component_mounted", {
@@ -2557,9 +2769,59 @@
                                     Recent SPP Audit Trail
                                 </div>
 
-                                {#if recentPrivacyArtifacts.length > 0}
+                                <div class="mt-2 flex flex-wrap gap-2">
+                                    <button
+                                        class={`rounded-md border px-2 py-1 text-[8px] transition-all ${privacyHistoryPhaseFilter === "all" ? "border-[#7dd3fc]/40 bg-[#0f172a]/80 text-[#7dd3fc]" : "border-[#1e293b] bg-[#0f172a]/50 text-[#94a3b8] hover:border-[#7dd3fc]/30 hover:text-[#7dd3fc]"}`}
+                                        onclick={() => (privacyHistoryPhaseFilter = "all")}
+                                    >
+                                        ALL PHASES
+                                    </button>
+                                    <button
+                                        class={`rounded-md border px-2 py-1 text-[8px] transition-all ${privacyHistoryPhaseFilter === "swap" ? "border-[#7dd3fc]/40 bg-[#0f172a]/80 text-[#7dd3fc]" : "border-[#1e293b] bg-[#0f172a]/50 text-[#94a3b8] hover:border-[#7dd3fc]/30 hover:text-[#7dd3fc]"}`}
+                                        onclick={() => (privacyHistoryPhaseFilter = "swap")}
+                                    >
+                                        SWAP
+                                    </button>
+                                    <button
+                                        class={`rounded-md border px-2 py-1 text-[8px] transition-all ${privacyHistoryPhaseFilter === "send" ? "border-[#7dd3fc]/40 bg-[#0f172a]/80 text-[#7dd3fc]" : "border-[#1e293b] bg-[#0f172a]/50 text-[#94a3b8] hover:border-[#7dd3fc]/30 hover:text-[#7dd3fc]"}`}
+                                        onclick={() => (privacyHistoryPhaseFilter = "send")}
+                                    >
+                                        SEND
+                                    </button>
+                                    <button
+                                        class={`rounded-md border px-2 py-1 text-[8px] transition-all ${privacyHistoryPhaseFilter === "receive" ? "border-[#7dd3fc]/40 bg-[#0f172a]/80 text-[#7dd3fc]" : "border-[#1e293b] bg-[#0f172a]/50 text-[#94a3b8] hover:border-[#7dd3fc]/30 hover:text-[#7dd3fc]"}`}
+                                        onclick={() => (privacyHistoryPhaseFilter = "receive")}
+                                    >
+                                        RECEIVE
+                                    </button>
+                                </div>
+
+                                <div class="mt-2 flex flex-wrap gap-2">
+                                    <button
+                                        class={`rounded-md border px-2 py-1 text-[8px] transition-all ${privacyHistoryDecisionFilter === "all" ? "border-[#fbbf24]/40 bg-[#1f1300]/70 text-[#fbbf24]" : "border-[#1e293b] bg-[#0f172a]/50 text-[#94a3b8] hover:border-[#fbbf24]/30 hover:text-[#fbbf24]"}`}
+                                        onclick={() => (privacyHistoryDecisionFilter = "all")}
+                                    >
+                                        ALL DECISIONS
+                                    </button>
+                                    <button
+                                        class={`rounded-md border px-2 py-1 text-[8px] transition-all ${privacyHistoryDecisionFilter === "allow" ? "border-[#fbbf24]/40 bg-[#1f1300]/70 text-[#fbbf24]" : "border-[#1e293b] bg-[#0f172a]/50 text-[#94a3b8] hover:border-[#fbbf24]/30 hover:text-[#fbbf24]"}`}
+                                        onclick={() => (privacyHistoryDecisionFilter = "allow")}
+                                    >
+                                        ALLOW
+                                    </button>
+                                    <button
+                                        class={`rounded-md border px-2 py-1 text-[8px] transition-all ${privacyHistoryDecisionFilter === "allow_with_audit" ? "border-[#fbbf24]/40 bg-[#1f1300]/70 text-[#fbbf24]" : "border-[#1e293b] bg-[#0f172a]/50 text-[#94a3b8] hover:border-[#fbbf24]/30 hover:text-[#fbbf24]"}`}
+                                        onclick={() =>
+                                            (privacyHistoryDecisionFilter =
+                                                "allow_with_audit")}
+                                    >
+                                        ALLOW_WITH_AUDIT
+                                    </button>
+                                </div>
+
+                                {#if filteredPrivacyArtifacts.length > 0}
                                     <div class="mt-2 flex flex-col gap-2">
-                                        {#each recentPrivacyArtifacts as artifact}
+                                        {#each filteredPrivacyArtifacts as artifact}
                                             <div
                                                 class="rounded-lg border border-[#1e293b] bg-[#0f172a]/40 p-2"
                                             >
@@ -2618,7 +2880,7 @@
                                     </div>
                                 {:else}
                                     <div class="mt-2 text-[8px] text-[#94a3b8]">
-                                        No audit history yet.
+                                        No audit history matches the current filter.
                                     </div>
                                 {/if}
                             </div>
@@ -2666,11 +2928,52 @@
                                         ) || "n/a"}
                                     </div>
                                 </div>
+                                <div>
+                                    <span class="text-[#64748b]">Algorithm</span>
+                                    <div class="mt-1 text-[#e2e8f0]">
+                                        {activePhaseArtifact?.disclosure.algorithm ?? "n/a"}
+                                    </div>
+                                </div>
+                                <div>
+                                    <span class="text-[#64748b]">Key Fingerprint</span>
+                                    <div class="mt-1 text-[#e2e8f0]">
+                                        {activePhaseArtifact?.disclosure.keyFingerprint ??
+                                            "digest-only"}
+                                    </div>
+                                </div>
                             </div>
                             <div class="mt-2 text-[8px] text-[#94a3b8]">
                                 {activePhaseArtifact?.disclosure.summary ??
                                     `No ${activeReceiptPhase} artifact summary yet.`}
                             </div>
+                            {#if activePhaseArtifact}
+                                <div class="mt-2">
+                                    <button
+                                        class="rounded-md border border-[#1e293b] bg-[#0f172a]/50 px-2 py-1 text-[8px] text-[#7dd3fc] transition-all hover:border-[#7dd3fc]/40 hover:bg-[#0f172a]/80"
+                                        onclick={() =>
+                                            (showDisclosurePreview =
+                                                !showDisclosurePreview)}
+                                    >
+                                        {showDisclosurePreview
+                                            ? "Hide Redacted Preview"
+                                            : "Show Redacted Preview"}
+                                    </button>
+                                </div>
+                            {/if}
+                            {#if showDisclosurePreview && activePhaseArtifact}
+                                <div class="mt-2 rounded-lg border border-[#1e293b] bg-[#020617]/80 p-2">
+                                    <div class="text-[8px] uppercase tracking-[0.18em] text-[#7dd3fc]">
+                                        Redacted Disclosure Payload
+                                    </div>
+                                    <div class="mt-1 text-[8px] text-[#94a3b8]">
+                                        Full payload digest:
+                                        {activePhaseArtifact.disclosure.fullPayloadDigest}
+                                    </div>
+                                    <pre class="mt-2 max-h-48 overflow-auto whitespace-pre-wrap break-all rounded-md bg-black/20 p-2 text-[8px] leading-relaxed text-[#cbd5e1]">{formatPrivacyJson(
+                                        activePhaseArtifact.disclosure.redactedPayload,
+                                    )}</pre>
+                                </div>
+                            {/if}
                             <div class="mt-3 grid grid-cols-2 gap-2">
                                 <button
                                     class="rounded-lg border border-[#1e293b] bg-[#0f172a]/50 px-2 py-2 text-[8px] text-[#7dd3fc] transition-all hover:border-[#7dd3fc]/40 hover:bg-[#0f172a]/80"
@@ -2698,6 +3001,34 @@
                                     Download {getPhaseLabel(activeReceiptPhase)}
                                 </button>
                             </div>
+                            {#if activePhaseArtifact}
+                                <div class="mt-2 grid grid-cols-2 gap-2">
+                                    <button
+                                        class="rounded-lg border border-[#1e293b] bg-[#0f172a]/50 px-2 py-2 text-[8px] text-[#7dd3fc] transition-all hover:border-[#7dd3fc]/40 hover:bg-[#0f172a]/80"
+                                        onclick={() =>
+                                            copyDisclosurePreviewForContext({
+                                                phase: activeReceiptPhase,
+                                                successMessage: withPrivacyModeSuffix(
+                                                    `${getPhaseLabel(activeReceiptPhase)} disclosure copied`,
+                                                ),
+                                            })}
+                                    >
+                                        Copy Redacted JSON
+                                    </button>
+                                    <button
+                                        class="rounded-lg border border-[#1e293b] bg-[#0f172a]/50 px-2 py-2 text-[8px] text-[#7dd3fc] transition-all hover:border-[#7dd3fc]/40 hover:bg-[#0f172a]/80"
+                                        onclick={() =>
+                                            copyDisclosureDigestForContext({
+                                                phase: activeReceiptPhase,
+                                                successMessage: withPrivacyModeSuffix(
+                                                    `${getPhaseLabel(activeReceiptPhase)} digest copied`,
+                                                ),
+                                            })}
+                                    >
+                                        Copy Full Digest
+                                    </button>
+                                </div>
+                            {/if}
                         {:else}
                             <div class="mt-2 text-[8px] text-[#94a3b8]">
                                 No {activeReceiptPhase} receipt yet. Run the current flow to generate
@@ -2705,6 +3036,43 @@
                             </div>
                         {/if}
                     </div>
+
+                    {#if latestCompletedActiveArtifact}
+                        <div
+                            class="rounded-xl border border-[#0f766e]/40 bg-[#042f2e]/35 p-3"
+                        >
+                            <div
+                                class="text-[8px] uppercase tracking-[0.18em] text-[#5eead4]"
+                            >
+                                Latest Result Artifact
+                            </div>
+                            <div class="mt-2 grid grid-cols-2 gap-2 text-[8px] text-[#ccfbf1]">
+                                <div>
+                                    Commitment:
+                                    {maskIdentifier(
+                                        latestCompletedActiveArtifact.commitment.commitmentId,
+                                    )}
+                                </div>
+                                <div>
+                                    Disclosure:
+                                    {maskIdentifier(
+                                        latestCompletedActiveArtifact.disclosure
+                                            .disclosureHandle,
+                                    )}
+                                </div>
+                                <div>
+                                    Policy:
+                                    {latestCompletedActiveArtifact.policyReceipt.policyId}
+                                </div>
+                                <div>
+                                    Checked:
+                                    {formatPrivacyTimestamp(
+                                        latestCompletedActiveArtifact.policyReceipt.checkedAt,
+                                    )}
+                                </div>
+                            </div>
+                        </div>
+                    {/if}
 
                     {#if mode === "swap"}
                         <!-- SWAP MODE -->

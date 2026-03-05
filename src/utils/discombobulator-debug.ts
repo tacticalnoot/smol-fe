@@ -5,6 +5,18 @@ const DISCOMBO_VERBOSE_KEY = "smol:discombo:verbose";
 const DISCOMBO_RUN_COUNT_KEY = "smol:discombo:run_count";
 
 type DebugLogLevel = "trace" | "debug" | "info" | "warn" | "error";
+type DebugPrivacyPhase = "swap" | "send" | "receive";
+type DebugPrivacyStage = "pre" | "post";
+type DebugPrivacyDecision = "allow" | "allow_with_audit";
+
+interface DebugPrivacyArtifactLookup {
+    phase?: DebugPrivacyPhase;
+    stage?: DebugPrivacyStage;
+    decision?: DebugPrivacyDecision;
+    intentId?: string | null;
+    commitmentId?: string;
+    disclosureHandle?: string;
+}
 
 export interface DiscombobulatorSnapshot {
     appState: string;
@@ -54,9 +66,22 @@ export interface DiscombobulatorConsoleHelpers {
     spp: (limit?: number) => unknown[];
     exportSpp: () => string;
     clearSpp: () => void;
-    privacy: (limit?: number) => unknown[];
+    privacy: (
+        limit?: number,
+        filters?: Partial<
+            Pick<
+                DebugPrivacyArtifactLookup,
+                "phase" | "stage" | "decision"
+            >
+        >,
+    ) => unknown[];
     exportPrivacy: () => string;
     clearPrivacy: () => void;
+    receipt: (phase?: DebugPrivacyPhase) => unknown | null;
+    exportReceipt: (phase?: DebugPrivacyPhase) => string;
+    artifact: (
+        query: string | DebugPrivacyArtifactLookup,
+    ) => unknown | null;
     setVerbose: (nextValue: boolean) => void;
     enableVerbose: () => void;
     disableVerbose: () => void;
@@ -97,6 +122,11 @@ export interface DiscombobulatorDebugBootstrapOptions {
     getPrivacyArtifacts?: (limit?: number) => unknown[];
     exportPrivacyArtifacts?: () => string;
     clearPrivacyArtifacts?: () => void;
+    getPrivacyReceipt?: (phase?: DebugPrivacyPhase) => unknown | null;
+    exportPrivacyReceipt?: (phase?: DebugPrivacyPhase) => string;
+    findPrivacyArtifact?: (
+        query: string | DebugPrivacyArtifactLookup,
+    ) => unknown | null;
 }
 
 declare global {
@@ -220,6 +250,27 @@ function getDebugLevelFromUrl(): LogLevel | null {
     return resolveLogLevel(raw);
 }
 
+function matchesPrivacyArtifactFilter(
+    entry: any,
+    filters: Partial<
+        Pick<DebugPrivacyArtifactLookup, "phase" | "stage" | "decision">
+    >,
+): boolean {
+    if (filters.phase && entry?.commitment?.phase !== filters.phase) {
+        return false;
+    }
+    if (filters.stage && entry?.commitment?.stage !== filters.stage) {
+        return false;
+    }
+    if (
+        filters.decision &&
+        entry?.policyReceipt?.decision !== filters.decision
+    ) {
+        return false;
+    }
+    return true;
+}
+
 export function bootstrapDiscombobulatorDebug(
     options: DiscombobulatorDebugBootstrapOptions,
 ): DiscombobulatorDebugger {
@@ -289,8 +340,17 @@ export function bootstrapDiscombobulatorDebug(
             console.log("window.discomboDebug.exportSpp()");
             console.log("window.discomboDebug.clearSpp()");
             console.log("window.discomboDebug.privacy(25)");
+            console.log(
+                "window.discomboDebug.privacy(25, { phase: 'swap', decision: 'allow_with_audit' })",
+            );
             console.log("window.discomboDebug.exportPrivacy()");
             console.log("window.discomboDebug.clearPrivacy()");
+            console.log("window.discomboDebug.receipt('swap')");
+            console.log("window.discomboDebug.exportReceipt('receive')");
+            console.log(
+                "window.discomboDebug.artifact({ phase: 'send', stage: 'post' })",
+            );
+            console.log("window.discomboDebug.artifact('commit-1234')");
             console.log("window.discomboDebug.mark('label', { any: 'context' })");
             console.log("window.discomboDebug.traceOn() / traceOff()");
             console.log("window.discomboDebug.setTraceLevel('TRACE' | 'DEBUG' | 'INFO' | 'WARN' | 'ERROR')");
@@ -336,7 +396,7 @@ export function bootstrapDiscombobulatorDebug(
             options.clearSppTrace?.();
             emit("info", "spp_trace_cleared");
         },
-        privacy: (limit = 25) => {
+        privacy: (limit = 25, filters = {}) => {
             if (!options.getPrivacyArtifacts) {
                 console.warn(
                     "[Discombobulator] Privacy artifact provider is not configured.",
@@ -344,7 +404,11 @@ export function bootstrapDiscombobulatorDebug(
                 return [];
             }
 
-            const entries = options.getPrivacyArtifacts(limit);
+            const entries = options
+                .getPrivacyArtifacts(limit)
+                .filter((entry: any) =>
+                    matchesPrivacyArtifactFilter(entry, filters),
+                );
             if (Array.isArray(entries) && entries.length > 0) {
                 console.table(
                     entries.map((entry: any) => ({
@@ -358,6 +422,7 @@ export function bootstrapDiscombobulatorDebug(
                             entry.policyReceipt?.auditLevel ?? "unknown",
                         disclosureHandle:
                             entry.disclosure?.disclosureHandle ?? "",
+                        algorithm: entry.disclosure?.algorithm ?? "",
                         summary: entry.disclosure?.summary ?? "",
                     })),
                 );
@@ -376,6 +441,77 @@ export function bootstrapDiscombobulatorDebug(
         clearPrivacy: () => {
             options.clearPrivacyArtifacts?.();
             emit("info", "privacy_artifacts_cleared");
+        },
+        receipt: (phase) => {
+            if (!options.getPrivacyReceipt) {
+                console.warn(
+                    "[Discombobulator] Privacy receipt provider is not configured.",
+                );
+                return null;
+            }
+
+            const receipt: any = options.getPrivacyReceipt(phase);
+            if (!receipt) {
+                console.warn(
+                    `[Discombobulator] No privacy receipt found${phase ? ` for phase ${phase}` : ""}.`,
+                );
+                return null;
+            }
+
+            console.table([
+                {
+                    phase: receipt.phase ?? phase ?? "unknown",
+                    mode: receipt.mode ?? "unknown",
+                    settlement: receipt.settlementMode ?? "unknown",
+                    decision: receipt.decision ?? "unknown",
+                    auditLevel: receipt.auditLevel ?? "unknown",
+                    riskScore: receipt.riskScore ?? "unknown",
+                    commitmentId: receipt.commitmentId ?? "",
+                    disclosureHandle: receipt.disclosureHandle ?? "",
+                    algorithm: receipt.algorithm ?? "",
+                },
+            ]);
+            console.log(receipt);
+            return receipt;
+        },
+        exportReceipt: (phase) => {
+            if (!options.exportPrivacyReceipt) {
+                console.warn(
+                    "[Discombobulator] Privacy receipt export provider is not configured.",
+                );
+                return "";
+            }
+            return options.exportPrivacyReceipt(phase);
+        },
+        artifact: (query) => {
+            if (!options.findPrivacyArtifact) {
+                console.warn(
+                    "[Discombobulator] Privacy artifact lookup provider is not configured.",
+                );
+                return null;
+            }
+
+            const result: any = options.findPrivacyArtifact(query);
+            if (!result) {
+                console.warn("[Discombobulator] No matching privacy artifact found.");
+                return null;
+            }
+
+            const artifact = result.artifact ?? result;
+            console.table([
+                {
+                    commitmentId: artifact.commitment?.commitmentId ?? "",
+                    intentId: artifact.commitment?.intentId ?? "",
+                    phase: artifact.commitment?.phase ?? "",
+                    stage: artifact.commitment?.stage ?? "",
+                    mode: artifact.commitment?.mode ?? "",
+                    decision: artifact.policyReceipt?.decision ?? "",
+                    disclosureHandle: artifact.disclosure?.disclosureHandle ?? "",
+                    algorithm: artifact.disclosure?.algorithm ?? "",
+                },
+            ]);
+            console.log(result);
+            return result;
         },
         setVerbose: (nextValue: boolean) => {
             verbose = !!nextValue;
@@ -439,6 +575,8 @@ export function bootstrapDiscombobulatorDebug(
                     swapState: snapshot.swapState,
                     privacyMode: snapshot.privacyWrapperMode,
                     privacyPolicy: snapshot.privacyPolicyDescriptor,
+                    privacyPolicyPreEnabled: snapshot.privacyPolicyPreEnabled,
+                    privacyPolicyPostEnabled: snapshot.privacyPolicyPostEnabled,
                     relayerMode: snapshot.relayerMode,
                     sppTraceCount: snapshot.sppTraceCount,
                     sppLastIntentId: snapshot.sppLastIntentId,
@@ -446,6 +584,8 @@ export function bootstrapDiscombobulatorDebug(
                     privacyArtifactCount: snapshot.privacyArtifactCount,
                     privacyLastCommitmentId: snapshot.privacyLastCommitmentId,
                     privacyLastPolicyDecision: snapshot.privacyLastPolicyDecision,
+                    privacyLastDisclosureHandle:
+                        snapshot.privacyLastDisclosureHandle,
                 },
             ]);
             if (options.getSppTrace) {
@@ -483,6 +623,27 @@ export function bootstrapDiscombobulatorDebug(
                                 entry.disclosure?.disclosureHandle ?? "",
                         })),
                     );
+                }
+            }
+            if (options.getPrivacyReceipt) {
+                const receipts = (
+                    ["swap", "send", "receive"] as DebugPrivacyPhase[]
+                )
+                    .map((phase) => {
+                        const receipt: any = options.getPrivacyReceipt?.(phase);
+                        if (!receipt) return null;
+                        return {
+                            phase,
+                            decision: receipt.decision ?? "",
+                            auditLevel: receipt.auditLevel ?? "",
+                            commitmentId: receipt.commitmentId ?? "",
+                            disclosureHandle: receipt.disclosureHandle ?? "",
+                        };
+                    })
+                    .filter(Boolean);
+                if (receipts.length > 0) {
+                    console.log("[Discombobulator] Latest phase receipts");
+                    console.table(receipts);
                 }
             }
         },
