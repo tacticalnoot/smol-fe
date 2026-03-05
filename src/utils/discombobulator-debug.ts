@@ -374,6 +374,38 @@ export function bootstrapDiscombobulatorDebug(
         exportLogs: () => logger.exportLogs(),
         summary: () => {
             logger.printSummary();
+            const snapshot = options.getSnapshot();
+            console.table([
+                {
+                    mode: snapshot.mode,
+                    swapState: snapshot.swapState,
+                    privacyMode: snapshot.privacyWrapperMode,
+                    privacyPolicy: snapshot.privacyPolicyDescriptor,
+                    relayerMode: snapshot.relayerMode,
+                    sppTraceCount: snapshot.sppTraceCount,
+                    sppLastIntentId: snapshot.sppLastIntentId,
+                    sppLastIntentStatus: snapshot.sppLastIntentStatus,
+                },
+            ]);
+            if (options.getSppTrace) {
+                const recent = options.getSppTrace(5);
+                if (recent.length > 0) {
+                    console.log("[Discombobulator] Recent SPP intents");
+                    console.table(
+                        recent.map((entry: any) => ({
+                            intentId: entry.intentId,
+                            phase: entry.phase,
+                            mode: entry.mode,
+                            policy: entry.policy,
+                            status: entry.status,
+                            receipts: Array.isArray(entry.stageReceipts)
+                                ? entry.stageReceipts.length
+                                : 0,
+                            txHash: entry.txHash || "",
+                        })),
+                    );
+                }
+            }
         },
         clear: () => {
             logger.clearLogs();

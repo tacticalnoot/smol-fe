@@ -88,6 +88,10 @@
         preEnabled: boolean;
         postEnabled: boolean;
     };
+    type ReceiveActionOperation =
+        | "copy_address"
+        | "copy_request"
+        | "share_request";
 
     // --- STATE ---
     let appState = $state<AppState>("intro");
@@ -1585,13 +1589,82 @@
         }
     }
 
-    async function copyReceiveAddress(): Promise<void> {
+    type ReceiveActionResult = {
+        success: boolean;
+        error?: string;
+    };
+
+    async function runReceiveIntentAction(
+        operation: ReceiveActionOperation,
+        runner: (intentId: string) => Promise<ReceiveActionResult>,
+    ): Promise<boolean> {
+        logPrivacyEnvelopeContext("receive");
+
+        let intentId: string | null = null;
+        try {
+            const receiveIntent = await startSppIntent("receive", {
+                receiveToken,
+                requestedAmount: receiveAmount.trim() || null,
+                destinationMasked: maskIdentifier(userState.contractId),
+                operation,
+            });
+            intentId = receiveIntent.intentId;
+
+            discomboDebug.info("receive_flow_started", {
+                operation,
+                receiveToken,
+                requestedAmount: receiveAmount.trim() || null,
+                privacyWrapperMode,
+            });
+
+            await runPrivacyEnvelopeStageIfEnabled("receive", "pre", intentId);
+            addSppStageReceipt(intentId, "action", "started", {
+                phase: "receive",
+                operation,
+            });
+
+            const result = await runner(intentId);
+            if (!result.success) {
+                throw new Error(result.error || `${operation} failed`);
+            }
+
+            addSppStageReceipt(intentId, "action", "completed", {
+                phase: "receive",
+                operation,
+            });
+            await runPrivacyEnvelopeStageIfEnabled("receive", "post", intentId);
+            completeSppIntent(intentId, "succeeded");
+
+            discomboDebug.info("receive_flow_succeeded", {
+                operation,
+                intentId,
+            });
+            return true;
+        } catch (e) {
+            const finalError = e instanceof Error ? e.message : String(e);
+            if (intentId) {
+                addSppStageReceipt(intentId, "action", "failed", {
+                    phase: "receive",
+                    operation,
+                    error: finalError,
+                });
+                completeSppIntent(intentId, "failed", { error: finalError });
+            }
+            discomboDebug.error("receive_flow_failed", {
+                operation,
+                error: finalError,
+            });
+            return false;
+        }
+    }
+
+    async function copyReceiveAddressDirect(): Promise<ReceiveActionResult> {
         if (!userState.contractId) {
             setStatusMessageTracked(
                 "Connect wallet first",
                 "receive_address_missing_wallet",
             );
-            return;
+            return { success: false, error: "Connect wallet first" };
         }
 
         try {
@@ -1605,24 +1678,35 @@
                 "receive_address_copied",
                 { privacyWrapperMode },
             );
+            return { success: true };
         } catch (e) {
+            const errorMessage = e instanceof Error ? e.message : String(e);
             discomboDebug.warn("receive_address_copy_failed", {
-                error: e instanceof Error ? e.message : String(e),
+                error: errorMessage,
             });
             setStatusMessageTracked(
                 "Could not copy address",
                 "receive_address_copy_failed",
             );
+            return { success: false, error: errorMessage };
         }
     }
 
-    async function copyReceiveRequest(intentId?: string): Promise<void> {
+    async function copyReceiveAddress(): Promise<void> {
+        await runReceiveIntentAction("copy_address", async () =>
+            copyReceiveAddressDirect(),
+        );
+    }
+
+    async function copyReceiveRequestDirect(
+        intentId?: string,
+    ): Promise<ReceiveActionResult> {
         if (!userState.contractId) {
             setStatusMessageTracked(
                 "Connect wallet first",
                 "receive_request_missing_wallet",
             );
-            return;
+            return { success: false, error: "Connect wallet first" };
         }
 
         try {
@@ -1640,35 +1724,46 @@
                 "receive_request_copied",
                 { privacyWrapperMode },
             );
+            return { success: true };
         } catch (e) {
+            const errorMessage = e instanceof Error ? e.message : String(e);
             discomboDebug.warn("receive_request_copy_failed", {
-                error: e instanceof Error ? e.message : String(e),
+                error: errorMessage,
             });
             setStatusMessageTracked(
                 "Could not copy request",
                 "receive_request_copy_failed",
             );
+            return { success: false, error: errorMessage };
         }
     }
 
-    async function shareReceiveRequest(): Promise<void> {
+    async function copyReceiveRequest(): Promise<void> {
+        await runReceiveIntentAction("copy_request", async (intentId) =>
+            copyReceiveRequestDirect(intentId),
+        );
+    }
+
+    async function shareReceiveRequestDirect(
+        intentId?: string,
+    ): Promise<ReceiveActionResult> {
         if (!userState.contractId) {
             setStatusMessageTracked(
                 "Connect wallet first",
                 "receive_share_missing_wallet",
             );
-            return;
+            return { success: false, error: "Connect wallet first" };
         }
         if (typeof navigator === "undefined" || !navigator.share) {
             setStatusMessageTracked(
                 "Share unavailable on this device",
                 "receive_share_unavailable",
             );
-            return;
+            return { success: false, error: "Share unavailable on this device" };
         }
 
         try {
-            const text = buildReceiveRequestText();
+            const text = buildReceiveRequestText(intentId);
             await navigator.share({
                 title: "Discombobulator Receive Request",
                 text,
@@ -1682,65 +1777,36 @@
                 "receive_request_shared",
                 { privacyWrapperMode },
             );
+            return { success: true };
         } catch (e) {
+            const errorMessage = e instanceof Error ? e.message : String(e);
             discomboDebug.warn("receive_request_share_failed", {
-                error: e instanceof Error ? e.message : String(e),
+                error: errorMessage,
             });
             setStatusMessageTracked(
                 "Share cancelled or failed",
                 "receive_request_share_failed",
             );
+            return { success: false, error: errorMessage };
         }
     }
 
+    async function shareReceiveRequest(): Promise<void> {
+        await runReceiveIntentAction("share_request", async (intentId) =>
+            shareReceiveRequestDirect(intentId),
+        );
+    }
+
     async function executeReceive(): Promise<void> {
-        logPrivacyEnvelopeContext("receive");
-        let intentId: string | null = null;
-        try {
-            const receiveIntent = await startSppIntent("receive", {
-                receiveToken,
-                requestedAmount: receiveAmount.trim() || null,
-                destinationMasked: maskIdentifier(userState.contractId),
-                action: "copy_receive_request",
-            });
-            intentId = receiveIntent.intentId;
-
-            await runPrivacyEnvelopeStageIfEnabled("receive", "pre", intentId);
-            addSppStageReceipt(intentId, "action", "started", {
-                phase: "receive",
-                operation: "copy_receive_request",
-            });
-            await copyReceiveRequest(intentId);
-            addSppStageReceipt(intentId, "action", "completed", {
-                phase: "receive",
-                operation: "copy_receive_request",
-            });
-            await runPrivacyEnvelopeStageIfEnabled("receive", "post", intentId);
-            completeSppIntent(intentId, "succeeded");
-
-            setStatusMessageTracked(
-                withPrivacyModeSuffix("Receive request ready"),
-                "receive_request_ready",
-                { privacyWrapperMode },
-            );
-        } catch (e) {
-            if (intentId) {
-                const finalError = e instanceof Error ? e.message : String(e);
-                addSppStageReceipt(intentId, "action", "failed", {
-                    phase: "receive",
-                    operation: "copy_receive_request",
-                    error: finalError,
-                });
-                completeSppIntent(intentId, "failed", { error: finalError });
-            }
-            discomboDebug.error("receive_flow_failed", {
-                error: e instanceof Error ? e.message : String(e),
-            });
-            setStatusMessageTracked(
-                "Receive request failed",
-                "receive_request_failed",
-            );
-        }
+        const succeeded = await runReceiveIntentAction("copy_request", async (intentId) =>
+            copyReceiveRequestDirect(intentId),
+        );
+        if (!succeeded) return;
+        setStatusMessageTracked(
+            withPrivacyModeSuffix("Receive request ready"),
+            "receive_request_ready",
+            { privacyWrapperMode },
+        );
     }
 </script>
 

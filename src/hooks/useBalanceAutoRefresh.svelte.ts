@@ -24,6 +24,7 @@ async function runAutoRefresh(reason: "auth_change" | "visibility" | "focus") {
     lastAutoRefreshAt = now;
 
     try {
+        console.log(`[Balance] Auto refresh running (${reason})`);
         await updateAllBalances(userState.contractId);
     } finally {
         autoRefreshInFlight = false;
@@ -55,7 +56,6 @@ export function useBalanceAutoRefresh() {
         // 2. Handle visibility change (tab focus)
         const handleVisibilityChange = () => {
             if (document.visibilityState === "visible" && userState.contractId) {
-                console.log("[Balance] Window focused, refreshing balances...");
                 void runAutoRefresh("visibility");
             }
         };
