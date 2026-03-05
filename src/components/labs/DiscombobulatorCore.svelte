@@ -1002,6 +1002,40 @@
         };
     }
 
+    function buildPrivacyReceiptJsonForContext({
+        phase,
+        intentId,
+    }: {
+        phase?: PrivacyPhase;
+        intentId?: string | null;
+    } = {}): string {
+        const artifact = getLatestPrivacyArtifactForContext({ phase, intentId });
+        const policyReceipt =
+            artifact?.policyReceipt ?? getLatestAspPolicyReceiptForPhase(phase);
+
+        return JSON.stringify(
+            {
+                generatedAt: new Date().toISOString(),
+                privacyWrapperMode,
+                settlementMode: policyReceipt?.settlementMode ?? "public",
+                receipt: {
+                    phase: artifact?.commitment.phase ?? policyReceipt?.phase ?? phase ?? null,
+                    stage: artifact?.commitment.stage ?? null,
+                    policyId: policyReceipt?.policyId ?? null,
+                    receiptId: policyReceipt?.receiptId ?? null,
+                    decision: policyReceipt?.decision ?? null,
+                    auditLevel: policyReceipt?.auditLevel ?? null,
+                    riskScore: policyReceipt?.riskScore ?? null,
+                    reasons: policyReceipt?.reasons ?? [],
+                    checkedAt: policyReceipt?.checkedAt ?? null,
+                },
+                artifact,
+            },
+            null,
+            2,
+        );
+    }
+
     function exportPrivacyReceiptForPhase(phase?: PrivacyPhase): string {
         return buildPrivacyReceiptTextForContext({ phase });
     }
@@ -1240,6 +1274,37 @@
         }
     }
 
+    async function copyPrivacyReceiptJsonForContext({
+        phase,
+        intentId,
+        successMessage = withPrivacyModeSuffix("SPP receipt JSON copied"),
+    }: {
+        phase?: PrivacyPhase;
+        intentId?: string | null;
+        successMessage?: string;
+    } = {}): Promise<void> {
+        try {
+            const copied = await copyTextToClipboard(
+                buildPrivacyReceiptJsonForContext({ phase, intentId }),
+            );
+            if (!copied) throw new Error("Clipboard unavailable");
+            setStatusMessageTracked(
+                successMessage,
+                "privacy_receipt_json_copied",
+                { privacyWrapperMode, phase: phase ?? null },
+            );
+        } catch (e) {
+            const errorMessage = e instanceof Error ? e.message : String(e);
+            discomboDebug.warn("privacy_receipt_json_copy_failed", {
+                error: errorMessage,
+            });
+            setStatusMessageTracked(
+                "Could not copy SPP receipt JSON",
+                "privacy_receipt_json_copy_failed",
+            );
+        }
+    }
+
     function downloadPrivacyReceiptForContext({
         phase,
         intentId,
@@ -1279,6 +1344,43 @@
 
     function downloadLatestPrivacyReceipt(): void {
         downloadPrivacyReceiptForContext();
+    }
+
+    function downloadPrivacyReceiptJsonForContext({
+        phase,
+        intentId,
+        filenamePrefix = "discombo-spp-receipt",
+        successMessage = withPrivacyModeSuffix("SPP receipt JSON downloaded"),
+    }: {
+        phase?: PrivacyPhase;
+        intentId?: string | null;
+        filenamePrefix?: string;
+        successMessage?: string;
+    } = {}): void {
+        try {
+            const receiptJson = buildPrivacyReceiptJsonForContext({ phase, intentId });
+            const blob = new Blob([receiptJson], { type: "application/json" });
+            const url = URL.createObjectURL(blob);
+            const anchor = document.createElement("a");
+            anchor.href = url;
+            anchor.download = `${filenamePrefix}-${Date.now()}.json`;
+            anchor.click();
+            URL.revokeObjectURL(url);
+            setStatusMessageTracked(
+                successMessage,
+                "privacy_receipt_json_downloaded",
+                { privacyWrapperMode, phase: phase ?? null },
+            );
+        } catch (e) {
+            const errorMessage = e instanceof Error ? e.message : String(e);
+            discomboDebug.warn("privacy_receipt_json_download_failed", {
+                error: errorMessage,
+            });
+            setStatusMessageTracked(
+                "Could not download SPP receipt JSON",
+                "privacy_receipt_json_download_failed",
+            );
+        }
     }
 
     function downloadPrivacyExport(): void {
@@ -3001,6 +3103,33 @@
                                     Download {getPhaseLabel(activeReceiptPhase)}
                                 </button>
                             </div>
+                            <div class="mt-2 grid grid-cols-2 gap-2">
+                                <button
+                                    class="rounded-lg border border-[#1e293b] bg-[#0f172a]/50 px-2 py-2 text-[8px] text-[#7dd3fc] transition-all hover:border-[#7dd3fc]/40 hover:bg-[#0f172a]/80"
+                                    onclick={() =>
+                                        copyPrivacyReceiptJsonForContext({
+                                            phase: activeReceiptPhase,
+                                            successMessage: withPrivacyModeSuffix(
+                                                `${getPhaseLabel(activeReceiptPhase)} receipt JSON copied`,
+                                            ),
+                                        })}
+                                >
+                                    Copy Receipt JSON
+                                </button>
+                                <button
+                                    class="rounded-lg border border-[#1e293b] bg-[#0f172a]/50 px-2 py-2 text-[8px] text-[#7dd3fc] transition-all hover:border-[#7dd3fc]/40 hover:bg-[#0f172a]/80"
+                                    onclick={() =>
+                                        downloadPrivacyReceiptJsonForContext({
+                                            phase: activeReceiptPhase,
+                                            filenamePrefix: `discombo-${activeReceiptPhase}-receipt`,
+                                            successMessage: withPrivacyModeSuffix(
+                                                `${getPhaseLabel(activeReceiptPhase)} receipt JSON downloaded`,
+                                            ),
+                                        })}
+                                >
+                                    Download Receipt JSON
+                                </button>
+                            </div>
                             {#if activePhaseArtifact}
                                 <div class="mt-2 grid grid-cols-2 gap-2">
                                     <button
@@ -3070,6 +3199,39 @@
                                         latestCompletedActiveArtifact.policyReceipt.checkedAt,
                                     )}
                                 </div>
+                            </div>
+                            <div class="mt-2 grid grid-cols-2 gap-2">
+                                <button
+                                    class="rounded-lg border border-[#134e4a] bg-[#022c22]/60 px-2 py-2 text-[8px] text-[#5eead4] transition-all hover:border-[#5eead4]/40 hover:bg-[#022c22]/90"
+                                    onclick={() =>
+                                        copyPrivacyReceiptJsonForContext({
+                                            phase:
+                                                latestCompletedActiveArtifact.commitment.phase,
+                                            intentId:
+                                                latestCompletedActiveArtifact.commitment.intentId,
+                                            successMessage: withPrivacyModeSuffix(
+                                                "Result artifact JSON copied",
+                                            ),
+                                        })}
+                                >
+                                    Copy Result JSON
+                                </button>
+                                <button
+                                    class="rounded-lg border border-[#134e4a] bg-[#022c22]/60 px-2 py-2 text-[8px] text-[#5eead4] transition-all hover:border-[#5eead4]/40 hover:bg-[#022c22]/90"
+                                    onclick={() =>
+                                        downloadPrivacyReceiptJsonForContext({
+                                            phase:
+                                                latestCompletedActiveArtifact.commitment.phase,
+                                            intentId:
+                                                latestCompletedActiveArtifact.commitment.intentId,
+                                            filenamePrefix: `discombo-${latestCompletedActiveArtifact.commitment.phase}-result`,
+                                            successMessage: withPrivacyModeSuffix(
+                                                "Result artifact JSON downloaded",
+                                            ),
+                                        })}
+                                >
+                                    Download Result JSON
+                                </button>
                             </div>
                         </div>
                     {/if}
