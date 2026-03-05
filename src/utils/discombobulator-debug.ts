@@ -30,6 +30,9 @@ export interface DiscombobulatorSnapshot {
     turnstileFailed: boolean;
     isAuthenticated: boolean;
     privacyWrapperMode: string;
+    privacyPolicyDescriptor: string;
+    privacyPolicyPreEnabled: boolean;
+    privacyPolicyPostEnabled: boolean;
     lowGpuMode: boolean;
     contractIdMasked: string;
     keyIdMasked: string;
@@ -115,6 +118,9 @@ export const noopDiscombobulatorDebugger: DiscombobulatorDebugger = {
         turnstileFailed: false,
         isAuthenticated: false,
         privacyWrapperMode: "public",
+        privacyPolicyDescriptor: "public_only",
+        privacyPolicyPreEnabled: false,
+        privacyPolicyPostEnabled: false,
         lowGpuMode: false,
         contractIdMasked: "",
         keyIdMasked: "",

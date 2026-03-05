@@ -70,6 +70,17 @@
         | "shield_before_swap"
         | "shield_after_swap"
         | "wrap_around_swap";
+    type PrivacyPhase = "swap" | "send" | "receive";
+    type PrivacyEnvelopeStage = "pre" | "post";
+    type PrivacyPolicy = {
+        descriptor:
+            | "public_only"
+            | "pre_envelope_poc"
+            | "post_envelope_poc"
+            | "pre_and_post_envelope_poc";
+        preEnabled: boolean;
+        postEnabled: boolean;
+    };
 
     // --- STATE ---
     let appState = $state<AppState>("intro");
@@ -190,7 +201,7 @@
 
     function getPrivacyWrapperSummary(
         modeValue: PrivacyWrapperMode,
-        phase: "swap" | "send" | "receive",
+        phase: PrivacyPhase,
     ): string {
         if (phase === "swap") {
             if (modeValue === "shield_before_swap") {
@@ -230,6 +241,71 @@
         return "Current flow is fully public receive-request semantics.";
     }
 
+    function getPrivacyPolicy(modeValue: PrivacyWrapperMode): PrivacyPolicy {
+        if (modeValue === "shield_before_swap") {
+            return {
+                descriptor: "pre_envelope_poc",
+                preEnabled: true,
+                postEnabled: false,
+            };
+        }
+
+        if (modeValue === "shield_after_swap") {
+            return {
+                descriptor: "post_envelope_poc",
+                preEnabled: false,
+                postEnabled: true,
+            };
+        }
+
+        if (modeValue === "wrap_around_swap") {
+            return {
+                descriptor: "pre_and_post_envelope_poc",
+                preEnabled: true,
+                postEnabled: true,
+            };
+        }
+
+        return {
+            descriptor: "public_only",
+            preEnabled: false,
+            postEnabled: false,
+        };
+    }
+
+    function getPrivacyPolicyLabel(modeValue: PrivacyWrapperMode): string {
+        const policy = getPrivacyPolicy(modeValue);
+        if (policy.descriptor === "pre_envelope_poc") {
+            return "Policy: pre-envelope intent";
+        }
+        if (policy.descriptor === "post_envelope_poc") {
+            return "Policy: post-envelope intent";
+        }
+        if (policy.descriptor === "pre_and_post_envelope_poc") {
+            return "Policy: pre+post envelope intent";
+        }
+        return "Policy: public-only flow";
+    }
+
+    function getPrivacyStageMessage(
+        phase: PrivacyPhase,
+        stage: PrivacyEnvelopeStage,
+    ): string {
+        if (phase === "swap") {
+            return stage === "pre"
+                ? "POC privacy: preparing pre-swap envelope..."
+                : "POC privacy: preparing post-swap envelope...";
+        }
+        if (phase === "send") {
+            return stage === "pre"
+                ? "POC privacy: preparing pre-send envelope..."
+                : "POC privacy: preparing post-send envelope...";
+        }
+        return stage === "pre"
+            ? "POC privacy: preparing pre-receive envelope..."
+            : "POC privacy: preparing post-receive envelope...";
+    }
+
     function getSwapStatusMessage(
         modeValue: PrivacyWrapperMode,
         phase: "building" | "submitting" | "success",
@@ -249,6 +325,48 @@
     function withPrivacyModeSuffix(base: string): string {
         if (privacyWrapperMode === "public") return base;
         return `${base} (${getPrivacyWrapperLabel(privacyWrapperMode)} POC)`;
+    }
+
+    async function runPrivacyEnvelopeStageIfEnabled(
+        phase: PrivacyPhase,
+        stage: PrivacyEnvelopeStage,
+    ): Promise<void> {
+        const policy = getPrivacyPolicy(privacyWrapperMode);
+        const enabled = stage === "pre" ? policy.preEnabled : policy.postEnabled;
+
+        if (!enabled) {
+            discomboDebug.trace("privacy_stage_skipped", {
+                phase,
+                stage,
+                privacyWrapperMode,
+                policy: policy.descriptor,
+            });
+            return;
+        }
+
+        const message = withPrivacyModeSuffix(getPrivacyStageMessage(phase, stage));
+        setStatusMessageTracked(message, "privacy_stage_status", {
+            phase,
+            stage,
+            privacyWrapperMode,
+            policy: policy.descriptor,
+        });
+        discomboDebug.info("privacy_stage_started", {
+            phase,
+            stage,
+            privacyWrapperMode,
+            policy: policy.descriptor,
+        });
+
+        await tick();
+        await new Promise<void>((resolve) => setTimeout(resolve, 220));
+
+        discomboDebug.info("privacy_stage_completed", {
+            phase,
+            stage,
+            privacyWrapperMode,
+            policy: policy.descriptor,
+        });
     }
 
     function persistPrivacyWrapperMode(
@@ -289,18 +407,21 @@
         persistPrivacyWrapperMode(nextMode, reason);
     }
 
-    function logPrivacyEnvelopeContext(
-        phase: "swap" | "send" | "receive",
-    ): void {
+    function logPrivacyEnvelopeContext(phase: PrivacyPhase): void {
+        const policy = getPrivacyPolicy(privacyWrapperMode);
         discomboDebug.info("privacy_wrapper_context", {
             phase,
             privacyWrapperMode,
             summary: getPrivacyWrapperSummary(privacyWrapperMode, phase),
+            policy: policy.descriptor,
+            preEnabled: policy.preEnabled,
+            postEnabled: policy.postEnabled,
             isPocOnly: true,
         });
     }
 
     function getDebugSnapshot(): DiscombobulatorSnapshot {
+        const privacyPolicy = getPrivacyPolicy(privacyWrapperMode);
         return {
             appState,
             mode,
@@ -325,6 +446,9 @@
             turnstileFailed,
             isAuthenticated,
             privacyWrapperMode,
+            privacyPolicyDescriptor: privacyPolicy.descriptor,
+            privacyPolicyPreEnabled: privacyPolicy.preEnabled,
+            privacyPolicyPostEnabled: privacyPolicy.postEnabled,
             lowGpuMode,
             contractIdMasked: maskIdentifier(userState.contractId),
             keyIdMasked: maskIdentifier(userState.keyId),
@@ -434,11 +558,15 @@
         const destination = userState.contractId ?? "";
         const amount = receiveAmount.trim();
         const amountLabel = amount ? `${amount} ${receiveToken}` : receiveToken;
+        const policy = getPrivacyPolicy(privacyWrapperMode);
+        const privacyLabel = getPrivacyWrapperLabel(privacyWrapperMode);
 
         return [
             "The Discombobulator receive request",
             `Destination: ${destination}`,
             `Requested: ${amountLabel}`,
+            `Privacy Mode (POC): ${privacyLabel}`,
+            `Privacy Policy (POC): ${policy.descriptor}`,
             "Note: Requested amount is advisory (sender can send any amount).",
         ].join("\n");
     }
@@ -966,6 +1094,7 @@
         }
 
         setSwapStateTracked("awaiting_passkey", "swap_building_started");
+        await runPrivacyEnvelopeStageIfEnabled("swap", "pre");
         setStatusMessageTracked(
             getSwapStatusMessage(privacyWrapperMode, "building"),
             "swap_building_started",
@@ -1035,11 +1164,15 @@
             }
 
             txHash = sendResult.transactionHash ?? null;
+            await runPrivacyEnvelopeStageIfEnabled("swap", "post");
             setSwapStateTracked("confirmed", "swap_submission_succeeded");
             if (sendResult.softSuccessReason === "duplicate_nonce") {
                 setStatusMessageTracked(
-                    "Swap likely complete (duplicate nonce replay guarded).",
+                    withPrivacyModeSuffix(
+                        "Swap likely complete (duplicate nonce replay guarded).",
+                    ),
                     "swap_submission_soft_success",
+                    { privacyWrapperMode },
                 );
                 discomboDebug.warn("swap_flow_soft_success", {
                     reason: sendResult.softSuccessReason,
@@ -1111,6 +1244,7 @@
         }
 
         setSwapStateTracked("awaiting_passkey", "send_building_started");
+        await runPrivacyEnvelopeStageIfEnabled("send", "pre");
         setStatusMessageTracked(
             withPrivacyModeSuffix(`Sending ${sendToken}...`),
             "send_building_started",
@@ -1166,6 +1300,7 @@
             }
 
             txHash = sendResult.transactionHash ?? null;
+            await runPrivacyEnvelopeStageIfEnabled("send", "post");
             setSwapStateTracked("confirmed", "send_submission_succeeded");
             if (sendResult.softSuccessReason === "duplicate_nonce") {
                 setStatusMessageTracked(
@@ -1324,7 +1459,14 @@
 
     async function executeReceive(): Promise<void> {
         logPrivacyEnvelopeContext("receive");
+        await runPrivacyEnvelopeStageIfEnabled("receive", "pre");
         await copyReceiveRequest();
+        await runPrivacyEnvelopeStageIfEnabled("receive", "post");
+        setStatusMessageTracked(
+            withPrivacyModeSuffix("Receive request ready"),
+            "receive_request_ready",
+            { privacyWrapperMode },
+        );
     }
 </script>
 
@@ -1496,6 +1638,9 @@
                     </div>
                     <div class="mt-2 text-[9px] text-[#94a3b8]">
                         {getPrivacyWrapperSummary(privacyWrapperMode, mode)}
+                    </div>
+                    <div class="mt-1 text-[8px] text-[#7dd3fc]">
+                        {getPrivacyPolicyLabel(privacyWrapperMode)}
                     </div>
                     <div class="mt-1 text-[8px] text-[#fbbf24]">
                         Live in Labs: mode persists and is visible in swap/send/receive
