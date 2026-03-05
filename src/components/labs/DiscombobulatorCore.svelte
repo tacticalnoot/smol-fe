@@ -49,6 +49,15 @@
         type SppTraceStage,
         type SppTraceStageStatus,
     } from "../../utils/discombobulator-spp";
+    import {
+        evaluateAspPolicy,
+        executePrivacyStage,
+        exportPrivacyExecutionJson,
+        type AspPolicyReceipt,
+        type PrivacyExecutionArtifact,
+        type PrivacyEnvelopeStage as ExecutorPrivacyEnvelopeStage,
+        type PrivacyWrapperMode as ExecutorPrivacyWrapperMode,
+    } from "../../utils/discombobulator-privacy-executor";
     import KaleEmoji from "../ui/KaleEmoji.svelte";
     import { Turnstile } from "svelte-turnstile";
     import { Transaction, Networks } from "@stellar/stellar-sdk/minimal";
@@ -76,13 +85,9 @@
         | "confirmed"
         | "failed";
     type SwapDirection = "XLM_TO_KALE" | "KALE_TO_XLM";
-    type PrivacyWrapperMode =
-        | "public"
-        | "shield_before_swap"
-        | "shield_after_swap"
-        | "wrap_around_swap";
+    type PrivacyWrapperMode = ExecutorPrivacyWrapperMode;
     type PrivacyPhase = SppPhase;
-    type PrivacyEnvelopeStage = "pre" | "post";
+    type PrivacyEnvelopeStage = ExecutorPrivacyEnvelopeStage;
     type PrivacyPolicy = {
         descriptor: SppPolicyDescriptor;
         preEnabled: boolean;
@@ -124,6 +129,8 @@
     let discomboDebug: DiscombobulatorDebugger = noopDiscombobulatorDebugger;
     let sppTraceHistory = $state<SppIntentTrace[]>([]);
     let activeSppIntentId = $state<string | null>(null);
+    let privacyExecutionHistory = $state<PrivacyExecutionArtifact[]>([]);
+    let aspPolicyHistory = $state<AspPolicyReceipt[]>([]);
 
     // Provider Logic
 
@@ -218,38 +225,38 @@
     ): string {
         if (phase === "swap") {
             if (modeValue === "shield_before_swap") {
-                return "Research intent: a pre-swap envelope would be staged before the public swap.";
+                return "Pre-swap commitment and ASP receipts execute before the public swap.";
             }
             if (modeValue === "shield_after_swap") {
-                return "Research intent: a post-swap envelope would be staged after the public swap.";
+                return "Post-swap commitment and ASP receipts execute after the public swap.";
             }
             if (modeValue === "wrap_around_swap") {
-                return "Research intent: pre/post envelopes would be staged around the public swap.";
+                return "Pre/post commitments and ASP receipts execute around the public swap.";
             }
             return "Current flow is fully public swap semantics.";
         }
 
         if (phase === "send") {
             if (modeValue === "shield_before_swap") {
-                return "Research intent: a pre-send envelope would be staged before the public send.";
+                return "Pre-send commitment and ASP receipts execute before the public send.";
             }
             if (modeValue === "shield_after_swap") {
-                return "Research intent: a post-send envelope would be staged after the public send.";
+                return "Post-send commitment and ASP receipts execute after the public send.";
             }
             if (modeValue === "wrap_around_swap") {
-                return "Research intent: pre/post envelopes would be staged around the send lifecycle.";
+                return "Pre/post commitments and ASP receipts execute around the send lifecycle.";
             }
             return "Current flow is fully public send semantics.";
         }
 
         if (modeValue === "shield_before_swap") {
-            return "Research intent: a pre-receive envelope would be staged before funds are sent to you.";
+            return "Pre-receive commitment and ASP receipts execute before funds are sent to you.";
         }
         if (modeValue === "shield_after_swap") {
-            return "Research intent: a post-receive envelope would be staged after funds arrive.";
+            return "Post-receive commitment and ASP receipts execute after funds arrive.";
         }
         if (modeValue === "wrap_around_swap") {
-            return "Research intent: pre/post envelopes would be staged around the receive lifecycle.";
+            return "Pre/post commitments and ASP receipts execute around the receive lifecycle.";
         }
         return "Current flow is fully public receive-request semantics.";
     }
@@ -289,19 +296,19 @@
     function getPrivacyPolicyDisplayName(modeValue: PrivacyWrapperMode): string {
         const policy = getPrivacyPolicy(modeValue);
         if (policy.descriptor === "pre_envelope_research") {
-            return "pre-envelope intent";
+            return "pre-settlement commitment";
         }
         if (policy.descriptor === "post_envelope_research") {
-            return "post-envelope intent";
+            return "post-settlement commitment";
         }
         if (policy.descriptor === "pre_and_post_envelope_research") {
-            return "pre+post envelope intent";
+            return "pre+post settlement commitments";
         }
         return "public-only flow";
     }
 
     function getPrivacyPolicyLabel(modeValue: PrivacyWrapperMode): string {
-        return `Research policy: ${getPrivacyPolicyDisplayName(modeValue)}`;
+        return `SPP policy: ${getPrivacyPolicyDisplayName(modeValue)}`;
     }
 
     function getPrivacyStageMessage(
@@ -310,17 +317,17 @@
     ): string {
         if (phase === "swap") {
             return stage === "pre"
-                ? "Research envelope: staging pre-swap step..."
-                : "Research envelope: staging post-swap step...";
+                ? "SPP executor: creating pre-swap commitment..."
+                : "SPP executor: creating post-swap commitment...";
         }
         if (phase === "send") {
             return stage === "pre"
-                ? "Research envelope: staging pre-send step..."
-                : "Research envelope: staging post-send step...";
+                ? "SPP executor: creating pre-send commitment..."
+                : "SPP executor: creating post-send commitment...";
         }
         return stage === "pre"
-            ? "Research envelope: staging pre-receive step..."
-            : "Research envelope: staging post-receive step...";
+            ? "SPP executor: creating pre-receive commitment..."
+            : "SPP executor: creating post-receive commitment...";
     }
 
     function getSwapStatusMessage(
@@ -334,14 +341,14 @@
         }
 
         const label = getPrivacyWrapperLabel(modeValue);
-        if (phase === "building") return `Building swap (${label} research)...`;
-        if (phase === "submitting") return `Submitting swap (${label} research)...`;
-        return `Swap complete (${label} research)!`;
+        if (phase === "building") return `Building swap (${label} SPP)...`;
+        if (phase === "submitting") return `Submitting swap (${label} SPP)...`;
+        return `Swap complete (${label} SPP)!`;
     }
 
     function withPrivacyModeSuffix(base: string): string {
         if (privacyWrapperMode === "public") return base;
-        return `${base} (${getPrivacyWrapperLabel(privacyWrapperMode)} research)`;
+        return `${base} (${getPrivacyWrapperLabel(privacyWrapperMode)} SPP)`;
     }
 
     function toSppStage(stage: PrivacyEnvelopeStage): SppTraceStage {
@@ -393,18 +400,42 @@
     async function startSppIntent(
         phase: PrivacyPhase,
         payload: Record<string, unknown>,
-    ): Promise<SppIntentTrace> {
+    ): Promise<{ trace: SppIntentTrace; aspPolicyReceipt: AspPolicyReceipt }> {
         const policy = getPrivacyPolicy(privacyWrapperMode);
         const summary = summarizeIntentPayload(phase, payload);
+        const aspPolicyReceipt = await evaluateAspPolicy({
+            phase,
+            mode: privacyWrapperMode,
+            payload,
+            networkPassphrase: import.meta.env.PUBLIC_NETWORK_PASSPHRASE,
+            relayerMode: isDirectRelayer ? "DIRECT" : "PROXY",
+        });
+        aspPolicyHistory = [...aspPolicyHistory, aspPolicyReceipt].slice(-60);
         const trace = await createSppIntentTrace({
             phase,
             mode: privacyWrapperMode,
             policy: policy.descriptor,
             summary,
-            payload,
+            payload: {
+                ...payload,
+                aspPolicyReceiptId: aspPolicyReceipt.receiptId,
+                aspDecision: aspPolicyReceipt.decision,
+                aspAuditLevel: aspPolicyReceipt.auditLevel,
+            },
         });
         sppTraceHistory = [...sppTraceHistory, trace].slice(-40);
         activeSppIntentId = trace.intentId;
+        discomboDebug.info("privacy_policy_evaluated", {
+            intentId: trace.intentId,
+            phase,
+            mode: privacyWrapperMode,
+            policyReceiptId: aspPolicyReceipt.receiptId,
+            policyId: aspPolicyReceipt.policyId,
+            decision: aspPolicyReceipt.decision,
+            auditLevel: aspPolicyReceipt.auditLevel,
+            riskScore: aspPolicyReceipt.riskScore,
+            settlementMode: aspPolicyReceipt.settlementMode,
+        });
         discomboDebug.info("spp_intent_started", {
             intentId: trace.intentId,
             intentHash: trace.intentHash,
@@ -413,7 +444,10 @@
             policy: policy.descriptor,
             summary,
         });
-        return trace;
+        return {
+            trace,
+            aspPolicyReceipt,
+        };
     }
 
     function completeSppIntent(
@@ -454,9 +488,25 @@
         return exportSppTraceJson(sppTraceHistory);
     }
 
+    function getPrivacyArtifacts(limit = 25): PrivacyExecutionArtifact[] {
+        const safeLimit = Math.max(1, Math.floor(limit));
+        return [...privacyExecutionHistory].slice(-safeLimit);
+    }
+
+    function clearPrivacyArtifacts(): void {
+        privacyExecutionHistory = [];
+        aspPolicyHistory = [];
+    }
+
+    function exportPrivacyArtifacts(): string {
+        return exportPrivacyExecutionJson(aspPolicyHistory, privacyExecutionHistory);
+    }
+
     async function runPrivacyEnvelopeStageIfEnabled(
         phase: PrivacyPhase,
         stage: PrivacyEnvelopeStage,
+        payload: Record<string, unknown>,
+        aspPolicyReceipt: AspPolicyReceipt,
         intentId?: string,
     ): Promise<void> {
         const policy = getPrivacyPolicy(privacyWrapperMode);
@@ -475,6 +525,8 @@
                     phase,
                     mode: privacyWrapperMode,
                     policy: policy.descriptor,
+                    policyReceiptId: aspPolicyReceipt.receiptId,
+                    aspDecision: aspPolicyReceipt.decision,
                 });
             }
             return;
@@ -498,12 +550,38 @@
                 phase,
                 mode: privacyWrapperMode,
                 policy: policy.descriptor,
+                policyReceiptId: aspPolicyReceipt.receiptId,
+                aspDecision: aspPolicyReceipt.decision,
+                aspAuditLevel: aspPolicyReceipt.auditLevel,
             });
         }
 
         const startedAt = Date.now();
         await tick();
-        await new Promise<void>((resolve) => setTimeout(resolve, 220));
+        const artifact = intentId
+            ? await executePrivacyStage({
+                  phase,
+                  stage,
+                  mode: privacyWrapperMode,
+                  intentId,
+                  payload,
+                  policyReceipt: aspPolicyReceipt,
+              })
+            : null;
+        if (artifact) {
+            privacyExecutionHistory = [...privacyExecutionHistory, artifact].slice(-80);
+            discomboDebug.info("privacy_commitment_created", {
+                intentId,
+                phase,
+                stage,
+                commitmentId: artifact.commitment.commitmentId,
+                policyReceiptId: artifact.policyReceipt.receiptId,
+                decision: artifact.policyReceipt.decision,
+                disclosureHandle: artifact.disclosure.disclosureHandle,
+                algorithm: artifact.disclosure.algorithm,
+            });
+        }
+        await new Promise<void>((resolve) => setTimeout(resolve, 180));
         const durationMs = Date.now() - startedAt;
 
         discomboDebug.info("privacy_stage_completed", {
@@ -512,6 +590,7 @@
             privacyWrapperMode,
             policy: policy.descriptor,
             durationMs,
+            commitmentId: artifact?.commitment.commitmentId ?? null,
         });
         if (intentId) {
             addSppStageReceipt(
@@ -522,6 +601,12 @@
                     phase,
                     mode: privacyWrapperMode,
                     policy: policy.descriptor,
+                    policyReceiptId: aspPolicyReceipt.receiptId,
+                    aspDecision: aspPolicyReceipt.decision,
+                    aspAuditLevel: aspPolicyReceipt.auditLevel,
+                    commitmentId: artifact?.commitment.commitmentId ?? null,
+                    disclosureHandle: artifact?.disclosure.disclosureHandle ?? null,
+                    disclosureAlgorithm: artifact?.disclosure.algorithm ?? null,
                 },
                 durationMs,
             );
@@ -575,7 +660,8 @@
             policy: policy.descriptor,
             preEnabled: policy.preEnabled,
             postEnabled: policy.postEnabled,
-            isPocOnly: true,
+            settlementMode: "public",
+            executor: "mainnet_safe_commitment_executor",
         });
     }
 
@@ -584,6 +670,14 @@
         const lastSppTrace =
             sppTraceHistory.length > 0
                 ? sppTraceHistory[sppTraceHistory.length - 1]
+                : null;
+        const lastPrivacyArtifact =
+            privacyExecutionHistory.length > 0
+                ? privacyExecutionHistory[privacyExecutionHistory.length - 1]
+                : null;
+        const lastPolicyReceipt =
+            aspPolicyHistory.length > 0
+                ? aspPolicyHistory[aspPolicyHistory.length - 1]
                 : null;
         return {
             appState,
@@ -616,6 +710,12 @@
             sppActiveIntentId: activeSppIntentId ?? "",
             sppLastIntentId: lastSppTrace?.intentId ?? "",
             sppLastIntentStatus: lastSppTrace?.status ?? "",
+            privacyArtifactCount: privacyExecutionHistory.length,
+            privacyLastCommitmentId:
+                lastPrivacyArtifact?.commitment.commitmentId ?? "",
+            privacyLastPolicyDecision: lastPolicyReceipt?.decision ?? "",
+            privacyLastDisclosureHandle:
+                lastPrivacyArtifact?.disclosure.disclosureHandle ?? "",
             lowGpuMode,
             contractIdMasked: maskIdentifier(userState.contractId),
             keyIdMasked: maskIdentifier(userState.keyId),
@@ -732,8 +832,8 @@
             "The Discombobulator receive request",
             `Destination: ${destination}`,
             `Requested: ${amountLabel}`,
-            `Research Mode (Labs): ${privacyLabel}`,
-            `Research Policy: ${getPrivacyPolicyDisplayName(privacyWrapperMode)}`,
+            `SPP Mode (Labs): ${privacyLabel}`,
+            `SPP Policy: ${getPrivacyPolicyDisplayName(privacyWrapperMode)}`,
             `SPP Intent: ${effectiveIntentId}`,
             "Settlement: public on-chain in the current Labs build.",
             "Note: Requested amount is advisory (sender can send any amount).",
@@ -900,6 +1000,9 @@
             getSppTrace: getSppTrace,
             exportSppTrace: exportSppTrace,
             clearSppTrace: clearSppTrace,
+            getPrivacyArtifacts: getPrivacyArtifacts,
+            exportPrivacyArtifacts: exportPrivacyArtifacts,
+            clearPrivacyArtifacts: clearPrivacyArtifacts,
         });
 
         discomboDebug.info("component_mounted", {
@@ -1266,21 +1369,34 @@
         }
 
         let intentId: string | null = null;
-        const swapIntent = await startSppIntent("swap", {
+        let aspPolicyReceipt: AspPolicyReceipt | null = null;
+        const swapIntentPayload = {
             swapInToken,
             swapOutToken,
             amountIn: quote.amountIn,
             amountOut: quote.amountOut,
             tradeType: quote.tradeType,
             routeHops: quote.routePlan?.length ?? 0,
+        };
+        const swapIntent = await startSppIntent("swap", {
+            ...swapIntentPayload,
         });
-        intentId = swapIntent.intentId;
+        intentId = swapIntent.trace.intentId;
+        aspPolicyReceipt = swapIntent.aspPolicyReceipt;
 
         setSwapStateTracked("awaiting_passkey", "swap_building_started");
-        await runPrivacyEnvelopeStageIfEnabled("swap", "pre", intentId);
+        await runPrivacyEnvelopeStageIfEnabled(
+            "swap",
+            "pre",
+            swapIntentPayload,
+            aspPolicyReceipt,
+            intentId,
+        );
         addSppStageReceipt(intentId, "action", "started", {
             phase: "swap",
             operation: "swap_transaction",
+            policyReceiptId: aspPolicyReceipt.receiptId,
+            aspDecision: aspPolicyReceipt.decision,
         });
         setStatusMessageTracked(
             getSwapStatusMessage(privacyWrapperMode, "building"),
@@ -1351,12 +1467,20 @@
             }
 
             txHash = sendResult.transactionHash ?? null;
-            await runPrivacyEnvelopeStageIfEnabled("swap", "post", intentId);
+            await runPrivacyEnvelopeStageIfEnabled(
+                "swap",
+                "post",
+                swapIntentPayload,
+                aspPolicyReceipt,
+                intentId,
+            );
             addSppStageReceipt(intentId, "action", "completed", {
                 phase: "swap",
                 operation: "swap_transaction",
                 txHash: txHash ?? null,
                 softSuccessReason: sendResult.softSuccessReason ?? null,
+                policyReceiptId: aspPolicyReceipt.receiptId,
+                aspDecision: aspPolicyReceipt.decision,
             });
             completeSppIntent(intentId, "succeeded", {
                 txHash: txHash ?? null,
@@ -1405,6 +1529,7 @@
                     operation: "swap_transaction",
                     error: finalError,
                     userCancelled: isUserCancellation(e),
+                    policyReceiptId: aspPolicyReceipt?.receiptId ?? null,
                 });
                 completeSppIntent(intentId, "failed", { error: finalError });
             }
@@ -1450,21 +1575,34 @@
         }
 
         let intentId: string | null = null;
-        const sendIntent = await startSppIntent("send", {
+        let aspPolicyReceipt: AspPolicyReceipt | null = null;
+        const sendIntentPayload = {
             sendToken,
             amount: sendAmount,
             recipientMasked: maskIdentifier(recipient),
             amountInStroops: amountInStroops.toString(),
+        };
+        const sendIntent = await startSppIntent("send", {
+            ...sendIntentPayload,
         });
-        intentId = sendIntent.intentId;
+        intentId = sendIntent.trace.intentId;
+        aspPolicyReceipt = sendIntent.aspPolicyReceipt;
 
         setSwapStateTracked("awaiting_passkey", "send_building_started");
-        await runPrivacyEnvelopeStageIfEnabled("send", "pre", intentId);
+        await runPrivacyEnvelopeStageIfEnabled(
+            "send",
+            "pre",
+            sendIntentPayload,
+            aspPolicyReceipt,
+            intentId,
+        );
         addSppStageReceipt(intentId, "action", "started", {
             phase: "send",
             operation: "token_transfer",
             token: sendToken,
             amount: sendAmount,
+            policyReceiptId: aspPolicyReceipt.receiptId,
+            aspDecision: aspPolicyReceipt.decision,
         });
         setStatusMessageTracked(
             withPrivacyModeSuffix(`Sending ${sendToken}...`),
@@ -1521,7 +1659,13 @@
             }
 
             txHash = sendResult.transactionHash ?? null;
-            await runPrivacyEnvelopeStageIfEnabled("send", "post", intentId);
+            await runPrivacyEnvelopeStageIfEnabled(
+                "send",
+                "post",
+                sendIntentPayload,
+                aspPolicyReceipt,
+                intentId,
+            );
             addSppStageReceipt(intentId, "action", "completed", {
                 phase: "send",
                 operation: "token_transfer",
@@ -1529,6 +1673,8 @@
                 token: sendToken,
                 amount: sendAmount,
                 softSuccessReason: sendResult.softSuccessReason ?? null,
+                policyReceiptId: aspPolicyReceipt.receiptId,
+                aspDecision: aspPolicyReceipt.decision,
             });
             completeSppIntent(intentId, "succeeded", {
                 txHash: txHash ?? null,
@@ -1580,6 +1726,7 @@
                     amount: sendAmount,
                     error: finalError,
                     userCancelled: isUserCancellation(e),
+                    policyReceiptId: aspPolicyReceipt?.receiptId ?? null,
                 });
                 completeSppIntent(intentId, "failed", { error: finalError });
             }
@@ -1605,14 +1752,19 @@
         logPrivacyEnvelopeContext("receive");
 
         let intentId: string | null = null;
+        let aspPolicyReceipt: AspPolicyReceipt | null = null;
         try {
-            const receiveIntent = await startSppIntent("receive", {
+            const receiveIntentPayload = {
                 receiveToken,
                 requestedAmount: receiveAmount.trim() || null,
                 destinationMasked: maskIdentifier(userState.contractId),
                 operation,
+            };
+            const receiveIntent = await startSppIntent("receive", {
+                ...receiveIntentPayload,
             });
-            intentId = receiveIntent.intentId;
+            intentId = receiveIntent.trace.intentId;
+            aspPolicyReceipt = receiveIntent.aspPolicyReceipt;
 
             discomboDebug.info("receive_flow_started", {
                 operation,
@@ -1621,10 +1773,18 @@
                 privacyWrapperMode,
             });
 
-            await runPrivacyEnvelopeStageIfEnabled("receive", "pre", intentId);
+            await runPrivacyEnvelopeStageIfEnabled(
+                "receive",
+                "pre",
+                receiveIntentPayload,
+                aspPolicyReceipt,
+                intentId,
+            );
             addSppStageReceipt(intentId, "action", "started", {
                 phase: "receive",
                 operation,
+                policyReceiptId: aspPolicyReceipt.receiptId,
+                aspDecision: aspPolicyReceipt.decision,
             });
 
             const result = await runner(intentId);
@@ -1635,8 +1795,16 @@
             addSppStageReceipt(intentId, "action", "completed", {
                 phase: "receive",
                 operation,
+                policyReceiptId: aspPolicyReceipt.receiptId,
+                aspDecision: aspPolicyReceipt.decision,
             });
-            await runPrivacyEnvelopeStageIfEnabled("receive", "post", intentId);
+            await runPrivacyEnvelopeStageIfEnabled(
+                "receive",
+                "post",
+                receiveIntentPayload,
+                aspPolicyReceipt,
+                intentId,
+            );
             completeSppIntent(intentId, "succeeded");
 
             discomboDebug.info("receive_flow_succeeded", {
@@ -1651,6 +1819,7 @@
                     phase: "receive",
                     operation,
                     error: finalError,
+                    policyReceiptId: aspPolicyReceipt?.receiptId ?? null,
                 });
                 completeSppIntent(intentId, "failed", { error: finalError });
             }
@@ -1937,7 +2106,7 @@
                     <div
                         class="text-[8px] uppercase tracking-[0.2em] text-[#7dd3fc]"
                     >
-                        SPP Research Mode (Labs)
+                        SPP Mainnet Mode (Labs)
                     </div>
                     <div class="mt-2 grid grid-cols-2 gap-2">
                         <button
@@ -1993,15 +2162,16 @@
                         <div
                             class="text-[8px] uppercase tracking-[0.18em] text-[#fbbf24]"
                         >
-                            Compliance Guardrails
+                            SPP Scope
                         </div>
                         <div class="mt-1 text-[8px] text-[#fde68a]">
-                            Public settlement only. This mode changes research telemetry,
-                            status copy, and request metadata.
+                            Non-public modes now execute ASP policy checks, commitment
+                            receipts, and selective-disclosure artifacts around a public
+                            settlement.
                         </div>
                         <div class="mt-1 text-[8px] text-[#cbd5e1]">
-                            No shielded balances, private proofs, or anonymity guarantees
-                            are executed in this Labs build.
+                            Shielded balances and private value transfer are not executed
+                            in this Labs build.
                         </div>
                     </div>
                 </div>
@@ -2077,13 +2247,14 @@
                                 <div
                                     class="text-[8px] uppercase tracking-[0.18em] text-[#7dd3fc]"
                                 >
-                                    Research Mode for Send
+                                    SPP Mode for Send
                                 </div>
                                 <div class="mt-1 text-[8px] text-[#94a3b8]">
                                     {getPrivacyWrapperSummary(privacyWrapperMode, "send")}
                                 </div>
                                 <div class="mt-1 text-[8px] text-[#fbbf24]">
-                                    Public settlement still applies in the current Labs build.
+                                    Public settlement still applies; non-public modes add
+                                    policy and commitment receipts.
                                 </div>
                             </div>
 
@@ -2155,14 +2326,14 @@
                                 <div
                                     class="text-[8px] uppercase tracking-[0.18em] text-[#7dd3fc]"
                                 >
-                                    Research Mode for Receive
+                                    SPP Mode for Receive
                                 </div>
                                 <div class="mt-1 text-[8px] text-[#94a3b8]">
                                     {getPrivacyWrapperSummary(privacyWrapperMode, "receive")}
                                 </div>
                                 <div class="mt-1 text-[8px] text-[#fbbf24]">
-                                    Receive requests stay advisory and public in the current
-                                    Labs build.
+                                    Receive requests stay advisory and public; non-public
+                                    modes add policy and commitment receipts.
                                 </div>
                             </div>
 

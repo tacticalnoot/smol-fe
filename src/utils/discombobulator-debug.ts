@@ -37,6 +37,10 @@ export interface DiscombobulatorSnapshot {
     sppActiveIntentId: string;
     sppLastIntentId: string;
     sppLastIntentStatus: string;
+    privacyArtifactCount: number;
+    privacyLastCommitmentId: string;
+    privacyLastPolicyDecision: string;
+    privacyLastDisclosureHandle: string;
     lowGpuMode: boolean;
     contractIdMasked: string;
     keyIdMasked: string;
@@ -50,6 +54,9 @@ export interface DiscombobulatorConsoleHelpers {
     spp: (limit?: number) => unknown[];
     exportSpp: () => string;
     clearSpp: () => void;
+    privacy: (limit?: number) => unknown[];
+    exportPrivacy: () => string;
+    clearPrivacy: () => void;
     setVerbose: (nextValue: boolean) => void;
     enableVerbose: () => void;
     disableVerbose: () => void;
@@ -87,6 +94,9 @@ export interface DiscombobulatorDebugBootstrapOptions {
     getSppTrace?: (limit?: number) => unknown[];
     exportSppTrace?: () => string;
     clearSppTrace?: () => void;
+    getPrivacyArtifacts?: (limit?: number) => unknown[];
+    exportPrivacyArtifacts?: () => string;
+    clearPrivacyArtifacts?: () => void;
 }
 
 declare global {
@@ -135,6 +145,10 @@ export const noopDiscombobulatorDebugger: DiscombobulatorDebugger = {
         sppActiveIntentId: "",
         sppLastIntentId: "",
         sppLastIntentStatus: "",
+        privacyArtifactCount: 0,
+        privacyLastCommitmentId: "",
+        privacyLastPolicyDecision: "",
+        privacyLastDisclosureHandle: "",
         lowGpuMode: false,
         contractIdMasked: "",
         keyIdMasked: "",
@@ -274,6 +288,9 @@ export function bootstrapDiscombobulatorDebug(
             console.log("window.discomboDebug.spp(50)");
             console.log("window.discomboDebug.exportSpp()");
             console.log("window.discomboDebug.clearSpp()");
+            console.log("window.discomboDebug.privacy(25)");
+            console.log("window.discomboDebug.exportPrivacy()");
+            console.log("window.discomboDebug.clearPrivacy()");
             console.log("window.discomboDebug.mark('label', { any: 'context' })");
             console.log("window.discomboDebug.traceOn() / traceOff()");
             console.log("window.discomboDebug.setTraceLevel('TRACE' | 'DEBUG' | 'INFO' | 'WARN' | 'ERROR')");
@@ -318,6 +335,47 @@ export function bootstrapDiscombobulatorDebug(
         clearSpp: () => {
             options.clearSppTrace?.();
             emit("info", "spp_trace_cleared");
+        },
+        privacy: (limit = 25) => {
+            if (!options.getPrivacyArtifacts) {
+                console.warn(
+                    "[Discombobulator] Privacy artifact provider is not configured.",
+                );
+                return [];
+            }
+
+            const entries = options.getPrivacyArtifacts(limit);
+            if (Array.isArray(entries) && entries.length > 0) {
+                console.table(
+                    entries.map((entry: any) => ({
+                        commitmentId: entry.commitment?.commitmentId ?? "unknown",
+                        phase: entry.commitment?.phase ?? "unknown",
+                        stage: entry.commitment?.stage ?? "unknown",
+                        mode: entry.commitment?.mode ?? "unknown",
+                        decision:
+                            entry.policyReceipt?.decision ?? "unknown",
+                        auditLevel:
+                            entry.policyReceipt?.auditLevel ?? "unknown",
+                        disclosureHandle:
+                            entry.disclosure?.disclosureHandle ?? "",
+                        summary: entry.disclosure?.summary ?? "",
+                    })),
+                );
+            }
+            return entries;
+        },
+        exportPrivacy: () => {
+            if (!options.exportPrivacyArtifacts) {
+                console.warn(
+                    "[Discombobulator] Privacy export provider is not configured.",
+                );
+                return "";
+            }
+            return options.exportPrivacyArtifacts();
+        },
+        clearPrivacy: () => {
+            options.clearPrivacyArtifacts?.();
+            emit("info", "privacy_artifacts_cleared");
         },
         setVerbose: (nextValue: boolean) => {
             verbose = !!nextValue;
@@ -385,6 +443,9 @@ export function bootstrapDiscombobulatorDebug(
                     sppTraceCount: snapshot.sppTraceCount,
                     sppLastIntentId: snapshot.sppLastIntentId,
                     sppLastIntentStatus: snapshot.sppLastIntentStatus,
+                    privacyArtifactCount: snapshot.privacyArtifactCount,
+                    privacyLastCommitmentId: snapshot.privacyLastCommitmentId,
+                    privacyLastPolicyDecision: snapshot.privacyLastPolicyDecision,
                 },
             ]);
             if (options.getSppTrace) {
@@ -402,6 +463,24 @@ export function bootstrapDiscombobulatorDebug(
                                 ? entry.stageReceipts.length
                                 : 0,
                             txHash: entry.txHash || "",
+                        })),
+                    );
+                }
+            }
+            if (options.getPrivacyArtifacts) {
+                const recent = options.getPrivacyArtifacts(5);
+                if (recent.length > 0) {
+                    console.log("[Discombobulator] Recent privacy artifacts");
+                    console.table(
+                        recent.map((entry: any) => ({
+                            commitmentId: entry.commitment?.commitmentId ?? "",
+                            phase: entry.commitment?.phase ?? "",
+                            stage: entry.commitment?.stage ?? "",
+                            mode: entry.commitment?.mode ?? "",
+                            decision:
+                                entry.policyReceipt?.decision ?? "",
+                            disclosureHandle:
+                                entry.disclosure?.disclosureHandle ?? "",
                         })),
                     );
                 }
