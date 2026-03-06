@@ -185,7 +185,10 @@ function createRedactedPayload(
 
 function coerceNumericValue(value: unknown): number | null {
     if (typeof value === "number" && Number.isFinite(value)) return value;
-    if (typeof value === "bigint") return Number(value);
+    if (typeof value === "bigint") {
+        const coerced = Number(value);
+        return Number.isFinite(coerced) ? coerced : null;
+    }
     if (typeof value === "string") {
         const parsed = Number.parseFloat(value);
         return Number.isFinite(parsed) ? parsed : null;
@@ -345,6 +348,8 @@ export async function evaluateAspPolicy(
         reasons.push("proxy relayer path requires additional operational traceability");
     }
 
+    riskScore = Math.max(0, Math.min(100, riskScore));
+
     const auditLevel: AspAuditLevel = riskScore >= 28 ? "elevated" : "standard";
     const decision: AspPolicyDecision =
         input.mode === "public" && auditLevel === "standard"
@@ -442,9 +447,13 @@ export function updatePrivacySettlementBinding(
 ): PrivacyExecutionArtifact {
     const current = input.artifact.settlement;
     const txHashRaw = input.txHash ?? current.txHash;
+    const normalizedTxHash =
+        typeof txHashRaw === "string" ? txHashRaw.trim().toLowerCase() : txHashRaw;
     // Only accept a txHash that looks like a real 64-hex-char Stellar transaction hash.
     const txHash =
-        txHashRaw && /^[0-9a-fA-F]{64}$/.test(txHashRaw) ? txHashRaw : current.txHash;
+        normalizedTxHash && /^[0-9a-f]{64}$/.test(normalizedTxHash)
+            ? normalizedTxHash
+            : current.txHash;
     const softSuccessReason =
         input.softSuccessReason ?? current.softSuccessReason ?? null;
     const settlementState =
