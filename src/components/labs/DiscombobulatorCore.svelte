@@ -53,6 +53,7 @@
         evaluateAspPolicy,
         executePrivacyStage,
         exportPrivacyExecutionJson,
+        updatePrivacySettlementBinding,
         type AspPolicyReceipt,
         type PrivacyExecutionArtifact,
         type PrivacyEnvelopeStage as ExecutorPrivacyEnvelopeStage,
@@ -553,6 +554,37 @@
         return exportPrivacyExecutionJson(aspPolicyHistory, privacyExecutionHistory);
     }
 
+    function bindPrivacySettlementForIntent(
+        intentId: string,
+        patch: {
+            txHash?: string | null;
+            confirmedAt?: string | null;
+            softSuccessReason?: "duplicate_nonce" | null;
+            note?: string | null;
+        } = {},
+    ): void {
+        let updatedCount = 0;
+        privacyExecutionHistory = privacyExecutionHistory.map((artifact) => {
+            if (artifact.commitment.intentId !== intentId) {
+                return artifact;
+            }
+            updatedCount += 1;
+            return updatePrivacySettlementBinding({
+                artifact,
+                ...patch,
+            });
+        });
+
+        if (updatedCount > 0) {
+            discomboDebug.info("privacy_settlement_bound", {
+                intentId,
+                updatedArtifacts: updatedCount,
+                txHash: patch.txHash ?? null,
+                softSuccessReason: patch.softSuccessReason ?? null,
+            });
+        }
+    }
+
     async function runPrivacyEnvelopeStageIfEnabled(
         phase: PrivacyPhase,
         stage: PrivacyEnvelopeStage,
@@ -767,6 +799,10 @@
             privacyLastPolicyDecision: lastPolicyReceipt?.decision ?? "",
             privacyLastDisclosureHandle:
                 lastPrivacyArtifact?.disclosure.disclosureHandle ?? "",
+            privacyLastSettlementState:
+                lastPrivacyArtifact?.settlement.settlementState ?? "",
+            privacyLastSettlementTxHash:
+                lastPrivacyArtifact?.settlement.txHash ?? "",
             lowGpuMode,
             contractIdMasked: maskIdentifier(userState.contractId),
             keyIdMasked: maskIdentifier(userState.keyId),
@@ -993,6 +1029,14 @@
             algorithm: artifact?.disclosure.algorithm ?? null,
             keyFingerprint: artifact?.disclosure.keyFingerprint ?? null,
             summary: artifact?.disclosure.summary ?? null,
+            settlementKind: artifact?.settlement.settlementKind ?? null,
+            settlementState: artifact?.settlement.settlementState ?? null,
+            settlementOperation: artifact?.settlement.operation ?? null,
+            settlementTxHash: artifact?.settlement.txHash ?? null,
+            settlementConfirmedAt: artifact?.settlement.confirmedAt ?? null,
+            settlementNote: artifact?.settlement.note ?? null,
+            settlementSoftSuccessReason:
+                artifact?.settlement.softSuccessReason ?? null,
             checkedAt: policyReceipt?.checkedAt ?? null,
             createdAt:
                 artifact?.commitment.createdAt ??
@@ -1029,6 +1073,7 @@
                     reasons: policyReceipt?.reasons ?? [],
                     checkedAt: policyReceipt?.checkedAt ?? null,
                 },
+                settlement: artifact?.settlement ?? null,
                 artifact,
             },
             null,
@@ -1126,6 +1171,10 @@
             "Discombobulator SPP receipt",
             `Mode: ${getPrivacyWrapperLabel(privacyWrapperMode)}`,
             `Settlement: ${policyReceipt?.settlementMode ?? "public"}`,
+            `Settlement kind: ${artifact?.settlement.settlementKind ?? "n/a"}`,
+            `Settlement state: ${artifact?.settlement.settlementState ?? "n/a"}`,
+            `Settlement operation: ${artifact?.settlement.operation ?? "n/a"}`,
+            `Settlement tx hash: ${artifact?.settlement.txHash ?? "n/a"}`,
             `Policy ID: ${policyReceipt?.policyId ?? "n/a"}`,
             `Decision: ${policyReceipt?.decision ?? "n/a"}`,
             `Audit: ${policyReceipt?.auditLevel ?? "n/a"}`,
@@ -1137,12 +1186,17 @@
             `Summary: ${artifact?.disclosure.summary ?? "n/a"}`,
             `Checked: ${formatPrivacyTimestamp(policyReceipt?.checkedAt)}`,
             `Created: ${formatPrivacyTimestamp(artifact?.commitment.createdAt)}`,
+            `Confirmed: ${formatPrivacyTimestamp(artifact?.settlement.confirmedAt)}`,
         ];
 
         if (policyReceipt?.reasons?.length) {
             lines.push(
                 `Reasons: ${policyReceipt.reasons.join("; ")}`,
             );
+        }
+
+        if (artifact?.settlement.note) {
+            lines.push(`Settlement note: ${artifact.settlement.note}`);
         }
 
         return lines.join("\n");
@@ -2040,6 +2094,16 @@
                 aspPolicyReceipt,
                 intentId,
             );
+            bindPrivacySettlementForIntent(intentId, {
+                txHash: txHash ?? null,
+                confirmedAt: txHash ? new Date().toISOString() : null,
+                softSuccessReason: sendResult.softSuccessReason ?? null,
+                note: txHash
+                    ? "Bound to confirmed public mainnet swap transaction."
+                    : sendResult.softSuccessReason === "duplicate_nonce"
+                      ? "Duplicate nonce replay prevented; swap completion was treated as soft success without a confirmed tx hash."
+                      : null,
+            });
             addSppStageReceipt(intentId, "action", "completed", {
                 phase: "swap",
                 operation: "swap_transaction",
@@ -2232,6 +2296,16 @@
                 aspPolicyReceipt,
                 intentId,
             );
+            bindPrivacySettlementForIntent(intentId, {
+                txHash: txHash ?? null,
+                confirmedAt: txHash ? new Date().toISOString() : null,
+                softSuccessReason: sendResult.softSuccessReason ?? null,
+                note: txHash
+                    ? "Bound to confirmed public mainnet token transfer."
+                    : sendResult.softSuccessReason === "duplicate_nonce"
+                      ? "Duplicate nonce replay prevented; transfer completion was treated as soft success without a confirmed tx hash."
+                      : null,
+            });
             addSppStageReceipt(intentId, "action", "completed", {
                 phase: "send",
                 operation: "token_transfer",
@@ -2807,6 +2881,21 @@
                                         {latestAspPolicyReceipt?.settlementMode ?? "public"}
                                     </div>
                                 </div>
+                                <div>
+                                    <span class="text-[#64748b]">Settlement State</span>
+                                    <div class="mt-1 text-[#e2e8f0]">
+                                        {latestPrivacyArtifact?.settlement.settlementState ??
+                                            "n/a"}
+                                    </div>
+                                </div>
+                                <div>
+                                    <span class="text-[#64748b]">Tx Hash</span>
+                                    <div class="mt-1 text-[#e2e8f0] break-all">
+                                        {maskIdentifier(
+                                            latestPrivacyArtifact?.settlement.txHash,
+                                        ) || "n/a"}
+                                    </div>
+                                </div>
                             </div>
 
                             {#if latestPrivacyArtifact?.disclosure.summary}
@@ -2976,6 +3065,16 @@
                                                             artifact.commitment.createdAt,
                                                         )}
                                                     </div>
+                                                    <div>
+                                                        State:
+                                                        {artifact.settlement.settlementState}
+                                                    </div>
+                                                    <div>
+                                                        Tx:
+                                                        {maskIdentifier(
+                                                            artifact.settlement.txHash,
+                                                        ) || "n/a"}
+                                                    </div>
                                                 </div>
                                             </div>
                                         {/each}
@@ -3043,11 +3142,31 @@
                                             "digest-only"}
                                     </div>
                                 </div>
+                                <div>
+                                    <span class="text-[#64748b]">Settlement State</span>
+                                    <div class="mt-1 text-[#e2e8f0]">
+                                        {activePhaseArtifact?.settlement.settlementState ??
+                                            "n/a"}
+                                    </div>
+                                </div>
+                                <div>
+                                    <span class="text-[#64748b]">Tx Hash</span>
+                                    <div class="mt-1 break-all text-[#e2e8f0]">
+                                        {maskIdentifier(
+                                            activePhaseArtifact?.settlement.txHash,
+                                        ) || "n/a"}
+                                    </div>
+                                </div>
                             </div>
                             <div class="mt-2 text-[8px] text-[#94a3b8]">
                                 {activePhaseArtifact?.disclosure.summary ??
                                     `No ${activeReceiptPhase} artifact summary yet.`}
                             </div>
+                            {#if activePhaseArtifact?.settlement.note}
+                                <div class="mt-1 text-[8px] text-[#94a3b8]">
+                                    {activePhaseArtifact.settlement.note}
+                                </div>
+                            {/if}
                             {#if activePhaseArtifact}
                                 <div class="mt-2">
                                     <button
@@ -3199,7 +3318,22 @@
                                         latestCompletedActiveArtifact.policyReceipt.checkedAt,
                                     )}
                                 </div>
+                                <div>
+                                    State:
+                                    {latestCompletedActiveArtifact.settlement.settlementState}
+                                </div>
+                                <div>
+                                    Tx:
+                                    {maskIdentifier(
+                                        latestCompletedActiveArtifact.settlement.txHash,
+                                    ) || "n/a"}
+                                </div>
                             </div>
+                            {#if latestCompletedActiveArtifact.settlement.note}
+                                <div class="mt-2 text-[8px] text-[#99f6e4]">
+                                    {latestCompletedActiveArtifact.settlement.note}
+                                </div>
+                            {/if}
                             <div class="mt-2 grid grid-cols-2 gap-2">
                                 <button
                                     class="rounded-lg border border-[#134e4a] bg-[#022c22]/60 px-2 py-2 text-[8px] text-[#5eead4] transition-all hover:border-[#5eead4]/40 hover:bg-[#022c22]/90"

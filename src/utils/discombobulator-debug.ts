@@ -53,6 +53,8 @@ export interface DiscombobulatorSnapshot {
     privacyLastCommitmentId: string;
     privacyLastPolicyDecision: string;
     privacyLastDisclosureHandle: string;
+    privacyLastSettlementState: string;
+    privacyLastSettlementTxHash: string;
     lowGpuMode: boolean;
     contractIdMasked: string;
     keyIdMasked: string;
@@ -179,6 +181,8 @@ export const noopDiscombobulatorDebugger: DiscombobulatorDebugger = {
         privacyLastCommitmentId: "",
         privacyLastPolicyDecision: "",
         privacyLastDisclosureHandle: "",
+        privacyLastSettlementState: "",
+        privacyLastSettlementTxHash: "",
         lowGpuMode: false,
         contractIdMasked: "",
         keyIdMasked: "",
@@ -422,6 +426,9 @@ export function bootstrapDiscombobulatorDebug(
                             entry.policyReceipt?.auditLevel ?? "unknown",
                         disclosureHandle:
                             entry.disclosure?.disclosureHandle ?? "",
+                        settlementState:
+                            entry.settlement?.settlementState ?? "unknown",
+                        txHash: entry.settlement?.txHash ?? "",
                         algorithm: entry.disclosure?.algorithm ?? "",
                         summary: entry.disclosure?.summary ?? "",
                     })),
@@ -463,11 +470,13 @@ export function bootstrapDiscombobulatorDebug(
                     phase: receipt.phase ?? phase ?? "unknown",
                     mode: receipt.mode ?? "unknown",
                     settlement: receipt.settlementMode ?? "unknown",
+                    settlementState: receipt.settlementState ?? "unknown",
                     decision: receipt.decision ?? "unknown",
                     auditLevel: receipt.auditLevel ?? "unknown",
                     riskScore: receipt.riskScore ?? "unknown",
                     commitmentId: receipt.commitmentId ?? "",
                     disclosureHandle: receipt.disclosureHandle ?? "",
+                    txHash: receipt.settlementTxHash ?? "",
                     algorithm: receipt.algorithm ?? "",
                 },
             ]);
@@ -507,6 +516,8 @@ export function bootstrapDiscombobulatorDebug(
                     mode: artifact.commitment?.mode ?? "",
                     decision: artifact.policyReceipt?.decision ?? "",
                     disclosureHandle: artifact.disclosure?.disclosureHandle ?? "",
+                    settlementState: artifact.settlement?.settlementState ?? "",
+                    txHash: artifact.settlement?.txHash ?? "",
                     algorithm: artifact.disclosure?.algorithm ?? "",
                 },
             ]);
@@ -586,6 +597,10 @@ export function bootstrapDiscombobulatorDebug(
                     privacyLastPolicyDecision: snapshot.privacyLastPolicyDecision,
                     privacyLastDisclosureHandle:
                         snapshot.privacyLastDisclosureHandle,
+                    privacyLastSettlementState:
+                        snapshot.privacyLastSettlementState,
+                    privacyLastSettlementTxHash:
+                        snapshot.privacyLastSettlementTxHash,
                 },
             ]);
             if (options.getSppTrace) {
@@ -621,6 +636,9 @@ export function bootstrapDiscombobulatorDebug(
                                 entry.policyReceipt?.decision ?? "",
                             disclosureHandle:
                                 entry.disclosure?.disclosureHandle ?? "",
+                            settlementState:
+                                entry.settlement?.settlementState ?? "",
+                            txHash: entry.settlement?.txHash ?? "",
                         })),
                     );
                 }
@@ -638,6 +656,8 @@ export function bootstrapDiscombobulatorDebug(
                             auditLevel: receipt.auditLevel ?? "",
                             commitmentId: receipt.commitmentId ?? "",
                             disclosureHandle: receipt.disclosureHandle ?? "",
+                            settlementState: receipt.settlementState ?? "",
+                            txHash: receipt.settlementTxHash ?? "",
                         };
                     })
                     .filter(Boolean);

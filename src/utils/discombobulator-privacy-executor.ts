@@ -58,10 +58,30 @@ export interface PrivacyDisclosureArtifact {
     createdAt: string;
 }
 
+export type PrivacySettlementKind = "public_transaction" | "request_only";
+export type PrivacySettlementState =
+    | "pending"
+    | "confirmed"
+    | "request_only"
+    | "soft_success_unverified";
+
+export interface PrivacySettlementBinding {
+    settlementKind: PrivacySettlementKind;
+    settlementState: PrivacySettlementState;
+    networkPassphrase: string;
+    relayerMode: "DIRECT" | "PROXY";
+    operation: string;
+    txHash: string | null;
+    confirmedAt: string | null;
+    softSuccessReason: "duplicate_nonce" | null;
+    note: string | null;
+}
+
 export interface PrivacyExecutionArtifact {
     policyReceipt: AspPolicyReceipt;
     commitment: PrivacyCommitmentReceipt;
     disclosure: PrivacyDisclosureArtifact;
+    settlement: PrivacySettlementBinding;
 }
 
 export interface EvaluateAspPolicyInput {
@@ -79,6 +99,14 @@ export interface ExecutePrivacyStageInput {
     intentId: string;
     payload: Record<string, unknown>;
     policyReceipt: AspPolicyReceipt;
+}
+
+export interface UpdatePrivacySettlementInput {
+    artifact: PrivacyExecutionArtifact;
+    txHash?: string | null;
+    confirmedAt?: string | null;
+    softSuccessReason?: "duplicate_nonce" | null;
+    note?: string | null;
 }
 
 function toBase64(bytes: Uint8Array): string {
@@ -176,6 +204,50 @@ function summarizePayload(
         return `Send ${String(redactedPayload.sendToken ?? "?")} ${String(redactedPayload.amount ?? redactedPayload.sendAmount ?? "")}`.trim();
     }
     return `Receive ${String(redactedPayload.receiveToken ?? "?")} ${String(redactedPayload.requestedAmount ?? redactedPayload.receiveAmount ?? "")}`.trim();
+}
+
+function getDefaultSettlementOperation(
+    phase: SppPhase,
+    payload: Record<string, unknown>,
+): string {
+    if (phase === "swap") return "swap_transaction";
+    if (phase === "send") return "token_transfer";
+    if (typeof payload.operation === "string" && payload.operation.trim()) {
+        return payload.operation.trim();
+    }
+    return "receive_request";
+}
+
+function createDefaultSettlementBinding(
+    phase: SppPhase,
+    payload: Record<string, unknown>,
+    policyReceipt: AspPolicyReceipt,
+): PrivacySettlementBinding {
+    if (phase === "receive") {
+        return {
+            settlementKind: "request_only",
+            settlementState: "request_only",
+            networkPassphrase: policyReceipt.networkPassphrase,
+            relayerMode: policyReceipt.relayerMode,
+            operation: getDefaultSettlementOperation(phase, payload),
+            txHash: null,
+            confirmedAt: null,
+            softSuccessReason: null,
+            note: "No on-chain settlement is executed by the receive request flow.",
+        };
+    }
+
+    return {
+        settlementKind: "public_transaction",
+        settlementState: "pending",
+        networkPassphrase: policyReceipt.networkPassphrase,
+        relayerMode: policyReceipt.relayerMode,
+        operation: getDefaultSettlementOperation(phase, payload),
+        txHash: null,
+        confirmedAt: null,
+        softSuccessReason: null,
+        note: "Awaiting confirmed mainnet settlement binding.",
+    };
 }
 
 async function sealPayload(
@@ -354,6 +426,49 @@ export async function executePrivacyStage(
             redactedPayload,
             fullPayloadDigest,
             createdAt,
+        },
+        settlement: createDefaultSettlementBinding(
+            input.phase,
+            input.payload,
+            input.policyReceipt,
+        ),
+    };
+}
+
+export function updatePrivacySettlementBinding(
+    input: UpdatePrivacySettlementInput,
+): PrivacyExecutionArtifact {
+    const current = input.artifact.settlement;
+    const txHash = input.txHash ?? current.txHash;
+    const softSuccessReason =
+        input.softSuccessReason ?? current.softSuccessReason ?? null;
+    const settlementState =
+        txHash && txHash.length > 0
+            ? "confirmed"
+            : softSuccessReason === "duplicate_nonce"
+              ? "soft_success_unverified"
+              : current.settlementState;
+    const confirmedAt =
+        settlementState === "confirmed"
+            ? input.confirmedAt ?? current.confirmedAt ?? new Date().toISOString()
+            : current.confirmedAt;
+    const note =
+        input.note ??
+        (settlementState === "confirmed"
+            ? "Bound to confirmed public mainnet transaction."
+            : settlementState === "soft_success_unverified"
+              ? "Duplicate nonce replay prevented; settlement was not independently re-confirmed in this client flow."
+              : current.note);
+
+    return {
+        ...input.artifact,
+        settlement: {
+            ...current,
+            txHash,
+            confirmedAt,
+            softSuccessReason,
+            settlementState,
+            note,
         },
     };
 }
