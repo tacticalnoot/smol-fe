@@ -439,7 +439,10 @@ export function updatePrivacySettlementBinding(
     input: UpdatePrivacySettlementInput,
 ): PrivacyExecutionArtifact {
     const current = input.artifact.settlement;
-    const txHash = input.txHash ?? current.txHash;
+    const txHashRaw = input.txHash ?? current.txHash;
+    // Only accept a txHash that looks like a real 64-hex-char Stellar transaction hash.
+    const txHash =
+        txHashRaw && /^[0-9a-fA-F]{64}$/.test(txHashRaw) ? txHashRaw : current.txHash;
     const softSuccessReason =
         input.softSuccessReason ?? current.softSuccessReason ?? null;
     const settlementState =
