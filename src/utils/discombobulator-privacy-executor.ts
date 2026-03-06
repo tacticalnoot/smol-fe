@@ -259,6 +259,7 @@ async function sealPayload(
             !globalThis.crypto?.subtle ||
             typeof TextEncoder === "undefined"
         ) {
+            console.warn("[SPP] AES-GCM-256 unavailable (crypto.subtle missing) — falling back to digest-only. Payload is NOT encrypted.");
             return {
                 algorithm: "digest-only",
                 ciphertext: null,
@@ -291,7 +292,8 @@ async function sealPayload(
             iv: toBase64(iv),
             keyFingerprint,
         };
-    } catch {
+    } catch (err) {
+        console.warn("[SPP] AES-GCM-256 encryption failed — falling back to digest-only. Payload is NOT encrypted.", err);
         return {
             algorithm: "digest-only",
             ciphertext: null,
@@ -439,7 +441,10 @@ export function updatePrivacySettlementBinding(
     input: UpdatePrivacySettlementInput,
 ): PrivacyExecutionArtifact {
     const current = input.artifact.settlement;
-    const txHash = input.txHash ?? current.txHash;
+    const txHashRaw = input.txHash ?? current.txHash;
+    // Only accept a txHash that looks like a real 64-hex-char Stellar transaction hash.
+    const txHash =
+        txHashRaw && /^[0-9a-fA-F]{64}$/.test(txHashRaw) ? txHashRaw : current.txHash;
     const softSuccessReason =
         input.softSuccessReason ?? current.softSuccessReason ?? null;
     const settlementState =

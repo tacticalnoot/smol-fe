@@ -13,6 +13,17 @@ import {
 const SOROSWAP_API_URL = 'https://api.soroswap.finance';
 const SUPPORTED_PROTOCOLS = ['soroswap', 'aqua', 'phoenix'];
 
+// Allowlist of known mainnet token contract addresses.
+// Prevents forwarding arbitrary contract addresses to the Soroswap API.
+const ALLOWED_TOKEN_ADDRESSES = new Set([
+    // XLM SAC
+    import.meta.env.PUBLIC_XLM_SAC_ID || 'CAS3J7GYLGXMF6TDJBBYYSE3HQ6BBSMLNUQ34T6TZMYMW2EVH34XOWMA',
+    // KALE
+    import.meta.env.PUBLIC_KALE_SAC_ID || 'CB23WRDQWGSP6YPMY4UV5C4OW5CBTXKYN3XEATG7KJEZCXMJBYEHOUOV',
+    // USDC
+    'CCW67TSZV3SSS2HXMBQ5JFGCKJNXKZM7UQUWUZPUTHXSTZLEO7SJMI75',
+]);
+
 export async function POST({ request, locals }: APIContext) {
     const originError = enforceSameOrigin(request);
     if (originError) return originError;
@@ -52,6 +63,10 @@ export async function POST({ request, locals }: APIContext) {
 
         if (!tokenIn || !tokenOut || !amountIn) {
             return createErrorResponse('Missing required parameters', 400);
+        }
+
+        if (!ALLOWED_TOKEN_ADDRESSES.has(tokenIn) || !ALLOWED_TOKEN_ADDRESSES.has(tokenOut)) {
+            return createErrorResponse('Unsupported token address', 400);
         }
 
         if (!/^\d+$/.test(amountIn)) {
@@ -99,7 +114,9 @@ export async function POST({ request, locals }: APIContext) {
         if (!response.ok) {
             const errorText = await response.text();
             console.error('Soroswap quote failed:', response.status, errorText);
-            return new Response(JSON.stringify({ error: `Soroswap API error: ${errorText}` }), { status: response.status });
+            // Return a sanitized message — don't expose upstream API internals to the client.
+            const clientStatus = response.status >= 500 ? 502 : response.status;
+            return new Response(JSON.stringify({ error: 'Quote unavailable. Try again shortly.' }), { status: clientStatus });
         }
 
         const data = await response.json();
@@ -110,9 +127,6 @@ export async function POST({ request, locals }: APIContext) {
 
     } catch (error: any) {
         console.error('API Error:', error);
-        return new Response(JSON.stringify({
-            error: error.message || 'Internal Server Error',
-            details: error.toString()
-        }), { status: 500 });
+        return new Response(JSON.stringify({ error: 'Internal Server Error' }), { status: 500 });
     }
 }

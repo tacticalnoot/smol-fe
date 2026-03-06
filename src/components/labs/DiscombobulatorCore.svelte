@@ -3129,6 +3129,12 @@
             return;
         }
 
+        const useFallbackPool = turnstileFailed && !turnstileToken;
+        if (!turnstileToken && !useFallbackPool && !isDirectRelayer) {
+            poolStatusMessage = "Complete the verification check before submitting";
+            return;
+        }
+
         poolSubmitting = true;
         let submitted = 0;
         let failed = 0;
