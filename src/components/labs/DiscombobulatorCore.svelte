@@ -1175,6 +1175,8 @@
             `Settlement state: ${artifact?.settlement.settlementState ?? "n/a"}`,
             `Settlement operation: ${artifact?.settlement.operation ?? "n/a"}`,
             `Settlement tx hash: ${artifact?.settlement.txHash ?? "n/a"}`,
+            `Settlement network: ${artifact?.settlement.networkPassphrase ?? "n/a"}`,
+            `Settlement relayer: ${artifact?.settlement.relayerMode ?? "n/a"}`,
             `Policy ID: ${policyReceipt?.policyId ?? "n/a"}`,
             `Decision: ${policyReceipt?.decision ?? "n/a"}`,
             `Audit: ${policyReceipt?.auditLevel ?? "n/a"}`,
@@ -1204,6 +1206,145 @@
 
     function buildPrivacyReceiptText(): string {
         return buildPrivacyReceiptTextForContext();
+    }
+
+    function buildSettlementEvidenceJsonForContext({
+        phase,
+        intentId,
+    }: {
+        phase?: PrivacyPhase;
+        intentId?: string | null;
+    } = {}): string {
+        const artifact = getLatestPrivacyArtifactForContext({ phase, intentId });
+        if (!artifact) {
+            return JSON.stringify(
+                {
+                    generatedAt: new Date().toISOString(),
+                    error: "No settlement evidence available yet.",
+                },
+                null,
+                2,
+            );
+        }
+
+        return JSON.stringify(
+            {
+                generatedAt: new Date().toISOString(),
+                privacyWrapperMode,
+                phase: artifact.commitment.phase,
+                stage: artifact.commitment.stage,
+                receiptId: artifact.policyReceipt.receiptId,
+                policyId: artifact.policyReceipt.policyId,
+                decision: artifact.policyReceipt.decision,
+                auditLevel: artifact.policyReceipt.auditLevel,
+                commitmentId: artifact.commitment.commitmentId,
+                intentId: artifact.commitment.intentId,
+                disclosureHandle: artifact.disclosure.disclosureHandle,
+                settlement: artifact.settlement,
+            },
+            null,
+            2,
+        );
+    }
+
+    async function copySettlementTxHashForContext({
+        phase,
+        intentId,
+        successMessage = withPrivacyModeSuffix("Settlement tx hash copied"),
+    }: {
+        phase?: PrivacyPhase;
+        intentId?: string | null;
+        successMessage?: string;
+    } = {}): Promise<void> {
+        try {
+            const artifact = getLatestPrivacyArtifactForContext({ phase, intentId });
+            const txHash = artifact?.settlement.txHash?.trim();
+            if (!txHash) throw new Error("No confirmed tx hash available");
+            const copied = await copyTextToClipboard(txHash);
+            if (!copied) throw new Error("Clipboard unavailable");
+            setStatusMessageTracked(
+                successMessage,
+                "privacy_settlement_tx_hash_copied",
+                { privacyWrapperMode, phase: phase ?? null, txHash },
+            );
+        } catch (e) {
+            const errorMessage = e instanceof Error ? e.message : String(e);
+            discomboDebug.warn("privacy_settlement_tx_hash_copy_failed", {
+                error: errorMessage,
+            });
+            setStatusMessageTracked(
+                "Could not copy settlement tx hash",
+                "privacy_settlement_tx_hash_copy_failed",
+            );
+        }
+    }
+
+    async function copySettlementEvidenceJsonForContext({
+        phase,
+        intentId,
+        successMessage = withPrivacyModeSuffix("Settlement evidence copied"),
+    }: {
+        phase?: PrivacyPhase;
+        intentId?: string | null;
+        successMessage?: string;
+    } = {}): Promise<void> {
+        try {
+            const copied = await copyTextToClipboard(
+                buildSettlementEvidenceJsonForContext({ phase, intentId }),
+            );
+            if (!copied) throw new Error("Clipboard unavailable");
+            setStatusMessageTracked(
+                successMessage,
+                "privacy_settlement_evidence_copied",
+                { privacyWrapperMode, phase: phase ?? null },
+            );
+        } catch (e) {
+            const errorMessage = e instanceof Error ? e.message : String(e);
+            discomboDebug.warn("privacy_settlement_evidence_copy_failed", {
+                error: errorMessage,
+            });
+            setStatusMessageTracked(
+                "Could not copy settlement evidence",
+                "privacy_settlement_evidence_copy_failed",
+            );
+        }
+    }
+
+    function downloadSettlementEvidenceJsonForContext({
+        phase,
+        intentId,
+        filenamePrefix = "discombo-settlement-evidence",
+        successMessage = withPrivacyModeSuffix("Settlement evidence downloaded"),
+    }: {
+        phase?: PrivacyPhase;
+        intentId?: string | null;
+        filenamePrefix?: string;
+        successMessage?: string;
+    } = {}): void {
+        try {
+            const evidenceJson = buildSettlementEvidenceJsonForContext({ phase, intentId });
+            const blob = new Blob([evidenceJson], { type: "application/json" });
+            const url = URL.createObjectURL(blob);
+            const anchor = document.createElement("a");
+            anchor.href = url;
+            anchor.download = `${filenamePrefix}-${Date.now()}.json`;
+            anchor.click();
+            URL.revokeObjectURL(url);
+            setStatusMessageTracked(
+                successMessage,
+                "privacy_settlement_evidence_downloaded",
+                { privacyWrapperMode, phase: phase ?? null },
+            );
+        } catch (e) {
+            const errorMessage = e instanceof Error ? e.message : String(e);
+            discomboDebug.warn("privacy_settlement_evidence_download_failed", {
+                error: errorMessage,
+            });
+            setStatusMessageTracked(
+                "Could not download settlement evidence",
+                "privacy_settlement_evidence_download_failed",
+            );
+        }
     }
 
     async function copyPrivacyReceiptForContext({
@@ -2889,6 +3030,13 @@
                                     </div>
                                 </div>
                                 <div>
+                                    <span class="text-[#64748b]">Relayer</span>
+                                    <div class="mt-1 text-[#e2e8f0]">
+                                        {latestPrivacyArtifact?.settlement.relayerMode ??
+                                            "n/a"}
+                                    </div>
+                                </div>
+                                <div>
                                     <span class="text-[#64748b]">Tx Hash</span>
                                     <div class="mt-1 text-[#e2e8f0] break-all">
                                         {maskIdentifier(
@@ -2945,6 +3093,26 @@
                                     Download JSON
                                 </button>
                             </div>
+                            {#if latestPrivacyArtifact?.settlement.txHash}
+                                <div class="mt-2 grid grid-cols-2 gap-2">
+                                    <button
+                                        class="rounded-lg border border-[#1e293b] bg-[#0f172a]/50 px-2 py-2 text-[8px] text-[#5eead4] transition-all hover:border-[#5eead4]/40 hover:bg-[#0f172a]/80"
+                                        onclick={() => copySettlementTxHashForContext()}
+                                    >
+                                        Copy Tx Hash
+                                    </button>
+                                    <button
+                                        class="rounded-lg border border-[#1e293b] bg-[#0f172a]/50 px-2 py-2 text-[8px] text-[#5eead4] transition-all hover:border-[#5eead4]/40 hover:bg-[#0f172a]/80"
+                                        onclick={() =>
+                                            downloadSettlementEvidenceJsonForContext({
+                                                filenamePrefix:
+                                                    "discombo-latest-settlement-evidence",
+                                            })}
+                                    >
+                                        Download Settlement JSON
+                                    </button>
+                                </div>
+                            {/if}
                         {:else}
                             <div class="mt-2 text-[8px] text-[#94a3b8]">
                                 No SPP artifacts yet. Run a swap, send, or receive action to
@@ -3157,6 +3325,19 @@
                                         ) || "n/a"}
                                     </div>
                                 </div>
+                                <div>
+                                    <span class="text-[#64748b]">Relayer</span>
+                                    <div class="mt-1 text-[#e2e8f0]">
+                                        {activePhaseArtifact?.settlement.relayerMode ?? "n/a"}
+                                    </div>
+                                </div>
+                                <div>
+                                    <span class="text-[#64748b]">Network</span>
+                                    <div class="mt-1 text-[#e2e8f0] break-all">
+                                        {activePhaseArtifact?.settlement.networkPassphrase ??
+                                            "n/a"}
+                                    </div>
+                                </div>
                             </div>
                             <div class="mt-2 text-[8px] text-[#94a3b8]">
                                 {activePhaseArtifact?.disclosure.summary ??
@@ -3249,6 +3430,34 @@
                                     Download Receipt JSON
                                 </button>
                             </div>
+                            {#if activePhaseArtifact?.settlement.txHash}
+                                <div class="mt-2 grid grid-cols-2 gap-2">
+                                    <button
+                                        class="rounded-lg border border-[#1e293b] bg-[#0f172a]/50 px-2 py-2 text-[8px] text-[#5eead4] transition-all hover:border-[#5eead4]/40 hover:bg-[#0f172a]/80"
+                                        onclick={() =>
+                                            copySettlementTxHashForContext({
+                                                phase: activeReceiptPhase,
+                                                successMessage: withPrivacyModeSuffix(
+                                                    `${getPhaseLabel(activeReceiptPhase)} tx hash copied`,
+                                                ),
+                                            })}
+                                    >
+                                        Copy Tx Hash
+                                    </button>
+                                    <button
+                                        class="rounded-lg border border-[#1e293b] bg-[#0f172a]/50 px-2 py-2 text-[8px] text-[#5eead4] transition-all hover:border-[#5eead4]/40 hover:bg-[#0f172a]/80"
+                                        onclick={() =>
+                                            copySettlementEvidenceJsonForContext({
+                                                phase: activeReceiptPhase,
+                                                successMessage: withPrivacyModeSuffix(
+                                                    `${getPhaseLabel(activeReceiptPhase)} settlement evidence copied`,
+                                                ),
+                                            })}
+                                    >
+                                        Copy Settlement JSON
+                                    </button>
+                                </div>
+                            {/if}
                             {#if activePhaseArtifact}
                                 <div class="mt-2 grid grid-cols-2 gap-2">
                                     <button
@@ -3328,6 +3537,14 @@
                                         latestCompletedActiveArtifact.settlement.txHash,
                                     ) || "n/a"}
                                 </div>
+                                <div>
+                                    Relayer:
+                                    {latestCompletedActiveArtifact.settlement.relayerMode}
+                                </div>
+                                <div>
+                                    Network:
+                                    {latestCompletedActiveArtifact.settlement.networkPassphrase}
+                                </div>
                             </div>
                             {#if latestCompletedActiveArtifact.settlement.note}
                                 <div class="mt-2 text-[8px] text-[#99f6e4]">
@@ -3367,6 +3584,41 @@
                                     Download Result JSON
                                 </button>
                             </div>
+                            {#if latestCompletedActiveArtifact.settlement.txHash}
+                                <div class="mt-2 grid grid-cols-2 gap-2">
+                                    <button
+                                        class="rounded-lg border border-[#134e4a] bg-[#022c22]/60 px-2 py-2 text-[8px] text-[#5eead4] transition-all hover:border-[#5eead4]/40 hover:bg-[#022c22]/90"
+                                        onclick={() =>
+                                            copySettlementTxHashForContext({
+                                                phase:
+                                                    latestCompletedActiveArtifact.commitment.phase,
+                                                intentId:
+                                                    latestCompletedActiveArtifact.commitment.intentId,
+                                                successMessage: withPrivacyModeSuffix(
+                                                    "Result tx hash copied",
+                                                ),
+                                            })}
+                                    >
+                                        Copy Result Tx
+                                    </button>
+                                    <button
+                                        class="rounded-lg border border-[#134e4a] bg-[#022c22]/60 px-2 py-2 text-[8px] text-[#5eead4] transition-all hover:border-[#5eead4]/40 hover:bg-[#022c22]/90"
+                                        onclick={() =>
+                                            downloadSettlementEvidenceJsonForContext({
+                                                phase:
+                                                    latestCompletedActiveArtifact.commitment.phase,
+                                                intentId:
+                                                    latestCompletedActiveArtifact.commitment.intentId,
+                                                filenamePrefix: `discombo-${latestCompletedActiveArtifact.commitment.phase}-settlement`,
+                                                successMessage: withPrivacyModeSuffix(
+                                                    "Result settlement evidence downloaded",
+                                                ),
+                                            })}
+                                    >
+                                        Download Settlement
+                                    </button>
+                                </div>
+                            {/if}
                         </div>
                     {/if}
 
