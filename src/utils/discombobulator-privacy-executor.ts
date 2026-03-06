@@ -259,6 +259,7 @@ async function sealPayload(
             !globalThis.crypto?.subtle ||
             typeof TextEncoder === "undefined"
         ) {
+            console.warn("[SPP] AES-GCM-256 unavailable (crypto.subtle missing) — falling back to digest-only. Payload is NOT encrypted.");
             return {
                 algorithm: "digest-only",
                 ciphertext: null,
@@ -291,7 +292,8 @@ async function sealPayload(
             iv: toBase64(iv),
             keyFingerprint,
         };
-    } catch {
+    } catch (err) {
+        console.warn("[SPP] AES-GCM-256 encryption failed — falling back to digest-only. Payload is NOT encrypted.", err);
         return {
             algorithm: "digest-only",
             ciphertext: null,

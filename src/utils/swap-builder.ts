@@ -76,13 +76,12 @@ export async function buildSwapTransactionForCAddress(
     quote: QuoteResponse,
     fromAddress: string
 ): Promise<string> {
-    // AI DEBUG: Full quote structure for diagnosis
     console.log("[SwapBuilder] Starting buildSwapTransactionForCAddress (Router Mode)", {
         quoteAmountIn: quote.amountIn,
         quoteAmountOut: quote.amountOut,
         tradeType: quote.tradeType,
         platform: quote.platform,
-        fromAddress,
+        from: `${fromAddress.slice(0, 4)}…${fromAddress.slice(-4)}`,
         routerContract: ROUTER_CONTRACT,
         hasRawTrade: !!quote.rawTrade,
     });
@@ -161,7 +160,7 @@ export async function buildSwapTransactionForCAddress(
         amount1,
         amount2,
         path,
-        to: fromAddress,
+        to: `${fromAddress.slice(0, 4)}…${fromAddress.slice(-4)}`,
         deadline: deadline.toString()
     });
 
