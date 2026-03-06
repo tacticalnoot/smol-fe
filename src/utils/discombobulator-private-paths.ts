@@ -142,9 +142,9 @@ export async function getPrivateSendQuote(
 
     const amountOutMin =
         rawTrade?.amountOutMin ??
-        String(
-            BigInt(quote.otherAmountThreshold || quote.amountOut),
-        );
+        (quote.otherAmountThreshold && quote.otherAmountThreshold !== "0"
+            ? String(BigInt(quote.otherAmountThreshold))
+            : String(BigInt(quote.amountOut)));
 
     return {
         tokenInAddress,

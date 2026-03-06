@@ -32,6 +32,7 @@
         signSendAndVerify,
         isUserCancellation,
     } from "../../utils/discombobulator-transaction-helpers";
+    import { validateAddress } from "../../utils/transaction-validation";
     import {
         bootstrapDiscombobulatorDebug,
         noopDiscombobulatorDebugger,
@@ -2489,7 +2490,17 @@
             return;
         }
 
-        const amountInStroops = BigInt(Math.floor(amountNum * 10_000_000));
+        try {
+            validateAddress(recipient, "Recipient");
+        } catch {
+            setStatusMessageTracked(
+                "Invalid recipient address (must be a valid G… or C… Stellar address)",
+                "send_recipient_invalid",
+            );
+            return;
+        }
+
+        const amountInStroops = BigInt(toStroops(sendAmount));
         const useFallback = turnstileFailed && !turnstileToken;
         if (!turnstileToken && !useFallback && !isDirectRelayer) {
             setStatusMessageTracked(
@@ -2556,6 +2567,15 @@
             const usePrivateRoute =
                 privacyWrapperMode !== "public" &&
                 isCAddress(userState.contractId);
+
+            if (privacyWrapperMode !== "public" && !isCAddress(userState.contractId)) {
+                // G-address wallets cannot use DEX-routed private send — warn the user.
+                setStatusMessageTracked(
+                    "Private send requires a smart wallet (C… address). Your G… address will send publicly.",
+                    "send_g_address_private_warn",
+                );
+                // Still fall through to direct transfer below (usePrivateRoute = false).
+            }
 
             if (usePrivateRoute) {
                 // --- Private Send: route through DEX so output goes to recipient ---
@@ -3049,11 +3069,18 @@
             return;
         }
 
+        try {
+            validateAddress(recipient, "Recipient");
+        } catch {
+            poolStatusMessage = "Invalid recipient address (must be a valid G… or C… Stellar address)";
+            return;
+        }
+
         poolStatusMessage = "Creating pool commitment...";
         const addedAt = new Date().toISOString();
 
         // Create SPP intent and commitment receipt (pre-committed before settlement)
-        const amountInStroops = BigInt(Math.floor(amount * 10_000_000));
+        const amountInStroops = BigInt(toStroops(poolSendAmount));
         const payload = {
             sendToken: poolSendToken,
             amount: poolSendAmount,
