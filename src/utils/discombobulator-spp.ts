@@ -46,6 +46,10 @@ function isPlainObject(value: unknown): value is Record<string, unknown> {
 }
 
 function canonicalize(value: unknown): unknown {
+    if (typeof value === "bigint") {
+        return { __sppType: "bigint", value: value.toString() };
+    }
+
     if (Array.isArray(value)) {
         return value.map((item) => canonicalize(item));
     }

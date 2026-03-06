@@ -114,10 +114,28 @@ export function getPrivateRouteLabel(sendToken: PrivateRouteTokenSymbol): string
 // Quote
 // ---------------------------------------------------------------------------
 
+function assertPositiveAmount(amountStroops: bigint): void {
+    if (amountStroops <= 0n) {
+        throw new Error("Private send amount must be greater than zero.");
+    }
+}
+
+function assertValidAddress(address: string, fieldName: string): void {
+    try {
+        Address.fromString(address);
+    } catch {
+        throw new Error(`Invalid ${fieldName} address supplied for private routing.`);
+    }
+}
+
 export async function getPrivateSendQuote(
     params: PrivateSendQuoteParams,
 ): Promise<PrivateSendQuote> {
     const { sendToken, amountStroops, slippageBps = 300 } = params;
+
+    assertPositiveAmount(amountStroops);
+    assertValidAddress(params.recipientAddress, "recipient");
+    assertValidAddress(params.fromAddress, "sender");
 
     const tokenInAddress = TOKENS[sendToken];
     const { tokenOutAddress, tokenOutSymbol } = getPrivateRouteOut(sendToken);
@@ -271,5 +289,6 @@ export function getPoolDepthLabel(entries: PrivatePoolEntry[]): string {
 }
 
 export function isPoolReadyToSubmit(entries: PrivatePoolEntry[]): boolean {
-    return entries.some((e) => e.status === "queued");
+    const queuedEntries = entries.filter((e) => e.status === "queued").length;
+    return queuedEntries >= 2;
 }
