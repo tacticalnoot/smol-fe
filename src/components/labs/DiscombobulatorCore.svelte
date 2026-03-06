@@ -75,6 +75,11 @@
         type PrivatePoolEntry,
         type PrivateRouteTokenSymbol,
     } from "../../utils/discombobulator-private-paths";
+    import {
+        generateZkEligibilityProof,
+        summarizeZkEligibility,
+        type ZkEligibilityAttachment,
+    } from "../../utils/discombobulator-zk-eligibility";
     import KaleEmoji from "../ui/KaleEmoji.svelte";
     import { Turnstile } from "svelte-turnstile";
     import { Transaction, Networks } from "@stellar/stellar-sdk/minimal";
@@ -391,7 +396,7 @@
         if (policy.descriptor === "pre_and_post_envelope_research") {
             return "pre+post settlement commitments";
         }
-        return "public-only flow";
+        return "public settlement (no envelopes)";
     }
 
     function getPrivacyPolicyLabel(modeValue: PrivacyWrapperMode): string {
@@ -686,6 +691,46 @@
                   policyReceipt: aspPolicyReceipt,
               })
             : null;
+
+        // Generate ZK balance eligibility proof during pre-envelope stage.
+        // Proves balance >= operation amount without revealing actual balance.
+        if (artifact && stage === "pre" && (phase === "swap" || phase === "send")) {
+            try {
+                const operationToken = phase === "swap"
+                    ? String(payload.swapInToken ?? "XLM")
+                    : String(payload.sendToken ?? "XLM");
+                const operationAmountRaw =
+                    payload.amountIn ?? payload.amountInStroops ?? payload.amount;
+                const operationStroops = operationAmountRaw
+                    ? BigInt(String(operationAmountRaw).replace(/[^0-9]/g, "") || "0")
+                    : 0n;
+                const currentBalance = getTokenBalance(operationToken as TokenSymbol);
+
+                if (currentBalance !== null && operationStroops > 0n && userState.contractId) {
+                    setStatusMessageTracked(
+                        withPrivacyModeSuffix("Generating ZK eligibility proof..."),
+                        "zk_eligibility_started",
+                        { phase, tokenSymbol: operationToken },
+                    );
+                    const zkProof = await generateZkEligibilityProof(
+                        currentBalance,
+                        operationStroops,
+                        operationToken,
+                        userState.contractId,
+                    );
+                    artifact.zkEligibility = zkProof;
+                    discomboDebug.info("zk_eligibility_completed", summarizeZkEligibility(zkProof));
+                }
+            } catch (zkErr) {
+                discomboDebug.warn("zk_eligibility_failed", {
+                    error: zkErr instanceof Error ? zkErr.message : String(zkErr),
+                    phase,
+                    stage,
+                });
+                // Non-fatal: ZK proof is an enhancement, not a gate
+            }
+        }
+
         if (artifact) {
             privacyExecutionHistory = [...privacyExecutionHistory, artifact].slice(-80);
             discomboDebug.info("privacy_commitment_created", {
@@ -697,6 +742,7 @@
                 decision: artifact.policyReceipt.decision,
                 disclosureHandle: artifact.disclosure.disclosureHandle,
                 algorithm: artifact.disclosure.algorithm,
+                zkEligibility: artifact.zkEligibility?.available ? "proven" : artifact.zkEligibility ? "skipped" : "n/a",
             });
         }
         await new Promise<void>((resolve) => setTimeout(resolve, 180));
@@ -839,6 +885,16 @@
                 lastPrivacyArtifact?.settlement.settlementState ?? "",
             privacyLastSettlementTxHash:
                 lastPrivacyArtifact?.settlement.txHash ?? "",
+            zkEligibilityStatus: lastPrivacyArtifact?.zkEligibility?.available === true
+                ? "proven"
+                : lastPrivacyArtifact?.zkEligibility?.available === false
+                  ? "skipped"
+                  : "n/a",
+            zkEligibilityLocallyVerified: lastPrivacyArtifact?.zkEligibility?.available === true
+                ? lastPrivacyArtifact.zkEligibility.locallyVerified
+                : null,
+            zkEligibilityThreshold: lastPrivacyArtifact?.zkEligibility?.threshold ?? "",
+            zkEligibilityDurationMs: lastPrivacyArtifact?.zkEligibility?.durationMs ?? null,
             lowGpuMode,
             contractIdMasked: maskIdentifier(userState.contractId),
             keyIdMasked: maskIdentifier(userState.keyId),
@@ -3207,11 +3263,18 @@
                         confirmedAt: sendResult.transactionHash ? new Date().toISOString() : null,
                         softSuccessReason: sendResult.softSuccessReason ?? null,
                     });
+                    // Look up the correct ASP policy receipt for this entry's intent
+                    // (not the latest one, which may belong to a different entry).
+                    const entryReceiptId = String(trace.payload.aspPolicyReceiptId ?? "");
+                    const entryPolicyReceipt =
+                        aspPolicyHistory.find((r) => r.receiptId === entryReceiptId) ??
+                        getLatestPrivacyArtifactForContext({ phase: "send", intentId: entry.intentId })?.policyReceipt ??
+                        aspPolicyHistory[aspPolicyHistory.length - 1]!;
                     await runPrivacyEnvelopeStageIfEnabled(
                         "send",
                         "post",
                         trace.payload as Record<string, unknown>,
-                        aspPolicyHistory[aspPolicyHistory.length - 1]!,
+                        entryPolicyReceipt,
                         entry.intentId,
                     );
                     completeSppIntent(entry.intentId, "succeeded", {
@@ -3748,6 +3811,16 @@
                                                             artifact.settlement.txHash,
                                                         ) || "n/a"}
                                                     </div>
+                                                    <div>
+                                                        ZK:
+                                                        {#if artifact.zkEligibility?.available === true}
+                                                            <span class="text-[#5eead4]">proven</span>
+                                                        {:else if artifact.zkEligibility?.available === false}
+                                                            <span class="text-[#fbbf24]">skipped</span>
+                                                        {:else}
+                                                            n/a
+                                                        {/if}
+                                                    </div>
                                                 </div>
                                             </div>
                                         {/each}
@@ -3860,6 +3933,29 @@
                                             "n/a"}
                                     </div>
                                 </div>
+                                <div>
+                                    <span class="text-[#64748b]">ZK Eligibility</span>
+                                    <div class="mt-1 text-[#e2e8f0]">
+                                        {#if activePhaseArtifact?.zkEligibility?.available === true}
+                                            <span class="text-[#5eead4]">proven</span>
+                                            {#if activePhaseArtifact.zkEligibility.locallyVerified}
+                                                <span class="text-[#22c55e]">(verified)</span>
+                                            {/if}
+                                        {:else if activePhaseArtifact?.zkEligibility?.available === false}
+                                            <span class="text-[#fbbf24]">skipped</span>
+                                        {:else}
+                                            n/a
+                                        {/if}
+                                    </div>
+                                </div>
+                                {#if activePhaseArtifact?.zkEligibility}
+                                <div>
+                                    <span class="text-[#64748b]">ZK Threshold</span>
+                                    <div class="mt-1 text-[#e2e8f0]">
+                                        {activePhaseArtifact.zkEligibility.threshold} stroops
+                                    </div>
+                                </div>
+                                {/if}
                             </div>
                             <div class="mt-2 text-[8px] text-[#94a3b8]">
                                 {activePhaseArtifact?.disclosure.summary ??

@@ -5,18 +5,35 @@ status_color: ORANGE
 readiness_score: 68
 risk_level: HIGH
 blast_radius: LABS_ONLY
-env: TESTNET
+env: MAINNET
 feature_flag: "labs.the_discombobulator.enabled"
-last_reviewed: "2026-03-04"
+last_reviewed: "2026-03-06"
 dependencies:
   - "soroswap-router-sdk"
+  - "@stellar/stellar-sdk"
+  - "passkey-kit"
 links:
   spec: ""
   pr: ""
   docs: []
 definition_of_done:
-  - "Quote fetching"
-  - "Swap execution"
+  - "Quote fetching (EXACT_IN and EXACT_OUT via Soroswap)"
+  - "Swap execution (G-address and C-address paths)"
+  - "Send execution (direct transfer and DEX-routed private send)"
+  - "Receive request generation (standard and protected/encrypted)"
+  - "Receive watch (balance polling for fulfillment detection)"
+  - "Pool mode (commitment-gated batch submission via private paths)"
+  - "SPP intent tracing (create, stage receipts, finalize)"
+  - "ASP policy evaluation (risk scoring, audit level, decision)"
+  - "Privacy envelope execution (pre/post commitment, AES-GCM-256 sealing)"
+  - "Settlement binding (tx hash confirmation, soft-success handling)"
+  - "All four privacy wrapper modes (public, shield_before, shield_after, wrap_around)"
+  - "Receipt and evidence export (copy, download, JSON)"
+  - "Debug console helpers (window.discomboDebug)"
+  - "Passkey authentication and wallet connection"
+  - "Turnstile verification (with direct relayer bypass)"
 notes: |
-  Experimental Proof of Nethermind Private Payments (POC).
-  Isolated clone of Swapper for Labs research only.
+  Stellar Private Payments (SPP) proof-of-concept on mainnet.
+  Implements commitment-based privacy envelopes around public settlement
+  with ASP policy evaluation, AES-GCM-256 disclosure sealing, and
+  DEX-routed private send paths via Soroswap.
