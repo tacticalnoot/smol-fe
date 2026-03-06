@@ -12,28 +12,127 @@
     } from "../../stores/background.svelte.ts";
     import { preferences } from "../../stores/preferences.svelte.ts";
 
+    type BackgroundEnhancementStage = 0 | 1 | 2;
+
     // Derive effective animations from function
     const effectiveAnimationsEnabled = $derived(
         getEffectiveAnimationsEnabled(),
+    );
+    const isBaseAnimated = $derived(
+        effectiveAnimationsEnabled && enhancementStage >= 1,
+    );
+    const isDecorativeAnimated = $derived(
+        effectiveAnimationsEnabled && enhancementStage >= 2,
     );
 
     // PERFORMANCE FIX: Generate animation elements ONCE on component init
     // Using $state instead of $derived prevents re-generation on every render
     // Also significantly reduced counts to prevent GPU stress (was 122 elements, now max 24)
     const noteChars = ["♩", "♪", "♫", "♬", "♭", "♯"];
+    const MAX_SPARKLE_COUNT = 6;
+    const MAX_NOTE_COUNT = 4;
+    const MAX_STAR_COUNT = 10;
+    const MAX_DROP_COUNT = 8;
 
-    // Sparkles - reduced from 20 to 6 (fast: 8 to 3)
-    const sparkleCount = preferences.renderMode === "fast" ? 3 : 6;
-    const sparkles = Array.from({ length: sparkleCount }).map(() => ({
+    let enhancementStage = $state<BackgroundEnhancementStage>(0);
+    let backgroundPerfTier = $state<"normal" | "lite">("normal");
+    let pageVisible = $state(true);
+    let weatherBooted = false;
+    let stageOneTimer: ReturnType<typeof setTimeout> | null = null;
+    let stageTwoTimer: ReturnType<typeof setTimeout> | null = null;
+    let idleCallbackId: number | null = null;
+
+    function clearEnhancementTimers() {
+        if (stageOneTimer) {
+            clearTimeout(stageOneTimer);
+            stageOneTimer = null;
+        }
+        if (stageTwoTimer) {
+            clearTimeout(stageTwoTimer);
+            stageTwoTimer = null;
+        }
+        if (idleCallbackId !== null && typeof window !== "undefined") {
+            const cancelIdle =
+                window.cancelIdleCallback ??
+                ((id: number) => window.clearTimeout(id));
+            cancelIdle(idleCallbackId);
+            idleCallbackId = null;
+        }
+    }
+
+    function detectBackgroundPerfTier(): "normal" | "lite" {
+        if (typeof window === "undefined") return "normal";
+
+        const reducedMotion = window.matchMedia?.(
+            "(prefers-reduced-motion: reduce)",
+        ).matches;
+        const memory = Number((navigator as Navigator & { deviceMemory?: number }).deviceMemory ?? 8);
+        const cores = navigator.hardwareConcurrency ?? 8;
+        const connection = (navigator as Navigator & {
+            connection?: { saveData?: boolean };
+        }).connection;
+
+        if (
+            reducedMotion ||
+            memory <= 4 ||
+            cores <= 4 ||
+            connection?.saveData
+        ) {
+            return "lite";
+        }
+
+        return "normal";
+    }
+
+    function scheduleEnhancementStages() {
+        clearEnhancementTimers();
+
+        if (!effectiveAnimationsEnabled || !pageVisible) {
+            enhancementStage = 0;
+            return;
+        }
+
+        enhancementStage = 0;
+
+        stageOneTimer = setTimeout(() => {
+            enhancementStage = 1;
+        }, 80);
+
+        const promoteToDecorative = () => {
+            stageTwoTimer = setTimeout(() => {
+                enhancementStage = 2;
+            }, 450);
+        };
+
+        if (typeof window !== "undefined") {
+            const requestIdle =
+                window.requestIdleCallback ??
+                ((cb: IdleRequestCallback) =>
+                    window.setTimeout(
+                        () =>
+                            cb({
+                                didTimeout: false,
+                                timeRemaining: () => 16,
+                            } as IdleDeadline),
+                        700,
+                    ));
+            idleCallbackId = requestIdle(() => {
+                idleCallbackId = null;
+                promoteToDecorative();
+            }, { timeout: 1500 });
+        } else {
+            promoteToDecorative();
+        }
+    }
+
+    const sparkles = Array.from({ length: MAX_SPARKLE_COUNT }).map(() => ({
         top: Math.random() * 100 + "%",
         left: Math.random() * 100 + "%",
         delay: Math.random() * 5 + "s",
         duration: 2 + Math.random() * 3 + "s",
     }));
 
-    // Musical Notes - reduced from 12 to 4 (fast: 6 to 2)
-    const noteCount = preferences.renderMode === "fast" ? 2 : 4;
-    const musicNotes = Array.from({ length: noteCount }).map(() => ({
+    const musicNotes = Array.from({ length: MAX_NOTE_COUNT }).map(() => ({
         char: noteChars[Math.floor(Math.random() * noteChars.length)],
         top: 60 + Math.random() * 40 + "%",
         left: Math.random() * 100 + "%",
@@ -59,13 +158,42 @@
     let simIndex = $state(0);
 
     onMount(() => {
+        backgroundPerfTier = detectBackgroundPerfTier();
+        pageVisible = typeof document === "undefined" ? true : !document.hidden;
+
+        const handleVisibilityChange = () => {
+            pageVisible = !document.hidden;
+            if (pageVisible) scheduleEnhancementStages();
+            else clearEnhancementTimers();
+        };
+
+        if (typeof document !== "undefined") {
+            document.addEventListener("visibilitychange", handleVisibilityChange);
+        }
+
+        let simulationInterval: ReturnType<typeof setInterval> | null = null;
         if (SIMULATE_WEATHER) {
-            const interval = setInterval(() => {
+            simulationInterval = setInterval(() => {
                 simIndex = (simIndex + 1) % WEATHER_TYPES.length;
             }, 5000);
-            return () => clearInterval(interval);
-        } else if (!disableWeather) {
+        }
+
+        return () => {
+            clearEnhancementTimers();
+            if (simulationInterval) clearInterval(simulationInterval);
+            if (typeof document !== "undefined") {
+                document.removeEventListener(
+                    "visibilitychange",
+                    handleVisibilityChange,
+                );
+            }
+        };
+    });
+
+    $effect(() => {
+        if (!disableWeather && isDecorativeAnimated && !weatherBooted) {
             initWeather();
+            weatherBooted = true;
         }
     });
 
@@ -105,30 +233,75 @@
         return "bg-gradient-to-b from-[#020617] via-[#1e1b4b] to-[#312e81]"; // Night
     });
 
-    // Star Generation - reduced from 50 to 10 (fast: 20 to 5)
-    const starCount = preferences.renderMode === "fast" ? 5 : 10;
-    const stars = Array.from({ length: starCount }).map(() => ({
+    const stars = Array.from({ length: MAX_STAR_COUNT }).map(() => ({
         top: Math.random() * 60 + "%",
         left: Math.random() * 100 + "%",
         delay: Math.random() * 2 + "s",
         size: Math.random() > 0.8 ? "w-1 h-1" : "w-0.5 h-0.5",
     }));
 
-    // Rain/Snow Generation - reduced from 40 to 8 (fast: 15 to 4)
-    const dropCount = preferences.renderMode === "fast" ? 4 : 8;
-    const drops = Array.from({ length: dropCount }).map(() => ({
+    const drops = Array.from({ length: MAX_DROP_COUNT }).map(() => ({
         left: Math.random() * 100 + "%",
         delay: Math.random() * 2 + "s",
         duration: 0.5 + Math.random() * 0.5 + "s",
     }));
+
+    const visibleSparkles = $derived.by(() => {
+        const max =
+            backgroundPerfTier === "lite"
+                ? 3
+                : preferences.renderMode === "fast"
+                  ? 3
+                  : MAX_SPARKLE_COUNT;
+        return sparkles.slice(0, max);
+    });
+
+    const visibleMusicNotes = $derived.by(() => {
+        const max =
+            backgroundPerfTier === "lite"
+                ? 2
+                : preferences.renderMode === "fast"
+                  ? 2
+                  : MAX_NOTE_COUNT;
+        return musicNotes.slice(0, max);
+    });
+
+    const visibleStars = $derived.by(() => {
+        const max =
+            backgroundPerfTier === "lite"
+                ? 5
+                : preferences.renderMode === "fast"
+                  ? 5
+                  : MAX_STAR_COUNT;
+        return stars.slice(0, max);
+    });
+
+    const visibleDrops = $derived.by(() => {
+        const max =
+            backgroundPerfTier === "lite"
+                ? 4
+                : preferences.renderMode === "fast"
+                  ? 4
+                  : MAX_DROP_COUNT;
+        return drops.slice(0, max);
+    });
+
+    $effect(() => {
+        scheduleEnhancementStages();
+
+        return () => {
+            clearEnhancementTimers();
+        };
+    });
 </script>
 
 {#if !hidden}
     <div
         class="fixed inset-0 z-[-1] overflow-hidden pointer-events-none select-none"
+        style="contain: strict;"
     >
         <!-- Dynamic Sky Gradient (Underlay) -->
-        {#if effectiveAnimationsEnabled}
+        {#if isBaseAnimated}
             <div
                 class="absolute inset-0 {bgGradient} transition-colors duration-[2000ms]"
             ></div>
@@ -147,14 +320,31 @@
             </div>
         {/if}
 
-        <!-- Stars (Night Only, Clear Only) -->
-        {#if effectiveAnimationsEnabled}
+        <!-- Base animated layer: keep this cheap so first paint settles before decorative work -->
+        {#if isBaseAnimated}
+            <!-- Kale Field (White Sky -> Transparent) -->
+            <img
+                src="/kale_landscape.png"
+                alt=""
+                class="absolute inset-0 w-full h-full object-cover opacity-55"
+                decoding="async"
+                style="image-rendering: pixelated;"
+            />
+
+            <!-- Global Vignette for UI Readability -->
+            <div
+                class="absolute inset-0 bg-gradient-to-t from-black/90 via-black/40 to-black/20"
+            ></div>
+        {/if}
+
+        <!-- Decorative animated layer: defer this until idle -->
+        {#if isDecorativeAnimated}
             {#if isNight && !isCloudy}
                 <div
                     class="absolute inset-0"
                     transition:fade={{ duration: 2000 }}
                 >
-                    {#each stars as star}
+                    {#each visibleStars as star}
                         <div
                             class="absolute bg-white rounded-full opacity-80 animate-pulse {star.size}"
                             style="top: {star.top}; left: {star.left}; animation-delay: {star.delay};"
@@ -186,23 +376,15 @@
                 </div>
             {/if}
 
-            <!-- Kale Field (White Sky -> Transparent) -->
-            <img
-                src="/kale_landscape.png"
-                alt=""
-                class="absolute inset-0 w-full h-full object-cover mix-blend-multiply opacity-60"
-                style="image-rendering: pixelated;"
-            />
-
             <!-- Magic Sparkles (Foreground Overlay) -->
             <div class="absolute inset-0 z-10 pointer-events-none">
-                {#each sparkles as sparkle}
+                {#each visibleSparkles as sparkle}
                     <div
                         class="absolute w-[3px] h-[3px] bg-yellow-100 rounded-full animate-twinkle opacity-0"
                         style="top: {sparkle.top}; left: {sparkle.left}; animation-delay: {sparkle.delay}; animation-duration: {sparkle.duration}; box-shadow: 0 0 6px gold;"
                     ></div>
                 {/each}
-                {#each musicNotes as note}
+                {#each visibleMusicNotes as note}
                     <div
                         class="absolute text-[#FDDA24] animate-float-note opacity-0"
                         style="top: {note.top}; left: {note.left}; font-size: {note.size}; animation-delay: {note.delay}; animation-duration: {note.duration}; text-shadow: 0 0 10px rgba(253, 218, 36, 0.8);"
@@ -215,7 +397,7 @@
             <!-- Rain -->
             {#if isRaining}
                 <div class="absolute inset-0" transition:fade>
-                    {#each drops as drop}
+                    {#each visibleDrops as drop}
                         <div
                             class="absolute w-[1px] h-[20px] bg-blue-200/40 opacity-50 animate-rain"
                             style="left: {drop.left}; animation-delay: {drop.delay}; animation-duration: {drop.duration}; top: -20px;"
@@ -227,7 +409,7 @@
             <!-- Snow -->
             {#if isSnowing}
                 <div class="absolute inset-0" transition:fade>
-                    {#each drops as drop}
+                    {#each visibleDrops as drop}
                         <div
                             class="absolute w-[4px] h-[4px] bg-white opacity-80 rounded-full animate-snow"
                             style="left: {drop.left}; animation-delay: {drop.delay}; animation-duration: {parseFloat(
@@ -239,11 +421,6 @@
                     {/each}
                 </div>
             {/if}
-
-            <!-- Global Vignette for UI Readability -->
-            <div
-                class="absolute inset-0 bg-gradient-to-t from-black/90 via-black/40 to-black/20"
-            ></div>
 
             <!-- Storm Flash -->
             {#if isStormy}
