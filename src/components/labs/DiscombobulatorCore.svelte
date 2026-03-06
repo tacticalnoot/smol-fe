@@ -391,7 +391,7 @@
         if (policy.descriptor === "pre_and_post_envelope_research") {
             return "pre+post settlement commitments";
         }
-        return "public-only flow";
+        return "public settlement (no envelopes)";
     }
 
     function getPrivacyPolicyLabel(modeValue: PrivacyWrapperMode): string {
@@ -3207,11 +3207,18 @@
                         confirmedAt: sendResult.transactionHash ? new Date().toISOString() : null,
                         softSuccessReason: sendResult.softSuccessReason ?? null,
                     });
+                    // Look up the correct ASP policy receipt for this entry's intent
+                    // (not the latest one, which may belong to a different entry).
+                    const entryReceiptId = String(trace.payload.aspPolicyReceiptId ?? "");
+                    const entryPolicyReceipt =
+                        aspPolicyHistory.find((r) => r.receiptId === entryReceiptId) ??
+                        getLatestPrivacyArtifactForContext({ phase: "send", intentId: entry.intentId })?.policyReceipt ??
+                        aspPolicyHistory[aspPolicyHistory.length - 1]!;
                     await runPrivacyEnvelopeStageIfEnabled(
                         "send",
                         "post",
                         trace.payload as Record<string, unknown>,
-                        aspPolicyHistory[aspPolicyHistory.length - 1]!,
+                        entryPolicyReceipt,
                         entry.intentId,
                     );
                     completeSppIntent(entry.intentId, "succeeded", {

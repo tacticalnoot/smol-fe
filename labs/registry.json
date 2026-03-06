@@ -77,7 +77,7 @@
         "blast_radius": "LABS_ONLY",
         "path": "experiments/the-discombobulator/experiment.yml",
         "href": "/labs/the-discombobulator",
-        "description": "Experimental Proof of Nethermind Private Payments (POC). Isolated Swapper-equivalent track for Labs privacy research.",
+        "description": "Stellar Private Payments (SPP) proof-of-concept. Swap, send, receive, and pool with commitment-based privacy envelopes, ASP policy evaluation, and DEX-routed private paths on mainnet.",
         "tags": [
             "DeFi",
             "Privacy",
