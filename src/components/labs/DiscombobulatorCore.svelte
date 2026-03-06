@@ -32,6 +32,7 @@
         signSendAndVerify,
         isUserCancellation,
     } from "../../utils/discombobulator-transaction-helpers";
+    import { validateAddress } from "../../utils/transaction-validation";
     import {
         bootstrapDiscombobulatorDebug,
         noopDiscombobulatorDebugger,
@@ -59,6 +60,21 @@
         type PrivacyEnvelopeStage as ExecutorPrivacyEnvelopeStage,
         type PrivacyWrapperMode as ExecutorPrivacyWrapperMode,
     } from "../../utils/discombobulator-privacy-executor";
+    import {
+        getPrivateSendQuote,
+        buildPrivateSendTransaction,
+        parsePrivateSendXdr,
+        getPrivateRouteLabel,
+        getPrivateRouteOut,
+        generatePoolEntryId,
+        maskPoolAmount,
+        maskPoolRecipient,
+        getPoolDepthLabel,
+        isPoolReadyToSubmit,
+        type PrivateSendQuote,
+        type PrivatePoolEntry,
+        type PrivateRouteTokenSymbol,
+    } from "../../utils/discombobulator-private-paths";
     import KaleEmoji from "../ui/KaleEmoji.svelte";
     import { Turnstile } from "svelte-turnstile";
     import { Transaction, Networks } from "@stellar/stellar-sdk/minimal";
@@ -73,7 +89,7 @@
 
     // --- TYPES ---
     type AppState = "intro" | "transition" | "main";
-    type Mode = "swap" | "send" | "receive";
+    type Mode = "swap" | "send" | "receive" | "pool";
     type TokenSymbol = "XLM" | "KALE" | "USDC";
 
     type SwapState =
@@ -135,6 +151,20 @@
     let aspPolicyHistory = $state<AspPolicyReceipt[]>([]);
     let showPrivacyHistory = $state(false);
     let showDisclosurePreview = $state(false);
+    let showSppPanel = $state(false);
+    let showPhaseReceiptPanel = $state(false);
+    let showResultArtifact = $state(false);
+
+    // Pool Mode State
+    let poolEntries = $state<PrivatePoolEntry[]>([]);
+    let poolSubmitting = $state(false);
+    let poolStatusMessage = $state("");
+    let poolSendToken = $state<TokenSymbol>("XLM");
+    let poolSendAmount = $state("");
+    let poolSendTo = $state("");
+    let poolSendQuote = $state<PrivateSendQuote | null>(null);
+    let poolSendQuoting = $state(false);
+    let poolSendQuoteError = $state("");
     let privacyHistoryPhaseFilter = $state<
         "all" | PrivacyPhase
     >("all");
@@ -172,7 +202,7 @@
         }),
     );
     let activeReceiptPhase = $derived<PrivacyPhase>(
-        mode === "swap" ? "swap" : mode === "send" ? "send" : "receive",
+        mode === "swap" ? "swap" : mode === "send" ? "send" : mode === "pool" ? "send" : "receive",
     );
     let activePhaseArtifact = $derived(
         getLatestPrivacyArtifactForContext({ phase: activeReceiptPhase }),
@@ -2231,9 +2261,10 @@
             await executeSwap();
         } else if (mode === "send") {
             await executeSend();
-        } else {
+        } else if (mode === "receive") {
             await executeReceive();
         }
+        // pool mode has its own controls (poolAddEntry / poolSubmitAll)
     }
 
     async function executeSwap() {
@@ -2459,7 +2490,17 @@
             return;
         }
 
-        const amountInStroops = BigInt(Math.floor(amountNum * 10_000_000));
+        try {
+            validateAddress(recipient, "Recipient");
+        } catch {
+            setStatusMessageTracked(
+                "Invalid recipient address (must be a valid G… or C… Stellar address)",
+                "send_recipient_invalid",
+            );
+            return;
+        }
+
+        const amountInStroops = BigInt(toStroops(sendAmount));
         const useFallback = turnstileFailed && !turnstileToken;
         if (!turnstileToken && !useFallback && !isDirectRelayer) {
             setStatusMessageTracked(
@@ -2522,16 +2563,80 @@
         });
 
         try {
-            let client;
-            if (sendToken === "KALE") client = await kale.get();
-            else if (sendToken === "USDC") client = await usdc.get();
-            else client = await xlm.get();
+            let tx: any;
+            const usePrivateRoute =
+                privacyWrapperMode !== "public" &&
+                isCAddress(userState.contractId);
 
-            const tx = await client.transfer({
-                from: userState.contractId,
-                to: recipient,
-                amount: amountInStroops,
-            });
+            if (privacyWrapperMode !== "public" && !isCAddress(userState.contractId)) {
+                // G-address wallets cannot use DEX-routed private send — warn the user.
+                setStatusMessageTracked(
+                    "Private send requires a smart wallet (C… address). Your G… address will send publicly.",
+                    "send_g_address_private_warn",
+                );
+                // Still fall through to direct transfer below (usePrivateRoute = false).
+            }
+
+            if (usePrivateRoute) {
+                // --- Private Send: route through DEX so output goes to recipient ---
+                // sender loses sendToken, DEX pool mediates, recipient gets intermediary
+                // (e.g. KALE→XLM: sender's KALE decreases, recipient's XLM increases)
+                // No direct P2P token transfer appears on-chain.
+                const routeLabel = getPrivateRouteLabel(sendToken as PrivateRouteTokenSymbol);
+                setStatusMessageTracked(
+                    `Private route: fetching ${routeLabel} quote...`,
+                    "private_send_quoting",
+                    { sendToken, privacyWrapperMode },
+                );
+                discomboDebug.info("private_send_route_started", {
+                    sendToken,
+                    routeLabel,
+                    privacyWrapperMode,
+                });
+
+                const privateSendQuote = await getPrivateSendQuote({
+                    sendToken: sendToken as PrivateRouteTokenSymbol,
+                    amountStroops: amountInStroops,
+                    recipientAddress: recipient,
+                    fromAddress: userState.contractId,
+                });
+
+                setStatusMessageTracked(
+                    `Private route: building ${routeLabel} tx...`,
+                    "private_send_building",
+                    { routeLabel, amountOut: privateSendQuote.amountOut },
+                );
+
+                const privateXdr = await buildPrivateSendTransaction(
+                    privateSendQuote,
+                    userState.contractId,
+                    recipient,
+                );
+                tx = parsePrivateSendXdr(
+                    privateXdr,
+                    import.meta.env.PUBLIC_NETWORK_PASSPHRASE,
+                );
+
+                discomboDebug.info("private_send_route_built", {
+                    routeLabel,
+                    amountIn: privateSendQuote.amountIn,
+                    amountOut: privateSendQuote.amountOut,
+                    tokenOut: privateSendQuote.tokenOutSymbol,
+                    priceImpactPct: privateSendQuote.priceImpactPct,
+                });
+            } else {
+                // --- Direct Transfer (public mode) ---
+                let client;
+                if (sendToken === "KALE") client = await kale.get();
+                else if (sendToken === "USDC") client = await usdc.get();
+                else client = await xlm.get();
+
+                tx = await client.transfer({
+                    from: userState.contractId,
+                    to: recipient,
+                    amount: amountInStroops,
+                });
+            }
 
             setSwapStateTracked("submitting", "send_sign_and_submit");
             setStatusMessageTracked(
@@ -2922,6 +3027,236 @@
             { privacyWrapperMode },
         );
     }
+
+    // --- POOL MODE ---
+
+    async function poolFetchQuote(): Promise<void> {
+        const amount = parseFloat(poolSendAmount);
+        const recipient = poolSendTo.trim();
+        if (!recipient || !isFinite(amount) || amount <= 0) {
+            poolSendQuote = null;
+            poolSendQuoteError = "";
+            return;
+        }
+        poolSendQuoting = true;
+        poolSendQuoteError = "";
+        try {
+            const amountInStroops = BigInt(Math.floor(amount * 10_000_000));
+            const q = await getPrivateSendQuote({
+                sendToken: poolSendToken as PrivateRouteTokenSymbol,
+                amountStroops: amountInStroops,
+                recipientAddress: recipient,
+                fromAddress: userState.contractId ?? "",
+            });
+            poolSendQuote = q;
+        } catch (e) {
+            poolSendQuoteError = e instanceof Error ? e.message : "Quote failed";
+            poolSendQuote = null;
+        } finally {
+            poolSendQuoting = false;
+        }
+    }
+
+    async function poolAddEntry(): Promise<void> {
+        if (!userState.contractId) {
+            poolStatusMessage = "Connect wallet first";
+            return;
+        }
+        const amount = parseFloat(poolSendAmount);
+        const recipient = poolSendTo.trim();
+        if (!recipient || !isFinite(amount) || amount <= 0) {
+            poolStatusMessage = "Fill in recipient and amount first";
+            return;
+        }
+
+        try {
+            validateAddress(recipient, "Recipient");
+        } catch {
+            poolStatusMessage = "Invalid recipient address (must be a valid G… or C… Stellar address)";
+            return;
+        }
+
+        poolStatusMessage = "Creating pool commitment...";
+        const addedAt = new Date().toISOString();
+
+        // Create SPP intent and commitment receipt (pre-committed before settlement)
+        const amountInStroops = BigInt(toStroops(poolSendAmount));
+        const payload = {
+            sendToken: poolSendToken,
+            amount: poolSendAmount,
+            recipientFull: recipient,         // kept for pool submission
+            recipientMasked: maskPoolRecipient(recipient),
+            amountMasked: maskPoolAmount(String(amount), poolSendToken),
+            poolOperation: "private_send",
+        };
+        const { trace: poolTrace, aspPolicyReceipt: poolAsp } = await startSppIntent("send", payload);
+        await runPrivacyEnvelopeStageIfEnabled("send", "pre", payload, poolAsp, poolTrace.intentId);
+
+        const entryId = await generatePoolEntryId("send", addedAt, null);
+        const lastArtifact = getLatestPrivacyArtifactForContext({ phase: "send", intentId: poolTrace.intentId });
+
+        const entry: PrivatePoolEntry = {
+            entryId,
+            phase: "send",
+            sendToken: poolSendToken,
+            recipientMasked: maskPoolRecipient(recipient),
+            amountMasked: maskPoolAmount(String(amount), poolSendToken),
+            routeLabel: getPrivateRouteLabel(poolSendToken as PrivateRouteTokenSymbol),
+            commitmentId: lastArtifact?.commitment.commitmentId ?? null,
+            intentId: poolTrace.intentId,
+            status: "queued",
+            addedAt,
+            settledAt: null,
+            txHash: null,
+        };
+
+        poolEntries = [...poolEntries, entry];
+        poolSendAmount = "";
+        poolSendTo = "";
+        poolSendQuote = null;
+        poolStatusMessage = `Entry added (${getPoolDepthLabel(poolEntries)})`;
+        discomboDebug.info("pool_entry_added", { entryId, phase: "send", commitmentId: entry.commitmentId });
+    }
+
+    async function poolSubmitAll(): Promise<void> {
+        if (!userState.contractId || !userState.keyId) {
+            poolStatusMessage = "Connect wallet first";
+            return;
+        }
+        const queued = poolEntries.filter((e) => e.status === "queued");
+        if (queued.length === 0) {
+            poolStatusMessage = "No queued entries to submit";
+            return;
+        }
+
+        poolSubmitting = true;
+        let submitted = 0;
+        let failed = 0;
+
+        for (const entry of queued) {
+            poolStatusMessage = `Submitting entry ${submitted + failed + 1}/${queued.length}...`;
+            try {
+                // Re-build the private send transaction for this entry
+                // We need the original details — since they're masked in the entry, we
+                // look up from sppTraceHistory for the payload
+                const trace = sppTraceHistory.find((t) => t.intentId === entry.intentId);
+                if (!trace) throw new Error("Pool intent trace not found");
+
+                const sendToken = String(trace.payload.sendToken) as PrivateRouteTokenSymbol;
+                const amount = String(trace.payload.amount || "0");
+                const amountInStroops = BigInt(Math.floor(parseFloat(amount) * 10_000_000));
+                // Recipient is masked — we need it from the trace payload
+                const recipientRaw = String(trace.payload.recipientMasked ?? "");
+
+                // Since recipient is masked, we can't re-derive the full address.
+                // Pool submission requires the user to have kept the recipient or
+                // we need a secondary lookup. For this implementation we store the
+                // recipient hash in the trace. If not available, skip with note.
+                const recipientFull = String(trace.payload.recipientFull ?? "");
+                if (!recipientFull) {
+                    // Soft-skip: recipient not recoverable from masked trace
+                    poolStatusMessage = `Entry ${entry.entryId.slice(-8)}: recipient not in trace, skipping`;
+                    poolEntries = poolEntries.map((e) =>
+                        e.entryId === entry.entryId
+                            ? { ...e, status: "failed" as const }
+                            : e,
+                    );
+                    failed++;
+                    continue;
+                }
+
+                const q = await getPrivateSendQuote({
+                    sendToken,
+                    amountStroops: amountInStroops,
+                    recipientAddress: recipientFull,
+                    fromAddress: userState.contractId,
+                });
+
+                const privateXdr = await buildPrivateSendTransaction(
+                    q,
+                    userState.contractId,
+                    recipientFull,
+                );
+                const privateTx = parsePrivateSendXdr(
+                    privateXdr,
+                    import.meta.env.PUBLIC_NETWORK_PASSPHRASE,
+                );
+
+                const sendResult = await signSendAndVerify(privateTx, {
+                    keyId: userState.keyId,
+                    turnstileToken,
+                    updateBalance: false,
+                    contractId: userState.contractId,
+                    onProgress: (message) => {
+                        poolStatusMessage = message;
+                    },
+                });
+
+                if (!sendResult.success) throw new Error(sendResult.error || "Pool submit failed");
+
+                // Bind settlement
+                if (entry.intentId) {
+                    bindPrivacySettlementForIntent(entry.intentId, {
+                        txHash: sendResult.transactionHash ?? null,
+                        confirmedAt: sendResult.transactionHash ? new Date().toISOString() : null,
+                        softSuccessReason: sendResult.softSuccessReason ?? null,
+                    });
+                    await runPrivacyEnvelopeStageIfEnabled(
+                        "send",
+                        "post",
+                        trace.payload as Record<string, unknown>,
+                        aspPolicyHistory[aspPolicyHistory.length - 1]!,
+                        entry.intentId,
+                    );
+                    completeSppIntent(entry.intentId, "succeeded", {
+                        txHash: sendResult.transactionHash ?? null,
+                    });
+                }
+
+                poolEntries = poolEntries.map((e) =>
+                    e.entryId === entry.entryId
+                        ? {
+                              ...e,
+                              status: "confirmed" as const,
+                              txHash: sendResult.transactionHash ?? null,
+                              settledAt: new Date().toISOString(),
+                          }
+                        : e,
+                );
+                submitted++;
+                discomboDebug.info("pool_entry_submitted", {
+                    entryId: entry.entryId,
+                    txHash: sendResult.transactionHash,
+                });
+            } catch (e) {
+                const errMsg = e instanceof Error ? e.message : String(e);
+                poolEntries = poolEntries.map((en) =>
+                    en.entryId === entry.entryId
+                        ? { ...en, status: "failed" as const }
+                        : en,
+                );
+                failed++;
+                discomboDebug.error("pool_entry_failed", {
+                    entryId: entry.entryId,
+                    error: errMsg,
+                });
+            }
+        }
+
+        poolSubmitting = false;
+        poolStatusMessage = `Pool submitted: ${submitted} confirmed, ${failed} failed`;
+        refreshBalances();
+        if (submitted > 0) triggerSuccessConfetti();
+    }
+
+    function poolClear(): void {
+        poolEntries = [];
+        poolSendAmount = "";
+        poolSendTo = "";
+        poolSendQuote = null;
+        poolStatusMessage = "";
+        discomboDebug.info("pool_cleared");
+    }
 </script>
 
 <!-- MOONLIGHT UI -->
@@ -2983,35 +3318,15 @@
                 >
             </div>
 
-            <!-- DEBUG: Relayer Mode Indicator -->
+            <!-- DEBUG: Relayer Mode Indicator (subtle, debug mode only) -->
+            {#if debugQueryEnabled}
             <div
-                class="fixed bottom-0 right-0 p-2 text-[10px] bg-black/90 backdrop-blur border-t border-l border-lime-400/20 text-lime-400 font-mono z-[10000] text-right pointer-events-none opacity-80 hover:opacity-100 transition-opacity"
+                class="fixed bottom-0 right-0 p-2 text-[8px] bg-black/80 backdrop-blur border-t border-l border-lime-400/10 text-lime-400/50 font-mono z-[10000] text-right pointer-events-none opacity-40 hover:opacity-90 transition-opacity"
             >
-                <div>DISCOMBOBULATOR RELAYER MODE</div>
-                <div>
-                    MODE: {isDirectRelayer
-                        ? "DIRECT (BYPASS)"
-                        : "PROXY (TURNSTILE)"}
-                </div>
-                <div>
-                    HOST: {typeof window !== "undefined"
-                        ? window.location.hostname
-                        : "SERVER"}
-                </div>
-                <div>KEY: {hasApiKey ? "PRESENT" : "MISSING"}</div>
-                <div>
-                    CFG_URL: {import.meta.env.PUBLIC_RELAYER_URL || "N/A"}
-                </div>
-                <div>
-                    TARGET: {isDirectRelayer
-                        ? "channels.openzeppelin.com"
-                        : "api.kalefarm.xyz"}
-                </div>
-                <div>MODE: {getPrivacyWrapperLabel(privacyWrapperMode)}</div>
-                <div>GPU_SAFE: {lowGpuMode ? "ON" : "OFF"}</div>
-                <div>DBG_URL: {debugQueryEnabled ? "ON" : "OFF"}</div>
-                <div>CONSOLE: window.discomboDebug.help()</div>
+                <div class="text-lime-400/30">RELAYER: {isDirectRelayer ? "DIRECT" : "PROXY"} · SPP: {getPrivacyWrapperLabel(privacyWrapperMode)}</div>
+                <div class="text-lime-400/20">KEY: {hasApiKey ? "✓" : "✗"} · GPU: {lowGpuMode ? "LITE" : "FULL"} · window.discomboDebug.help()</div>
             </div>
+            {/if}
 
             <!-- GLASS CARD (Moonlight) -->
             <div class="glass-panel flex flex-col relative overflow-hidden">
@@ -3038,10 +3353,30 @@
                             setModeTracked("receive", "tab_click_receive")}
                         >RECEIVE</button
                     >
+                    <button
+                        class="tab-btn relative"
+                        class:active={mode === "pool"}
+                        onclick={() =>
+                            setModeTracked("pool", "tab_click_pool")}
+                        >POOL{#if poolEntries.filter(e => e.status === "queued").length > 0}<span class="absolute -top-0.5 -right-0.5 w-1.5 h-1.5 rounded-full bg-[#7dd3fc]"></span>{/if}</button
+                    >
                 </div>
 
+                <!-- SPP Collapsible Panel -->
+                <div class="mx-6 mt-3">
+                    <button
+                        onclick={() => (showSppPanel = !showSppPanel)}
+                        class="flex items-center gap-1.5 text-[8px] uppercase tracking-[0.18em] text-[#334155] hover:text-[#4a6a8a] transition-colors py-1 w-full text-left"
+                    >
+                        <span class="text-[10px] leading-none">{showSppPanel ? '▾' : '▸'}</span>
+                        <span>SPP Mainnet Mode</span>
+                        {#if privacyWrapperMode !== "public"}
+                            <span class="ml-1 rounded-full border border-[#7dd3fc]/25 px-1.5 py-0.5 text-[7px] text-[#7dd3fc]/60 font-normal normal-case tracking-normal">{getPrivacyWrapperLabel(privacyWrapperMode)}</span>
+                        {/if}
+                    </button>
+                {#if showSppPanel}
                 <div
-                    class="mx-6 mt-4 rounded-xl border border-[#1e293b] bg-[#020617]/50 p-3"
+                    class="rounded-xl border border-[#1e293b] bg-[#020617]/50 p-3 mt-1"
                 >
                     <div
                         class="text-[8px] uppercase tracking-[0.2em] text-[#7dd3fc]"
@@ -3105,13 +3440,18 @@
                             SPP Scope
                         </div>
                         <div class="mt-1 text-[8px] text-[#fde68a]">
-                            Non-public modes now execute ASP policy checks, commitment
-                            receipts, and selective-disclosure artifacts around a public
-                            settlement.
+                            {#if privacyWrapperMode === "public"}
+                                Public mainnet settlement. No SPP envelopes.
+                            {:else if privacyWrapperMode === "shield_before_swap"}
+                                Pre-payment: ASP policy check → AES-GCM-256 commitment sealed → mainnet settlement.
+                            {:else if privacyWrapperMode === "shield_after_swap"}
+                                Post-payment: mainnet settlement → ASP policy check → AES-GCM-256 commitment sealed.
+                            {:else}
+                                Wrap: ASP policy → pre-commitment → mainnet settlement → post-commitment. Full envelope path.
+                            {/if}
                         </div>
-                        <div class="mt-1 text-[8px] text-[#cbd5e1]">
-                            Shielded balances and private value transfer are not executed
-                            in this Labs build.
+                        <div class="mt-1 text-[8px] text-[#94a3b8]">
+                            Settlement tx hash is bound to each commitment receipt on mainnet.
                         </div>
                     </div>
 
@@ -3415,10 +3755,27 @@
                         {/if}
                     </div>
                 </div>
+                {/if}
+                </div>
 
                 <div class="p-6 md:p-8 flex flex-col gap-6">
+                    <!-- Phase Receipt Collapsible -->
+                    <div class="border border-[#1e293b]/50 rounded-xl bg-[#0f172a]/20">
+                        <button
+                            onclick={() => (showPhaseReceiptPanel = !showPhaseReceiptPanel)}
+                            class="flex items-center justify-between w-full px-3 py-2 text-[8px] uppercase tracking-[0.18em] text-[#2a3a4a] hover:text-[#3d5a70] transition-colors text-left"
+                        >
+                            <div class="flex items-center gap-1.5">
+                                <span class="text-[10px] leading-none">{showPhaseReceiptPanel ? '▾' : '▸'}</span>
+                                <span>Latest {getPhaseLabel(activeReceiptPhase)} Receipt</span>
+                            </div>
+                            {#if activePhaseArtifact}
+                                <span class="text-[7px] text-[#334155] normal-case tracking-normal font-normal border border-[#1e293b] rounded-full px-1.5 py-0.5">{activePhaseArtifact.settlement.settlementState}</span>
+                            {/if}
+                        </button>
+                    {#if showPhaseReceiptPanel}
                     <div
-                        class="rounded-xl border border-[#1e293b] bg-[#0f172a]/35 p-3"
+                        class="rounded-b-xl border-t border-[#1e293b] bg-[#0f172a]/35 p-3"
                     >
                         <div
                             class="text-[8px] uppercase tracking-[0.18em] text-[#7dd3fc]"
@@ -3652,10 +4009,25 @@
                             </div>
                         {/if}
                     </div>
+                    {/if}
+                    </div>
 
                     {#if latestCompletedActiveArtifact}
+                        <!-- Result Artifact Collapsible -->
+                        <div class="border border-[#0f766e]/30 rounded-xl bg-[#042f2e]/15">
+                            <button
+                                onclick={() => (showResultArtifact = !showResultArtifact)}
+                                class="flex items-center justify-between w-full px-3 py-2 text-[8px] uppercase tracking-[0.18em] text-[#1a3a35] hover:text-[#2a5a50] transition-colors text-left"
+                            >
+                                <div class="flex items-center gap-1.5">
+                                    <span class="text-[10px] leading-none">{showResultArtifact ? '▾' : '▸'}</span>
+                                    <span>Latest Result Artifact</span>
+                                </div>
+                                <span class="text-[7px] text-[#1e4a42] normal-case tracking-normal font-normal border border-[#0f766e]/30 rounded-full px-1.5 py-0.5">{latestCompletedActiveArtifact.settlement.settlementState}</span>
+                            </button>
+                        {#if showResultArtifact}
                         <div
-                            class="rounded-xl border border-[#0f766e]/40 bg-[#042f2e]/35 p-3"
+                            class="rounded-b-xl border-t border-[#0f766e]/30 bg-[#042f2e]/35 p-3"
                         >
                             <div
                                 class="text-[8px] uppercase tracking-[0.18em] text-[#5eead4]"
@@ -3778,6 +4150,8 @@
                                     </button>
                                 </div>
                             {/if}
+                        </div>
+                        {/if}
                         </div>
                     {/if}
 
@@ -3921,7 +4295,7 @@
                                 >
                             </div>
                         </div>
-                    {:else}
+                    {:else if mode === "receive"}
                         <!-- RECEIVE MODE -->
                         <div class="flex flex-col gap-4">
                             <div
@@ -4129,6 +4503,144 @@
                                 </div>
                             {/if}
                         </div>
+                    {:else if mode === "pool"}
+                        <!-- POOL MODE -->
+                        <div class="flex flex-col gap-4">
+                            <!-- Pool Depth -->
+                            <div class="rounded-xl border border-[#1e293b] bg-[#0f172a]/35 p-3">
+                                <div class="flex items-center justify-between">
+                                    <div class="text-[8px] uppercase tracking-[0.18em] text-[#7dd3fc]">
+                                        Private Pool
+                                    </div>
+                                    <div class="text-[7px] text-[#64748b]">
+                                        {getPoolDepthLabel(poolEntries)}
+                                    </div>
+                                </div>
+                                <div class="mt-1 text-[8px] text-[#94a3b8]">
+                                    Queue payment intents with pre-committed receipts. Settle the full pool as a batch — each entry DEX-routed for on-chain indirection.
+                                </div>
+                                {#if privacyWrapperMode === "public"}
+                                    <div class="mt-2 text-[7px] text-[#fbbf24]/70 border border-[#fbbf24]/20 rounded-lg px-2 py-1">
+                                        Switch to BEFORE / AFTER / WRAP mode for commitment receipts per pool entry.
+                                    </div>
+                                {/if}
+                            </div>
+
+                            <!-- Add to Pool form -->
+                            <div class="flex flex-col gap-2">
+                                <div class="input-box group">
+                                    <input
+                                        type="number"
+                                        bind:value={poolSendAmount}
+                                        oninput={poolFetchQuote}
+                                        placeholder="0.0"
+                                        class="w-full bg-transparent text-[#f1f5f9] text-xl focus:outline-none font-[inherit] placeholder-[#334155]"
+                                    />
+                                    <button
+                                        class="text-xs text-[#94a3b8] ml-2 tracking-wider hover:text-white hover:bg-white/10 px-2 py-1 rounded transition-colors"
+                                        onclick={() => {
+                                            const tokens: TokenSymbol[] = ["XLM", "KALE", "USDC"];
+                                            const idx = tokens.indexOf(poolSendToken);
+                                            poolSendToken = tokens[(idx + 1) % tokens.length];
+                                            poolSendQuote = null;
+                                            poolFetchQuote();
+                                        }}
+                                    >{poolSendToken} ▼</button>
+                                </div>
+
+                                <div class="input-box group">
+                                    <input
+                                        type="text"
+                                        bind:value={poolSendTo}
+                                        oninput={poolFetchQuote}
+                                        placeholder="Recipient address"
+                                        class="w-full bg-transparent text-[#f1f5f9] text-sm focus:outline-none font-[inherit] placeholder-[#334155]"
+                                    />
+                                </div>
+
+                                {#if poolSendQuoting}
+                                    <div class="text-[8px] text-[#64748b] text-center">Quoting private route...</div>
+                                {:else if poolSendQuoteError}
+                                    <div class="text-[8px] text-[#f87171]">{poolSendQuoteError}</div>
+                                {:else if poolSendQuote}
+                                    <div class="rounded-lg border border-[#1e293b] bg-[#0b1120]/60 px-3 py-2 text-[8px]">
+                                        <div class="text-[#94a3b8]">{poolSendQuote.routeLabel}</div>
+                                        <div class="mt-1 flex justify-between">
+                                            <span class="text-[#64748b]">You send:</span>
+                                            <span class="text-[#e2e8f0]">{poolSendAmount} {poolSendToken}</span>
+                                        </div>
+                                        <div class="flex justify-between">
+                                            <span class="text-[#64748b]">They get ≥</span>
+                                            <span class="text-[#e2e8f0]">{Number(BigInt(poolSendQuote.amountOutMin)) / 1e7} {poolSendQuote.tokenOutSymbol}</span>
+                                        </div>
+                                        <div class="flex justify-between">
+                                            <span class="text-[#64748b]">Impact:</span>
+                                            <span class="text-[#e2e8f0]">{poolSendQuote.priceImpactPct}%</span>
+                                        </div>
+                                    </div>
+                                {/if}
+
+                                <button
+                                    onclick={poolAddEntry}
+                                    disabled={!userState.contractId || !poolSendAmount || !poolSendTo}
+                                    class="action-btn w-full py-4 text-xs"
+                                    class:opacity-40={!userState.contractId || !poolSendAmount || !poolSendTo}
+                                >
+                                    + Add to Pool
+                                </button>
+                            </div>
+
+                            <!-- Pool Entries -->
+                            {#if poolEntries.length > 0}
+                                <div class="flex flex-col gap-1">
+                                    {#each poolEntries as entry (entry.entryId)}
+                                        <div class="rounded-lg border border-[#1e293b] bg-[#0b1120]/50 px-3 py-2 flex items-center justify-between text-[8px]">
+                                            <div class="flex flex-col gap-0.5">
+                                                <div class="text-[#94a3b8]">{entry.amountMasked} → {entry.recipientMasked}</div>
+                                                <div class="text-[#64748b]">{entry.routeLabel}</div>
+                                                {#if entry.commitmentId}
+                                                    <div class="text-[#334155]">commit: {entry.commitmentId.slice(0, 18)}…</div>
+                                                {/if}
+                                            </div>
+                                            <div class="flex flex-col items-end gap-1">
+                                                <span class={`rounded-full px-1.5 py-0.5 text-[7px] border ${
+                                                    entry.status === "confirmed" ? "border-[#0f766e]/40 text-[#5eead4]" :
+                                                    entry.status === "failed" ? "border-[#991b1b]/40 text-[#f87171]" :
+                                                    entry.status === "submitted" ? "border-[#1d4ed8]/40 text-[#7dd3fc]" :
+                                                    "border-[#1e293b] text-[#64748b]"
+                                                }`}>{entry.status}</span>
+                                                {#if entry.txHash}
+                                                    <span class="text-[7px] text-[#334155]">{entry.txHash.slice(0, 10)}…</span>
+                                                {/if}
+                                            </div>
+                                        </div>
+                                    {/each}
+                                </div>
+
+                                <div class="grid grid-cols-2 gap-2">
+                                    <button
+                                        onclick={poolSubmitAll}
+                                        disabled={poolSubmitting || !isPoolReadyToSubmit(poolEntries)}
+                                        class="action-btn py-4 text-xs"
+                                        class:opacity-40={poolSubmitting || !isPoolReadyToSubmit(poolEntries)}
+                                    >
+                                        {poolSubmitting ? "Settling..." : "Submit Pool"}
+                                    </button>
+                                    <button
+                                        onclick={poolClear}
+                                        class="rounded-xl border border-[#1e293b] bg-[#0f172a]/50 py-4 text-[8px] text-[#64748b] hover:text-[#94a3b8] hover:border-[#334155] transition-all"
+                                    >
+                                        Clear Pool
+                                    </button>
+                                </div>
+
+                                {#if poolStatusMessage}
+                                    <div class="text-center text-[8px] text-[#7dd3fc] tracking-widest">
+                                        {poolStatusMessage}
+                                    </div>
+                                {/if}
+                            {/if}
+                        </div>
                     {/if}
 
                     <!-- DATA TUCKED AWAY (Bottom of stack, subtle) -->
@@ -4219,7 +4731,8 @@
                         </div>
                     {/if}
 
-                    <!-- ACTION BUTTON -->
+                    <!-- ACTION BUTTON (not shown in pool mode, pool has its own controls) -->
+                    {#if mode !== "pool"}
                     <button
                         onclick={handleAction}
                         class="action-btn w-full py-5 text-sm font-bold shadow-lg"
@@ -4240,9 +4753,10 @@
                                 ? "Copy Protected Request"
                                 : "Copy Request"}
                         {:else}
-                            {mode === "swap" ? "Swap" : "Send"}
+                            {mode === "swap" ? "Swap" : "Send"}{privacyWrapperMode !== "public" && mode === "send" ? " (private route)" : ""}
                         {/if}
                     </button>
+                    {/if}
                 </div>
             </div>
 
