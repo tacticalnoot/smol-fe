@@ -98,6 +98,7 @@
         | "copy_address"
         | "copy_request"
         | "share_request";
+    type ReceiveRequestVisibility = "standard" | "protected";
 
     // --- STATE ---
     let appState = $state<AppState>("intro");
@@ -194,6 +195,10 @@
     // Receive Logic
     let receiveToken = $state<TokenSymbol>("XLM");
     let receiveAmount = $state("");
+    let receiveRequestVisibility = $state<ReceiveRequestVisibility>("protected");
+    let receiveProtectedRequestEnabled = $derived(
+        receiveRequestVisibility === "protected" && privacyWrapperMode !== "public",
+    );
     let receiveWatchActive = $state(false);
     let receiveWatchFulfilled = $state(false);
     let receiveWatchToken = $state<TokenSymbol>("XLM");
@@ -775,6 +780,7 @@
             sendToMasked: maskIdentifier(sendTo),
             receiveToken,
             receiveAmount,
+            receiveRequestVisibility,
             receiveWatchActive,
             receiveWatchFulfilled,
             receiveWatchToken,
@@ -908,9 +914,56 @@
         return human.replace(/\.?0+$/, "");
     }
 
-    function buildReceiveRequestText(intentId?: string): string {
+    function normalizeOptionalTrimmed(
+        value: string | null | undefined,
+    ): string | null {
+        const trimmed = (value ?? "").trim();
+        return trimmed ? trimmed : null;
+    }
+
+    function bucketizeAmountForTelemetry(
+        value: string | null | undefined,
+    ): string | null {
+        const trimmed = normalizeOptionalTrimmed(value);
+        if (!trimmed) return null;
+
+        const amount = Number.parseFloat(trimmed);
+        if (!Number.isFinite(amount) || amount <= 0) return "invalid";
+        if (amount < 0.01) return "<0.01";
+        if (amount < 0.1) return "0.01-0.1";
+        if (amount < 1) return "0.1-1";
+        if (amount < 10) return "1-10";
+        if (amount < 100) return "10-100";
+        return "100+";
+    }
+
+    function getTelemetryAmountMeta(
+        value: string | null | undefined,
+        protect: boolean,
+    ): {
+        rawAmount: string | null;
+        amountBucket: string | null;
+        redacted: boolean;
+    } {
+        const trimmed = normalizeOptionalTrimmed(value);
+        if (!trimmed) {
+            return {
+                rawAmount: null,
+                amountBucket: null,
+                redacted: false,
+            };
+        }
+
+        return {
+            rawAmount: protect ? null : trimmed,
+            amountBucket: bucketizeAmountForTelemetry(trimmed),
+            redacted: protect,
+        };
+    }
+
+    function buildStandardReceiveRequestText(intentId?: string): string {
         const destination = userState.contractId ?? "";
-        const amount = receiveAmount.trim();
+        const amount = normalizeOptionalTrimmed(receiveAmount);
         const amountLabel = amount ? `${amount} ${receiveToken}` : receiveToken;
         const privacyLabel = getPrivacyWrapperLabel(privacyWrapperMode);
         const effectiveIntentId = intentId ?? activeSppIntentId ?? "none";
@@ -944,6 +997,77 @@
         }
 
         return lines.join("\n");
+    }
+
+    function buildProtectedReceiveRequestText(intentId?: string): string | null {
+        const destination = userState.contractId ?? "";
+        const amount = normalizeOptionalTrimmed(receiveAmount);
+        const privacyLabel = getPrivacyWrapperLabel(privacyWrapperMode);
+        const effectiveIntentId = intentId ?? activeSppIntentId ?? "none";
+        const receiveArtifact = getLatestPrivacyArtifactForContext({
+            phase: "receive",
+            intentId,
+        });
+        const receivePolicyReceipt =
+            receiveArtifact?.policyReceipt ??
+            getLatestAspPolicyReceiptForPhase("receive");
+
+        if (
+            !receiveArtifact ||
+            receiveArtifact.disclosure.algorithm !== "AES-GCM-256" ||
+            !receiveArtifact.disclosure.ciphertext ||
+            !receiveArtifact.disclosure.iv
+        ) {
+            return null;
+        }
+
+        const protectedPackage = {
+            version: 1,
+            kind: "discombobulator_receive_request",
+            createdAt: new Date().toISOString(),
+            public: {
+                destination,
+                token: receiveToken,
+                requestedAmount: amount ? "protected" : null,
+                settlement: "public_on_chain",
+                advisoryOnly: true,
+            },
+            spp: {
+                mode: privacyLabel,
+                policy: getPrivacyPolicyDisplayName(privacyWrapperMode),
+                intentId: effectiveIntentId,
+                decision: receivePolicyReceipt?.decision ?? null,
+                auditLevel: receivePolicyReceipt?.auditLevel ?? null,
+                commitmentId: receiveArtifact.commitment.commitmentId,
+                disclosureHandle: receiveArtifact.disclosure.disclosureHandle,
+            },
+            protected: {
+                algorithm: receiveArtifact.disclosure.algorithm,
+                ciphertext: receiveArtifact.disclosure.ciphertext,
+                iv: receiveArtifact.disclosure.iv,
+                keyFingerprint: receiveArtifact.disclosure.keyFingerprint,
+                fullPayloadDigest: receiveArtifact.disclosure.fullPayloadDigest,
+                createdAt: receiveArtifact.disclosure.createdAt,
+            },
+            guidance: {
+                plaintextVisible: ["destination", "token", "spp references"],
+                plaintextHidden: amount ? ["requestedAmount"] : [],
+            },
+        };
+
+        return [
+            "DISCOMBO_RECEIVE_REQUEST_V1",
+            formatPrivacyJson(protectedPackage),
+        ].join("\n");
+    }
+
+    function buildReceiveRequestText(intentId?: string): string {
+        if (receiveProtectedRequestEnabled) {
+            const protectedText = buildProtectedReceiveRequestText(intentId);
+            if (protectedText) return protectedText;
+        }
+
+        return buildStandardReceiveRequestText(intentId);
     }
 
     async function copyTextToClipboard(value: string): Promise<boolean> {
@@ -2347,11 +2471,17 @@
 
         let intentId: string | null = null;
         let aspPolicyReceipt: AspPolicyReceipt | null = null;
+        const sendTelemetryAmount = getTelemetryAmountMeta(
+            sendAmount,
+            privacyWrapperMode !== "public",
+        );
         const sendIntentPayload = {
             sendToken,
             amount: sendAmount,
             recipientMasked: maskIdentifier(recipient),
             amountInStroops: amountInStroops.toString(),
+            amountVisibility:
+                privacyWrapperMode === "public" ? "plaintext" : "redacted",
         };
         const sendIntent = await startSppIntent("send", {
             ...sendIntentPayload,
@@ -2382,7 +2512,9 @@
         );
         discomboDebug.info("send_flow_started", {
             token: sendToken,
-            amount: sendAmount,
+            amount: sendTelemetryAmount.rawAmount,
+            amountBucket: sendTelemetryAmount.amountBucket,
+            amountRedacted: sendTelemetryAmount.redacted,
             recipient: maskIdentifier(recipient),
             useFallback,
             hasTurnstileToken: !!turnstileToken,
@@ -2483,7 +2615,9 @@
             discomboDebug.info("send_flow_succeeded", {
                 txHash,
                 token: sendToken,
-                amount: amountNum,
+                amount: sendTelemetryAmount.rawAmount,
+                amountBucket: sendTelemetryAmount.amountBucket,
+                amountRedacted: sendTelemetryAmount.redacted,
             });
 
             // Reset
@@ -2537,7 +2671,10 @@
         try {
             const receiveIntentPayload = {
                 receiveToken,
-                requestedAmount: receiveAmount.trim() || null,
+                requestedAmount: normalizeOptionalTrimmed(receiveAmount),
+                requestVisibility: receiveProtectedRequestEnabled
+                    ? "protected"
+                    : "standard",
                 destinationMasked: maskIdentifier(userState.contractId),
                 operation,
             };
@@ -2550,7 +2687,11 @@
             discomboDebug.info("receive_flow_started", {
                 operation,
                 receiveToken,
-                requestedAmount: receiveAmount.trim() || null,
+                requestedAmount: receiveProtectedRequestEnabled
+                    ? null
+                    : normalizeOptionalTrimmed(receiveAmount),
+                requestedAmountBucket: bucketizeAmountForTelemetry(receiveAmount),
+                requestedAmountRedacted: receiveProtectedRequestEnabled,
                 privacyWrapperMode,
             });
 
@@ -2667,11 +2808,20 @@
             const requestText = buildReceiveRequestText(intentId);
             const copied = await copyTextToClipboard(requestText);
             if (!copied) throw new Error("Clipboard unavailable");
+            const requestAmountMeta = getTelemetryAmountMeta(
+                receiveAmount,
+                receiveProtectedRequestEnabled || privacyWrapperMode !== "public",
+            );
 
             discomboDebug.info("receive_request_copied", {
                 token: receiveToken,
-                requestedAmount: receiveAmount || null,
-                hasRequestedAmount: !!receiveAmount,
+                requestedAmount: requestAmountMeta.rawAmount,
+                requestedAmountBucket: requestAmountMeta.amountBucket,
+                requestedAmountRedacted: requestAmountMeta.redacted,
+                hasRequestedAmount: !!normalizeOptionalTrimmed(receiveAmount),
+                requestVisibility: receiveProtectedRequestEnabled
+                    ? "protected"
+                    : "standard",
                 requestLength: requestText.length,
             });
             setStatusMessageTracked(
@@ -2719,13 +2869,22 @@
 
         try {
             const text = buildReceiveRequestText(intentId);
+            const requestAmountMeta = getTelemetryAmountMeta(
+                receiveAmount,
+                receiveProtectedRequestEnabled || privacyWrapperMode !== "public",
+            );
             await navigator.share({
                 title: "Discombobulator Receive Request",
                 text,
             });
             discomboDebug.info("receive_request_shared", {
                 token: receiveToken,
-                requestedAmount: receiveAmount || null,
+                requestedAmount: requestAmountMeta.rawAmount,
+                requestedAmountBucket: requestAmountMeta.amountBucket,
+                requestedAmountRedacted: requestAmountMeta.redacted,
+                requestVisibility: receiveProtectedRequestEnabled
+                    ? "protected"
+                    : "standard",
             });
             setStatusMessageTracked(
                 withPrivacyModeSuffix("Request shared"),
@@ -3778,7 +3937,56 @@
                                 </div>
                                 <div class="mt-1 text-[8px] text-[#fbbf24]">
                                     Receive requests stay advisory and public; non-public
-                                    modes add policy and commitment receipts.
+                                    modes can export a protected request package that keeps
+                                    the requested amount out of plaintext share text.
+                                </div>
+                            </div>
+
+                            <div
+                                class="rounded-xl border border-[#1e293b] bg-[#0f172a]/35 p-3"
+                            >
+                                <div
+                                    class="text-[8px] uppercase tracking-[0.18em] text-[#7dd3fc]"
+                                >
+                                    Request Visibility
+                                </div>
+                                <div
+                                    class="mt-2 flex bg-[#0f172a]/40 p-1.5 rounded-xl border border-[#1e293b]"
+                                >
+                                    <button
+                                        class="flex-1 py-2 text-[9px] rounded-lg transition-all {receiveRequestVisibility ===
+                                        'standard'
+                                            ? 'bg-[#334155] text-white shadow-sm'
+                                            : 'text-[#64748b]'}"
+                                        onclick={() =>
+                                            (receiveRequestVisibility = "standard")}
+                                    >
+                                        Standard
+                                    </button>
+                                    <button
+                                        class="flex-1 py-2 text-[9px] rounded-lg transition-all {receiveRequestVisibility ===
+                                        'protected'
+                                            ? 'bg-[#0284c7] text-white shadow-sm'
+                                            : 'text-[#64748b]'}"
+                                        onclick={() =>
+                                            (receiveRequestVisibility = "protected")}
+                                    >
+                                        Protected
+                                    </button>
+                                </div>
+                                <div class="mt-2 text-[8px] text-[#94a3b8]">
+                                    {#if receiveProtectedRequestEnabled}
+                                        Destination and token remain visible so the sender
+                                        can still pay. Requested amount and request metadata
+                                        move into the encrypted SPP disclosure package.
+                                    {:else if receiveRequestVisibility === "protected"}
+                                        Protected packages require a non-public SPP mode.
+                                        Public mode falls back to the standard plaintext
+                                        request.
+                                    {:else}
+                                        Plaintext request includes the requested amount in
+                                        share text.
+                                    {/if}
                                 </div>
                             </div>
 
@@ -3859,7 +4067,9 @@
                                     onclick={copyReceiveRequest}
                                     disabled={!userState.contractId}
                                 >
-                                    Copy Request
+                                    {receiveProtectedRequestEnabled
+                                        ? "Copy Protected Request"
+                                        : "Copy Request"}
                                 </button>
                             </div>
 
@@ -3869,7 +4079,9 @@
                                     onclick={shareReceiveRequest}
                                     disabled={!userState.contractId}
                                 >
-                                    Share Request
+                                    {receiveProtectedRequestEnabled
+                                        ? "Share Protected Request"
+                                        : "Share Request"}
                                 </button>
                                 <button
                                     class="text-[9px] py-3 rounded-lg border border-[#1e293b] bg-[#0f172a]/50 text-[#7dd3fc] hover:bg-[#0f172a]/80 hover:border-[#7dd3fc]/40 transition-all"
@@ -4024,7 +4236,9 @@
                         {:else if mode === "swap" && turnstileFailed && !turnstileToken}
                             Swap (pay fee)
                         {:else if mode === "receive"}
-                            Copy Request
+                            {receiveProtectedRequestEnabled
+                                ? "Copy Protected Request"
+                                : "Copy Request"}
                         {:else}
                             {mode === "swap" ? "Swap" : "Send"}
                         {/if}

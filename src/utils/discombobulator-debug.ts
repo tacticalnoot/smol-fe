@@ -31,6 +31,7 @@ export interface DiscombobulatorSnapshot {
     sendToMasked: string;
     receiveToken: string;
     receiveAmount: string;
+    receiveRequestVisibility: string;
     receiveWatchActive: boolean;
     receiveWatchFulfilled: boolean;
     receiveWatchToken: string;
@@ -159,6 +160,7 @@ export const noopDiscombobulatorDebugger: DiscombobulatorDebugger = {
         sendToMasked: "",
         receiveToken: "unknown",
         receiveAmount: "",
+        receiveRequestVisibility: "standard",
         receiveWatchActive: false,
         receiveWatchFulfilled: false,
         receiveWatchToken: "unknown",
