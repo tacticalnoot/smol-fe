@@ -135,6 +135,9 @@
     let aspPolicyHistory = $state<AspPolicyReceipt[]>([]);
     let showPrivacyHistory = $state(false);
     let showDisclosurePreview = $state(false);
+    let showSppPanel = $state(false);
+    let showPhaseReceiptPanel = $state(false);
+    let showResultArtifact = $state(false);
     let privacyHistoryPhaseFilter = $state<
         "all" | PrivacyPhase
     >("all");
@@ -2983,35 +2986,15 @@
                 >
             </div>
 
-            <!-- DEBUG: Relayer Mode Indicator -->
+            <!-- DEBUG: Relayer Mode Indicator (subtle, debug mode only) -->
+            {#if debugQueryEnabled}
             <div
-                class="fixed bottom-0 right-0 p-2 text-[10px] bg-black/90 backdrop-blur border-t border-l border-lime-400/20 text-lime-400 font-mono z-[10000] text-right pointer-events-none opacity-80 hover:opacity-100 transition-opacity"
+                class="fixed bottom-0 right-0 p-2 text-[8px] bg-black/80 backdrop-blur border-t border-l border-lime-400/10 text-lime-400/50 font-mono z-[10000] text-right pointer-events-none opacity-40 hover:opacity-90 transition-opacity"
             >
-                <div>DISCOMBOBULATOR RELAYER MODE</div>
-                <div>
-                    MODE: {isDirectRelayer
-                        ? "DIRECT (BYPASS)"
-                        : "PROXY (TURNSTILE)"}
-                </div>
-                <div>
-                    HOST: {typeof window !== "undefined"
-                        ? window.location.hostname
-                        : "SERVER"}
-                </div>
-                <div>KEY: {hasApiKey ? "PRESENT" : "MISSING"}</div>
-                <div>
-                    CFG_URL: {import.meta.env.PUBLIC_RELAYER_URL || "N/A"}
-                </div>
-                <div>
-                    TARGET: {isDirectRelayer
-                        ? "channels.openzeppelin.com"
-                        : "api.kalefarm.xyz"}
-                </div>
-                <div>MODE: {getPrivacyWrapperLabel(privacyWrapperMode)}</div>
-                <div>GPU_SAFE: {lowGpuMode ? "ON" : "OFF"}</div>
-                <div>DBG_URL: {debugQueryEnabled ? "ON" : "OFF"}</div>
-                <div>CONSOLE: window.discomboDebug.help()</div>
+                <div class="text-lime-400/30">RELAYER: {isDirectRelayer ? "DIRECT" : "PROXY"} · SPP: {getPrivacyWrapperLabel(privacyWrapperMode)}</div>
+                <div class="text-lime-400/20">KEY: {hasApiKey ? "✓" : "✗"} · GPU: {lowGpuMode ? "LITE" : "FULL"} · window.discomboDebug.help()</div>
             </div>
+            {/if}
 
             <!-- GLASS CARD (Moonlight) -->
             <div class="glass-panel flex flex-col relative overflow-hidden">
@@ -3040,8 +3023,21 @@
                     >
                 </div>
 
+                <!-- SPP Collapsible Panel -->
+                <div class="mx-6 mt-3">
+                    <button
+                        onclick={() => (showSppPanel = !showSppPanel)}
+                        class="flex items-center gap-1.5 text-[8px] uppercase tracking-[0.18em] text-[#334155] hover:text-[#4a6a8a] transition-colors py-1 w-full text-left"
+                    >
+                        <span class="text-[10px] leading-none">{showSppPanel ? '▾' : '▸'}</span>
+                        <span>SPP Mainnet Mode</span>
+                        {#if privacyWrapperMode !== "public"}
+                            <span class="ml-1 rounded-full border border-[#7dd3fc]/25 px-1.5 py-0.5 text-[7px] text-[#7dd3fc]/60 font-normal normal-case tracking-normal">{getPrivacyWrapperLabel(privacyWrapperMode)}</span>
+                        {/if}
+                    </button>
+                {#if showSppPanel}
                 <div
-                    class="mx-6 mt-4 rounded-xl border border-[#1e293b] bg-[#020617]/50 p-3"
+                    class="rounded-xl border border-[#1e293b] bg-[#020617]/50 p-3 mt-1"
                 >
                     <div
                         class="text-[8px] uppercase tracking-[0.2em] text-[#7dd3fc]"
@@ -3105,13 +3101,18 @@
                             SPP Scope
                         </div>
                         <div class="mt-1 text-[8px] text-[#fde68a]">
-                            Non-public modes now execute ASP policy checks, commitment
-                            receipts, and selective-disclosure artifacts around a public
-                            settlement.
+                            {#if privacyWrapperMode === "public"}
+                                Public mainnet settlement. No SPP envelopes.
+                            {:else if privacyWrapperMode === "shield_before_swap"}
+                                Pre-payment: ASP policy check → AES-GCM-256 commitment sealed → mainnet settlement.
+                            {:else if privacyWrapperMode === "shield_after_swap"}
+                                Post-payment: mainnet settlement → ASP policy check → AES-GCM-256 commitment sealed.
+                            {:else}
+                                Wrap: ASP policy → pre-commitment → mainnet settlement → post-commitment. Full envelope path.
+                            {/if}
                         </div>
-                        <div class="mt-1 text-[8px] text-[#cbd5e1]">
-                            Shielded balances and private value transfer are not executed
-                            in this Labs build.
+                        <div class="mt-1 text-[8px] text-[#94a3b8]">
+                            Settlement tx hash is bound to each commitment receipt on mainnet.
                         </div>
                     </div>
 
@@ -3415,10 +3416,27 @@
                         {/if}
                     </div>
                 </div>
+                {/if}
+                </div>
 
                 <div class="p-6 md:p-8 flex flex-col gap-6">
+                    <!-- Phase Receipt Collapsible -->
+                    <div class="border border-[#1e293b]/50 rounded-xl bg-[#0f172a]/20">
+                        <button
+                            onclick={() => (showPhaseReceiptPanel = !showPhaseReceiptPanel)}
+                            class="flex items-center justify-between w-full px-3 py-2 text-[8px] uppercase tracking-[0.18em] text-[#2a3a4a] hover:text-[#3d5a70] transition-colors text-left"
+                        >
+                            <div class="flex items-center gap-1.5">
+                                <span class="text-[10px] leading-none">{showPhaseReceiptPanel ? '▾' : '▸'}</span>
+                                <span>Latest {getPhaseLabel(activeReceiptPhase)} Receipt</span>
+                            </div>
+                            {#if activePhaseArtifact}
+                                <span class="text-[7px] text-[#334155] normal-case tracking-normal font-normal border border-[#1e293b] rounded-full px-1.5 py-0.5">{activePhaseArtifact.settlement.settlementState}</span>
+                            {/if}
+                        </button>
+                    {#if showPhaseReceiptPanel}
                     <div
-                        class="rounded-xl border border-[#1e293b] bg-[#0f172a]/35 p-3"
+                        class="rounded-b-xl border-t border-[#1e293b] bg-[#0f172a]/35 p-3"
                     >
                         <div
                             class="text-[8px] uppercase tracking-[0.18em] text-[#7dd3fc]"
@@ -3652,10 +3670,25 @@
                             </div>
                         {/if}
                     </div>
+                    {/if}
+                    </div>
 
                     {#if latestCompletedActiveArtifact}
+                        <!-- Result Artifact Collapsible -->
+                        <div class="border border-[#0f766e]/30 rounded-xl bg-[#042f2e]/15">
+                            <button
+                                onclick={() => (showResultArtifact = !showResultArtifact)}
+                                class="flex items-center justify-between w-full px-3 py-2 text-[8px] uppercase tracking-[0.18em] text-[#1a3a35] hover:text-[#2a5a50] transition-colors text-left"
+                            >
+                                <div class="flex items-center gap-1.5">
+                                    <span class="text-[10px] leading-none">{showResultArtifact ? '▾' : '▸'}</span>
+                                    <span>Latest Result Artifact</span>
+                                </div>
+                                <span class="text-[7px] text-[#1e4a42] normal-case tracking-normal font-normal border border-[#0f766e]/30 rounded-full px-1.5 py-0.5">{latestCompletedActiveArtifact.settlement.settlementState}</span>
+                            </button>
+                        {#if showResultArtifact}
                         <div
-                            class="rounded-xl border border-[#0f766e]/40 bg-[#042f2e]/35 p-3"
+                            class="rounded-b-xl border-t border-[#0f766e]/30 bg-[#042f2e]/35 p-3"
                         >
                             <div
                                 class="text-[8px] uppercase tracking-[0.18em] text-[#5eead4]"
@@ -3778,6 +3811,8 @@
                                     </button>
                                 </div>
                             {/if}
+                        </div>
+                        {/if}
                         </div>
                     {/if}
 
