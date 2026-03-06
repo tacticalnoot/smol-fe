@@ -3,6 +3,7 @@ import {
     stableStringify,
     type SppPhase,
 } from "./discombobulator-spp";
+import type { ZkEligibilityAttachment } from "./discombobulator-zk-eligibility";
 
 export type PrivacyWrapperMode =
     | "public"
@@ -82,6 +83,7 @@ export interface PrivacyExecutionArtifact {
     commitment: PrivacyCommitmentReceipt;
     disclosure: PrivacyDisclosureArtifact;
     settlement: PrivacySettlementBinding;
+    zkEligibility?: ZkEligibilityAttachment | null;
 }
 
 export interface EvaluateAspPolicyInput {

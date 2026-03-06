@@ -56,6 +56,10 @@ export interface DiscombobulatorSnapshot {
     privacyLastDisclosureHandle: string;
     privacyLastSettlementState: string;
     privacyLastSettlementTxHash: string;
+    zkEligibilityStatus: string;
+    zkEligibilityLocallyVerified: boolean | null;
+    zkEligibilityThreshold: string;
+    zkEligibilityDurationMs: number | null;
     lowGpuMode: boolean;
     contractIdMasked: string;
     keyIdMasked: string;
@@ -185,6 +189,10 @@ export const noopDiscombobulatorDebugger: DiscombobulatorDebugger = {
         privacyLastDisclosureHandle: "",
         privacyLastSettlementState: "",
         privacyLastSettlementTxHash: "",
+        zkEligibilityStatus: "n/a",
+        zkEligibilityLocallyVerified: null,
+        zkEligibilityThreshold: "",
+        zkEligibilityDurationMs: null,
         lowGpuMode: false,
         contractIdMasked: "",
         keyIdMasked: "",
