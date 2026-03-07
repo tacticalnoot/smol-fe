@@ -80,6 +80,8 @@
         summarizeZkEligibility,
         type ZkEligibilityAttachment,
     } from "../../utils/discombobulator-zk-eligibility";
+    import { getSppResearchModel } from "../../utils/discombobulator-spp-research";
+    import DiscombobulatorSppResearchPanel from "./DiscombobulatorSppResearchPanel.svelte";
     import KaleEmoji from "../ui/KaleEmoji.svelte";
     import { Turnstile } from "svelte-turnstile";
     import { Transaction, Networks } from "@stellar/stellar-sdk/minimal";
@@ -1974,6 +1976,7 @@
             getPrivacyReceipt: getPrivacyReceiptSummaryForContext,
             exportPrivacyReceipt: exportPrivacyReceiptForPhase,
             findPrivacyArtifact: findPrivacyArtifactForDebug,
+            getSppResearchModel: getSppResearchModel,
         });
 
         discomboDebug.info("component_mounted", {
@@ -3833,6 +3836,8 @@
                             </div>
                         {/if}
                     </div>
+
+                    <DiscombobulatorSppResearchPanel />
                 </div>
                 {/if}
                 </div>

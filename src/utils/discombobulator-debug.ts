@@ -89,6 +89,7 @@ export interface DiscombobulatorConsoleHelpers {
     artifact: (
         query: string | DebugPrivacyArtifactLookup,
     ) => unknown | null;
+    research: () => unknown | null;
     setVerbose: (nextValue: boolean) => void;
     enableVerbose: () => void;
     disableVerbose: () => void;
@@ -134,6 +135,7 @@ export interface DiscombobulatorDebugBootstrapOptions {
     findPrivacyArtifact?: (
         query: string | DebugPrivacyArtifactLookup,
     ) => unknown | null;
+    getSppResearchModel?: () => unknown;
 }
 
 declare global {
@@ -365,6 +367,7 @@ export function bootstrapDiscombobulatorDebug(
                 "window.discomboDebug.artifact({ phase: 'send', stage: 'post' })",
             );
             console.log("window.discomboDebug.artifact('commit-1234')");
+            console.log("window.discomboDebug.research()");
             console.log("window.discomboDebug.mark('label', { any: 'context' })");
             console.log("window.discomboDebug.traceOn() / traceOff()");
             console.log("window.discomboDebug.setTraceLevel('TRACE' | 'DEBUG' | 'INFO' | 'WARN' | 'ERROR')");
@@ -534,6 +537,51 @@ export function bootstrapDiscombobulatorDebug(
             console.log(result);
             return result;
         },
+        research: () => {
+            if (!options.getSppResearchModel) {
+                console.warn(
+                    "[Discombobulator] SPP research model provider is not configured.",
+                );
+                return null;
+            }
+
+            const model: any = options.getSppResearchModel();
+            const contracts = Array.isArray(model?.contracts)
+                ? model.contracts
+                : [];
+            const workstreams = Array.isArray(model?.workstreams)
+                ? model.workstreams
+                : [];
+
+            if (model?.summary) {
+                console.table([model.summary]);
+            }
+            if (contracts.length > 0) {
+                console.log("[Discombobulator] SPP contract surfaces");
+                console.table(
+                    contracts.map((entry: any) => ({
+                        id: entry.id ?? "",
+                        label: entry.label ?? "",
+                        status: entry.status ?? "",
+                        entrypoints: Array.isArray(entry.entrypoints)
+                            ? entry.entrypoints.length
+                            : 0,
+                        sourceHref: entry.sourceHref ?? "",
+                    })),
+                );
+            }
+            if (workstreams.length > 0) {
+                console.log("[Discombobulator] SPP workstreams");
+                console.table(
+                    workstreams.map((entry: any) => ({
+                        id: entry.id ?? "",
+                        label: entry.label ?? "",
+                        status: entry.status ?? "",
+                    })),
+                );
+            }
+            return model;
+        },
         setVerbose: (nextValue: boolean) => {
             verbose = !!nextValue;
             writeVerboseFlag(verbose);
@@ -674,6 +722,13 @@ export function bootstrapDiscombobulatorDebug(
                 if (receipts.length > 0) {
                     console.log("[Discombobulator] Latest phase receipts");
                     console.table(receipts);
+                }
+            }
+            if (options.getSppResearchModel) {
+                const research: any = options.getSppResearchModel();
+                if (research?.summary) {
+                    console.log("[Discombobulator] SPP research surface");
+                    console.table([research.summary]);
                 }
             }
         },
