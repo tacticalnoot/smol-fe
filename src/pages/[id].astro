@@ -11,6 +11,7 @@ const SITE_URL = import.meta.env.PUBLIC_URL || "https://noot.smol.xyz";
 // Fetch minimal data for SEO/meta tags only
 let title: string | undefined;
 let description: string | undefined;
+let artist: string | undefined;
 let song_url: string | null = null;
 let image_url: string | null = id ? `${API_URL}/image/${id}.png` : null;
 let schema: any[] = [];
@@ -46,10 +47,13 @@ if (id) {
 
 		if (data) {
 			title = data.kv_do?.lyrics?.title || data.d1?.Title;
+			artist = data.d1?.Creator || (data.d1?.Address ? `${data.d1.Address.slice(0, 8)}...` : undefined);
 			// Don't include prompt in share preview - just use title or generic description
             const rawDesc = title || "AI generated song";
-            // SEO: append value prop
-            description = `${rawDesc} | Made with Smol AI Music Generator`;
+            // SEO: include artist and value prop
+            description = artist
+                ? `${rawDesc} by ${artist} | Made with Smol AI Music Generator`
+                : `${rawDesc} | Made with Smol AI Music Generator`;
 
 			// Set song URL
 			if (data.d1?.Song_1) {
@@ -137,6 +141,7 @@ if (id) {
 <Layout
     {title}
     {description}
+    {artist}
     {song_url}
     {image_url}
     hideBottomBar={true}

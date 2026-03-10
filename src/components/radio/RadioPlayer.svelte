@@ -18,6 +18,7 @@
   import { buildRadioUrl } from "../../utils/radio";
   import CastButton from "../ui/CastButton.svelte";
   import { preferences } from "../../stores/preferences.svelte.ts";
+  import { triggerHaptic, PAD_PRESS } from "../../utils/haptics";
 
   let {
     playlist = [],
@@ -125,6 +126,7 @@
   const progress = $derived(audioState.progress);
 
   function playPause() {
+    triggerHaptic(PAD_PRESS);
     initAudioContext(); // ENSURE GESTURE UNLOCKS AUDIO CONTEXT FOR VISUALIZER
     if (!currentSong && playlist.length > 0) {
       selectSong(playlist[0]);
@@ -138,14 +140,17 @@
   }
 
   function handlePrev() {
+    triggerHaptic(50);
     if (onPrev) onPrev();
   }
 
   function handleNext() {
+    triggerHaptic(50);
     if (onNext) onNext();
   }
 
   function handleRegenerate() {
+    triggerHaptic(50);
     if (onRegenerate) {
       onRegenerate();
     } else if (currentSong) {
@@ -227,6 +232,7 @@
 
   function downloadSong(e: MouseEvent) {
     e.stopPropagation();
+    triggerHaptic(50);
     if (!currentSong) return;
 
     const versionId = currentVersionId || currentSong.Song_1 || currentSong.Id;
@@ -241,6 +247,7 @@
   }
 
   function toggleFullscreen() {
+    triggerHaptic("light");
     if (!containerRef) return;
 
     if (!document.fullscreenElement) {
@@ -819,6 +826,7 @@
                   : 'border-emerald-500/50 text-emerald-400 hover:bg-emerald-500/20 shadow-[0_0_15px_rgba(16,185,129,0.2)]'}"
                 onclick={(e) => {
                   e.stopPropagation();
+                  triggerHaptic("light");
                   handleContextBack();
                 }}
                 title={backContext.label}
@@ -893,6 +901,7 @@
                   : ''}"
                 onclick={(e) => {
                   e.stopPropagation();
+                  triggerHaptic("light");
                   showQueue = !showQueue;
                 }}
                 title="Toggle Queue"
@@ -920,6 +929,7 @@
                 : ''}"
               onclick={(e) => {
                 e.stopPropagation();
+                triggerHaptic("light");
                 isMinimized = !isMinimized;
               }}
               title={isMinimized ? "Show Album Art" : "Show Playlist"}
@@ -1020,6 +1030,7 @@
                     const path = window.location.pathname;
                     if (path.includes("/radio")) from = "?from=radio";
                     else if (path.includes("/artist")) from = "?from=artist";
+                    triggerHaptic(50);
                     navigate(`/${currentSong.Id}${from}`);
                   }}
                   title="View Song Details"
@@ -1038,6 +1049,7 @@
                   class="tech-button w-9 h-9 flex items-center justify-center transition-all bg-black/40 backdrop-blur-md rounded-full border border-[#9ae600]/50 text-[#9ae600] hover:bg-[#9ae600]/20 shadow-[0_0_15px_rgba(154,230,0,0.3)]"
                   onclick={(e) => {
                     e.stopPropagation();
+                    triggerHaptic(50);
                     navigate(`/artist/${currentSong.Address}`);
                   }}
                   title="View Artist Page"
@@ -1056,6 +1068,7 @@
                   class="tech-button w-9 h-9 flex items-center justify-center transition-all bg-black/20 backdrop-blur-md rounded-full border border-lime-500/50 text-lime-400 hover:bg-lime-500/20 shadow-[0_0_15px_rgba(154,230,0,0.2)] opacity-60 hover:opacity-100"
                   onclick={(e) => {
                     e.stopPropagation();
+                    triggerHaptic("selection");
                     onShuffle();
                   }}
                   title="Shuffle Station"
@@ -1075,6 +1088,7 @@
                 class="tech-button w-9 h-9 flex items-center justify-center transition-all bg-black/40 backdrop-blur-md rounded-full border border-[#f97316]/50 text-[#f97316] hover:bg-[#f97316]/20 shadow-[0_0_15px_rgba(249,115,22,0.3)]"
                 onclick={(e) => {
                   e.stopPropagation();
+                  triggerHaptic(50);
                   const target = currentSong
                     ? buildRadioUrl(currentSong)
                     : "/radio";
@@ -1101,6 +1115,7 @@
                     const path = window.location.pathname;
                     if (path.includes("/radio")) from = "?from=radio";
                     else if (path.includes("/artist")) from = "?from=artist";
+                    triggerHaptic(50);
                     navigate(`/${currentSong.Id}${from}`);
                   }}
                   title="View Song Details"
@@ -1119,6 +1134,7 @@
                   class="tech-button w-9 h-9 flex items-center justify-center transition-all bg-black/40 backdrop-blur-md rounded-full border border-[#9ae600]/50 text-[#9ae600] hover:bg-[#9ae600]/20 shadow-[0_0_15px_rgba(154,230,0,0.3)]"
                   onclick={(e) => {
                     e.stopPropagation();
+                    triggerHaptic(50);
                     navigate(`/artist/${currentSong.Address}`);
                   }}
                   title="View Artist Page"
@@ -1181,6 +1197,7 @@
                       : 'rounded-r-full border-r'}"
                     onclick={(e) => {
                       e.stopPropagation();
+                      triggerHaptic("selection");
                       onVersionSelect?.(v.id);
                     }}
                   >
@@ -1193,7 +1210,7 @@
                         : 'bg-black/20 text-white/10 border-white/10 hover:text-white/50 hover:border-white/20'}"
                       onclick={(e) => {
                         e.stopPropagation();
-                        if (!v.isBest) onSetDefaultVersion?.(v.id);
+                        if (!v.isBest) { triggerHaptic("selection"); onSetDefaultVersion?.(v.id); }
                       }}
                       title={v.isBest
                         ? "Current Public Default"
@@ -1433,6 +1450,7 @@
               ? 'text-lime-400 border-lime-500/50 bg-lime-500/10 hover:bg-lime-500/20 shadow-[0_0_15px_rgba(154,230,0,0.3)]'
               : 'text-white/60 hover:text-white border-white/5 hover:border-white/20 bg-white/5'}"
             onclick={(e) => {
+              triggerHaptic("selection");
               toggleRepeatMode();
             }}
             title={audioState.repeatMode === "one"
@@ -1472,6 +1490,7 @@
                 ? 'w-7 h-7'
                 : 'w-8 h-8 sm:w-10 sm:h-10'} flex items-center justify-center active:scale-95 disabled:opacity-30 border rounded-full backdrop-blur-md transition-all duration-300 border-green-500/30 text-green-400 bg-green-500/10 hover:bg-green-500/20 shadow-[0_0_15px_rgba(74,222,128,0.1)] touch-manipulation"
               onclick={(e) => {
+                triggerHaptic(50);
                 window.dispatchEvent(new CustomEvent("smol:action-tip"));
                 onTip && onTip();
               }}
@@ -1491,7 +1510,7 @@
           {#if onShuffle && overlayControlsOnMobile}
             <button
               class="tech-button w-8 h-8 sm:w-10 sm:h-10 flex lg:hidden items-center justify-center text-lime-400 hover:text-lime-300 active:scale-95 border border-lime-500/30 hover:border-lime-400/50 rounded-full bg-lime-500/10 backdrop-blur-md touch-manipulation"
-              onclick={onShuffle}
+              onclick={() => { triggerHaptic("selection"); onShuffle?.(); }}
               title="Shuffle Playlist"
             >
               <svg class="w-4 h-4" fill="currentColor" viewBox="0 0 24 24">
@@ -1539,7 +1558,7 @@
                 : 'border-blue-500/50 text-blue-500 bg-blue-500/10 hover:bg-blue-500/20 shadow-[0_0_15px_rgba(59,130,246,0.3)]'} {overlayControlsOnMobile
                 ? 'hidden lg:flex'
                 : ''}"
-              onclick={onTogglePublish}
+              onclick={() => { triggerHaptic("selection"); onTogglePublish?.(); }}
             >
               {isPublished ? "Unpublish" : "Publish"}
             </button>
@@ -1569,6 +1588,7 @@
             {#if onMint}
               <button
                 onclick={() => {
+                  triggerHaptic(50);
                   if (!userState.contractId) {
                     triggerLogin();
                     return;
@@ -1586,6 +1606,7 @@
             {#if onTrade}
               <button
                 onclick={() => {
+                  triggerHaptic(50);
                   if (!userState.contractId) {
                     triggerLogin();
                     return;
@@ -1601,7 +1622,7 @@
             {/if}
             {#if onShare}
               <button
-                onclick={onShare}
+                onclick={() => { triggerHaptic(50); onShare?.(); }}
                 class="{isMinimized
                   ? 'px-4 py-1.5 text-[10px]'
                   : 'px-6 py-2.5 text-xs'} bg-white/10 backdrop-blur-md text-white font-pixel rounded-lg uppercase tracking-wider border border-white/10 hover:bg-white/20 transition-all shadow-lg"
@@ -1652,7 +1673,7 @@
           </h3>
           <button
             class="text-white/40 hover:text-white transition-colors"
-            onclick={() => (showQueue = false)}>✕</button
+            onclick={() => { triggerHaptic("light"); showQueue = false; }}>✕</button
           >
         </div>
         <div class="flex-1 overflow-y-auto dark-scrollbar py-4 px-2">

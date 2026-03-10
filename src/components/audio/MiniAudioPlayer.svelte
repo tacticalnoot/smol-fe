@@ -23,6 +23,8 @@
     const dash_offset = $derived(
         circumference - (progress / 100) * circumference,
     );
+
+    import { triggerHaptic, PAD_PRESS } from "../../utils/haptics";
 </script>
 
 <div class="relative w-9 h-9">
@@ -53,6 +55,7 @@
     <button
         onclick={(e) => {
             e.stopPropagation();
+            triggerHaptic(PAD_PRESS);
             songToggle();
         }}
         class="absolute inset-1 flex items-center justify-center text-white touch-manipulation active:scale-90 transition-transform duration-75"
