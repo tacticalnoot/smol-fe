@@ -18,6 +18,7 @@ import { buildCanonical, robotsMetaForUrl, jsonLd } from '../lib/seo';
 interface Props {
 	title?: string;
 	description?: string;
+	artist?: string;
 	song_url?: string | null;
 	image_url?: string | null;
 	hideBottomBar?: boolean;
@@ -29,6 +30,7 @@ interface Props {
 const {
 	title,
 	description = "Create and collect AI music onchain. The best AI music generator for making full songs from text prompts. Own your music.",
+	artist,
 	song_url = null,
 	image_url,
 	hideBottomBar = false,
@@ -150,6 +152,9 @@ const fullSchema = [...siteSchema, ...schema];
 				<meta property="og:audio:secure_url" content={song_url} />
 				<meta property="og:audio:type" content="audio/mpeg" />
 			</>
+		)}
+		{artist && (
+			<meta property="og:music:musician" content={artist} />
 		)}
 
 		<meta name="twitter:card" content={twitterCard} />

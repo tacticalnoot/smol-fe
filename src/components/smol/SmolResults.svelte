@@ -21,6 +21,7 @@
     import { RPC_URL } from "../../utils/rpc";
     import MintTradeModal from "../MintTradeModal.svelte";
     import TipArtistModal from "../artist/TipArtistModal.svelte";
+    import { triggerHaptic } from "../../utils/haptics";
 
     let { id }: { id: string } = $props();
 
@@ -58,6 +59,7 @@
 
     // Handle tap-to-play action
     function handleTapToPlay() {
+        triggerHaptic("selection");
         showTapToPlay = false;
         // Initialize audio context with user gesture
         initAudioContext();
@@ -297,6 +299,7 @@
     }
 
     function retryFetch() {
+        triggerHaptic(50);
         error = null;
         retryCount = 0;
         fetchData();
@@ -395,6 +398,7 @@
     }
 
     async function deleteSong() {
+        triggerHaptic("error");
         if (!confirm("Delete this song?")) return;
         await fetch(`${API_URL}/${id}`, {
             method: "DELETE",
@@ -404,6 +408,7 @@
     }
 
     function share() {
+        triggerHaptic(50);
         // Create clean URL without query parameters for better social media compatibility
         const cleanUrl = `${window.location.origin}${window.location.pathname}`;
 
@@ -430,6 +435,7 @@
         if (copiedFieldTimeout) clearTimeout(copiedFieldTimeout);
         try {
             await navigator.clipboard.writeText(value);
+            triggerHaptic("success");
             copiedField = fieldName;
             copiedFieldTimeout = setTimeout(() => {
                 copiedField = null;
@@ -761,6 +767,7 @@
                                     onclick={(e) => {
                                         e.preventDefault();
                                         if (data?.d1?.Address) {
+                                            triggerHaptic(50);
                                             navigate(
                                                 `/artist/${data.d1.Address}?play=${id}`,
                                             );
@@ -1098,7 +1105,7 @@
                         >
                             <div class="flex gap-6">
                                 <button
-                                    onclick={() => (activeTab = "lyrics")}
+                                    onclick={() => { triggerHaptic("selection"); activeTab = "lyrics"; }}
                                     class="pb-3 text-[10px] font-bold uppercase tracking-[0.2em] transition-colors {activeTab ===
                                     'lyrics'
                                         ? 'text-[#d836ff] border-b-2 border-[#d836ff]'
@@ -1106,7 +1113,7 @@
                                     >Lyrics</button
                                 >
                                 <button
-                                    onclick={() => (activeTab = "metadata")}
+                                    onclick={() => { triggerHaptic("selection"); activeTab = "metadata"; }}
                                     class="pb-3 text-[10px] font-bold uppercase tracking-[0.2em] transition-colors lg:hidden {activeTab ===
                                     'metadata'
                                         ? 'text-[#d836ff] border-b-2 border-[#d836ff]'
@@ -1117,7 +1124,7 @@
 
                             {#if activeTab === "lyrics"}
                                 <button
-                                    onclick={() => (autoScroll = !autoScroll)}
+                                    onclick={() => { triggerHaptic("light"); autoScroll = !autoScroll; }}
                                     class="pb-3 px-2 text-[10px] font-bold transition-all {autoScroll
                                         ? 'text-[#d836ff] drop-shadow-[0_0_8px_rgba(216,54,255,0.5)]'
                                         : 'text-white/20 hover:text-white/50'}"
