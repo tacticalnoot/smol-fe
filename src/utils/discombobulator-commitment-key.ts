@@ -84,6 +84,10 @@ export interface CommitmentKeyNote {
  * In a full on-chain system this proof would be submitted to a Soroban
  * contract which verifies it and releases the funds to recipientAddress.
  * Today it is verified client-side only.
+ *
+ * CONTRACT ALIGNMENT FIELDS (for when the CommitmentPool contract is deployed):
+ *   - commitmentBytes32Hex  → pass as `commitment` arg to `deposit()`
+ *   - nullifierHashHex      → pass as `nullifier_hash` arg to `withdraw()`
  */
 export interface WithdrawalProofArtifact {
     note: CommitmentKeyNote;
@@ -102,6 +106,23 @@ export interface WithdrawalProofArtifact {
      */
     proofMode: "groth16_circuit" | "poseidon_only";
     commitmentValid: boolean;
+    /**
+     * The Poseidon commitment encoded as 32-byte big-endian hex.
+     * This is the exact value to pass as `commitment: BytesN<32>` in the
+     * CommitmentPool Soroban contract's `deposit()` function.
+     *
+     * Encoding: bigint(note.commitment) → 32 bytes big-endian → hex string (64 chars).
+     */
+    commitmentBytes32Hex: string;
+    /**
+     * SHA-256 of the nullifier hex string, encoded as 32-byte hex.
+     * This is the exact value to pass as `nullifier_hash: BytesN<32>` in the
+     * CommitmentPool Soroban contract's `withdraw()` function.
+     *
+     * Encoding: sha256(note.nullifier) → hex string (64 chars).
+     * The contract stores this to prevent double-spending the same note.
+     */
+    nullifierHashHex: string;
     generatedAt: string;
     durationMs: number;
     disclaimer: string;
@@ -137,6 +158,56 @@ async function buildPoseidonHasher(): Promise<(inputs: bigint[]) => bigint> {
         const raw = poseidon(inputs);
         return BigInt(poseidon.F.toString(raw));
     };
+}
+
+// ---------------------------------------------------------------------------
+// Contract-alignment helpers
+// ---------------------------------------------------------------------------
+
+/**
+ * Encode a Poseidon commitment (decimal string) as a 32-byte big-endian
+ * Uint8Array, matching the `BytesN<32>` type expected by the CommitmentPool
+ * Soroban contract's `deposit(commitment)` argument.
+ *
+ * The Poseidon field element fits in < 32 bytes (BN254 prime < 2^254), so
+ * big-endian encoding into 32 bytes is always lossless.
+ */
+export function commitmentToBytes32(commitmentDecimal: string): Uint8Array {
+    const n = BigInt(commitmentDecimal);
+    const arr = new Uint8Array(32);
+    let tmp = n;
+    for (let i = 31; i >= 0; i--) {
+        arr[i] = Number(tmp & 0xffn);
+        tmp >>= 8n;
+    }
+    return arr;
+}
+
+/**
+ * Convert a Uint8Array to a lowercase hex string (no "0x" prefix).
+ */
+export function bytesToHex(bytes: Uint8Array): string {
+    return Array.from(bytes)
+        .map((b) => b.toString(16).padStart(2, "0"))
+        .join("");
+}
+
+/**
+ * Compute the nullifier hash for a commitment key note.
+ *
+ * This is sha256(note.nullifier) — a 64-char hex string representing 32 bytes.
+ * Pass this as `nullifier_hash: BytesN<32>` to the CommitmentPool contract's
+ * `withdraw()` function. The contract records this hash to prevent the same
+ * note from being spent twice (double-spend prevention).
+ *
+ * The nullifier itself (the secret random value) is NEVER sent on-chain.
+ * Only its hash is revealed at withdrawal time.
+ */
+export async function computeNullifierHash(
+    note: CommitmentKeyNote,
+): Promise<string> {
+    // sha256 of the hex-encoded nullifier string
+    return sha256Hex(note.nullifier);
 }
 
 // ---------------------------------------------------------------------------
@@ -362,11 +433,17 @@ export async function generateWithdrawalProof(
     //    that ties this proof to one specific destination wallet.
     const recipientAddressHash = await sha256Hex(recipientAddress.trim());
 
+    // 3a. Precompute contract-facing encodings (Tornado Cash alignment)
+    //   - commitmentBytes32Hex: what goes into deposit(commitment) on-chain
+    //   - nullifierHashHex:     what goes into withdraw(nullifier_hash) on-chain
+    const commitmentBytes32Hex = bytesToHex(commitmentToBytes32(note.commitment));
+    const nullifierHashHex = await computeNullifierHash(note);
+
     const secretBigInt = hexToBigInt(note.secret);
     const nullifierBigInt = hexToBigInt(note.nullifier);
     const amountBigInt = BigInt(note.amountStroops);
 
-    // 3. Attempt full Groth16 proof via existing kale_tier circuit
+    // 4. Attempt full Groth16 proof via existing kale_tier circuit
     let zkProof: object | null = null;
     let publicSignals: string[] | null = null;
     let locallyVerified = false;
@@ -396,7 +473,7 @@ export async function generateWithdrawalProof(
         publicSignals = result.publicSignals;
         proofMode = "groth16_circuit";
 
-        // 4. Local verification
+        // 5. Local verification
         try {
             const vkeyRes = await fetch(VKEY_PATH);
             const vkey = await vkeyRes.json();
@@ -422,6 +499,8 @@ export async function generateWithdrawalProof(
         locallyVerified,
         proofMode,
         commitmentValid: integrity.valid,
+        commitmentBytes32Hex,
+        nullifierHashHex,
         generatedAt,
         durationMs: Date.now() - startedAt,
         disclaimer: DISCLAIMER,
@@ -441,6 +520,9 @@ export function summarizeWithdrawalProof(
         recipientAddress: artifact.recipientAddress,
         recipientAddressHash: artifact.recipientAddressHash.slice(0, 16) + "...",
         commitment: artifact.note.commitment.slice(0, 20) + "...",
+        // Contract-facing fields (pass these to the Soroban CommitmentPool contract)
+        commitmentBytes32Hex: artifact.commitmentBytes32Hex,
+        nullifierHashHex: artifact.nullifierHashHex,
         tokenSymbol: artifact.note.tokenSymbol,
         amountStroops: artifact.note.amountStroops,
         publicSignalCount: artifact.publicSignals?.length ?? 0,

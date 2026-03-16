@@ -16,6 +16,9 @@ import {
     verifyCommitmentKeyIntegrity,
     generateWithdrawalProof,
     summarizeWithdrawalProof,
+    commitmentToBytes32,
+    bytesToHex,
+    computeNullifierHash,
     COMMITMENT_KEY_VERSION,
     type CommitmentKeyNote,
 } from '../utils/discombobulator-commitment-key';
@@ -258,6 +261,11 @@ describe('generateWithdrawalProof', () => {
         expect(typeof artifact.generatedAt).toBe('string');
         expect(typeof artifact.durationMs).toBe('number');
         expect(artifact.disclaimer).toBeTruthy();
+        // Contract-alignment fields must be present
+        expect(typeof artifact.commitmentBytes32Hex).toBe('string');
+        expect(artifact.commitmentBytes32Hex).toHaveLength(64);
+        expect(typeof artifact.nullifierHashHex).toBe('string');
+        expect(artifact.nullifierHashHex).toHaveLength(64);
     });
 
     it('binds proof to the specific recipient address', async () => {
@@ -341,6 +349,102 @@ describe('summarizeWithdrawalProof', () => {
 });
 
 // ---------------------------------------------------------------------------
+// commitmentToBytes32 / bytesToHex
+// ---------------------------------------------------------------------------
+
+describe('commitmentToBytes32', () => {
+    it('encodes zero as 32 zero bytes', () => {
+        const result = commitmentToBytes32('0');
+        expect(result).toHaveLength(32);
+        expect(result.every(b => b === 0)).toBe(true);
+    });
+
+    it('encodes 1 correctly (last byte = 0x01, rest zero)', () => {
+        const result = commitmentToBytes32('1');
+        expect(result).toHaveLength(32);
+        expect(result[31]).toBe(1);
+        expect(result.slice(0, 31).every(b => b === 0)).toBe(true);
+    });
+
+    it('encodes 256 correctly (byte 30 = 0x01, byte 31 = 0x00)', () => {
+        const result = commitmentToBytes32('256');
+        expect(result[30]).toBe(1);
+        expect(result[31]).toBe(0);
+    });
+
+    it('always produces exactly 32 bytes', () => {
+        const values = ['0', '1', '255', '256', '65535', '1000000000000'];
+        for (const v of values) {
+            expect(commitmentToBytes32(v)).toHaveLength(32);
+        }
+    });
+
+    it('round-trips through bytesToHex and back to bigint', () => {
+        const original = 999_888_777_666_555n;
+        const bytes = commitmentToBytes32(original.toString());
+        const hex = bytesToHex(bytes);
+        // Hex is 64 chars (32 bytes)
+        expect(hex).toHaveLength(64);
+        // Parse back — strip leading zeros and compare
+        const recovered = BigInt('0x' + hex);
+        expect(recovered).toBe(original);
+    });
+
+    it('encodes a real Poseidon commitment correctly (large field element)', async () => {
+        const note = await makeKey(100_000_000n);
+        const bytes = commitmentToBytes32(note.commitment);
+        expect(bytes).toHaveLength(32);
+        // Re-interpret as bigint and compare
+        const hex = bytesToHex(bytes);
+        const asBigInt = BigInt('0x' + hex);
+        expect(asBigInt.toString()).toBe(note.commitment);
+    });
+});
+
+describe('computeNullifierHash', () => {
+    it('returns a 64-char hex string', async () => {
+        const note = await makeKey();
+        const hash = await computeNullifierHash(note);
+        expect(hash).toHaveLength(64);
+        expect(hash).toMatch(/^[0-9a-f]+$/);
+    });
+
+    it('is deterministic for the same note', async () => {
+        const note = await makeKey();
+        const h1 = await computeNullifierHash(note);
+        const h2 = await computeNullifierHash(note);
+        expect(h1).toBe(h2);
+    });
+
+    it('differs for notes with different nullifiers', async () => {
+        const a = await makeKey();
+        const b = await makeKey();
+        // Negligible probability of collision
+        expect(await computeNullifierHash(a)).not.toBe(await computeNullifierHash(b));
+    });
+
+    it('matches nullifierHashHex in the withdrawal proof artifact', async () => {
+        const note = await makeKey();
+        const hash = await computeNullifierHash(note);
+        const artifact = await generateWithdrawalProof(
+            note,
+            'GAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAWHF',
+        );
+        expect(artifact.nullifierHashHex).toBe(hash);
+    });
+
+    it('commitmentBytes32Hex in artifact matches commitmentToBytes32', async () => {
+        const note = await makeKey();
+        const expected = bytesToHex(commitmentToBytes32(note.commitment));
+        const artifact = await generateWithdrawalProof(
+            note,
+            'GAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAWHF',
+        );
+        expect(artifact.commitmentBytes32Hex).toBe(expected);
+    });
+});
+
+// ---------------------------------------------------------------------------
 // End-to-end: generate → serialize → deserialize → verify → proof
 // ---------------------------------------------------------------------------
 
@@ -372,5 +476,13 @@ describe('full flow: generate → serialize → verify → proof', () => {
         expect(artifact.recipientAddress).toBe(recipient);
         // The ZK proof or Poseidon fallback should be present
         expect(['groth16_circuit', 'poseidon_only']).toContain(artifact.proofMode);
+
+        // Step 6: verify contract-alignment fields are present and well-formed
+        // commitmentBytes32Hex — pass to deposit(commitment) on-chain
+        expect(artifact.commitmentBytes32Hex).toHaveLength(64);
+        expect(BigInt('0x' + artifact.commitmentBytes32Hex).toString()).toBe(note.commitment);
+        // nullifierHashHex — pass to withdraw(nullifier_hash) on-chain
+        expect(artifact.nullifierHashHex).toHaveLength(64);
+        expect(artifact.nullifierHashHex).toMatch(/^[0-9a-f]+$/);
     });
 });
