@@ -66,15 +66,23 @@ export type PrivatePoolEntryStatus =
     | "confirmed"
     | "failed";
 
+export type PoolEntryMode = "addressed" | "commitment_ticket";
+
 export interface PrivatePoolEntry {
     entryId: string;
     phase: PrivatePoolEntryPhase;
+    /** "addressed" = recipient specified at deposit time (existing flow).
+     *  "commitment_ticket" = ZK cash mode: recipient specified at withdrawal time. */
+    poolMode: PoolEntryMode;
     sendToken: PrivateRouteTokenSymbol;
     recipientMasked: string;
     amountMasked: string;
     routeLabel: string;
     commitmentId: string | null;
     intentId: string | null;
+    /** Serialized CommitmentKeyNote (dck1:…) — only present in commitment_ticket mode.
+     *  The holder of this string can generate a withdrawal proof to any wallet. */
+    commitmentKey: string | null;
     status: PrivatePoolEntryStatus;
     addedAt: string;
     settledAt: string | null;

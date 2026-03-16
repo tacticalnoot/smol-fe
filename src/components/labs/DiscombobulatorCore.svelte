@@ -80,6 +80,16 @@
         summarizeZkEligibility,
         type ZkEligibilityAttachment,
     } from "../../utils/discombobulator-zk-eligibility";
+    import {
+        generateCommitmentKey,
+        serializeCommitmentKey,
+        deserializeCommitmentKey,
+        verifyCommitmentKeyIntegrity,
+        generateWithdrawalProof,
+        summarizeWithdrawalProof,
+        type CommitmentKeyNote,
+        type WithdrawalProofArtifact,
+    } from "../../utils/discombobulator-commitment-key";
     import { getSppResearchModel } from "../../utils/discombobulator-spp-research";
     import DiscombobulatorSppResearchPanel from "./DiscombobulatorSppResearchPanel.svelte";
     import KaleEmoji from "../ui/KaleEmoji.svelte";
@@ -172,6 +182,16 @@
     let poolSendQuote = $state<PrivateSendQuote | null>(null);
     let poolSendQuoting = $state(false);
     let poolSendQuoteError = $state("");
+    // Commitment ticket mode state
+    let poolMode = $state<"addressed" | "commitment_ticket">("addressed");
+    let lastCommitmentTicket = $state<string | null>(null);
+    let poolTicketCopied = $state(false);
+    // Redemption panel state
+    let redeemTicketInput = $state("");
+    let redeemRecipientInput = $state("");
+    let redeemProofResult = $state<object | null>(null);
+    let redeemWorking = $state(false);
+    let redeemError = $state("");
     let privacyHistoryPhaseFilter = $state<
         "all" | PrivacyPhase
     >("all");
@@ -3122,20 +3142,28 @@
             return;
         }
         const amount = parseFloat(poolSendAmount);
-        const recipient = poolSendTo.trim();
-        if (!recipient || !isFinite(amount) || amount <= 0) {
-            poolStatusMessage = "Fill in recipient and amount first";
+        if (!isFinite(amount) || amount <= 0) {
+            poolStatusMessage = "Enter an amount first";
             return;
         }
 
-        try {
-            validateAddress(recipient, "Recipient");
-        } catch {
-            poolStatusMessage = "Invalid recipient address (must be a valid G… or C… Stellar address)";
-            return;
+        // In addressed mode, recipient is required; in ticket mode, it's not.
+        const recipient = poolSendTo.trim();
+        if (poolMode === "addressed") {
+            if (!recipient) {
+                poolStatusMessage = "Fill in recipient and amount first";
+                return;
+            }
+            try {
+                validateAddress(recipient, "Recipient");
+            } catch {
+                poolStatusMessage = "Invalid recipient address (must be a valid G… or C… Stellar address)";
+                return;
+            }
         }
 
         poolStatusMessage = "Creating pool commitment...";
+        lastCommitmentTicket = null;
         const addedAt = new Date().toISOString();
 
         // Create SPP intent and commitment receipt (pre-committed before settlement)
@@ -3143,10 +3171,10 @@
         const payload = {
             sendToken: poolSendToken,
             amount: poolSendAmount,
-            recipientFull: recipient,         // kept for pool submission
-            recipientMasked: maskPoolRecipient(recipient),
+            recipientFull: poolMode === "addressed" ? recipient : null,
+            recipientMasked: poolMode === "addressed" ? maskPoolRecipient(recipient) : "🎟 ticket",
             amountMasked: maskPoolAmount(String(amount), poolSendToken),
-            poolOperation: "private_send",
+            poolOperation: poolMode === "addressed" ? "private_send" : "commitment_ticket",
         };
         const { trace: poolTrace, aspPolicyReceipt: poolAsp } = await startSppIntent("send", payload);
         await runPrivacyEnvelopeStageIfEnabled("send", "pre", payload, poolAsp, poolTrace.intentId);
@@ -3154,15 +3182,42 @@
         const entryId = await generatePoolEntryId("send", addedAt, null);
         const lastArtifact = getLatestPrivacyArtifactForContext({ phase: "send", intentId: poolTrace.intentId });
 
+        // In ticket mode, generate the commitment key (ZK cash note)
+        let ticketString: string | null = null;
+        if (poolMode === "commitment_ticket") {
+            try {
+                poolStatusMessage = "Generating ZK commitment key...";
+                const note = await generateCommitmentKey(
+                    amountInStroops,
+                    poolSendToken,
+                    entryId,
+                );
+                ticketString = await serializeCommitmentKey(note);
+                lastCommitmentTicket = ticketString;
+                poolTicketCopied = false;
+                discomboDebug.info("commitment_key_generated", {
+                    entryId,
+                    commitment: note.commitment.slice(0, 20) + "...",
+                    tokenSymbol: note.tokenSymbol,
+                    amountStroops: note.amountStroops,
+                });
+            } catch (e) {
+                poolStatusMessage = `Commitment key generation failed: ${e instanceof Error ? e.message : String(e)}`;
+                return;
+            }
+        }
+
         const entry: PrivatePoolEntry = {
             entryId,
             phase: "send",
+            poolMode,
             sendToken: poolSendToken,
-            recipientMasked: maskPoolRecipient(recipient),
+            recipientMasked: poolMode === "addressed" ? maskPoolRecipient(recipient) : "🎟 ticket",
             amountMasked: maskPoolAmount(String(amount), poolSendToken),
             routeLabel: getPrivateRouteLabel(poolSendToken as PrivateRouteTokenSymbol),
             commitmentId: lastArtifact?.commitment.commitmentId ?? null,
             intentId: poolTrace.intentId,
+            commitmentKey: ticketString,
             status: "queued",
             addedAt,
             settledAt: null,
@@ -3173,8 +3228,60 @@
         poolSendAmount = "";
         poolSendTo = "";
         poolSendQuote = null;
-        poolStatusMessage = `Entry added (${getPoolDepthLabel(poolEntries)})`;
-        discomboDebug.info("pool_entry_added", { entryId, phase: "send", commitmentId: entry.commitmentId });
+        poolStatusMessage = poolMode === "commitment_ticket"
+            ? `🎟 Commitment ticket ready — save it now!`
+            : `Entry added (${getPoolDepthLabel(poolEntries)})`;
+        discomboDebug.info("pool_entry_added", { entryId, phase: "send", commitmentId: entry.commitmentId, poolMode });
+    }
+
+    async function poolCopyTicket(): Promise<void> {
+        if (!lastCommitmentTicket) return;
+        try {
+            await navigator.clipboard.writeText(lastCommitmentTicket);
+            poolTicketCopied = true;
+            setTimeout(() => { poolTicketCopied = false; }, 2000);
+        } catch {
+            poolStatusMessage = "Copy failed — please select and copy manually.";
+        }
+    }
+
+    async function poolRedeemTicket(): Promise<void> {
+        redeemError = "";
+        redeemProofResult = null;
+        const ticketRaw = redeemTicketInput.trim();
+        const recipientRaw = redeemRecipientInput.trim();
+
+        if (!ticketRaw) { redeemError = "Paste your commitment ticket first."; return; }
+        if (!recipientRaw) { redeemError = "Enter a recipient Stellar address."; return; }
+
+        try {
+            validateAddress(recipientRaw, "Recipient");
+        } catch {
+            redeemError = "Invalid recipient address (must be a G… or C… Stellar address).";
+            return;
+        }
+
+        redeemWorking = true;
+        try {
+            const note = await deserializeCommitmentKey(ticketRaw);
+            const integrity = await verifyCommitmentKeyIntegrity(note);
+            if (!integrity.valid) {
+                redeemError = `Ticket integrity check failed: ${integrity.reason}`;
+                redeemWorking = false;
+                return;
+            }
+            const artifact = await generateWithdrawalProof(note, recipientRaw);
+            redeemProofResult = summarizeWithdrawalProof(artifact);
+            discomboDebug.info("withdrawal_proof_generated", {
+                proofMode: artifact.proofMode,
+                locallyVerified: artifact.locallyVerified,
+                recipient: recipientRaw.slice(0, 8) + "...",
+            });
+        } catch (e) {
+            redeemError = e instanceof Error ? e.message : String(e);
+        } finally {
+            redeemWorking = false;
+        }
     }
 
     async function poolSubmitAll(): Promise<void> {
@@ -4633,6 +4740,31 @@
                                 {/if}
                             </div>
 
+                            <!-- Pool mode toggle -->
+                            <div class="rounded-xl border border-[#1e293b] bg-[#0f172a]/35 p-2">
+                                <div class="text-[7px] uppercase tracking-[0.15em] text-[#64748b] mb-2">Deposit Mode</div>
+                                <div class="grid grid-cols-2 gap-1">
+                                    <button
+                                        onclick={() => { poolMode = "addressed"; lastCommitmentTicket = null; }}
+                                        class="rounded-lg px-2 py-2 text-[8px] transition-all border {poolMode === 'addressed' ? 'border-[#7dd3fc]/40 bg-[#0f172a] text-[#7dd3fc]' : 'border-[#1e293b] text-[#64748b] hover:text-[#94a3b8]'}"
+                                    >
+                                        Send to Address
+                                    </button>
+                                    <button
+                                        onclick={() => { poolMode = "commitment_ticket"; poolSendTo = ""; poolSendQuote = null; }}
+                                        class="rounded-lg px-2 py-2 text-[8px] transition-all border {poolMode === 'commitment_ticket' ? 'border-[#a78bfa]/40 bg-[#0f172a] text-[#a78bfa]' : 'border-[#1e293b] text-[#64748b] hover:text-[#94a3b8]'}"
+                                    >
+                                        🎟 Get Ticket
+                                    </button>
+                                </div>
+                                {#if poolMode === "commitment_ticket"}
+                                    <div class="mt-2 rounded-lg border border-[#a78bfa]/20 bg-[#1e1b4b]/30 px-2 py-1.5 text-[7px] text-[#a5b4fc]">
+                                        ZK cash mode: no recipient specified now. You'll get a secret ticket. Whoever holds it can withdraw to any wallet later — deposit and withdrawal are cryptographically unlinked.
+                                        <div class="mt-1 text-[#6d28d9]/80">⚠️ Pre-alpha research. No on-chain enforcement yet. Not audited.</div>
+                                    </div>
+                                {/if}
+                            </div>
+
                             <!-- Add to Pool form -->
                             <div class="flex flex-col gap-2">
                                 <div class="input-box group">
@@ -4655,15 +4787,21 @@
                                     >{poolSendToken} ▼</button>
                                 </div>
 
-                                <div class="input-box group">
-                                    <input
-                                        type="text"
-                                        bind:value={poolSendTo}
-                                        oninput={poolFetchQuote}
-                                        placeholder="Recipient address"
-                                        class="w-full bg-transparent text-[#f1f5f9] text-sm focus:outline-none font-[inherit] placeholder-[#334155]"
-                                    />
-                                </div>
+                                {#if poolMode === "addressed"}
+                                    <div class="input-box group">
+                                        <input
+                                            type="text"
+                                            bind:value={poolSendTo}
+                                            oninput={poolFetchQuote}
+                                            placeholder="Recipient address"
+                                            class="w-full bg-transparent text-[#f1f5f9] text-sm focus:outline-none font-[inherit] placeholder-[#334155]"
+                                        />
+                                    </div>
+                                {:else}
+                                    <div class="rounded-lg border border-[#a78bfa]/20 bg-[#1e1b4b]/20 px-3 py-2 text-[8px] text-[#a5b4fc]">
+                                        No recipient needed — the ticket IS the claim.
+                                    </div>
+                                {/if}
 
                                 {#if poolSendQuoting}
                                     <div class="text-[8px] text-[#64748b] text-center">Quoting private route...</div>
@@ -4677,7 +4815,7 @@
                                             <span class="text-[#e2e8f0]">{poolSendAmount} {poolSendToken}</span>
                                         </div>
                                         <div class="flex justify-between">
-                                            <span class="text-[#64748b]">They get ≥</span>
+                                            <span class="text-[#64748b]">{poolMode === "commitment_ticket" ? "Pool receives ≥" : "They get ≥"}</span>
                                             <span class="text-[#e2e8f0]">{Number(BigInt(poolSendQuote.amountOutMin)) / 1e7} {poolSendQuote.tokenOutSymbol}</span>
                                         </div>
                                         <div class="flex justify-between">
@@ -4689,13 +4827,32 @@
 
                                 <button
                                     onclick={poolAddEntry}
-                                    disabled={!userState.contractId || !poolSendAmount || !poolSendTo}
+                                    disabled={!userState.contractId || !poolSendAmount || (poolMode === "addressed" && !poolSendTo)}
                                     class="action-btn w-full py-4 text-xs"
-                                    class:opacity-40={!userState.contractId || !poolSendAmount || !poolSendTo}
+                                    class:opacity-40={!userState.contractId || !poolSendAmount || (poolMode === "addressed" && !poolSendTo)}
                                 >
-                                    + Add to Pool
+                                    {poolMode === "commitment_ticket" ? "🎟 Generate Commitment Ticket" : "+ Add to Pool"}
                                 </button>
                             </div>
+
+                            <!-- Commitment ticket display -->
+                            {#if lastCommitmentTicket}
+                                <div class="rounded-xl border border-[#a78bfa]/30 bg-[#1e1b4b]/30 p-3 flex flex-col gap-2">
+                                    <div class="flex items-center justify-between">
+                                        <div class="text-[8px] uppercase tracking-[0.15em] text-[#a78bfa]">🎟 Your Commitment Ticket</div>
+                                        <button
+                                            onclick={poolCopyTicket}
+                                            class="text-[7px] px-2 py-1 rounded border border-[#a78bfa]/30 text-[#a5b4fc] hover:bg-[#a78bfa]/10 transition-all"
+                                        >{poolTicketCopied ? "✓ Copied!" : "Copy"}</button>
+                                    </div>
+                                    <div class="font-mono text-[6px] text-[#94a3b8] break-all leading-relaxed bg-[#0b1120]/60 rounded-lg p-2 select-all">
+                                        {lastCommitmentTicket}
+                                    </div>
+                                    <div class="text-[7px] text-[#7c3aed]/80">
+                                        Save this ticket now. Anyone who has it can withdraw the funds to any wallet. Losing it means losing access to the deposit.
+                                    </div>
+                                </div>
+                            {/if}
 
                             <!-- Pool Entries -->
                             {#if poolEntries.length > 0}
@@ -4707,6 +4864,9 @@
                                                 <div class="text-[#64748b]">{entry.routeLabel}</div>
                                                 {#if entry.commitmentId}
                                                     <div class="text-[#334155]">commit: {entry.commitmentId.slice(0, 18)}…</div>
+                                                {/if}
+                                                {#if entry.commitmentKey}
+                                                    <div class="text-[7px] text-[#a78bfa]/80">🎟 ticket mode</div>
                                                 {/if}
                                             </div>
                                             <div class="flex flex-col items-end gap-1">
@@ -4747,6 +4907,50 @@
                                     </div>
                                 {/if}
                             {/if}
+
+                            <!-- Redeem Ticket Panel -->
+                            <details class="rounded-xl border border-[#a78bfa]/20 bg-[#1e1b4b]/20">
+                                <summary class="cursor-pointer px-3 py-2 text-[8px] text-[#a78bfa] uppercase tracking-[0.15em] select-none">
+                                    🎟 Redeem Commitment Ticket (Research)
+                                </summary>
+                                <div class="px-3 pb-3 pt-1 flex flex-col gap-2">
+                                    <div class="text-[7px] text-[#6d28d9]/80 border border-[#7c3aed]/20 rounded-lg px-2 py-1.5">
+                                        ⚠️ PRE-ALPHA RESEARCH ONLY — No on-chain enforcement yet. Not audited. Vibecoded. No guarantees. Do not use with funds you can't afford to lose.
+                                    </div>
+                                    <div class="input-box group">
+                                        <input
+                                            type="text"
+                                            bind:value={redeemTicketInput}
+                                            placeholder="dck1:…  (paste your commitment ticket)"
+                                            class="w-full bg-transparent text-[#f1f5f9] text-[8px] focus:outline-none font-mono placeholder-[#334155]"
+                                        />
+                                    </div>
+                                    <div class="input-box group">
+                                        <input
+                                            type="text"
+                                            bind:value={redeemRecipientInput}
+                                            placeholder="Recipient wallet address (any G… or C…)"
+                                            class="w-full bg-transparent text-[#f1f5f9] text-sm focus:outline-none font-[inherit] placeholder-[#334155]"
+                                        />
+                                    </div>
+                                    <button
+                                        onclick={poolRedeemTicket}
+                                        disabled={redeemWorking}
+                                        class="action-btn w-full py-3 text-xs"
+                                        class:opacity-40={redeemWorking}
+                                    >
+                                        {redeemWorking ? "Generating proof…" : "Generate Withdrawal Proof"}
+                                    </button>
+                                    {#if redeemError}
+                                        <div class="text-[8px] text-[#f87171]">{redeemError}</div>
+                                    {/if}
+                                    {#if redeemProofResult}
+                                        <div class="rounded-lg border border-[#a78bfa]/20 bg-[#0b1120]/60 p-2 text-[7px] font-mono text-[#94a3b8] break-all whitespace-pre-wrap">
+                                            {JSON.stringify(redeemProofResult, null, 2)}
+                                        </div>
+                                    {/if}
+                                </div>
+                            </details>
                         </div>
                     {/if}
 
