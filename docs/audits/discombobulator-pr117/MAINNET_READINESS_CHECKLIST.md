@@ -18,15 +18,20 @@
 
 ## Gate 5: Auth
 - [x] Auth requirements explicit: depositor.require_auth() on deposit.
-- [ ] Admin/upgrade trust model fully tested and surfaced to users.
+- [x] Admin verifier-replacement and governance implications tested (`test_admin_can_replace_verifier`, `test_verifier_replacement_gates_future_withdrawals`).
+- [x] Admin trust model disclosed in UI (commitment-ticket mode description + redeem panel).
+- [ ] Admin key is a multisig / time-locked address — ops requirement, not code.
 
 ## Gate 6: Asset Safety
 - [x] No known drain path in validated model (nullifier replay blocked, duplicate commitment blocked).
+- [x] Verifier replacement security tested: frozen deposits if verifier swapped to reject-all.
 - [ ] Full formal security review pending.
 
 ## Gate 7: Operations
-- [ ] Reproducible contract+circuit builds documented.
-- [ ] Artifact provenance/checksum manifest published.
+- [x] Reproducible build instructions documented (`docs/audits/discombobulator-pr117/OPS_AND_PROVENANCE.md`).
+- [x] Upgrade policy and emergency response documented (`OPS_AND_PROVENANCE.md §3-4`).
+- [ ] Circuit artifact SHA-256 checksums published (requires Phase 1 circuit build).
+- [ ] CI public-input-order guard active (requires Phase 1).
 
 ## Gate 8: User Safety
 - [x] Bearer-ticket and irrecoverable-loss warnings present in UI (ticket display, redeem panel).
@@ -42,5 +47,12 @@
 - [ ] Only claim "mainnet-ready" when Gates 1–9 are green.
 
 ## Current status
-**NO-GO** — Gates 2 (partial), 4 (partial), 5 (partial), 7, 9 (external review), 10 are open.
-Gates 1, 3, 8 are green. Statement/circuit hardening (Phase 1) is the critical path to mainnet.
+**NO-GO** — remaining open items all require external work:
+- Gates 2, 4 (partial): on-chain statement/domain enforcement blocked on Phase 1 circuit update.
+- Gate 7 (partial): circuit artifact checksums and CI guard pending Phase 1 build.
+- Gate 9: independent external audit not yet started.
+- Gate 10: gated on all above.
+
+**Green** (all in-repo work complete): Gates 1, 3, 5 (code + tests), 6, 7 (docs), 8.
+
+Critical path to mainnet: Phase 1 circuit hardening → external audit → multisig admin key.

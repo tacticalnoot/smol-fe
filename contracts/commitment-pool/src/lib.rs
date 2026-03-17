@@ -654,4 +654,95 @@ mod test {
         assert_eq!(arr256[30], 1u8);
         assert_eq!(arr256[31], 0u8);
     }
+
+    // -----------------------------------------------------------------------
+    // Admin / governance tests (Gate 5 — Auth)
+    // -----------------------------------------------------------------------
+
+    /// Admin can replace the verifier address. The new verifier is used for
+    /// all subsequent withdrawals. This is a critical governance operation:
+    /// once replaced, all pending withdrawal proofs must be valid under the
+    /// new verifier's key. Audit note: verifier replacement is admin-only
+    /// and must be disclosed to users — see docs/audits/discombobulator-pr117/THREAT_MODEL.md.
+    #[test]
+    fn test_admin_can_replace_verifier() {
+        let env = Env::default();
+        env.mock_all_auths();
+
+        let admin = Address::generate(&env);
+        let verifier_a = env.register(MockVerifier, ());
+        let verifier_b = env.register(MockVerifier, ());
+        let pool = deploy_pool(&env, &admin, &verifier_a);
+
+        assert_eq!(pool.verifier(), verifier_a);
+        pool.set_verifier(&verifier_b);
+        assert_eq!(pool.verifier(), verifier_b);
+    }
+
+    /// After the verifier is replaced with a reject-all verifier, all
+    /// withdrawal proofs must fail — even for deposits made before the switch.
+    /// This confirms that verifier replacement is an effective governance lever
+    /// over all outstanding escrowed funds. Users must trust the admin.
+    #[test]
+    fn test_verifier_replacement_gates_future_withdrawals() {
+        let env = Env::default();
+        env.mock_all_auths();
+        env.ledger().with_mut(|l| l.timestamp = 1_000_000);
+
+        let admin = Address::generate(&env);
+        let depositor = Address::generate(&env);
+        let recipient = Address::generate(&env);
+        let verifier_ok = env.register(MockVerifier, ());
+        let verifier_reject = env.register(RejectVerifier, ());
+        let token = create_token(&env, &admin);
+        let pool = deploy_pool(&env, &admin, &verifier_ok);
+
+        mint(&env, &token, &depositor, 1_000_000_000);
+
+        let commitment = sample_commitment(&env, 0x08);
+        let nullifier_hash = sample_commitment(&env, 0xEE);
+        let proof = sample_proof(&env);
+
+        pool.deposit(&depositor, &token, &100_000_000_i128, &commitment);
+
+        // Admin replaces verifier with one that always rejects
+        pool.set_verifier(&verifier_reject);
+
+        // Withdrawal now fails — the escrowed deposit is frozen until
+        // a valid verifier is restored (or the admin acts)
+        let res = pool.try_withdraw(&commitment, &proof, &nullifier_hash, &recipient);
+        assert!(res.is_err());
+
+        // Nullifier must NOT be marked used when proof fails post-verifier-swap
+        assert!(!pool.is_nullifier_used(&nullifier_hash));
+    }
+
+    /// withdraw_statement_version() exposes the current statement schema version
+    /// so clients can detect version drift before submitting proofs.
+    #[test]
+    fn test_withdraw_statement_version_is_v1() {
+        let env = Env::default();
+        let pool_id = env.register(CommitmentPool, ());
+        let pool = CommitmentPoolClient::new(&env, &pool_id);
+        assert_eq!(pool.withdraw_statement_version(), 1u32);
+    }
+
+    /// Verifier is readable before and after replacement via the public
+    /// `verifier()` read-only function — callers can detect governance changes.
+    #[test]
+    fn test_verifier_address_is_readable() {
+        let env = Env::default();
+        env.mock_all_auths();
+
+        let admin = Address::generate(&env);
+        let verifier_a = env.register(MockVerifier, ());
+        let verifier_b = env.register(MockVerifier, ());
+        let pool = deploy_pool(&env, &admin, &verifier_a);
+
+        assert_eq!(pool.verifier(), verifier_a);
+        pool.set_verifier(&verifier_b);
+        assert_eq!(pool.verifier(), verifier_b);
+        // admin unchanged
+        assert_eq!(pool.admin(), admin);
+    }
 }
