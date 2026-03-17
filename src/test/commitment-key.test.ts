@@ -19,6 +19,10 @@ import {
     commitmentToBytes32,
     bytesToHex,
     computeNullifierHash,
+    computeTokenIdHash,
+    computeDomainTag,
+    buildWithdrawalStatementPublicInputs,
+    WITHDRAWAL_STATEMENT_VERSION,
     COMMITMENT_KEY_VERSION,
     type CommitmentKeyNote,
 } from '../utils/discombobulator-commitment-key';
@@ -256,6 +260,10 @@ describe('generateWithdrawalProof', () => {
 
         expect(artifact.recipientAddress).toBe(VALID_RECIPIENT);
         expect(artifact.recipientAddressHash).toBeTruthy();
+        expect(artifact.tokenIdHash).toHaveLength(64);
+        expect(artifact.domainTag).toHaveLength(64);
+        expect(artifact.statementVersion).toBe(WITHDRAWAL_STATEMENT_VERSION);
+        expect(artifact.statementPublicInputs).toHaveLength(7);
         expect(artifact.commitmentValid).toBe(true);
         expect(['groth16_circuit', 'poseidon_only']).toContain(artifact.proofMode);
         expect(typeof artifact.generatedAt).toBe('string');
@@ -268,11 +276,11 @@ describe('generateWithdrawalProof', () => {
         expect(artifact.nullifierHashHex).toHaveLength(64);
     });
 
-    it('binds proof to the specific recipient address', async () => {
+    it('computes recipient hash deterministically from recipient address', async () => {
         const note = await makeKey();
         const a1 = await generateWithdrawalProof(note, VALID_RECIPIENT);
         const a2 = await generateWithdrawalProof(note, 'different-recipient-wallet');
-        // Different recipients → different address hashes
+        // Different recipients -> different metadata hashes
         expect(a1.recipientAddressHash).not.toBe(a2.recipientAddressHash);
     });
 
@@ -280,7 +288,10 @@ describe('generateWithdrawalProof', () => {
         const note = await makeKey();
         const artifact = await generateWithdrawalProof(note, VALID_RECIPIENT);
         expect(artifact.disclaimer.length).toBeGreaterThan(0);
-        expect(artifact.disclaimer.toLowerCase()).toContain('research');
+        const d = artifact.disclaimer.toLowerCase();
+        expect(d).toContain('research');
+        expect(d).toContain('bearer');
+        expect(d).toContain('anonymity-set');
     });
 
     it('falls back to poseidon_only when circuit is unavailable (Node env)', async () => {
@@ -441,6 +452,54 @@ describe('computeNullifierHash', () => {
             'GAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAWHF',
         );
         expect(artifact.commitmentBytes32Hex).toBe(expected);
+    });
+
+    it('computes token hash deterministically (domain helper)', async () => {
+        const a = await computeTokenIdHash('xlm');
+        const b = await computeTokenIdHash('XLM');
+        const c = await computeTokenIdHash('KALE');
+        expect(a).toBe(b);
+        expect(a).not.toBe(c);
+        expect(a).toHaveLength(64);
+    });
+
+    it('computes domain tag deterministically from context', async () => {
+        const d1 = await computeDomainTag({
+            networkPassphrase: 'Public Global Stellar Network ; September 2015',
+            contractId: 'CABCDEF',
+            poolId: 'pool-main',
+        });
+        const d2 = await computeDomainTag({
+            networkPassphrase: 'Public Global Stellar Network ; September 2015',
+            contractId: 'CABCDEF',
+            poolId: 'pool-main',
+        });
+        const d3 = await computeDomainTag({
+            networkPassphrase: 'Test SDF Network ; September 2015',
+            contractId: 'CABCDEF',
+            poolId: 'pool-main',
+        });
+        expect(d1).toBe(d2);
+        expect(d1).not.toBe(d3);
+    });
+
+    it('builds hardened statement public inputs in fixed order', async () => {
+        const note = await makeKey(123_000_000n, 'XLM');
+        const recipient = 'GAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAWHF';
+        const inputs = await buildWithdrawalStatementPublicInputs(note, recipient, {
+            networkPassphrase: 'Public Global Stellar Network ; September 2015',
+            contractId: 'CSTATEMENT1',
+            poolId: 'pool-alpha',
+            tokenIdentity: 'XLM',
+        });
+        expect(inputs).toHaveLength(7);
+        expect(inputs[0]).toBe(bytesToHex(commitmentToBytes32(note.commitment))); // commitment
+        expect(inputs[1]).toBe(await computeNullifierHash(note)); // nullifier hash
+        expect(inputs[3]).toBe(await computeTokenIdHash('XLM')); // token hash
+        const statementVersionHash = await (await import('../utils/discombobulator-spp')).sha256Hex(
+            WITHDRAWAL_STATEMENT_VERSION,
+        );
+        expect(inputs[6]).toBe(statementVersionHash);
     });
 });
 

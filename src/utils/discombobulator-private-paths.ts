@@ -1,15 +1,17 @@
 /**
  * Discombobulator Private Payment Paths
  *
- * Implements real private payment routing for the Discombobulator:
+ * Implements scoped private-routing UX paths for the Discombobulator:
  *
  * - Private Send: routes tokens through the Soroswap DEX with `to = recipient`
- *   (sender's token → DEX pool → recipient's XLM, no direct P2P transfer on-chain)
+ *   (sender's token → DEX pool → recipient's XLM, no direct P2P transfer on-chain).
+ *   This is routing obfuscation, not shielded-pool anonymity.
  *
  * - Private Receive: commitment-sealed receive requests (handled by privacy executor)
  *
  * - Private Pool: aggregates payment intents with commitment receipts before
  *   settling them on-chain. Each entry is pre-committed before execution.
+ *   Do not interpret this as anonymity-set privacy.
  */
 
 import {

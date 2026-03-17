@@ -4769,8 +4769,9 @@
                                 </div>
                                 {#if poolMode === "commitment_ticket"}
                                     <div class="mt-2 rounded-lg border border-[#a78bfa]/20 bg-[#1e1b4b]/30 px-2 py-1.5 text-[7px] text-[#a5b4fc]">
-                                        ZK cash mode: no recipient specified now. You'll get a secret ticket. Whoever holds it can withdraw to any wallet later — deposit and withdrawal are cryptographically unlinked.
-                                        <div class="mt-1 text-[#6d28d9]/80">⚠️ Pre-alpha research. No on-chain enforcement yet. Not audited.</div>
+                                        Commitment ticket mode: no recipient specified now. You'll get a bearer ticket. Whoever holds it can withdraw to any wallet later. This is not an anonymity-set mixer.
+                                        <div class="mt-1 text-[#6d28d9]/80">⚠️ Pre-alpha research. Bearer ticket risk: share = transfer withdrawal rights. Not audited.</div>
+                                        <div class="text-[#6d28d9]/80">⚠️ Trust model: verifier + contract upgrades are admin-controlled in current architecture.</div>
                                     </div>
                                 {/if}
                             </div>
@@ -4925,7 +4926,8 @@
                                 </summary>
                                 <div class="px-3 pb-3 pt-1 flex flex-col gap-2">
                                     <div class="text-[7px] text-[#6d28d9]/80 border border-[#7c3aed]/20 rounded-lg px-2 py-1.5">
-                                        ⚠️ PRE-ALPHA RESEARCH ONLY — No on-chain enforcement yet. Not audited. Vibecoded. No guarantees. Do not use with funds you can't afford to lose.
+                                        ⚠️ PRE-ALPHA RESEARCH ONLY — Bearer-ticket risk: whoever has the ticket can withdraw. Not audited. Not an anonymity-set privacy pool. Do not use funds you can't afford to lose.
+                                        <br/>⚠️ Admin trust applies: verifier address and contract upgrades are governance-sensitive.
                                     </div>
                                     <div class="input-box group">
                                         <input
@@ -4949,7 +4951,7 @@
                                         class="action-btn w-full py-3 text-xs"
                                         class:opacity-40={redeemWorking}
                                     >
-                                        {redeemWorking ? "Generating proof…" : "Generate Withdrawal Proof"}
+                                        {redeemWorking ? "Generating proof…" : "Withdraw with Commitment Ticket"}
                                     </button>
                                     {#if redeemError}
                                         <div class="text-[8px] text-[#f87171]">{redeemError}</div>
@@ -4959,9 +4961,15 @@
                                         <!-- Contract-facing fields highlighted for when CommitmentPool is deployed -->
                                         {#if r.commitmentBytes32Hex && r.nullifierHashHex}
                                         <div class="rounded-lg border border-[#34d399]/20 bg-[#064e3b]/20 px-2 py-1.5 text-[7px] font-mono text-[#6ee7b7]">
-                                            <div class="text-[#34d399] uppercase tracking-widest text-[6px] mb-1">Contract deposit() args (when pool deployed)</div>
+                                            <div class="text-[#34d399] uppercase tracking-widest text-[6px] mb-1">Contract args (PR #117 schema)</div>
                                             <div><span class="text-[#94a3b8]">commitment (BytesN&lt;32&gt;):</span> {String(r.commitmentBytes32Hex)}</div>
                                             <div class="mt-1"><span class="text-[#94a3b8]">nullifier_hash (BytesN&lt;32&gt;):</span> {String(r.nullifierHashHex)}</div>
+                                            <div class="mt-1"><span class="text-[#94a3b8]">statement_version:</span> {String(r.statementVersion ?? "dck-statement-v1")}</div>
+                                        </div>
+                                        {/if}
+                                        {#if r.proofMode === "poseidon_only"}
+                                        <div class="rounded-lg border border-[#f59e0b]/30 bg-[#451a03]/30 px-2 py-1.5 text-[7px] text-[#fcd34d]">
+                                            ⚠️ Reduced assurance: proofMode is <span class="font-mono">poseidon_only</span>. Recipient hash is metadata only in PR #117 and is not enforced on-chain by the current withdraw verifier inputs.
                                         </div>
                                         {/if}
                                         <div class="rounded-lg border border-[#a78bfa]/20 bg-[#0b1120]/60 p-2 text-[7px] font-mono text-[#94a3b8] break-all whitespace-pre-wrap">
@@ -5269,4 +5277,3 @@
         text-shadow: none;
     }
 </style>
-
