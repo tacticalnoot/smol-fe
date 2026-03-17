@@ -4734,14 +4734,17 @@
                             <div class="rounded-xl border border-[#1e293b] bg-[#0f172a]/35 p-3">
                                 <div class="flex items-center justify-between">
                                     <div class="text-[8px] uppercase tracking-[0.18em] text-[#7dd3fc]">
-                                        Private Pool
+                                        Commitment Ticket Escrow
                                     </div>
-                                    <div class="text-[7px] text-[#64748b]">
-                                        {getPoolDepthLabel(poolEntries)}
+                                    <div class="flex items-center gap-2">
+                                        <span class="rounded-full border border-[#fbbf24]/40 bg-[#78350f]/20 px-1.5 py-0.5 text-[6px] uppercase tracking-widest text-[#fbbf24]">Research mode</span>
+                                        <div class="text-[7px] text-[#64748b]">
+                                            {getPoolDepthLabel(poolEntries)}
+                                        </div>
                                     </div>
                                 </div>
                                 <div class="mt-1 text-[8px] text-[#94a3b8]">
-                                    Queue payment intents with pre-committed receipts. Settle the full pool as a batch — each entry DEX-routed for on-chain indirection.
+                                    Bearer-note escrow (research): deposit tokens and get a commitment ticket. Whoever holds the ticket can withdraw to any wallet — no anonymity-set guarantees.
                                 </div>
                                 {#if privacyWrapperMode === "public"}
                                     <div class="mt-2 text-[7px] text-[#fbbf24]/70 border border-[#fbbf24]/20 rounded-lg px-2 py-1">
