@@ -504,6 +504,107 @@ describe('computeNullifierHash', () => {
 });
 
 // ---------------------------------------------------------------------------
+// Statement public inputs — adversarial / isolation tests
+// ---------------------------------------------------------------------------
+//
+// These tests verify that each field in statementPublicInputs is correctly
+// isolated and that changing one input does not silently alias another.
+// See: docs/audits/discombobulator-pr117/TEST_PLAN.md §Deterministic vectors
+
+describe('statementPublicInputs isolation', () => {
+    const RECIPIENT_A = 'GAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAWHF';
+    const RECIPIENT_B = 'GBXQHISGX75KQJLQF2GHCG6GPFKLBCNZ3PJHC74PTBNF3DFBRPVKEF2';
+    const CONTEXT_MAINNET = {
+        networkPassphrase: 'Public Global Stellar Network ; September 2015',
+        contractId: 'CSTATEMENT1',
+        poolId: 'pool-alpha',
+        tokenIdentity: 'XLM',
+    };
+    const CONTEXT_TESTNET = {
+        networkPassphrase: 'Test SDF Network ; September 2015',
+        contractId: 'CSTATEMENT1',
+        poolId: 'pool-alpha',
+        tokenIdentity: 'XLM',
+    };
+
+    it('index 0 is commitment bytes32 hex', async () => {
+        const note = await makeKey(123_000_000n, 'XLM');
+        const inputs = await buildWithdrawalStatementPublicInputs(note, RECIPIENT_A, CONTEXT_MAINNET);
+        expect(inputs[0]).toBe(bytesToHex(commitmentToBytes32(note.commitment)));
+    });
+
+    it('index 1 is nullifier hash', async () => {
+        const note = await makeKey(123_000_000n, 'XLM');
+        const inputs = await buildWithdrawalStatementPublicInputs(note, RECIPIENT_A, CONTEXT_MAINNET);
+        expect(inputs[1]).toBe(await computeNullifierHash(note));
+    });
+
+    it('index 3 is token id hash computed from context.tokenIdentity', async () => {
+        const note = await makeKey(123_000_000n, 'XLM');
+        const inputs = await buildWithdrawalStatementPublicInputs(note, RECIPIENT_A, CONTEXT_MAINNET);
+        expect(inputs[3]).toBe(await computeTokenIdHash('XLM'));
+    });
+
+    it('index 4 changes when recipient changes', async () => {
+        const note = await makeKey(123_000_000n, 'XLM');
+        const inputsA = await buildWithdrawalStatementPublicInputs(note, RECIPIENT_A, CONTEXT_MAINNET);
+        const inputsB = await buildWithdrawalStatementPublicInputs(note, RECIPIENT_B, CONTEXT_MAINNET);
+        expect(inputsA[4]).not.toBe(inputsB[4]);
+        // Other fields except recipient hash should be unchanged
+        expect(inputsA[0]).toBe(inputsB[0]); // same commitment
+        expect(inputsA[1]).toBe(inputsB[1]); // same nullifier
+        expect(inputsA[3]).toBe(inputsB[3]); // same token hash
+    });
+
+    it('index 5 (domain tag) changes when network passphrase changes', async () => {
+        const note = await makeKey(123_000_000n, 'XLM');
+        const inputsMainnet = await buildWithdrawalStatementPublicInputs(note, RECIPIENT_A, CONTEXT_MAINNET);
+        const inputsTestnet = await buildWithdrawalStatementPublicInputs(note, RECIPIENT_A, CONTEXT_TESTNET);
+        expect(inputsMainnet[5]).not.toBe(inputsTestnet[5]);
+        // The non-domain fields should remain unchanged
+        expect(inputsMainnet[0]).toBe(inputsTestnet[0]); // same commitment
+        expect(inputsMainnet[3]).toBe(inputsTestnet[3]); // same token
+    });
+
+    it('index 3 changes when token identity changes', async () => {
+        const note = await makeKey(123_000_000n, 'XLM');
+        const ctxXlm = { ...CONTEXT_MAINNET, tokenIdentity: 'XLM' };
+        const ctxKale = { ...CONTEXT_MAINNET, tokenIdentity: 'KALE' };
+        const inputsXlm = await buildWithdrawalStatementPublicInputs(note, RECIPIENT_A, ctxXlm);
+        const inputsKale = await buildWithdrawalStatementPublicInputs(note, RECIPIENT_A, ctxKale);
+        expect(inputsXlm[3]).not.toBe(inputsKale[3]);
+    });
+
+    it('token hash is case-insensitive (xlm === XLM)', async () => {
+        const note = await makeKey(123_000_000n, 'XLM');
+        const inputsUpper = await buildWithdrawalStatementPublicInputs(note, RECIPIENT_A, { ...CONTEXT_MAINNET, tokenIdentity: 'XLM' });
+        const inputsLower = await buildWithdrawalStatementPublicInputs(note, RECIPIENT_A, { ...CONTEXT_MAINNET, tokenIdentity: 'xlm' });
+        expect(inputsUpper[3]).toBe(inputsLower[3]);
+    });
+
+    it('two different notes with same recipient produce different input[0] and input[1]', async () => {
+        const noteA = await makeKey(100_000_000n, 'XLM');
+        const noteB = await makeKey(100_000_000n, 'XLM');
+        const inputsA = await buildWithdrawalStatementPublicInputs(noteA, RECIPIENT_A, CONTEXT_MAINNET);
+        const inputsB = await buildWithdrawalStatementPublicInputs(noteB, RECIPIENT_A, CONTEXT_MAINNET);
+        // Different commitment and nullifier
+        expect(inputsA[0]).not.toBe(inputsB[0]);
+        expect(inputsA[1]).not.toBe(inputsB[1]);
+        // Same recipient → same recipient hash
+        expect(inputsA[4]).toBe(inputsB[4]);
+        // Same domain → same domain tag
+        expect(inputsA[5]).toBe(inputsB[5]);
+    });
+
+    it('inputs are fully deterministic — same note+recipient+context gives identical array', async () => {
+        const note = await makeKey(500_000_000n, 'KALE', 'determinism-test');
+        const run1 = await buildWithdrawalStatementPublicInputs(note, RECIPIENT_A, CONTEXT_MAINNET);
+        const run2 = await buildWithdrawalStatementPublicInputs(note, RECIPIENT_A, CONTEXT_MAINNET);
+        expect(run1).toEqual(run2);
+    });
+});
+
+// ---------------------------------------------------------------------------
 // End-to-end: generate → serialize → deserialize → verify → proof
 // ---------------------------------------------------------------------------
 
