@@ -15,8 +15,9 @@
  *
  *   2. WITHDRAWAL: Whoever holds the key can later prove knowledge of
  *      (secret, nullifier) matching the on-chain commitment, then specify
- *      ANY recipient wallet. The deposit and withdrawal addresses are
- *      cryptographically unlinked.
+ *      ANY recipient wallet. This module computes a recipient hash for
+ *      tooling/debugging, but PR #117 contract verification currently
+ *      does not enforce recipient binding on-chain.
  *
  *   3. ZK PROOF: Uses the existing kale_tier Groth16 circuit (BN254 / Poseidon)
  *      to prove: balance >= tier_id AND Poseidon(address_hash, balance, salt)
@@ -26,9 +27,9 @@
  *   - There is no on-chain Soroban contract enforcing withdrawal rights today.
  *     This is a client-side research prototype showing the cryptographic layer
  *     works correctly. On-chain enforcement is the next step.
- *   - Not audited. Not battle-tested. Pre-alpha. Vibecoded.
+ *   - Not audited. Not battle-tested. Pre-alpha research.
  *   - Do not use with funds you cannot afford to lose.
- *   - No guarantees are made about anything.
+ *   - This does NOT provide anonymity-set privacy guarantees.
  *
  * The cryptographic primitives (Poseidon hash, Groth16 proof) are the same
  * ones used in production ZK systems. The ZK math is real. The on-chain
@@ -42,14 +43,15 @@ import { sha256Hex, stableStringify } from "./discombobulator-spp";
 // ---------------------------------------------------------------------------
 
 export const COMMITMENT_KEY_VERSION = "dck-v1" as const;
+export const WITHDRAWAL_STATEMENT_VERSION = "dck-statement-v1" as const;
 
 const CIRCUIT_WASM_PATH = `/zk/tier_proof.wasm?v=discombo-v1`;
 const PROVING_KEY_PATH = `/zk/tier_proof.zkey?v=discombo-v1`;
 const VKEY_PATH = `/zk/verification_key.json?v=discombo-v1`;
 
 const DISCLAIMER =
-    "PRE-ALPHA RESEARCH PROTOTYPE. No on-chain enforcement. Not audited. " +
-    "Do not use with funds you cannot afford to lose. No guarantees.";
+    "PRE-ALPHA RESEARCH PROTOTYPE. Bearer-note risk: anyone with the ticket can withdraw. " +
+    "Not audited. No anonymity-set guarantees. Do not use funds you cannot afford to lose.";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -93,8 +95,16 @@ export interface WithdrawalProofArtifact {
     note: CommitmentKeyNote;
     /** Destination wallet — specified at withdrawal time, not at deposit time */
     recipientAddress: string;
-    /** sha256(recipientAddress) — binds the proof to a specific destination */
+    /** sha256(recipientAddress) for client-side traceability; not currently enforced on-chain in PR #117 */
     recipientAddressHash: string;
+    /** sha256(token identity string), used for statement-hardening metadata */
+    tokenIdHash: string;
+    /** Domain separation tag for statement-hardening metadata */
+    domainTag: string;
+    /** Explicit statement schema version for downstream verifiers */
+    statementVersion: typeof WITHDRAWAL_STATEMENT_VERSION;
+    /** Ordered public inputs for hardened statement schema planning */
+    statementPublicInputs: string[];
     /** Groth16 proof object if circuit was available, null otherwise */
     zkProof: object | null;
     publicSignals: string[] | null;
@@ -126,6 +136,13 @@ export interface WithdrawalProofArtifact {
     generatedAt: string;
     durationMs: number;
     disclaimer: string;
+}
+
+export interface WithdrawalStatementContext {
+    networkPassphrase?: string;
+    contractId?: string;
+    poolId?: string;
+    tokenIdentity?: string;
 }
 
 // ---------------------------------------------------------------------------
@@ -208,6 +225,46 @@ export async function computeNullifierHash(
 ): Promise<string> {
     // sha256 of the hex-encoded nullifier string
     return sha256Hex(note.nullifier);
+}
+
+export async function computeTokenIdHash(tokenIdentity: string): Promise<string> {
+    return sha256Hex(tokenIdentity.trim().toUpperCase());
+}
+
+export async function computeDomainTag(
+    context: WithdrawalStatementContext,
+): Promise<string> {
+    const payload = stableStringify({
+        protocolVersion: COMMITMENT_KEY_VERSION,
+        statementVersion: WITHDRAWAL_STATEMENT_VERSION,
+        networkPassphrase: (context.networkPassphrase ?? "UNKNOWN_NETWORK").trim(),
+        contractId: (context.contractId ?? "UNBOUND_CONTRACT").trim(),
+        poolId: (context.poolId ?? "UNBOUND_POOL").trim(),
+    });
+    return sha256Hex(payload);
+}
+
+export async function buildWithdrawalStatementPublicInputs(
+    note: CommitmentKeyNote,
+    recipientAddress: string,
+    context: WithdrawalStatementContext = {},
+): Promise<string[]> {
+    const commitmentBytes32Hex = bytesToHex(commitmentToBytes32(note.commitment));
+    const nullifierHashHex = await computeNullifierHash(note);
+    const tokenIdHash = await computeTokenIdHash(context.tokenIdentity ?? note.tokenSymbol);
+    const recipientAddressHash = await sha256Hex(recipientAddress.trim());
+    const domainTag = await computeDomainTag(context);
+    const amountHex = BigInt(note.amountStroops).toString(16).padStart(64, "0");
+    const statementVersionHash = await sha256Hex(WITHDRAWAL_STATEMENT_VERSION);
+    return [
+        commitmentBytes32Hex,
+        nullifierHashHex,
+        amountHex,
+        tokenIdHash,
+        recipientAddressHash,
+        domainTag,
+        statementVersionHash,
+    ];
 }
 
 // ---------------------------------------------------------------------------
@@ -389,8 +446,8 @@ export async function verifyCommitmentKeyIntegrity(
  * Generate a withdrawal proof for a commitment key.
  *
  * The proof demonstrates knowledge of (secret, nullifier) that produced the
- * on-chain commitment, and binds the proof to recipientAddress so only that
- * address can be used for settlement.
+ * on-chain commitment. It also computes recipientAddressHash for
+ * client-side metadata and future statement-hardening work.
  *
  * Uses the existing kale_tier Groth16 circuit with input mapping:
  *   address_hash        = secret_bigint
@@ -411,6 +468,7 @@ export async function verifyCommitmentKeyIntegrity(
 export async function generateWithdrawalProof(
     note: CommitmentKeyNote,
     recipientAddress: string,
+    context: WithdrawalStatementContext = {},
 ): Promise<WithdrawalProofArtifact> {
     const startedAt = Date.now();
     const generatedAt = new Date().toISOString();
@@ -429,15 +487,24 @@ export async function generateWithdrawalProof(
         );
     }
 
-    // 2. Bind proof to recipient — sha256(recipientAddress) is a public input
-    //    that ties this proof to one specific destination wallet.
+    // 2. Compute recipient hash for metadata/debugging.
+    //    IMPORTANT: PR #117 on-chain verifier inputs do not currently include this field.
     const recipientAddressHash = await sha256Hex(recipientAddress.trim());
+    const tokenIdHash = await computeTokenIdHash(
+        context.tokenIdentity ?? note.tokenSymbol,
+    );
+    const domainTag = await computeDomainTag(context);
 
-    // 3a. Precompute contract-facing encodings (Tornado Cash alignment)
+    // 3a. Precompute contract-facing encodings (protocol alignment)
     //   - commitmentBytes32Hex: what goes into deposit(commitment) on-chain
     //   - nullifierHashHex:     what goes into withdraw(nullifier_hash) on-chain
     const commitmentBytes32Hex = bytesToHex(commitmentToBytes32(note.commitment));
     const nullifierHashHex = await computeNullifierHash(note);
+    const statementPublicInputs = await buildWithdrawalStatementPublicInputs(
+        note,
+        recipientAddress,
+        context,
+    );
 
     const secretBigInt = hexToBigInt(note.secret);
     const nullifierBigInt = hexToBigInt(note.nullifier);
@@ -494,6 +561,10 @@ export async function generateWithdrawalProof(
         note,
         recipientAddress: recipientAddress.trim(),
         recipientAddressHash,
+        tokenIdHash,
+        domainTag,
+        statementVersion: WITHDRAWAL_STATEMENT_VERSION,
+        statementPublicInputs,
         zkProof,
         publicSignals,
         locallyVerified,
@@ -519,6 +590,10 @@ export function summarizeWithdrawalProof(
         locallyVerified: artifact.locallyVerified,
         recipientAddress: artifact.recipientAddress,
         recipientAddressHash: artifact.recipientAddressHash.slice(0, 16) + "...",
+        tokenIdHash: artifact.tokenIdHash,
+        domainTag: artifact.domainTag,
+        statementVersion: artifact.statementVersion,
+        statementPublicInputCount: artifact.statementPublicInputs.length,
         commitment: artifact.note.commitment.slice(0, 20) + "...",
         // Contract-facing fields (pass these to the Soroban CommitmentPool contract)
         commitmentBytes32Hex: artifact.commitmentBytes32Hex,

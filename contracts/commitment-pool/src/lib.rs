@@ -19,7 +19,7 @@
 //!    the existing TierVerifier contract, checks the nullifier has not been
 //!    spent, then transfers the funds to the specified recipient.
 //!
-//! The deposit address and withdrawal address are cryptographically unlinked.
+//! This is a bearer-note escrow primitive, not an anonymity-set mixer.
 //!
 //! ## Cross-contract verification
 //!
@@ -73,6 +73,8 @@ pub enum PoolError {
     InvalidProof = 7,
     InvalidAmount = 8,
 }
+
+const WITHDRAW_STATEMENT_VERSION: u32 = 1;
 
 // ============================================================================
 // Data structures
@@ -296,7 +298,13 @@ impl CommitmentPool {
 
         env.events().publish(
             (Symbol::new(&env, "Withdrawn"),),
-            (commitment, recipient, nullifier_hash, record.amount),
+            (
+                commitment,
+                recipient,
+                nullifier_hash,
+                record.amount,
+                WITHDRAW_STATEMENT_VERSION,
+            ),
         );
 
         Ok(())
@@ -331,6 +339,11 @@ impl CommitmentPool {
             .instance()
             .get(&DataKey::Verifier)
             .ok_or(PoolError::NotInitialized)
+    }
+
+    /// Version marker for the current withdraw statement schema.
+    pub fn withdraw_statement_version(_env: Env) -> u32 {
+        WITHDRAW_STATEMENT_VERSION
     }
 
     // ========================================================================
