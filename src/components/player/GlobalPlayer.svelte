@@ -513,7 +513,6 @@
         currentIndex = index;
         const song = displayPlaylist[index];
         if (song) {
-            initAudioContext(); // Resume AudioContext if suspended (e.g. after visiting Radio page)
             if (currentSong && currentSong.Id === song.Id) {
                 togglePlayPause();
             } else {
