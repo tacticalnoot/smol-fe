@@ -5,6 +5,7 @@
         audioState,
         selectSong,
         registerSongNextCallback,
+        registerSongPrevCallback,
         setPlaylistContext,
         isPlaying,
         togglePlayPause,
@@ -1003,13 +1004,37 @@
 
     function handleNext() {
         if (displayPlaylist.length === 0) return;
-        const nextIndex = (currentIndex + 1) % displayPlaylist.length;
-        handleSelect(nextIndex);
+        const liveIdx = currentSong
+            ? displayPlaylist.findIndex((s) => s.Id === currentSong!.Id)
+            : -1;
+        const from = liveIdx !== -1 ? liveIdx : currentIndex;
+        const nextIndex = (from + 1) % displayPlaylist.length;
+        const song = displayPlaylist[nextIndex];
+        if (!song || song.Id === currentSong?.Id) return;
+        currentIndex = nextIndex;
+        selectSong(song);
+    }
+
+    function handlePrev() {
+        if (displayPlaylist.length === 0) return;
+        const liveIdx = currentSong
+            ? displayPlaylist.findIndex((s) => s.Id === currentSong!.Id)
+            : -1;
+        const from = liveIdx !== -1 ? liveIdx : currentIndex;
+        const prevIndex = (from - 1 + displayPlaylist.length) % displayPlaylist.length;
+        const song = displayPlaylist[prevIndex];
+        if (!song || song.Id === currentSong?.Id) return;
+        currentIndex = prevIndex;
+        selectSong(song);
     }
 
     $effect(() => {
         registerSongNextCallback(handleNext);
-        return () => registerSongNextCallback(null);
+        registerSongPrevCallback(handlePrev);
+        return () => {
+            registerSongNextCallback(null);
+            registerSongPrevCallback(null);
+        };
     });
 
     // Store playlist context for fallback playback when navigating to pages without playlists
@@ -1018,14 +1043,6 @@
             setPlaylistContext(displayPlaylist, currentIndex);
         }
     });
-
-    function handlePrev() {
-        if (displayPlaylist.length === 0) return;
-        const prevIndex =
-            (currentIndex - 1 + displayPlaylist.length) %
-            displayPlaylist.length;
-        handleSelect(prevIndex);
-    }
 
     function handleToggleLike(index: number, liked: boolean) {
         if (displayPlaylist[index]) {

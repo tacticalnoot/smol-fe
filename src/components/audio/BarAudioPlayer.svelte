@@ -798,12 +798,17 @@
     if (audioState.repeatMode === "one" && audioState.audioElement) {
       // Loop endlessly
       audioState.audioElement.currentTime = 0;
-      audioState.audioElement.play();
+      audioState.audioElement.play().catch(() => {
+        // Autoplay failed — fall through to next song
+        playNextSong();
+      });
     } else if (audioState.repeatMode === "once" && audioState.audioElement) {
       // Replay once then disable repeat
-      audioState.audioElement.currentTime = 0;
-      audioState.audioElement.play();
       audioState.repeatMode = "off";
+      audioState.audioElement.currentTime = 0;
+      audioState.audioElement.play().catch(() => {
+        playNextSong();
+      });
     } else {
       playNextSong();
     }

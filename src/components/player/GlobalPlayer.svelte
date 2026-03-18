@@ -6,7 +6,6 @@
         registerSongNextCallback,
         registerSongPrevCallback,
         setPlaylistContext,
-        updatePlaylistIndex,
         isPlaying,
         togglePlayPause,
         playNextSong,
