@@ -14,7 +14,7 @@ const lowGpuMode =
   <link href="https://fonts.googleapis.com/css2?family=Press+Start+2P&display=swap" rel="stylesheet">
 
   <!-- Transparent Wrapper (Global Scene is Behind) -->
-  <div class="fixed inset-0 text-[#9ae600] overflow-hidden flex flex-col items-center justify-center pointer-events-none" style="font-family: 'Press Start 2P', cursive;">
+  <div class="fixed inset-0 text-[#9ae600] overflow-y-auto flex flex-col items-center pointer-events-none" style="font-family: 'Press Start 2P', cursive;">
 
     <!-- Global Background Scene (Fixed) -->
     <div class="fixed inset-0 z-0 pointer-events-auto">
@@ -41,7 +41,7 @@ const lowGpuMode =
     </a>
 
     <!-- Main Content (Floating) -->
-    <div class="relative z-10 w-full max-w-lg flex flex-col gap-4 md:gap-6 items-center text-center px-4 pointer-events-auto pb-4 md:pb-0">
+    <div class="relative z-10 w-full max-w-lg flex flex-col gap-4 md:gap-6 items-center text-center px-4 pointer-events-auto pt-16 pb-8 my-auto">
         
         <!-- Header (Floating over Forest) -->
         <div class="space-y-2 md:space-y-3">
