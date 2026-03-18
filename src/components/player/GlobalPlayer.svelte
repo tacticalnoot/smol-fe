@@ -11,6 +11,7 @@
         togglePlayPause,
         playNextSong,
         playPrevSong as playPreviousSong,
+        initAudioContext,
     } from "../../stores/audio.svelte.ts";
     import { navigate } from "astro:transitions/client";
     import RadioPlayer from "../radio/RadioPlayer.svelte";
@@ -512,6 +513,7 @@
         currentIndex = index;
         const song = displayPlaylist[index];
         if (song) {
+            initAudioContext(); // Resume AudioContext if suspended (e.g. after visiting Radio page)
             if (currentSong && currentSong.Id === song.Id) {
                 togglePlayPause();
             } else {
@@ -836,6 +838,7 @@
                             <button
                                 class="w-7 h-7 flex items-center justify-center active:scale-95 transition-all rounded-full text-white/60 hover:text-white"
                                 onclick={() => {
+                                    initAudioContext();
                                     playPreviousSong();
                                     triggerHaptic(50);
                                 }}
@@ -855,6 +858,7 @@
                             <button
                                 class="tech-button w-8 h-8 flex items-center justify-center active:scale-95 transition-all rounded-full backdrop-blur-xl border border-[#089981] text-[#089981] bg-[#089981]/10 hover:text-white"
                                 onclick={() => {
+                                    initAudioContext();
                                     togglePlayPause();
                                     triggerHaptic(50);
                                 }}
@@ -882,6 +886,7 @@
                             <button
                                 class="w-7 h-7 flex items-center justify-center active:scale-95 transition-all rounded-full text-white/60 hover:text-white"
                                 onclick={() => {
+                                    initAudioContext();
                                     playNextSong();
                                     triggerHaptic(50);
                                 }}
@@ -1658,12 +1663,14 @@
                                                 tabindex="0"
                                                 onclick={(e) => {
                                                     e.stopPropagation();
+                                                    initAudioContext();
                                                     togglePlayPause();
                                                     triggerHaptic(50);
                                                 }}
                                                 onkeydown={(e) => {
                                                     if (e.key === "Enter") {
                                                         e.stopPropagation();
+                                                        initAudioContext();
                                                         togglePlayPause();
                                                     }
                                                 }}
