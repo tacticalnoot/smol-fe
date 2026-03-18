@@ -12,6 +12,7 @@
         playNextSong,
         playPrevSong as playPreviousSong,
         initAudioContext,
+        preloadSongAudio,
     } from "../../stores/audio.svelte.ts";
     import { navigate } from "astro:transitions/client";
     import RadioPlayer from "../radio/RadioPlayer.svelte";
@@ -1448,6 +1449,7 @@
                                     ? 'opacity-40 hover:opacity-100'
                                     : 'opacity-100'}"
                                 style="will-change: transform, opacity"
+                                onmouseenter={() => preloadSongAudio(song)}
                                 onclick={() => {
                                     handleSelect(index);
                                     triggerHaptic(PAD_PRESS);
@@ -1763,6 +1765,7 @@
                                 currentIndex
                                     ? 'bg-lime-500/15 border-l-4 border-lime-500'
                                     : 'border-l-4 border-transparent'}"
+                                onmouseenter={() => preloadSongAudio(song)}
                                 onclick={() => handleSelect(index)}
                             >
                                 <span

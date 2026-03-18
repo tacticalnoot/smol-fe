@@ -202,6 +202,21 @@ export function seek(progress: number) {
 }
 
 /**
+ * Preload audio for a song into the browser cache.
+ * Call on hover so audio is already buffered when the user clicks.
+ */
+export function preloadSongAudio(song: Smol): void {
+  if (!song?.Song_1) return;
+  const audioProxyUrl = import.meta.env.PUBLIC_AUDIO_PROXY_URL;
+  const apiUrl = import.meta.env.PUBLIC_API_URL || "https://api.smol.xyz";
+  const url = audioProxyUrl
+    ? `${audioProxyUrl}/audio/${song.Song_1}`
+    : `${apiUrl}/song/${song.Song_1}.mp3`;
+  // @ts-ignore - priority is valid but not in all TS lib definitions
+  fetch(url, { priority: "low" }).catch(() => {});
+}
+
+/**
  * Select a song and mark it to play
  */
 export function selectSong(songData: Smol | null) {
@@ -210,6 +225,7 @@ export function selectSong(songData: Smol | null) {
     audioState.playingId = songData.Id;
     audioState.playIntentId = songData.Id;
     audioState.isBuffering = true;
+    audioState.progress = 0; // Reset progress so onloadeddata doesn't seek new song to old position
 
     // Broadcast play event
     ch && ch.postMessage({ type: "play", src: bId });
