@@ -1,6 +1,6 @@
 <script lang="ts">
   import { fade } from "svelte/transition";
-  import { onMount } from "svelte";
+  import { onMount, untrack } from "svelte";
   import MiniAudioPlayer from "./MiniAudioPlayer.svelte";
   import LikeButton from "../ui/LikeButton.svelte";
   import CastButton from "../ui/CastButton.svelte";
@@ -88,9 +88,13 @@
       // Prevent redundant play() calls that cause glitches on iOS
       if (!audio.paused) return;
       // Resume suspended AudioContext before playing (fixes silent playback after visiting Radio page)
-      if (audioState.audioContext && audioState.audioContext.state === "suspended") {
-        audioState.audioContext.resume().catch(() => {});
-      }
+      // Use untrack() to avoid creating a reactive dependency on audioContext here
+      untrack(() => {
+        const ctx = audioState.audioContext;
+        if (ctx && ctx.state === "suspended") {
+          ctx.resume().catch(() => {});
+        }
+      });
       // Should be playing
       audioState.playIntentId = currentSong.Id;
       audioState.isBuffering = true;
