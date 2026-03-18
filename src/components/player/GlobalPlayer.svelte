@@ -555,16 +555,34 @@
 
     function handleNext() {
         if (displayPlaylist.length === 0) return;
-        const nextIndex = (currentIndex + 1) % displayPlaylist.length;
-        handleSelect(nextIndex);
+        // Always resolve current position by song ID to avoid stale-index bugs
+        // (currentIndex can lag behind when the playlist reorders or on first load)
+        const liveIdx = currentSong
+            ? displayPlaylist.findIndex((s) => s.Id === currentSong!.Id)
+            : -1;
+        const from = liveIdx !== -1 ? liveIdx : currentIndex;
+        const nextIndex = (from + 1) % displayPlaylist.length;
+        const song = displayPlaylist[nextIndex];
+        if (!song) return;
+        // Guard: if wrapping back to same song (single-song playlist), just stop.
+        // repeatMode "one"/"once" is already handled by handleEnded before this runs.
+        if (song.Id === currentSong?.Id) return;
+        currentIndex = nextIndex;
+        selectSong(song);
     }
 
     function handlePrev() {
         if (displayPlaylist.length === 0) return;
-        const prevIndex =
-            (currentIndex - 1 + displayPlaylist.length) %
-            displayPlaylist.length;
-        handleSelect(prevIndex);
+        const liveIdx = currentSong
+            ? displayPlaylist.findIndex((s) => s.Id === currentSong!.Id)
+            : -1;
+        const from = liveIdx !== -1 ? liveIdx : currentIndex;
+        const prevIndex = (from - 1 + displayPlaylist.length) % displayPlaylist.length;
+        const song = displayPlaylist[prevIndex];
+        if (!song) return;
+        if (song.Id === currentSong?.Id) return;
+        currentIndex = prevIndex;
+        selectSong(song);
     }
 
     $effect(() => {
