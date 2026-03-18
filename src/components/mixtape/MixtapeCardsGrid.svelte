@@ -194,7 +194,11 @@
             registerSongNextCallback(playbackHook.playNext);
         }
         return () => {
-            if (activeMixtapeId) registerSongNextCallback(null);
+            // Always unregister — the guard was a bug: if activeMixtapeId
+            // transitions to falsy, the effect re-runs but the cleanup fires
+            // with the NEW (falsy) value, skipping the unregister and leaving
+            // a stale callback in place.
+            registerSongNextCallback(null);
         };
     });
 
