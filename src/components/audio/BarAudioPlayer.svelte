@@ -14,6 +14,7 @@
     playPrevSong,
     saveState,
     seek,
+    initAudioContext,
   } from "../../stores/audio.svelte.ts";
   import { onDestroy } from "svelte";
   import { triggerHaptic } from "../../utils/haptics";
@@ -86,6 +87,10 @@
       }
       // Prevent redundant play() calls that cause glitches on iOS
       if (!audio.paused) return;
+      // Resume suspended AudioContext before playing (fixes silent playback after visiting Radio page)
+      if (audioState.audioContext && audioState.audioContext.state === "suspended") {
+        audioState.audioContext.resume().catch(() => {});
+      }
       // Should be playing
       audioState.playIntentId = currentSong.Id;
       audioState.isBuffering = true;
@@ -989,6 +994,7 @@
           <!-- Previous Track -->
           <button
             onclick={() => {
+              initAudioContext();
               playPrevSong();
               triggerHaptic(50);
             }}
@@ -1004,10 +1010,12 @@
             id={audioState.currentSong.Id}
             playing_id={audioState.playingId}
             songToggle={() => {
+              initAudioContext();
               togglePlayPause();
               triggerHaptic(50);
             }}
             songNext={() => {
+              initAudioContext();
               playNextSong();
               triggerHaptic(50);
             }}
@@ -1017,6 +1025,7 @@
           <!-- Next Track -->
           <button
             onclick={() => {
+              initAudioContext();
               playNextSong();
               triggerHaptic(50);
             }}

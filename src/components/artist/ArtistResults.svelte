@@ -8,6 +8,7 @@
         setPlaylistContext,
         isPlaying,
         togglePlayPause,
+        initAudioContext,
     } from "../../stores/audio.svelte.ts";
     import { navigate } from "astro:transitions/client";
     import RadioPlayer from "../radio/RadioPlayer.svelte";
@@ -996,6 +997,7 @@
         currentIndex = index;
         const song = displayPlaylist[index];
         if (song) {
+            initAudioContext(); // Resume AudioContext if suspended (e.g. after visiting Radio page)
             selectSong(song);
         }
     }
@@ -1304,6 +1306,7 @@
                         <button
                             class="tech-button w-7 h-7 flex items-center justify-center text-white/60 hover:text-white active:scale-95 border border-white/5 hover:border-white/20 rounded-full bg-white/5"
                             onclick={() => {
+                                initAudioContext();
                                 handlePrev();
                                 triggerHaptic(50);
                             }}
@@ -1322,6 +1325,7 @@
                         <button
                             class="tech-button w-9 h-9 flex items-center justify-center active:scale-95 transition-all rounded-full backdrop-blur-xl border border-[#089981] text-[#089981] bg-[#089981]/10 shadow-[0_0_20px_rgba(8,153,129,0.4)] hover:bg-[#089981]/20 hover:text-white"
                             onclick={() => {
+                                initAudioContext();
                                 togglePlayPause();
                                 triggerHaptic(50);
                             }}
@@ -1350,6 +1354,7 @@
                         <button
                             class="tech-button w-7 h-7 flex items-center justify-center text-white/60 hover:text-white active:scale-95 border border-white/5 hover:border-white/20 rounded-full bg-white/5"
                             onclick={() => {
+                                initAudioContext();
                                 handleNext();
                                 triggerHaptic(50);
                             }}
@@ -1948,6 +1953,7 @@
                                 in:fade={{ duration: 200 }}
                                 class="flex flex-col gap-2 group text-left w-full relative min-w-0 transition-transform duration-300 ease-[cubic-bezier(0.34,1.56,0.64,1)] hover:scale-105"
                                 onclick={() => {
+                                    initAudioContext();
                                     if (
                                         currentSong &&
                                         currentSong.Id === song.Id
