@@ -206,5 +206,23 @@
             "Security"
         ],
         "isLocked": false
+    },
+    {
+        "id": "lab_trader_genome",
+        "title": "Trader Genome",
+        "badge": "EXP-013",
+        "status_color": "YELLOW",
+        "readiness_score": 72,
+        "last_reviewed": "2026-03-20",
+        "blast_radius": "READ_ONLY",
+        "path": "experiments/trader-genome/experiment.yml",
+        "href": "/labs/trader-genome",
+        "description": "Decode any Stellar wallet's trading DNA. FIFO P&L, behavioral genome scores, archetype classification, and activity heatmaps — all from public Horizon data.",
+        "tags": [
+            "Stellar",
+            "Tool",
+            "Analytics"
+        ],
+        "isLocked": false
     }
 ]

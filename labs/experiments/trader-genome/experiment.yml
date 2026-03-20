@@ -1,0 +1,33 @@
+id: lab_trader_genome
+title: "Trader Genome Profiler"
+owner: "Smol Labs"
+status_color: YELLOW
+readiness_score: 72
+risk_level: LOW
+blast_radius: READ_ONLY
+env: MAINNET
+feature_flag: "labs.trader-genome.enabled"
+last_reviewed: "2026-03-20"
+dependencies:
+  - "Stellar Horizon API (public)"
+  - "Stellar Expert Directory API (public)"
+links:
+  spec: ""
+  pr: ""
+  docs: []
+definition_of_done:
+  - "Address validation and error handling"
+  - "Trade history aggregation (FIFO PnL)"
+  - "Payment flow analysis"
+  - "Behavioral score computation (8 scores)"
+  - "Archetype classification"
+  - "Activity heatmaps (hour-of-day, day-of-week)"
+  - "Portfolio valuation with live prices"
+  - "10-minute server-side response cache"
+  - "URL shareable via ?address= param"
+notes: |
+  Read-only public data profiler — zero on-chain write operations.
+  Fetches up to 1,000 trades and 600 payments from Stellar Horizon.
+  P&L uses FIFO lot costing restricted to XLM-denominated pairs for accuracy.
+  Response cached 10 min per address at the API layer.
+  No wallet connection required.
