@@ -29,19 +29,12 @@ async function fetchJSON(url: string, timeoutMs = 12000): Promise<unknown> {
   }
 }
 
-async function paginateHorizon(
-  baseUrl: string,
-  deadline: number,
-  perPageMs = 8000
-): Promise<{ records: unknown[]; capped: boolean }> {
+async function paginateHorizon(baseUrl: string): Promise<{ records: unknown[]; capped: boolean }> {
   const all: unknown[] = [];
   let url = baseUrl;
-  let capped = false;
   while (true) {
-    const remaining = deadline - Date.now();
-    if (remaining <= 500) { capped = true; break; }
     try {
-      const data = fetchedAs<HorizonPage>(await fetchJSON(url, Math.min(perPageMs, remaining)));
+      const data = fetchedAs<HorizonPage>(await fetchJSON(url));
       const records = data._embedded?.records ?? [];
       all.push(...records);
       const next = data._links?.next?.href;
@@ -51,7 +44,7 @@ async function paginateHorizon(
       break;
     }
   }
-  return { records: all, capped };
+  return { records: all, capped: false };
 }
 
 // Typed helpers to avoid excessive casting
@@ -107,10 +100,7 @@ export const GET: APIRoute = async ({ params, url }) => {
   }
 
   try {
-    // 26-second budget shared across all paginated streams (Cloudflare Worker wall-clock limit ~30s)
-    const deadline = Date.now() + 26000;
-
-    // Kick off parallel fetches
+    // Kick off parallel fetches — all streams run to completion with no page cap
     const [
       accountRes,
       xlmUsdRes,
@@ -123,10 +113,10 @@ export const GET: APIRoute = async ({ params, url }) => {
       fetchJSON(`${HORIZON_URL}/accounts/${address}`),
       fetchJSON(`${HORIZON_URL}/trade_aggregations?base_asset_type=native&counter_asset_code=USDC&counter_asset_issuer=${USDC_ISSUER}&resolution=3600000&limit=1&order=desc`, 8000),
       fetchJSON(`${EXPERT_URL}/directory/${address}`).catch(() => null),
-      paginateHorizon(`${HORIZON_URL}/accounts/${address}/trades?limit=200&order=${period === 'recent' ? 'desc' : 'asc'}`, deadline),
-      paginateHorizon(`${HORIZON_URL}/accounts/${address}/payments?limit=200&order=${period === 'recent' ? 'desc' : 'asc'}`, deadline),
-      paginateHorizon(`${HORIZON_URL}/accounts/${address}/operations?limit=200&order=desc`, deadline),
-      paginateHorizon(`${HORIZON_URL}/accounts/${address}/effects?limit=200&order=asc`, deadline),
+      paginateHorizon(`${HORIZON_URL}/accounts/${address}/trades?limit=200&order=${period === 'recent' ? 'desc' : 'asc'}`),
+      paginateHorizon(`${HORIZON_URL}/accounts/${address}/payments?limit=200&order=${period === 'recent' ? 'desc' : 'asc'}`),
+      paginateHorizon(`${HORIZON_URL}/accounts/${address}/operations?limit=200&order=desc`),
+      paginateHorizon(`${HORIZON_URL}/accounts/${address}/effects?limit=200&order=asc`),
     ]);
 
     if (accountRes.status === 'rejected') {
