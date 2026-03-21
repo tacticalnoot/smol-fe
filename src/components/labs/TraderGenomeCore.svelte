@@ -33,6 +33,33 @@
     let scoresVisible = $state(false);
     let period = $state<'recent' | 'all'>('all');
 
+    // ---- DEBUG LOG CAPTURE ----
+    type LogLevel = 'log' | 'warn' | 'error' | 'info' | 'debug';
+    interface LogEntry { ts: string; level: LogLevel; msg: string; }
+    let debugLog = $state<LogEntry[]>([]);
+    let logCopied = $state(false);
+
+    function dbg(level: LogLevel, ...args: unknown[]) {
+        const msg = args.map(a => {
+            if (a === null) return 'null';
+            if (a === undefined) return 'undefined';
+            if (typeof a === 'object') { try { return JSON.stringify(a, null, 2); } catch { return String(a); } }
+            return String(a);
+        }).join(' ');
+        const entry: LogEntry = { ts: new Date().toISOString(), level, msg };
+        debugLog = [...debugLog, entry];
+        // also emit to real console so devtools still show it
+        const orig = level === 'log' ? console.log : level === 'warn' ? console.warn : level === 'error' ? console.error : level === 'info' ? console.info : console.debug;
+        orig(`[GENOME][${level.toUpperCase()}]`, ...args);
+    }
+
+    async function copyDebugLog() {
+        const text = debugLog.map(e => `[${e.ts}][${e.level.toUpperCase()}] ${e.msg}`).join('\n');
+        await navigator.clipboard.writeText(text);
+        logCopied = true;
+        setTimeout(() => { logCopied = false; }, 2500);
+    }
+
     const EXAMPLE_ADDRESSES = [
         { label: "Binance", addr: "GAX3BRBNB5WTJ2GNEFFH7A4CZKT2FORYABDDBZR5FIIT3P7FLS2EFOZ" },
         { label: "StellarX", addr: "GDDBG2IA36WS6G3VKFPXZBBWNRQVL2IHGKHQH6DXNTJRXLJQHGZYBWJ" },
@@ -105,10 +132,16 @@
 
     async function runScan(addr?: string) {
         const target = (addr ?? inputAddress).trim();
+        debugLog = []; // reset log on each scan
+        dbg('info', `=== SCAN START === address="${target}" period="${period}"`);
+
         if (!isValidGAddress(target)) {
-            error = "Please enter a valid Stellar G-address (56 chars starting with G)";
+            const validationErr = "Please enter a valid Stellar G-address (56 chars starting with G)";
+            dbg('error', `Address validation failed: "${target}" length=${target.length} startsWithG=${target[0] === 'G'}`);
+            error = validationErr;
             return;
         }
+        dbg('log', `Address validated OK: ${target}`);
 
         error = null;
         profile = null;
@@ -120,26 +153,161 @@
         const url = new URL(window.location.href);
         url.searchParams.set("address", target);
         window.history.replaceState({}, "", url.toString());
+        dbg('log', `URL updated: ${url.toString()}`);
 
         loadingInterval = setInterval(() => {
             loadingStep = Math.min(loadingStep + 1, LOADING_STEPS.length - 1);
         }, 900);
 
+        const apiUrl = `/api/labs/trader-genome/${encodeURIComponent(target)}?period=${period}`;
+        dbg('info', `Fetching API: ${apiUrl}`);
+        const fetchStart = Date.now();
+
         try {
-            const res = await fetch(`/api/labs/trader-genome/${encodeURIComponent(target)}?period=${period}`);
+            const res = await fetch(apiUrl);
+            const fetchMs = Date.now() - fetchStart;
+            dbg('log', `API responded in ${fetchMs}ms | status=${res.status} ok=${res.ok} statusText="${res.statusText}"`);
+            dbg('log', `Response headers: cache=${res.headers.get('X-Cache')} content-type=${res.headers.get('content-type')}`);
+
             const data = await res.json();
+            dbg('log', `JSON parsed. Top-level keys: [${Object.keys(data as object).join(', ')}]`);
+
             if (!res.ok) {
-                error = data.error ?? "Unknown error";
+                dbg('error', `API error response: ${JSON.stringify(data)}`);
+                error = (data as { error?: string }).error ?? "Unknown error";
             } else {
-                profile = data;
-                // Trigger score animation after render
+                const p = data as Profile;
+                dbg('info', '--- FIELD AUDIT ---');
+                dbg('log', `address: ${p.address}`);
+                dbg('log', `fetchedAt: ${p.fetchedAt}`);
+
+                // dataCompleteness
+                const dc = p.dataCompleteness;
+                dbg('log', `dataCompleteness.period: ${dc?.period}`);
+                dbg('log', `dataCompleteness.totalTrades: ${dc?.totalTrades}`);
+                dbg('log', `dataCompleteness.rawTradeCount: ${dc?.rawTradeCount}`);
+                dbg('log', `dataCompleteness.spamTradeCount: ${dc?.spamTradeCount}`);
+                dbg('log', `dataCompleteness.tradesCapped: ${dc?.tradesCapped}`);
+                dbg('log', `dataCompleteness.paymentsCapped: ${dc?.paymentsCapped}`);
+                dbg('log', `dataCompleteness.opsCapped: ${dc?.opsCapped}`);
+                dbg('log', `dataCompleteness.pnlConfidence: ${dc?.pnlConfidence}`);
+                dbg('log', `dataCompleteness.xlmUsdPrice: ${dc?.xlmUsdPrice}`);
+
+                // identity
+                const id = p.identity;
+                dbg('log', `identity.createdAt: ${id?.createdAt}`);
+                dbg('log', `identity.walletAgeDays: ${id?.walletAgeDays}`);
+                dbg('log', `identity.homeDomain: ${id?.homeDomain}`);
+                dbg('log', `identity.directoryTags: ${JSON.stringify(id?.directoryTags)}`);
+                dbg('log', `identity.warnings: ${JSON.stringify(id?.warnings)}`);
+                dbg('log', `identity.signerCount: ${id?.signerCount}`);
+                dbg('log', `identity.trustlineCount: ${id?.trustlineCount}`);
+                dbg('log', `identity.subentryCount: ${id?.subentryCount}`);
+
+                // balances
+                dbg('log', `balances count: ${p.balances?.length}`);
+                (p.balances ?? []).forEach((b, i) => {
+                    dbg('log', `  balances[${i}]: asset="${b.asset}" code="${b.code}" issuer="${b.issuer}" balance=${b.balance} xlmValue=${b.xlmValue} usdValue=${b.usdValue} priced=${b.priced}`);
+                });
+
+                // headline
+                const h = p.headline;
+                dbg('log', `headline.portfolioValueXLM: ${h?.portfolioValueXLM}`);
+                dbg('log', `headline.portfolioValueUSD: ${h?.portfolioValueUSD}`);
+                dbg('log', `headline.lifetimeValueTradedXLM: ${h?.lifetimeValueTradedXLM}`);
+                dbg('log', `headline.totalTrades: ${h?.totalTrades}`);
+                dbg('log', `headline.netXlmFlow: ${h?.netXlmFlow}`);
+                dbg('log', `headline.netXlmFromTrading: ${h?.netXlmFromTrading}`);
+                dbg('log', `headline.netXlmFromTransfers: ${h?.netXlmFromTransfers}`);
+                dbg('log', `headline.feesSpentXLM: ${h?.feesSpentXLM}`);
+                dbg('log', `headline.estimatedRealizedPnlXLM: ${h?.estimatedRealizedPnlXLM}`);
+                dbg('log', `headline.pnlConfidence: ${h?.pnlConfidence}`);
+
+                // activity
+                const act = p.activity;
+                dbg('log', `activity.paymentsIn: ${act?.paymentsIn}`);
+                dbg('log', `activity.paymentsOut: ${act?.paymentsOut}`);
+                dbg('log', `activity.counterpartyCount: ${act?.counterpartyCount}`);
+                dbg('log', `activity.offersCreated: ${act?.offersCreated}`);
+                dbg('log', `activity.offersCancelled: ${act?.offersCancelled}`);
+                dbg('log', `activity.pathPayments: ${act?.pathPayments}`);
+                dbg('log', `activity.lpDeposits: ${act?.lpDeposits}`);
+                dbg('log', `activity.lpWithdrawals: ${act?.lpWithdrawals}`);
+                dbg('log', `activity.sorobanOpCount: ${act?.sorobanOpCount}`);
+                dbg('log', `activity.accountsFunded: ${act?.accountsFunded}`);
+                dbg('log', `activity.largestInboundXLM: ${act?.largestInboundXLM}`);
+                dbg('log', `activity.largestOutboundXLM: ${act?.largestOutboundXLM}`);
+
+                // trading
+                const tr = p.trading;
+                dbg('log', `trading.uniquePairsCount: ${tr?.uniquePairsCount}`);
+                dbg('log', `trading.avgHoldHours: ${tr?.avgHoldHours}`);
+                dbg('log', `trading.winRatePct: ${tr?.winRatePct}`);
+                dbg('log', `trading.avgTradeXLM: ${tr?.avgTradeXLM}`);
+                dbg('log', `trading.medianTradeXLM: ${tr?.medianTradeXLM}`);
+                dbg('log', `trading.biggestFillXLM: ${tr?.biggestFillXLM}`);
+                dbg('log', `trading.totalSaleCount: ${tr?.totalSaleCount}`);
+                dbg('log', `trading.wins: ${tr?.wins} losses: ${tr?.losses}`);
+                dbg('log', `trading.maxWinStreak: ${tr?.maxWinStreak} maxLossStreak: ${tr?.maxLossStreak}`);
+                dbg('log', `trading.peakHour: ${tr?.peakHour} peakDay: ${tr?.peakDay}`);
+                dbg('log', `trading.unrealizedPnlXLM: ${tr?.unrealizedPnlXLM}`);
+                dbg('log', `trading.activityTrend: ${tr?.activityTrend}`);
+                dbg('log', `trading.tradeSizeBreakdown: ${JSON.stringify(tr?.tradeSizeBreakdown)}`);
+                dbg('log', `trading.bestTrade: ${JSON.stringify(tr?.bestTrade)}`);
+                dbg('log', `trading.worstTrade: ${JSON.stringify(tr?.worstTrade)}`);
+                dbg('log', `trading.bestAsset: ${JSON.stringify(tr?.bestAsset)}`);
+                dbg('log', `trading.worstAsset: ${JSON.stringify(tr?.worstAsset)}`);
+                dbg('log', `trading.favoritePairs (top 5): ${JSON.stringify((tr?.favoritePairs ?? []).slice(0, 5))}`);
+                dbg('log', `trading.tradesByHour length: ${tr?.tradesByHour?.length} values: [${tr?.tradesByHour?.join(',')}]`);
+                dbg('log', `trading.tradesByDay length: ${tr?.tradesByDay?.length} values: [${tr?.tradesByDay?.join(',')}]`);
+
+                // scores
+                const sc = p.scores;
+                dbg('log', `scores.conviction: ${sc?.conviction}`);
+                dbg('log', `scores.degeneracy: ${sc?.degeneracy}`);
+                dbg('log', `scores.lpFarmer: ${sc?.lpFarmer}`);
+                dbg('log', `scores.pathWizard: ${sc?.pathWizard}`);
+                dbg('log', `scores.diamondHands: ${sc?.diamondHands}`);
+                dbg('log', `scores.whale: ${sc?.whale}`);
+                dbg('log', `scores.coffinPortfolio: ${sc?.coffinPortfolio}`);
+                dbg('log', `scores.aura: ${sc?.aura}`);
+                dbg('log', `scores.defi: ${sc?.defi}`);
+
+                // narrative
+                const na = p.narrative;
+                dbg('log', `narrative.archetype: "${na?.archetype}" emoji="${na?.archetypeEmoji}"`);
+                dbg('log', `narrative.traits: ${JSON.stringify(na?.traits)}`);
+                dbg('log', `narrative.summary length: ${na?.summary?.length} chars`);
+
+                // portfolio
+                const po = p.portfolio;
+                dbg('log', `portfolio.xlmPct: ${po?.xlmPct} lpPct: ${po?.lpPct} stablePct: ${po?.stablePct} altPct: ${po?.altPct} topAltCode: ${po?.topAltCode}`);
+
+                // lpPositions
+                dbg('log', `lpPositions count: ${p.lpPositions?.length}`);
+                (p.lpPositions ?? []).forEach((lp, i) => {
+                    dbg('log', `  lpPositions[${i}]: poolId="${lp.poolId}" label="${lp.label}" xlmVal=${lp.xlmVal} shares=${lp.shares} pct=${lp.pct}`);
+                });
+
+                // lifetimeClaims
+                const lc = p.lifetimeClaims;
+                dbg('log', `lifetimeClaims.aqua: ${lc?.aqua} (${lc?.aquaClaimCount} claims)`);
+                dbg('log', `lifetimeClaims.blnd: ${lc?.blnd} (${lc?.blndClaimCount} claims)`);
+                dbg('log', `lifetimeClaims.pho: ${lc?.pho} (${lc?.phoClaimCount} claims)`);
+                dbg('log', `lifetimeClaims.dataCapped: ${lc?.dataCapped}`);
+
+                dbg('info', '--- FIELD AUDIT COMPLETE --- all fields logged above');
+                profile = p;
                 setTimeout(() => { scoresVisible = true; }, 150);
             }
         } catch (e) {
-            error = e instanceof Error ? e.message : "Network error";
+            const errMsg = e instanceof Error ? e.message : "Network error";
+            dbg('error', `Caught exception during scan: ${e instanceof Error ? e.stack ?? e.message : String(e)}`);
+            error = errMsg;
         } finally {
             loading = false;
             if (loadingInterval) { clearInterval(loadingInterval); loadingInterval = null; }
+            dbg('info', `=== SCAN END === error="${error ?? 'none'}" profileLoaded=${profile !== null} totalLogEntries=${debugLog.length}`);
         }
     }
 
@@ -196,8 +364,35 @@
 
     <!-- ERROR -->
     {#if error}
-        <div class="border border-[#ff424c]/40 rounded-xl bg-[#ff424c]/5 p-6 text-[#ff424c] text-[11px] font-mono">
-            <span class="text-[#ff424c] font-bold">SCAN FAILED:</span> {error}
+        <div class="border border-[#ff424c]/40 rounded-xl bg-[#ff424c]/5 p-6 space-y-4 font-mono">
+            <div class="text-[#ff424c] text-[11px]">
+                <span class="font-bold">SCAN FAILED:</span> {error}
+            </div>
+            {#if debugLog.length > 0}
+                <div class="flex items-center gap-3">
+                    <button
+                        onclick={copyDebugLog}
+                        class="flex items-center gap-2 px-4 py-2 bg-[#1a0a0a] border border-[#ff424c]/40 rounded-lg text-[10px] text-[#ff424c] hover:border-[#ff424c] hover:bg-[#ff424c]/10 transition-colors uppercase tracking-widest"
+                    >
+                        {#if logCopied}
+                            ✓ COPIED ({debugLog.length} entries)
+                        {:else}
+                            ⎘ COPY DEBUG LOG ({debugLog.length} entries)
+                        {/if}
+                    </button>
+                    <span class="text-[9px] text-[#555]">paste in issue / Discord for debugging</span>
+                </div>
+                <!-- inline log preview (last 8 lines) -->
+                <div class="bg-black/60 border border-[#2a2a2a] rounded-lg p-3 max-h-48 overflow-y-auto space-y-0.5">
+                    {#each debugLog.slice(-8) as entry}
+                        <div class="text-[9px] leading-relaxed {entry.level === 'error' ? 'text-[#ff424c]' : entry.level === 'warn' ? 'text-[#fdda24]' : entry.level === 'info' ? 'text-[#9ae600]' : 'text-[#555]'}">
+                            <span class="text-[#333]">{entry.ts.slice(11, 23)}</span>
+                            <span class="ml-1 font-bold">[{entry.level.toUpperCase()}]</span>
+                            <span class="ml-1 break-all">{entry.msg}</span>
+                        </div>
+                    {/each}
+                </div>
+            {/if}
         </div>
     {/if}
 
