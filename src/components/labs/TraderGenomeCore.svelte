@@ -341,7 +341,7 @@
                     <!-- PHO -->
                     <div class="border border-[#3a2a00]/60 rounded-lg bg-[#150f00] p-4 space-y-2">
                         <div class="flex items-center gap-2">
-                            <span class="text-base">🐉</span>
+                            <span class="text-base">🍜</span>
                             <span class="text-[9px] text-[#ffb830] uppercase tracking-widest font-bold">PHO</span>
                         </div>
                         <div class="text-xl font-bold text-[#ffb830] font-mono">
