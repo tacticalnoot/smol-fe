@@ -439,6 +439,8 @@ export const GET: APIRoute = async ({ params, url }) => {
       }
     }
 
+    const effectiveTradeCount = trades.length - spamTradeCount;
+
     // Activity trend: trades-per-day in first half vs second half of history
     let activityTrend: 'accelerating' | 'decelerating' | 'steady' = 'steady';
     if (effectiveTradeCount >= 20 && walletAgeDays && walletAgeDays > 30) {
@@ -560,7 +562,6 @@ export const GET: APIRoute = async ({ params, url }) => {
         }
       }
     }
-    const effectiveTradeCount = trades.length - spamTradeCount;
     const totalFeesXLM = (effectiveTradeCount + operations.length) * 0.00001;
 
     // ---- SCORES ----
