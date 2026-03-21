@@ -5,6 +5,11 @@ const EXPERT_URL = 'https://api.stellar.expert/explorer/public';
 const USDC_ISSUER = 'GA5ZSEJYB37JRC5AVCIA5MOP4RHTM335X2KGX3IHOJAPP5RE34K4KZVN';
 const CACHE_TTL = 10 * 60 * 1000; // 10 min
 
+// Protocol token issuers for lifetime claims tracking
+const AQUA_ISSUER = 'GBNZILSTVQZ4R7IKQDGHYGY2QXL5QOFJYQMXPKWRRM5PAV7Y4M67AQUA';
+const BLND_ISSUER = 'GDJEHTBE6ZHUXSWFI642DCGLUOECLHPF3KSXHPXTSTJ7E3JF6MQ5EZYY';
+const PHO_ISSUER  = 'GAX5TXB5RYJNLBUR477PEXM4X75APK2PGMTN6KEFQSESGWFXEAKFSXJO';
+
 const cache = new Map<string, { data: unknown; expires: number }>();
 
 function isValidGAddress(addr: string): boolean {
@@ -100,13 +105,15 @@ export const GET: APIRoute = async ({ params }) => {
       tradesRes,
       paymentsRes,
       opsRes,
+      effectsRes,
     ] = await Promise.allSettled([
       fetchJSON(`${HORIZON_URL}/accounts/${address}`),
       fetchJSON(`${HORIZON_URL}/trade_aggregations?base_asset_type=native&counter_asset_code=USDC&counter_asset_issuer=${USDC_ISSUER}&resolution=3600000&limit=1&order=desc`, 8000),
       fetchJSON(`${EXPERT_URL}/directory/${address}`).catch(() => null),
       paginateHorizon(`${HORIZON_URL}/accounts/${address}/trades?limit=200&order=asc`, 5),
       paginateHorizon(`${HORIZON_URL}/accounts/${address}/payments?limit=200&order=asc`, 3),
-      paginateHorizon(`${HORIZON_URL}/accounts/${address}/operations?limit=200&order=desc`, 2),
+      paginateHorizon(`${HORIZON_URL}/accounts/${address}/operations?limit=200&order=desc`, 5),
+      paginateHorizon(`${HORIZON_URL}/accounts/${address}/effects?limit=200&order=asc`, 5),
     ]);
 
     if (accountRes.status === 'rejected') {
@@ -121,6 +128,7 @@ export const GET: APIRoute = async ({ params }) => {
     const trades = tradesRes.status === 'fulfilled' ? fetchedAs<Record<string, unknown>[]>(tradesRes.value) : [];
     const payments = paymentsRes.status === 'fulfilled' ? fetchedAs<Record<string, unknown>[]>(paymentsRes.value) : [];
     const operations = opsRes.status === 'fulfilled' ? fetchedAs<Record<string, unknown>[]>(opsRes.value) : [];
+    const effects = effectsRes.status === 'fulfilled' ? fetchedAs<Record<string, unknown>[]>(effectsRes.value) : [];
 
     // XLM/USD price
     const xlmUsdRecs = fetchedAs<Record<string, unknown>[]>(fetchedAs<Record<string, unknown>>(fetchedAs<Record<string, unknown>>(xlmUsdData)?._embedded)?.records ?? []);
@@ -274,6 +282,20 @@ export const GET: APIRoute = async ({ params }) => {
     const uniquePairsCount = Object.keys(pairCounts).length;
     const favoritePairs = Object.entries(pairCounts).sort((a, b) => b[1] - a[1]).slice(0, 6).map(([pair, count]) => ({ pair, count }));
 
+    // ---- LIFETIME CLAIMS (AQUA / BLND / PHO) ----
+    // Sources: claimable_balance_claimed effects + classic payments received + Soroban asset_balance_changes
+    let lifetimeAQUA = 0;
+    let lifetimeBLND = 0;
+    let lifetimePHO  = 0;
+
+    for (const eff of effects) {
+      if (eff.type !== 'claimable_balance_claimed') continue;
+      const amt = parseFloat(String(eff.amount ?? '0'));
+      if (eff.asset_code === 'AQUA' && eff.asset_issuer === AQUA_ISSUER) lifetimeAQUA += amt;
+      if (eff.asset_code === 'BLND' && eff.asset_issuer === BLND_ISSUER) lifetimeBLND += amt;
+      if (eff.asset_code === 'PHO'  && eff.asset_issuer === PHO_ISSUER)  lifetimePHO  += amt;
+    }
+
     // ---- PAYMENT ANALYSIS ----
     let paymentsIn = 0;
     let paymentsOut = 0;
@@ -291,6 +313,11 @@ export const GET: APIRoute = async ({ params }) => {
           if (p.asset_type === 'native') xlmReceivedFromPayments += amt;
           if (amt > largestInbound) largestInbound = amt;
           if (p.from) counterpartySet.add(String(p.from));
+          // Track protocol token inflows
+          const rc = String(p.asset_code ?? ''); const ri = String(p.asset_issuer ?? '');
+          if (rc === 'AQUA' && ri === AQUA_ISSUER) lifetimeAQUA += amt;
+          if (rc === 'BLND' && ri === BLND_ISSUER) lifetimeBLND += amt;
+          if (rc === 'PHO'  && ri === PHO_ISSUER)  lifetimePHO  += amt;
         } else if (p.from === address) {
           paymentsOut++;
           if (p.asset_type === 'native') xlmSentFromPayments += amt;
@@ -334,6 +361,19 @@ export const GET: APIRoute = async ({ params }) => {
         case 'liquidity_pool_withdraw':
           lpWithdrawals++;
           break;
+        case 'invoke_host_function': {
+          // Soroban SAC transfers (e.g. Blend BLND emissions, Phoenix PHO rewards)
+          const changes = fetchedAs<Record<string, unknown>[]>(op.asset_balance_changes as unknown[] ?? []);
+          for (const ch of changes) {
+            if (ch.to !== address) continue;
+            const amt = parseFloat(String(ch.amount ?? '0'));
+            const cc = String(ch.asset_code ?? ''); const ci = String(ch.asset_issuer ?? '');
+            if (cc === 'AQUA' && ci === AQUA_ISSUER) lifetimeAQUA += amt;
+            if (cc === 'BLND' && ci === BLND_ISSUER) lifetimeBLND += amt;
+            if (cc === 'PHO'  && ci === PHO_ISSUER)  lifetimePHO  += amt;
+          }
+          break;
+        }
       }
     }
     const totalFeesXLM = (trades.length + operations.length) * 0.00001;
@@ -515,6 +555,12 @@ export const GET: APIRoute = async ({ params }) => {
         archetypeEmoji,
         traits,
         summary: buildSummary({ address, walletAgeDays, trades, totalNotionalXLM, favoritePairs, realizedPnlXLM, totalSaleCount }),
+      },
+      lifetimeClaims: {
+        aqua: r2(lifetimeAQUA),
+        blnd: r2(lifetimeBLND),
+        pho:  r2(lifetimePHO),
+        dataCapped: effects.length >= 1000 || payments.length >= 600,
       },
     };
 

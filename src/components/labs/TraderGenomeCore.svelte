@@ -18,6 +18,7 @@
         trading: { favoritePairs: { pair: string; count: number }[]; uniquePairsCount: number; bestTrade: Trade | null; worstTrade: Trade | null; avgHoldHours: number; winRatePct: number; avgTradeXLM: number; medianTradeXLM: number; biggestFillXLM: number; totalSaleCount: number; wins: number; losses: number; tradesByHour: number[]; tradesByDay: number[] };
         scores: { conviction: number; degeneracy: number; lpFarmer: number; pathWizard: number; diamondHands: number; whale: number; coffinPortfolio: number; aura: number };
         narrative: { archetype: string; archetypeEmoji: string; traits: string[]; summary: string };
+        lifetimeClaims: { aqua: number; blnd: number; pho: number; dataCapped: boolean };
     }
 
     // ---- STATE ----
@@ -229,6 +230,7 @@
         {@const hl = p.headline}
         {@const ac = p.activity}
         {@const na = p.narrative}
+        {@const lc = p.lifetimeClaims}
 
         <!-- ── IDENTITY CARD ── -->
         <div class="border border-[#2a2a2a] rounded-xl bg-[#08080f] overflow-hidden">
@@ -314,6 +316,53 @@
                 </div>
             {/each}
         </div>
+
+        <!-- ── LIFETIME PROTOCOL CLAIMS ── -->
+        {#if lc && (lc.aqua > 0 || lc.blnd > 0 || lc.pho > 0)}
+            <div class="border border-[#2a2a2a] rounded-xl bg-[#08080f] p-5 space-y-4">
+                <div class="flex items-center justify-between border-b border-[#1a1a1a] pb-3">
+                    <div class="text-[10px] text-[#555] uppercase tracking-widest">Lifetime Protocol Claims</div>
+                    {#if lc.dataCapped}
+                        <div class="text-[8px] text-[#444] italic">⚠ partial history</div>
+                    {/if}
+                </div>
+                <div class="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                    <!-- AQUA -->
+                    <div class="border border-[#1a3a5c]/60 rounded-lg bg-[#0a1520] p-4 space-y-2">
+                        <div class="flex items-center gap-2">
+                            <span class="text-base">💧</span>
+                            <span class="text-[9px] text-[#4da6ff] uppercase tracking-widest font-bold">AQUA</span>
+                        </div>
+                        <div class="text-xl font-bold text-[#4da6ff] font-mono">
+                            {lc.aqua > 0 ? fmt(lc.aqua) : "—"}
+                        </div>
+                        <div class="text-[8px] text-[#334]">Aquarius farming claims</div>
+                    </div>
+                    <!-- PHO -->
+                    <div class="border border-[#3a2a00]/60 rounded-lg bg-[#150f00] p-4 space-y-2">
+                        <div class="flex items-center gap-2">
+                            <span class="text-base">🌅</span>
+                            <span class="text-[9px] text-[#ffb830] uppercase tracking-widest font-bold">PHO</span>
+                        </div>
+                        <div class="text-xl font-bold text-[#ffb830] font-mono">
+                            {lc.pho > 0 ? fmt(lc.pho) : "—"}
+                        </div>
+                        <div class="text-[8px] text-[#443]">Phoenix rewards</div>
+                    </div>
+                    <!-- BLND -->
+                    <div class="border border-[#2a1a3a]/60 rounded-lg bg-[#100a18] p-4 space-y-2">
+                        <div class="flex items-center gap-2">
+                            <span class="text-base">🌀</span>
+                            <span class="text-[9px] text-[#b085ff] uppercase tracking-widest font-bold">BLND</span>
+                        </div>
+                        <div class="text-xl font-bold text-[#b085ff] font-mono">
+                            {lc.blnd > 0 ? fmt(lc.blnd) : "—"}
+                        </div>
+                        <div class="text-[8px] text-[#332]">Blend emissions</div>
+                    </div>
+                </div>
+            </div>
+        {/if}
 
         <!-- ── SCORE METERS ── -->
         <div class="border border-[#2a2a2a] rounded-xl bg-[#08080f] p-6 space-y-4">
