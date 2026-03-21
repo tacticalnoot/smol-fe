@@ -14,10 +14,11 @@
         identity: { createdAt: string | null; walletAgeDays: number | null; homeDomain: string | null; directoryTags: string[]; warnings: string[]; signerCount: number; trustlineCount: number; subentryCount: number };
         balances: Balance[];
         headline: { portfolioValueXLM: number; portfolioValueUSD: number | null; lifetimeValueTradedXLM: number; totalTrades: number; netXlmFlow: number; netXlmFromTrading: number; netXlmFromTransfers: number; feesSpentXLM: number; estimatedRealizedPnlXLM: number; pnlConfidence: number };
-        activity: { paymentsIn: number; paymentsOut: number; counterpartyCount: number; offersCreated: number; pathPayments: number; lpDeposits: number; lpWithdrawals: number; sorobanOpCount: number; largestInboundXLM: number; largestOutboundXLM: number };
-        trading: { favoritePairs: { pair: string; count: number }[]; uniquePairsCount: number; bestTrade: Trade | null; worstTrade: Trade | null; avgHoldHours: number; winRatePct: number; avgTradeXLM: number; medianTradeXLM: number; biggestFillXLM: number; totalSaleCount: number; wins: number; losses: number; tradesByHour: number[]; tradesByDay: number[] };
+        activity: { paymentsIn: number; paymentsOut: number; counterpartyCount: number; offersCreated: number; offersCancelled: number; pathPayments: number; lpDeposits: number; lpWithdrawals: number; sorobanOpCount: number; accountsFunded: number; largestInboundXLM: number; largestOutboundXLM: number };
+        trading: { favoritePairs: { pair: string; count: number }[]; uniquePairsCount: number; bestTrade: Trade | null; worstTrade: Trade | null; avgHoldHours: number; winRatePct: number; avgTradeXLM: number; medianTradeXLM: number; biggestFillXLM: number; totalSaleCount: number; wins: number; losses: number; tradesByHour: number[]; tradesByDay: number[]; peakHour: number | null; peakDay: number | null; maxWinStreak: number; maxLossStreak: number; bestAsset: { code: string; pnlXLM: number } | null; worstAsset: { code: string; pnlXLM: number } | null; unrealizedPnlXLM: number; activityTrend: string; tradeSizeBreakdown: { small: number; medium: number; large: number } };
         scores: { conviction: number; degeneracy: number; lpFarmer: number; pathWizard: number; diamondHands: number; whale: number; coffinPortfolio: number; aura: number; defi: number };
         narrative: { archetype: string; archetypeEmoji: string; traits: string[]; summary: string };
+        portfolio: { xlmPct: number; stablePct: number; altPct: number; topAltCode: string | null };
         lifetimeClaims: { aqua: number; blnd: number; pho: number; aquaClaimCount: number; blndClaimCount: number; phoClaimCount: number; dataCapped: boolean };
     }
 
@@ -238,6 +239,7 @@
         {@const ac = p.activity}
         {@const na = p.narrative}
         {@const lc = p.lifetimeClaims}
+        {@const po = p.portfolio}
 
         <!-- ── IDENTITY CARD ── -->
         <div class="border border-[#2a2a2a] rounded-xl bg-[#08080f] overflow-hidden">
@@ -452,6 +454,7 @@
                         { label: "Avg Trade Size", value: fmt(tr.avgTradeXLM) + " XLM" },
                         { label: "Median Trade", value: fmt(tr.medianTradeXLM) + " XLM" },
                         { label: "Biggest Fill", value: fmt(tr.biggestFillXLM) + " XLM" },
+                        { label: "Unrealized P&L", value: (tr.unrealizedPnlXLM >= 0 ? "+" : "") + fmt(tr.unrealizedPnlXLM) + " XLM" },
                         { label: "Fees Paid", value: fmt(p.headline.feesSpentXLM, 4) + " XLM" },
                     ] as m}
                         <div class="flex justify-between border-b border-[#0f0f0f] pb-1">
@@ -482,6 +485,120 @@
                         <div class="text-[8px] text-[#333]">{fmtDate(tr.worstTrade.timestamp)}</div>
                     </div>
                 {/if}
+            </div>
+        {/if}
+
+        <!-- ── TRADER DNA ── -->
+        {#if tr.peakHour !== null || tr.maxWinStreak > 0 || tr.bestAsset || tr.unrealizedPnlXLM !== 0}
+            <div class="border border-[#2a2a2a] rounded-xl bg-[#08080f] p-5 space-y-4">
+                <div class="text-[10px] text-[#555] uppercase tracking-widest border-b border-[#1a1a1a] pb-3">Trader DNA</div>
+                <div class="grid grid-cols-2 md:grid-cols-4 gap-4 font-mono text-[10px]">
+                    {#if tr.peakHour !== null}
+                        <div class="space-y-1">
+                            <div class="text-[8px] text-[#444] uppercase">Peak Hour</div>
+                            <div class="text-[#fdda24] text-sm font-bold">{tr.peakHour}:00 UTC</div>
+                            <div class="text-[8px] text-[#333]">most active</div>
+                        </div>
+                    {/if}
+                    {#if tr.peakDay !== null}
+                        <div class="space-y-1">
+                            <div class="text-[8px] text-[#444] uppercase">Peak Day</div>
+                            <div class="text-[#fdda24] text-sm font-bold">{DAY_LABELS[tr.peakDay]}</div>
+                            <div class="text-[8px] text-[#333]">most trades</div>
+                        </div>
+                    {/if}
+                    {#if tr.maxWinStreak > 0}
+                        <div class="space-y-1">
+                            <div class="text-[8px] text-[#444] uppercase">Best Streak</div>
+                            <div class="text-[#00ff88] text-sm font-bold">{tr.maxWinStreak}W</div>
+                            <div class="text-[8px] text-[#333]">consecutive wins</div>
+                        </div>
+                    {/if}
+                    {#if tr.maxLossStreak > 0}
+                        <div class="space-y-1">
+                            <div class="text-[8px] text-[#444] uppercase">Worst Streak</div>
+                            <div class="text-[#ff424c] text-sm font-bold">{tr.maxLossStreak}L</div>
+                            <div class="text-[8px] text-[#333]">consecutive losses</div>
+                        </div>
+                    {/if}
+                    {#if tr.bestAsset}
+                        <div class="space-y-1">
+                            <div class="text-[8px] text-[#444] uppercase">Best Asset</div>
+                            <div class="text-[#00ff88] text-sm font-bold">{tr.bestAsset.code}</div>
+                            <div class="text-[8px] text-[#00ff88]/50">+{fmt(tr.bestAsset.pnlXLM)} XLM</div>
+                        </div>
+                    {/if}
+                    {#if tr.worstAsset}
+                        <div class="space-y-1">
+                            <div class="text-[8px] text-[#444] uppercase">Worst Asset</div>
+                            <div class="text-[#ff424c] text-sm font-bold">{tr.worstAsset.code}</div>
+                            <div class="text-[8px] text-[#ff424c]/50">{fmt(tr.worstAsset.pnlXLM)} XLM</div>
+                        </div>
+                    {/if}
+                    {#if tr.unrealizedPnlXLM !== 0}
+                        <div class="space-y-1">
+                            <div class="text-[8px] text-[#444] uppercase">Unrealized P&L</div>
+                            <div class="text-sm font-bold" style="color: {pnlColor(tr.unrealizedPnlXLM)}">{tr.unrealizedPnlXLM >= 0 ? "+" : ""}{fmt(tr.unrealizedPnlXLM)} XLM</div>
+                            <div class="text-[8px] text-[#333]">open positions</div>
+                        </div>
+                    {/if}
+                    {#if tr.activityTrend !== 'steady'}
+                        <div class="space-y-1">
+                            <div class="text-[8px] text-[#444] uppercase">Trend</div>
+                            <div class="text-sm font-bold" style="color: {tr.activityTrend === 'accelerating' ? '#00ff88' : '#ff8c42'}">
+                                {tr.activityTrend === 'accelerating' ? '↑ Hot' : '↓ Cooling'}
+                            </div>
+                            <div class="text-[8px] text-[#333]">activity trend</div>
+                        </div>
+                    {/if}
+                </div>
+
+                <!-- Trade size breakdown -->
+                {#if tr.tradeSizeBreakdown.small + tr.tradeSizeBreakdown.medium + tr.tradeSizeBreakdown.large > 0}
+                    {@const total = tr.tradeSizeBreakdown.small + tr.tradeSizeBreakdown.medium + tr.tradeSizeBreakdown.large}
+                    <div class="space-y-2 pt-2 border-t border-[#1a1a1a]">
+                        <div class="text-[8px] text-[#444] uppercase">Trade Size Distribution</div>
+                        <div class="flex gap-0.5 h-3 rounded overflow-hidden">
+                            {#if tr.tradeSizeBreakdown.small > 0}
+                                <div class="bg-[#444] h-full" style="width: {Math.round(tr.tradeSizeBreakdown.small/total*100)}%" title="Small (<100 XLM): {tr.tradeSizeBreakdown.small}"></div>
+                            {/if}
+                            {#if tr.tradeSizeBreakdown.medium > 0}
+                                <div class="bg-[#fdda24] h-full" style="width: {Math.round(tr.tradeSizeBreakdown.medium/total*100)}%" title="Medium (100–1000 XLM): {tr.tradeSizeBreakdown.medium}"></div>
+                            {/if}
+                            {#if tr.tradeSizeBreakdown.large > 0}
+                                <div class="bg-[#9ae600] h-full" style="width: {Math.round(tr.tradeSizeBreakdown.large/total*100)}%" title="Large (>1000 XLM): {tr.tradeSizeBreakdown.large}"></div>
+                            {/if}
+                        </div>
+                        <div class="flex gap-4 text-[8px] text-[#444]">
+                            <span><span class="inline-block w-2 h-2 bg-[#444] rounded-sm mr-1"></span>Small &lt;100 ({tr.tradeSizeBreakdown.small})</span>
+                            <span><span class="inline-block w-2 h-2 bg-[#fdda24] rounded-sm mr-1"></span>Med 100–1k ({tr.tradeSizeBreakdown.medium})</span>
+                            <span><span class="inline-block w-2 h-2 bg-[#9ae600] rounded-sm mr-1"></span>Large &gt;1k ({tr.tradeSizeBreakdown.large})</span>
+                        </div>
+                    </div>
+                {/if}
+            </div>
+        {/if}
+
+        <!-- ── PORTFOLIO COMPOSITION ── -->
+        {#if po}
+            <div class="border border-[#2a2a2a] rounded-xl bg-[#08080f] p-5 space-y-3">
+                <div class="text-[10px] text-[#555] uppercase tracking-widest">Portfolio Composition</div>
+                <div class="flex gap-0.5 h-4 rounded overflow-hidden">
+                    {#if po.xlmPct > 0}
+                        <div class="bg-[#9ae600] h-full transition-all" style="width: {po.xlmPct}%" title="XLM: {po.xlmPct}%"></div>
+                    {/if}
+                    {#if po.stablePct > 0}
+                        <div class="bg-[#4da6ff] h-full transition-all" style="width: {po.stablePct}%" title="Stables: {po.stablePct}%"></div>
+                    {/if}
+                    {#if po.altPct > 0}
+                        <div class="bg-[#fdda24] h-full transition-all" style="width: {po.altPct}%" title="Alts: {po.altPct}%"></div>
+                    {/if}
+                </div>
+                <div class="flex flex-wrap gap-4 text-[9px] font-mono">
+                    <span><span class="inline-block w-2 h-2 bg-[#9ae600] rounded-sm mr-1"></span>XLM {po.xlmPct}%</span>
+                    {#if po.stablePct > 0}<span><span class="inline-block w-2 h-2 bg-[#4da6ff] rounded-sm mr-1"></span>Stables {po.stablePct}%</span>{/if}
+                    {#if po.altPct > 0}<span><span class="inline-block w-2 h-2 bg-[#fdda24] rounded-sm mr-1"></span>Alts {po.altPct}%{po.topAltCode ? ` (top: ${po.topAltCode})` : ""}</span>{/if}
+                </div>
             </div>
         {/if}
 
@@ -577,6 +694,8 @@
                 { label: "Path Payments", value: ac.pathPayments.toLocaleString(), color: "#9ae600" },
                 { label: "LP Deposits", value: ac.lpDeposits.toLocaleString(), color: "#00ff88" },
                 { label: "LP Withdrawals", value: ac.lpWithdrawals.toLocaleString(), color: "#ff424c" },
+                { label: "Offers Cancelled", value: ac.offersCancelled.toLocaleString(), color: "#ff8c42" },
+                { label: "Accounts Funded", value: ac.accountsFunded.toLocaleString(), color: "#fdda24" },
                 { label: "Soroban Ops", value: ac.sorobanOpCount.toLocaleString(), color: "#b085ff" },
                 { label: "Largest Inbound", value: fmt(ac.largestInboundXLM) + " XLM", color: "#00ff88" },
                 { label: "Largest Outbound", value: fmt(ac.largestOutboundXLM) + " XLM", color: "#ff424c" },

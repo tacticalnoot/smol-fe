@@ -192,6 +192,16 @@ export const GET: APIRoute = async ({ params }) => {
       if (xlmItem) xlmItem.usdValue = xlmAmount * xlmUsdPrice;
     }
 
+    // Portfolio composition
+    const totalPortXLM = portfolioValueXLM || 1;
+    const xlmPct = Math.round((xlmAmount / totalPortXLM) * 100);
+    const stableXLM = balanceItems
+      .filter((b) => b.issuer === USDC_ISSUER || b.code === 'USDC' || b.code === 'USDT')
+      .reduce((s, b) => s + (b.xlmValue ?? 0), 0);
+    const stablePct = Math.round((stableXLM / totalPortXLM) * 100);
+    const topNonXLM = balanceItems.filter((b) => b.code !== 'XLM').sort((a, b) => (b.xlmValue ?? 0) - (a.xlmValue ?? 0))[0];
+    const altPct = Math.max(0, 100 - xlmPct - stablePct);
+
     // ---- TRADE ANALYSIS ----
     const inv: Inventory = {};
     const pairCounts: Record<string, number> = {};
@@ -212,6 +222,17 @@ export const GET: APIRoute = async ({ params }) => {
     let worstTrade: Record<string, unknown> | null = null;
     let bestPnl = -Infinity;
     let worstPnl = Infinity;
+    // Streak tracking
+    let currentWinStreak = 0;
+    let currentLossStreak = 0;
+    let maxWinStreak = 0;
+    let maxLossStreak = 0;
+    // Per-asset PnL
+    const pnlByAsset: Record<string, number> = {};
+    // Trade size buckets (XLM notional)
+    let tradesSizeSmall = 0;   // < 100 XLM
+    let tradesSizeMedium = 0;  // 100–1000 XLM
+    let tradesSizeLarge = 0;   // > 1000 XLM
 
     for (const trade of trades) {
       const ts = new Date(String(trade.ledger_close_time)).getTime();
@@ -246,6 +267,9 @@ export const GET: APIRoute = async ({ params }) => {
       totalNotionalXLM += notXLM;
       if (notXLM > biggestFillXLM) biggestFillXLM = notXLM;
       tradeSizes.push(notXLM);
+      if (notXLM < 100) tradesSizeSmall++;
+      else if (notXLM <= 1000) tradesSizeMedium++;
+      else tradesSizeLarge++;
 
       // FIFO PnL for XLM-paired trades
       if (soldAsset === 'XLM' && boughtAsset !== 'XLM') {
@@ -259,8 +283,18 @@ export const GET: APIRoute = async ({ params }) => {
         if (known) {
           realizedPnlXLM += pnl;
           totalSaleCount++;
-          if (pnl > 0) winCount++;
-          else lossCount++;
+          pnlByAsset[soldAsset] = (pnlByAsset[soldAsset] ?? 0) + pnl;
+          if (pnl > 0) {
+            winCount++;
+            currentWinStreak++;
+            currentLossStreak = 0;
+            if (currentWinStreak > maxWinStreak) maxWinStreak = currentWinStreak;
+          } else {
+            lossCount++;
+            currentLossStreak++;
+            currentWinStreak = 0;
+            if (currentLossStreak > maxLossStreak) maxLossStreak = currentLossStreak;
+          }
           const tradeSummary = { pair: pairKey, pnlXLM: pnl, timestamp: trade.ledger_close_time, notionalXLM: notXLM };
           if (pnl > bestPnl) { bestPnl = pnl; bestTrade = tradeSummary; }
           if (pnl < worstPnl) { worstPnl = pnl; worstTrade = tradeSummary; }
@@ -281,6 +315,40 @@ export const GET: APIRoute = async ({ params }) => {
     const winRate = totalSaleCount > 0 ? winCount / totalSaleCount : 0;
     const uniquePairsCount = Object.keys(pairCounts).length;
     const favoritePairs = Object.entries(pairCounts).sort((a, b) => b[1] - a[1]).slice(0, 6).map(([pair, count]) => ({ pair, count }));
+
+    // Peak trading hour and day
+    const peakHour = tradesByHour.indexOf(Math.max(...tradesByHour));
+    const peakDay = tradesByDay.indexOf(Math.max(...tradesByDay));
+
+    // Best performing asset (most PnL)
+    const bestAssetEntry = Object.entries(pnlByAsset).sort((a, b) => b[1] - a[1])[0] ?? null;
+    const bestAsset = bestAssetEntry ? { asset: bestAssetEntry[0], code: bestAssetEntry[0].split(':')[0], pnlXLM: r2(bestAssetEntry[1]) } : null;
+    const worstAssetEntry = Object.entries(pnlByAsset).sort((a, b) => a[1] - b[1])[0] ?? null;
+    const worstAsset = worstAssetEntry && worstAssetEntry[1] < 0 ? { asset: worstAssetEntry[0], code: worstAssetEntry[0].split(':')[0], pnlXLM: r2(worstAssetEntry[1]) } : null;
+
+    // Unrealized PnL on remaining inventory positions
+    let unrealizedPnlXLM = 0;
+    for (const [asset, lots] of Object.entries(inv)) {
+      const currentPriceXLM = priceMap[asset];
+      if (!currentPriceXLM) continue;
+      for (const lot of lots) {
+        unrealizedPnlXLM += (currentPriceXLM - lot.priceXLM) * lot.amount;
+      }
+    }
+
+    // Activity trend: trades-per-day in first half vs second half of history
+    let activityTrend: 'accelerating' | 'decelerating' | 'steady' = 'steady';
+    if (trades.length >= 20 && walletAgeDays && walletAgeDays > 30) {
+      const midTs = new Date(String(trades[Math.floor(trades.length / 2)].ledger_close_time)).getTime();
+      const firstTs = new Date(String(trades[0].ledger_close_time)).getTime();
+      const lastTs = new Date(String(trades[trades.length - 1].ledger_close_time)).getTime();
+      const firstHalfDays = (midTs - firstTs) / 86400000 || 1;
+      const secondHalfDays = (lastTs - midTs) / 86400000 || 1;
+      const firstRate = (trades.length / 2) / firstHalfDays;
+      const secondRate = (trades.length / 2) / secondHalfDays;
+      if (secondRate > firstRate * 1.5) activityTrend = 'accelerating';
+      else if (secondRate < firstRate * 0.66) activityTrend = 'decelerating';
+    }
 
     // ---- LIFETIME CLAIMS (AQUA / BLND / PHO) ----
     // Sources: claimable_balance_claimed effects + classic payments received + Soroban asset_balance_changes
@@ -306,6 +374,7 @@ export const GET: APIRoute = async ({ params }) => {
     let xlmSentFromPayments = 0;
     let largestInbound = 0;
     let largestOutbound = 0;
+    let accountsFunded = 0;
     const counterpartySet = new Set<string>();
 
     for (const p of payments) {
@@ -336,6 +405,7 @@ export const GET: APIRoute = async ({ params }) => {
         } else if (p.funder === address) {
           paymentsOut++;
           xlmSentFromPayments += startBal;
+          accountsFunded++;
           if (p.account) counterpartySet.add(String(p.account));
         }
       }
@@ -345,6 +415,7 @@ export const GET: APIRoute = async ({ params }) => {
     // ---- OPERATIONS ANALYSIS ----
     let pathPayments = 0;
     let offersCreated = 0;
+    let offersCancelled = 0;
     let lpDeposits = 0;
     let lpWithdrawals = 0;
     let sorobanOpCount = 0;
@@ -357,7 +428,8 @@ export const GET: APIRoute = async ({ params }) => {
         case 'manage_buy_offer':
         case 'manage_sell_offer':
         case 'create_passive_sell_offer':
-          offersCreated++;
+          if (String(op.amount ?? op.buy_amount ?? '1') === '0') offersCancelled++;
+          else offersCreated++;
           break;
         case 'liquidity_pool_deposit':
           lpDeposits++;
@@ -496,6 +568,13 @@ export const GET: APIRoute = async ({ params }) => {
     if (lifetimeBLND > 10) traits.push('Blend Supplier');
     if (lifetimePHO > 10) traits.push('Phoenix Staker');
     if (sorobanOpCount > 50) traits.push('Soroban Power User');
+    if (activityTrend === 'accelerating') traits.push('Increasing Activity');
+    else if (activityTrend === 'decelerating') traits.push('Slowing Down');
+    if (maxWinStreak >= 5) traits.push(`${maxWinStreak}-Trade Win Streak`);
+    if (accountsFunded >= 3) traits.push('Account Sponsor');
+    if (unrealizedPnlXLM > 500) traits.push('Sitting on Gains');
+    else if (unrealizedPnlXLM < -500) traits.push('Underwater Positions');
+    if (offersCancelled > offersCreated * 0.4 && offersCreated > 5) traits.push('Trigger Happy');
 
     const pnlConfidence = totalSaleCount > 0 ? Math.round((winCount + lossCount) / totalSaleCount * 100) : 0;
 
@@ -539,10 +618,12 @@ export const GET: APIRoute = async ({ params }) => {
         paymentsOut,
         counterpartyCount: counterpartySet.size,
         offersCreated,
+        offersCancelled,
         pathPayments,
         lpDeposits,
         lpWithdrawals,
         sorobanOpCount,
+        accountsFunded,
         largestInboundXLM: r2(largestInbound),
         largestOutboundXLM: r2(largestOutbound),
       },
@@ -561,6 +642,21 @@ export const GET: APIRoute = async ({ params }) => {
         losses: lossCount,
         tradesByHour,
         tradesByDay,
+        peakHour: trades.length > 0 ? peakHour : null,
+        peakDay: trades.length > 0 ? peakDay : null,
+        maxWinStreak,
+        maxLossStreak,
+        bestAsset,
+        worstAsset,
+        unrealizedPnlXLM: r2(unrealizedPnlXLM),
+        activityTrend,
+        tradeSizeBreakdown: { small: tradesSizeSmall, medium: tradesSizeMedium, large: tradesSizeLarge },
+      },
+      portfolio: {
+        xlmPct,
+        stablePct,
+        altPct,
+        topAltCode: topNonXLM?.code ?? null,
       },
       scores: {
         conviction: convictionScore,
