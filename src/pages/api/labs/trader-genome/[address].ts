@@ -214,6 +214,7 @@ export const GET: APIRoute = async ({ params }) => {
     let winCount = 0;
     let lossCount = 0;
     let totalSaleCount = 0;
+    let totalSaleAttempts = 0;
     let biggestFillXLM = 0;
     const tradeSizes: number[] = [];
     const holdTimes: number[] = [];
@@ -278,6 +279,7 @@ export const GET: APIRoute = async ({ params }) => {
         if (!assetAcquiredTs[boughtAsset]) assetAcquiredTs[boughtAsset] = [];
         assetAcquiredTs[boughtAsset].push(ts);
       } else if (boughtAsset === 'XLM' && soldAsset !== 'XLM') {
+        totalSaleAttempts++;
         const salePriceXLM = boughtAmt / soldAmt;
         const { pnl, known } = consumeLots(inv, soldAsset, soldAmt, salePriceXLM);
         if (known) {
@@ -382,8 +384,10 @@ export const GET: APIRoute = async ({ params }) => {
       if (p.type === 'payment') {
         if (p.to === address) {
           paymentsIn++;
-          if (p.asset_type === 'native') xlmReceivedFromPayments += amt;
-          if (amt > largestInbound) largestInbound = amt;
+          if (p.asset_type === 'native') {
+            xlmReceivedFromPayments += amt;
+            if (amt > largestInbound) largestInbound = amt;
+          }
           if (p.from) counterpartySet.add(String(p.from));
           // Track protocol token inflows
           const rc = String(p.asset_code ?? ''); const ri = String(p.asset_issuer ?? '');
@@ -392,8 +396,10 @@ export const GET: APIRoute = async ({ params }) => {
           if (rc === 'PHO'  && ri === PHO_ISSUER)  lifetimePHO  += amt;
         } else if (p.from === address) {
           paymentsOut++;
-          if (p.asset_type === 'native') xlmSentFromPayments += amt;
-          if (amt > largestOutbound) largestOutbound = amt;
+          if (p.asset_type === 'native') {
+            xlmSentFromPayments += amt;
+            if (amt > largestOutbound) largestOutbound = amt;
+          }
           if (p.to) counterpartySet.add(String(p.to));
         }
       } else if (p.type === 'create_account') {
@@ -576,7 +582,7 @@ export const GET: APIRoute = async ({ params }) => {
     else if (unrealizedPnlXLM < -500) traits.push('Underwater Positions');
     if (offersCancelled > offersCreated * 0.4 && offersCreated > 5) traits.push('Trigger Happy');
 
-    const pnlConfidence = totalSaleCount > 0 ? Math.round((winCount + lossCount) / totalSaleCount * 100) : 0;
+    const pnlConfidence = totalSaleAttempts > 0 ? Math.round(totalSaleCount / totalSaleAttempts * 100) : 0;
 
     const profile = {
       address,
