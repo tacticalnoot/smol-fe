@@ -29,12 +29,19 @@ async function fetchJSON(url: string, timeoutMs = 12000): Promise<unknown> {
   }
 }
 
-async function paginateHorizon(baseUrl: string, maxPages = 5): Promise<unknown[]> {
+async function paginateHorizon(
+  baseUrl: string,
+  deadline: number,
+  perPageMs = 8000
+): Promise<{ records: unknown[]; capped: boolean }> {
   const all: unknown[] = [];
   let url = baseUrl;
-  for (let p = 0; p < maxPages; p++) {
+  let capped = false;
+  while (true) {
+    const remaining = deadline - Date.now();
+    if (remaining <= 500) { capped = true; break; }
     try {
-      const data = fetchedAs<HorizonPage>(await fetchJSON(url));
+      const data = fetchedAs<HorizonPage>(await fetchJSON(url, Math.min(perPageMs, remaining)));
       const records = data._embedded?.records ?? [];
       all.push(...records);
       const next = data._links?.next?.href;
@@ -44,7 +51,7 @@ async function paginateHorizon(baseUrl: string, maxPages = 5): Promise<unknown[]
       break;
     }
   }
-  return all;
+  return { records: all, capped };
 }
 
 // Typed helpers to avoid excessive casting
@@ -100,6 +107,9 @@ export const GET: APIRoute = async ({ params, url }) => {
   }
 
   try {
+    // 26-second budget shared across all paginated streams (Cloudflare Worker wall-clock limit ~30s)
+    const deadline = Date.now() + 26000;
+
     // Kick off parallel fetches
     const [
       accountRes,
@@ -113,10 +123,10 @@ export const GET: APIRoute = async ({ params, url }) => {
       fetchJSON(`${HORIZON_URL}/accounts/${address}`),
       fetchJSON(`${HORIZON_URL}/trade_aggregations?base_asset_type=native&counter_asset_code=USDC&counter_asset_issuer=${USDC_ISSUER}&resolution=3600000&limit=1&order=desc`, 8000),
       fetchJSON(`${EXPERT_URL}/directory/${address}`).catch(() => null),
-      paginateHorizon(`${HORIZON_URL}/accounts/${address}/trades?limit=200&order=${period === 'recent' ? 'desc' : 'asc'}`, 15),
-      paginateHorizon(`${HORIZON_URL}/accounts/${address}/payments?limit=200&order=${period === 'recent' ? 'desc' : 'asc'}`, 5),
-      paginateHorizon(`${HORIZON_URL}/accounts/${address}/operations?limit=200&order=desc`, 5),
-      paginateHorizon(`${HORIZON_URL}/accounts/${address}/effects?limit=200&order=asc`, 5),
+      paginateHorizon(`${HORIZON_URL}/accounts/${address}/trades?limit=200&order=${period === 'recent' ? 'desc' : 'asc'}`, deadline),
+      paginateHorizon(`${HORIZON_URL}/accounts/${address}/payments?limit=200&order=${period === 'recent' ? 'desc' : 'asc'}`, deadline),
+      paginateHorizon(`${HORIZON_URL}/accounts/${address}/operations?limit=200&order=desc`, deadline),
+      paginateHorizon(`${HORIZON_URL}/accounts/${address}/effects?limit=200&order=asc`, deadline),
     ]);
 
     if (accountRes.status === 'rejected') {
@@ -128,10 +138,21 @@ export const GET: APIRoute = async ({ params, url }) => {
     const account = fetchedAs<Record<string, unknown>>(accountRes.value);
     const xlmUsdData = xlmUsdRes.status === 'fulfilled' ? fetchedAs<Record<string, unknown>>(xlmUsdRes.value) : null;
     const expert = expertRes.status === 'fulfilled' ? fetchedAs<Record<string, unknown>>(expertRes.value) : null;
-    const rawTrades = tradesRes.status === 'fulfilled' ? fetchedAs<Record<string, unknown>[]>(tradesRes.value) : [];
-    const rawPayments = paymentsRes.status === 'fulfilled' ? fetchedAs<Record<string, unknown>[]>(paymentsRes.value) : [];
-    const rawOperations = opsRes.status === 'fulfilled' ? fetchedAs<Record<string, unknown>[]>(opsRes.value) : [];
-    const effects = effectsRes.status === 'fulfilled' ? fetchedAs<Record<string, unknown>[]>(effectsRes.value) : [];
+
+    type PageResult = { records: unknown[]; capped: boolean };
+    const emptyPage: PageResult = { records: [], capped: false };
+    const tradesPage   = tradesRes.status   === 'fulfilled' ? (tradesRes.value   as PageResult) : emptyPage;
+    const paymentsPage = paymentsRes.status === 'fulfilled' ? (paymentsRes.value as PageResult) : emptyPage;
+    const opsPage      = opsRes.status      === 'fulfilled' ? (opsRes.value      as PageResult) : emptyPage;
+    const effectsPage  = effectsRes.status  === 'fulfilled' ? (effectsRes.value  as PageResult) : emptyPage;
+
+    const rawTrades     = tradesPage.records   as Record<string, unknown>[];
+    const rawPayments   = paymentsPage.records as Record<string, unknown>[];
+    const rawOperations = opsPage.records      as Record<string, unknown>[];
+    const effects       = effectsPage.records  as Record<string, unknown>[];
+    const tradesCapped  = tradesPage.capped;
+    const paymentsCapped = paymentsPage.capped;
+    const opsCapped     = opsPage.capped;
 
     // For recent period: filter to last 52 weeks and reverse to chronological (asc) order for FIFO
     const cutoffMs = period === 'recent' ? Date.now() - 52 * 7 * 24 * 3600 * 1000 : 0;
@@ -680,11 +701,12 @@ export const GET: APIRoute = async ({ params, url }) => {
       fetchedAt: new Date().toISOString(),
       dataCompleteness: {
         period,
-        totalTrades: trades.length - spamTradeCount,
+        totalTrades: effectiveTradeCount,
         rawTradeCount: trades.length,
         spamTradeCount,
-        tradesCapped: rawTrades.length >= 3000,
-        paymentsCapped: rawPayments.length >= 1000,
+        tradesCapped,
+        paymentsCapped,
+        opsCapped,
         pnlConfidence,
         xlmUsdPrice,
       },

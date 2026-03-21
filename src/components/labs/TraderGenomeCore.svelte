@@ -10,7 +10,7 @@
     interface Profile {
         address: string;
         fetchedAt: string;
-        dataCompleteness: { period: 'recent' | 'all'; totalTrades: number; rawTradeCount: number; spamTradeCount: number; tradesCapped: boolean; paymentsCapped: boolean; pnlConfidence: number; xlmUsdPrice: number | null };
+        dataCompleteness: { period: 'recent' | 'all'; totalTrades: number; rawTradeCount: number; spamTradeCount: number; tradesCapped: boolean; paymentsCapped: boolean; opsCapped: boolean; pnlConfidence: number; xlmUsdPrice: number | null };
         identity: { createdAt: string | null; walletAgeDays: number | null; homeDomain: string | null; directoryTags: string[]; warnings: string[]; signerCount: number; trustlineCount: number; subentryCount: number };
         balances: Balance[];
         headline: { portfolioValueXLM: number; portfolioValueUSD: number | null; lifetimeValueTradedXLM: number; totalTrades: number; netXlmFlow: number; netXlmFromTrading: number; netXlmFromTransfers: number; feesSpentXLM: number; estimatedRealizedPnlXLM: number; pnlConfidence: number };
@@ -777,9 +777,14 @@
                 <span>XLM/USD: {p.dataCompleteness.xlmUsdPrice != null ? "$" + p.dataCompleteness.xlmUsdPrice.toFixed(4) : "unavailable"}</span>
             </div>
             <div class="flex flex-wrap justify-between gap-2">
-                <span>Trades analyzed: {p.dataCompleteness.totalTrades.toLocaleString()}{p.dataCompleteness.spamTradeCount > 0 ? ` (+${p.dataCompleteness.spamTradeCount} spam filtered)` : ""}{p.dataCompleteness.tradesCapped ? " (capped at 3000)" : ""} · {p.dataCompleteness.period === 'recent' ? 'Last 52 weeks' : 'All time'}</span>
+                <span>Trades analyzed: {p.dataCompleteness.totalTrades.toLocaleString()}{p.dataCompleteness.spamTradeCount > 0 ? ` (+${p.dataCompleteness.spamTradeCount} spam filtered)` : ""} · {p.dataCompleteness.period === 'recent' ? 'Last 52 weeks' : 'All time'}</span>
                 <span>P&L confidence: {p.dataCompleteness.pnlConfidence}%</span>
             </div>
+            {#if p.dataCompleteness.tradesCapped || p.dataCompleteness.paymentsCapped || p.dataCompleteness.opsCapped}
+            <div class="text-[#ff8c42]/60">
+                ⚠ Time budget exceeded — {[p.dataCompleteness.tradesCapped ? 'trades' : '', p.dataCompleteness.paymentsCapped ? 'payments' : '', p.dataCompleteness.opsCapped ? 'operations' : ''].filter(Boolean).join(', ')} may be incomplete (high-activity account).
+            </div>
+            {/if}
             <div class="text-[#222] pt-1">
                 P&L uses FIFO costing on XLM-paired trades only. Results are estimates, not financial advice.
                 Cached for 10 min. Source: Stellar Horizon + Stellar Expert Directory.
