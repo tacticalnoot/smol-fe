@@ -1,0 +1,75 @@
+---
+import Layout from "../../layouts/Layout.astro";
+import BackLink from "../../components/labs/BackLink.astro";
+import TraderGenomeCore from "../../components/labs/TraderGenomeCore.svelte";
+---
+
+<Layout title="Smol Labs | Trader Genome Profiler">
+  <div class="min-h-screen bg-black text-[#9ae600] font-pixel p-4 pt-24">
+    <div class="max-w-4xl mx-auto space-y-8">
+      <BackLink href="/labs" label="Return to Lab" />
+
+      <div class="border border-[#333] rounded-xl p-8 bg-[#111] relative overflow-hidden transition-all hover:border-[#9ae600]/30">
+        <!-- Background glow -->
+        <div class="absolute -top-24 -left-24 w-72 h-72 bg-[#9ae600]/4 rounded-full blur-[120px] pointer-events-none"></div>
+        <div class="absolute -bottom-24 -right-24 w-64 h-64 bg-[#fdda24]/3 rounded-full blur-[100px] pointer-events-none"></div>
+
+        <!-- Header -->
+        <div class="flex items-center justify-between mb-8 pb-8 border-b border-[#222]">
+          <div>
+            <span class="text-xs text-[#555] uppercase tracking-widest">EXP-013</span>
+            <h1 class="text-4xl text-[#9ae600] mt-2 tracking-tighter shadow-glow">TRADER GENOME</h1>
+            <p class="text-[8px] text-[#555] mt-2 uppercase tracking-[0.2em]">
+              On-Chain Behavioral Profiler // Stellar Horizon Intelligence Engine
+            </p>
+          </div>
+          <div class="text-right hidden md:block">
+            <span class="text-xs text-[#fdda24] animate-pulse">◈ BETA</span>
+            <div class="text-[8px] text-[#333] mt-1">CLASSIFICATION: PUBLIC</div>
+          </div>
+        </div>
+
+        <TraderGenomeCore client:only="svelte" />
+      </div>
+
+      <!-- Technical Dossier -->
+      <div class="bg-black/50 border border-[#1a1a1a] p-6 rounded-xl font-mono text-[10px] space-y-4">
+        <div class="text-[#555] uppercase tracking-widest border-b border-[#1a1a1a] pb-2">Technical Dossier</div>
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-8">
+          <div class="space-y-4">
+            <p class="leading-relaxed">
+              <span class="text-[#9ae600]">Data Sources:</span> Pulls from the public Stellar Horizon API.
+              Trade history, payment flows, and operations are fetched and aggregated in real-time.
+              Up to 1,000 trades and 600 payments are analyzed per scan.
+            </p>
+            <div class="bg-[#9ae600]/5 p-3 border-l-2 border-[#9ae600] space-y-1">
+              <div class="text-white">GENOME SCORES</div>
+              <div class="text-[#555]">Conviction — avg position hold time</div>
+              <div class="text-[#555]">Degeneracy — trade freq × pair diversity</div>
+              <div class="text-[#555]">Whale — logarithmic total notional</div>
+              <div class="text-[#555]">Aura — composite weighted score</div>
+            </div>
+          </div>
+          <div class="space-y-4">
+            <p class="leading-relaxed">
+              <span class="text-[#fdda24]">P&L Methodology:</span> Realized P&L uses FIFO lot costing on
+              XLM-denominated trades only. When you buy token X with XLM, a cost lot is recorded.
+              When you sell token X back for XLM, the lot is consumed and gain/loss calculated.
+              Cross-pair trades (e.g. KALE/USDC) are excluded from P&L but counted toward volume.
+            </p>
+            <p class="text-[#444] italic">
+              Results are estimates based on sampled Horizon data. Not financial advice.
+              Confidence % indicates what fraction of sales had a known purchase basis in our sample.
+            </p>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</Layout>
+
+<style>
+  .shadow-glow {
+    text-shadow: 0 0 30px rgba(154, 230, 0, 0.35);
+  }
+</style>
