@@ -1,0 +1,14 @@
+{
+  "hooks": {
+    "Stop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "echo '{\"systemMessage\": \"PR: https://github.com/tacticalnoot/smol-fe/compare/claude/trader-genome-profiler-RSrOq\"}'"
+          }
+        ]
+      }
+    ]
+  }
+}
