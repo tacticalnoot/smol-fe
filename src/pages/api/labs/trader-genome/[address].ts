@@ -287,13 +287,16 @@ export const GET: APIRoute = async ({ params }) => {
     let lifetimeAQUA = 0;
     let lifetimeBLND = 0;
     let lifetimePHO  = 0;
+    let aquaClaimCount = 0;
+    let blndClaimCount = 0;
+    let phoClaimCount  = 0;
 
     for (const eff of effects) {
       if (eff.type !== 'claimable_balance_claimed') continue;
       const amt = parseFloat(String(eff.amount ?? '0'));
-      if (eff.asset_code === 'AQUA' && eff.asset_issuer === AQUA_ISSUER) lifetimeAQUA += amt;
-      if (eff.asset_code === 'BLND' && eff.asset_issuer === BLND_ISSUER) lifetimeBLND += amt;
-      if (eff.asset_code === 'PHO'  && eff.asset_issuer === PHO_ISSUER)  lifetimePHO  += amt;
+      if (eff.asset_code === 'AQUA' && eff.asset_issuer === AQUA_ISSUER) { lifetimeAQUA += amt; aquaClaimCount++; }
+      if (eff.asset_code === 'BLND' && eff.asset_issuer === BLND_ISSUER) { lifetimeBLND += amt; blndClaimCount++; }
+      if (eff.asset_code === 'PHO'  && eff.asset_issuer === PHO_ISSUER)  { lifetimePHO  += amt; phoClaimCount++;  }
     }
 
     // ---- PAYMENT ANALYSIS ----
@@ -344,6 +347,7 @@ export const GET: APIRoute = async ({ params }) => {
     let offersCreated = 0;
     let lpDeposits = 0;
     let lpWithdrawals = 0;
+    let sorobanOpCount = 0;
     for (const op of operations) {
       switch (op.type) {
         case 'path_payment_strict_receive':
@@ -362,6 +366,7 @@ export const GET: APIRoute = async ({ params }) => {
           lpWithdrawals++;
           break;
         case 'invoke_host_function': {
+          sorobanOpCount++;
           // Soroban SAC transfers (e.g. Blend BLND emissions, Phoenix PHO rewards)
           const changes = fetchedAs<Record<string, unknown>[]>(op.asset_balance_changes as unknown[] ?? []);
           for (const ch of changes) {
@@ -414,6 +419,14 @@ export const GET: APIRoute = async ({ params }) => {
 
     const diamondHandsScore = Math.min(Math.round(convictionScore * 0.7 + Math.min(totalSaleCount > 0 ? (winCount / totalSaleCount) * 50 : 25, 30)), 100);
 
+    const hasProtocolClaims = lifetimeAQUA > 0 || lifetimeBLND > 0 || lifetimePHO > 0;
+    const defiScore = Math.min(Math.round(
+      Math.min(lpDeposits * 4, 30) +
+      Math.min(pathPayments * 2, 20) +
+      (lifetimeAQUA > 0 ? 12 : 0) + (lifetimeBLND > 0 ? 12 : 0) + (lifetimePHO > 0 ? 12 : 0) +
+      Math.min(sorobanOpCount * 0.4, 14)
+    ), 100);
+
     const auraScore = Math.min(Math.round(
       whaleScore * 0.25 +
       (realizedPnlXLM > 0 ? 30 : realizedPnlXLM < 0 ? 5 : 15) +
@@ -438,6 +451,10 @@ export const GET: APIRoute = async ({ params }) => {
       archetype = 'Exchange Mule'; archetypeEmoji = '🏦';
     } else if (xlmAmount > 100000 && trades.length < 50) {
       archetype = 'Sleeping Whale'; archetypeEmoji = '🐋';
+    } else if (defiScore > 70 && hasProtocolClaims) {
+      archetype = 'DeFi Native'; archetypeEmoji = '🌐';
+    } else if (lpFarmerScore > 55 && defiScore > 40) {
+      archetype = 'Yield Optimizer'; archetypeEmoji = '⚗️';
     } else if (lpFarmerScore > 55) {
       archetype = 'LP Farmer'; archetypeEmoji = '🌾';
     } else if (pathWizardScore > 55) {
@@ -475,6 +492,10 @@ export const GET: APIRoute = async ({ params }) => {
     if (counterpartySet.size > 100) traits.push('Well Connected');
     if (paymentsIn > paymentsOut * 3) traits.push('Net Receiver');
     if (paymentsOut > paymentsIn * 3) traits.push('Net Sender');
+    if (lifetimeAQUA > 100) traits.push('Aquarius Farmer');
+    if (lifetimeBLND > 10) traits.push('Blend Supplier');
+    if (lifetimePHO > 10) traits.push('Phoenix Staker');
+    if (sorobanOpCount > 50) traits.push('Soroban Power User');
 
     const pnlConfidence = totalSaleCount > 0 ? Math.round((winCount + lossCount) / totalSaleCount * 100) : 0;
 
@@ -521,6 +542,7 @@ export const GET: APIRoute = async ({ params }) => {
         pathPayments,
         lpDeposits,
         lpWithdrawals,
+        sorobanOpCount,
         largestInboundXLM: r2(largestInbound),
         largestOutboundXLM: r2(largestOutbound),
       },
@@ -549,6 +571,7 @@ export const GET: APIRoute = async ({ params }) => {
         whale: whaleScore,
         coffinPortfolio: coffinScore,
         aura: auraScore,
+        defi: defiScore,
       },
       narrative: {
         archetype,
@@ -560,6 +583,9 @@ export const GET: APIRoute = async ({ params }) => {
         aqua: r2(lifetimeAQUA),
         blnd: r2(lifetimeBLND),
         pho:  r2(lifetimePHO),
+        aquaClaimCount,
+        blndClaimCount,
+        phoClaimCount,
         dataCapped: effects.length >= 1000 || payments.length >= 600,
       },
     };

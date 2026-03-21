@@ -14,11 +14,11 @@
         identity: { createdAt: string | null; walletAgeDays: number | null; homeDomain: string | null; directoryTags: string[]; warnings: string[]; signerCount: number; trustlineCount: number; subentryCount: number };
         balances: Balance[];
         headline: { portfolioValueXLM: number; portfolioValueUSD: number | null; lifetimeValueTradedXLM: number; totalTrades: number; netXlmFlow: number; netXlmFromTrading: number; netXlmFromTransfers: number; feesSpentXLM: number; estimatedRealizedPnlXLM: number; pnlConfidence: number };
-        activity: { paymentsIn: number; paymentsOut: number; counterpartyCount: number; offersCreated: number; pathPayments: number; lpDeposits: number; lpWithdrawals: number; largestInboundXLM: number; largestOutboundXLM: number };
+        activity: { paymentsIn: number; paymentsOut: number; counterpartyCount: number; offersCreated: number; pathPayments: number; lpDeposits: number; lpWithdrawals: number; sorobanOpCount: number; largestInboundXLM: number; largestOutboundXLM: number };
         trading: { favoritePairs: { pair: string; count: number }[]; uniquePairsCount: number; bestTrade: Trade | null; worstTrade: Trade | null; avgHoldHours: number; winRatePct: number; avgTradeXLM: number; medianTradeXLM: number; biggestFillXLM: number; totalSaleCount: number; wins: number; losses: number; tradesByHour: number[]; tradesByDay: number[] };
-        scores: { conviction: number; degeneracy: number; lpFarmer: number; pathWizard: number; diamondHands: number; whale: number; coffinPortfolio: number; aura: number };
+        scores: { conviction: number; degeneracy: number; lpFarmer: number; pathWizard: number; diamondHands: number; whale: number; coffinPortfolio: number; aura: number; defi: number };
         narrative: { archetype: string; archetypeEmoji: string; traits: string[]; summary: string };
-        lifetimeClaims: { aqua: number; blnd: number; pho: number; dataCapped: boolean };
+        lifetimeClaims: { aqua: number; blnd: number; pho: number; aquaClaimCount: number; blndClaimCount: number; phoClaimCount: number; dataCapped: boolean };
     }
 
     // ---- STATE ----
@@ -46,6 +46,13 @@
     ];
 
     let loadingInterval: ReturnType<typeof setInterval> | null = null;
+    let copied = $state(false);
+
+    async function copyLink() {
+        await navigator.clipboard.writeText(window.location.href);
+        copied = true;
+        setTimeout(() => { copied = false; }, 2000);
+    }
 
     onMount(() => {
         mounted = true;
@@ -248,7 +255,7 @@
                     </div>
                     <div class="font-mono text-[10px] text-[#555] break-all">{p.address}</div>
                 </div>
-                <div class="text-right space-y-1 flex-shrink-0">
+                <div class="text-right space-y-2 flex-shrink-0">
                     {#if id.walletAgeDays != null}
                         <div class="text-[9px] text-[#444] uppercase">Wallet Age</div>
                         <div class="text-[#fdda24] text-sm font-bold">{id.walletAgeDays.toLocaleString()} days</div>
@@ -259,6 +266,12 @@
                     {#if id.homeDomain}
                         <div class="text-[9px] text-[#9ae600]/60">{id.homeDomain}</div>
                     {/if}
+                    <button
+                        onclick={copyLink}
+                        class="text-[9px] px-3 py-1.5 border border-[#333] rounded-lg text-[#555] hover:border-[#9ae600] hover:text-[#9ae600] transition-colors font-mono"
+                    >
+                        {copied ? "✓ Copied" : "⬡ Share"}
+                    </button>
                 </div>
             </div>
 
@@ -336,7 +349,10 @@
                         <div class="text-xl font-bold text-[#4da6ff] font-mono">
                             {lc.aqua > 0 ? fmt(lc.aqua) : "—"}
                         </div>
-                        <div class="text-[8px] text-[#334]">Aquarius farming claims</div>
+                        <div class="text-[8px] text-[#334]">Aquarius farming</div>
+                        {#if lc.aquaClaimCount > 0}
+                            <div class="text-[8px] text-[#4da6ff]/40">{lc.aquaClaimCount} claim{lc.aquaClaimCount !== 1 ? 's' : ''}</div>
+                        {/if}
                     </div>
                     <!-- PHO -->
                     <div class="border border-[#3a2a00]/60 rounded-lg bg-[#150f00] p-4 space-y-2">
@@ -348,6 +364,9 @@
                             {lc.pho > 0 ? fmt(lc.pho) : "—"}
                         </div>
                         <div class="text-[8px] text-[#443]">Phoenix rewards</div>
+                        {#if lc.phoClaimCount > 0}
+                            <div class="text-[8px] text-[#ffb830]/40">{lc.phoClaimCount} claim{lc.phoClaimCount !== 1 ? 's' : ''}</div>
+                        {/if}
                     </div>
                     <!-- BLND -->
                     <div class="border border-[#2a1a3a]/60 rounded-lg bg-[#100a18] p-4 space-y-2">
@@ -359,6 +378,9 @@
                             {lc.blnd > 0 ? fmt(lc.blnd) : "—"}
                         </div>
                         <div class="text-[8px] text-[#332]">Blend emissions</div>
+                        {#if lc.blndClaimCount > 0}
+                            <div class="text-[8px] text-[#b085ff]/40">{lc.blndClaimCount} claim{lc.blndClaimCount !== 1 ? 's' : ''}</div>
+                        {/if}
                     </div>
                 </div>
             </div>
@@ -376,6 +398,7 @@
                     { key: "diamondHands", label: "Diamond Hands", desc: "Conviction + win rate", val: sc.diamondHands },
                     { key: "whale", label: "Whale Score", desc: "Total notional volume", val: sc.whale },
                     { key: "coffinPortfolio", label: "Coffin Portfolio", desc: "Unpriced / dead assets", val: sc.coffinPortfolio },
+                    { key: "defi", label: "DeFi Engagement", desc: "LP + claims + Soroban usage", val: sc.defi },
                     { key: "aura", label: "Aura", desc: "Overall composite score", val: sc.aura },
                 ] as score}
                     <div class="space-y-1">
@@ -554,6 +577,7 @@
                 { label: "Path Payments", value: ac.pathPayments.toLocaleString(), color: "#9ae600" },
                 { label: "LP Deposits", value: ac.lpDeposits.toLocaleString(), color: "#00ff88" },
                 { label: "LP Withdrawals", value: ac.lpWithdrawals.toLocaleString(), color: "#ff424c" },
+                { label: "Soroban Ops", value: ac.sorobanOpCount.toLocaleString(), color: "#b085ff" },
                 { label: "Largest Inbound", value: fmt(ac.largestInboundXLM) + " XLM", color: "#00ff88" },
                 { label: "Largest Outbound", value: fmt(ac.largestOutboundXLM) + " XLM", color: "#ff424c" },
             ] as stat}
