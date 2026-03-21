@@ -3,6 +3,7 @@ import type { APIRoute } from 'astro';
 const HORIZON_URL = 'https://horizon.stellar.org';
 const EXPERT_URL = 'https://api.stellar.expert/explorer/public';
 const USDC_ISSUER = 'GA5ZSEJYB37JRC5AVCIA5MOP4RHTM335X2KGX3IHOJAPP5RE34K4KZVN';
+const USDC_ASSET_KEY = `USDC:${USDC_ISSUER}`;
 const CACHE_TTL = 10 * 60 * 1000; // 10 min
 
 // Protocol token issuers for lifetime claims tracking
@@ -32,19 +33,20 @@ async function fetchJSON(url: string, timeoutMs = 12000): Promise<unknown> {
 async function paginateHorizon(baseUrl: string): Promise<{ records: unknown[]; capped: boolean }> {
   const all: unknown[] = [];
   let url = baseUrl;
+  let capped = false;
   while (true) {
-    try {
-      const data = fetchedAs<HorizonPage>(await fetchJSON(url));
-      const records = data._embedded?.records ?? [];
-      all.push(...records);
-      const next = data._links?.next?.href;
-      if (!next || records.length < 200) break;
-      url = next;
-    } catch {
-      break;
+    let data: HorizonPage | null = null;
+    for (let attempt = 0; attempt < 3; attempt++) {
+      try { data = fetchedAs<HorizonPage>(await fetchJSON(url)); break; } catch { /* retry */ }
     }
+    if (!data) { capped = true; break; }
+    const records = data._embedded?.records ?? [];
+    all.push(...records);
+    const next = data._links?.next?.href;
+    if (!next || records.length < 200) break;
+    url = next;
   }
-  return { records: all, capped: false };
+  return { records: all, capped };
 }
 
 // Typed helpers to avoid excessive casting
@@ -140,9 +142,10 @@ export const GET: APIRoute = async ({ params, url }) => {
     const rawPayments   = paymentsPage.records as Record<string, unknown>[];
     const rawOperations = opsPage.records      as Record<string, unknown>[];
     const effects       = effectsPage.records  as Record<string, unknown>[];
-    const tradesCapped  = tradesPage.capped;
+    const tradesCapped   = tradesPage.capped;
     const paymentsCapped = paymentsPage.capped;
-    const opsCapped     = opsPage.capped;
+    const opsCapped      = opsPage.capped;
+    const effectsCapped  = effectsPage.capped;
 
     // For recent period: filter to last 52 weeks and reverse to chronological (asc) order for FIFO
     const cutoffMs = period === 'recent' ? Date.now() - 52 * 7 * 24 * 3600 * 1000 : 0;
@@ -198,11 +201,14 @@ export const GET: APIRoute = async ({ params, url }) => {
 
     // Price up to 20 non-XLM credit assets with Horizon trade data (only liquid ones)
     const priceMap: Record<string, number> = {};
+    // USDC is always priced regardless of whether it's currently held — required for
+    // correct notional calculation on USDC-paired trades throughout history.
+    if (xlmUsdPrice) priceMap[USDC_ASSET_KEY] = 1 / xlmUsdPrice;
     const toPriceItems = balanceItems.filter((b) => b.code !== 'XLM' && b.balance > 0).slice(0, 20);
     const priceResults = await Promise.allSettled(
       toPriceItems.map(async (b) => {
         const codeLenSuffix = b.code.length <= 4 ? '4' : '12';
-        const url = `${HORIZON_URL}/trade_aggregations?base_asset_type=credit_alphanum${codeLenSuffix}&base_asset_code=${b.code}&base_asset_issuer=${b.issuer}&counter_asset_type=native&resolution=86400000&limit=1&order=desc`;
+        const url = `${HORIZON_URL}/trade_aggregations?base_asset_type=credit_alphanum${codeLenSuffix}&base_asset_code=${b.code}&base_asset_issuer=${b.issuer}&counter_asset_type=native&resolution=86400000&limit=7&order=desc`;
         const data = fetchedAs<Record<string, unknown>>(await fetchJSON(url, 5000));
         const recs = fetchedAs<Record<string, unknown>[]>(fetchedAs<Record<string, unknown>>(data._embedded)?.records ?? []);
         const p = recs?.[0]?.close ? parseFloat(String(recs[0].close)) : null;
@@ -266,7 +272,7 @@ export const GET: APIRoute = async ({ params, url }) => {
               } else if (rCode && rIssuer) {
                 try {
                   const cs = rCode.length <= 4 ? '4' : '12';
-                  const pu = `${HORIZON_URL}/trade_aggregations?base_asset_type=credit_alphanum${cs}&base_asset_code=${rCode}&base_asset_issuer=${rIssuer}&counter_asset_type=native&resolution=86400000&limit=1&order=desc`;
+                  const pu = `${HORIZON_URL}/trade_aggregations?base_asset_type=credit_alphanum${cs}&base_asset_code=${rCode}&base_asset_issuer=${rIssuer}&counter_asset_type=native&resolution=86400000&limit=7&order=desc`;
                   const pd = fetchedAs<Record<string, unknown>>(await fetchJSON(pu, 4000));
                   const precs = fetchedAs<Record<string, unknown>[]>(fetchedAs<Record<string, unknown>>(pd._embedded)?.records ?? []);
                   const pr = precs?.[0]?.close ? parseFloat(String(precs[0].close)) : null;
@@ -363,6 +369,10 @@ export const GET: APIRoute = async ({ params, url }) => {
       let notXLM = 0;
       if (soldAsset === 'XLM') notXLM = soldAmt;
       else if (boughtAsset === 'XLM') notXLM = boughtAmt;
+      // USDC is a stablecoin: use USD amount ÷ current XLM/USD rate for historical accuracy
+      // (avoids using a possibly-collapsed token's current price for old trades)
+      else if (soldAsset === USDC_ASSET_KEY && xlmUsdPrice) notXLM = soldAmt / xlmUsdPrice;
+      else if (boughtAsset === USDC_ASSET_KEY && xlmUsdPrice) notXLM = boughtAmt / xlmUsdPrice;
       else if (priceMap[soldAsset]) notXLM = soldAmt * priceMap[soldAsset];
       else if (priceMap[boughtAsset]) notXLM = boughtAmt * priceMap[boughtAsset];
 
@@ -373,7 +383,12 @@ export const GET: APIRoute = async ({ params, url }) => {
       else if (notXLM <= 1000) tradesSizeMedium++;
       else tradesSizeLarge++;
 
-      // FIFO PnL for XLM-paired trades
+      // FIFO PnL for XLM-paired and USDC-paired trades.
+      // USDC cost basis is converted to XLM at current xlmUsdPrice so all PnL stays in XLM.
+      // This is an approximation (XLM/USD rate differs from trade time) but far better than
+      // ignoring USDC-paired trades entirely.
+      const usdcXlmRate = xlmUsdPrice ? 1 / xlmUsdPrice : null; // XLM per 1 USDC
+
       if (soldAsset === 'XLM' && boughtAsset !== 'XLM') {
         const pricePerUnit = soldAmt / boughtAmt;
         addLot(inv, boughtAsset, boughtAmt, pricePerUnit, ts);
@@ -382,6 +397,41 @@ export const GET: APIRoute = async ({ params, url }) => {
       } else if (boughtAsset === 'XLM' && soldAsset !== 'XLM') {
         totalSaleAttempts++;
         const salePriceXLM = boughtAmt / soldAmt;
+        const { pnl, known } = consumeLots(inv, soldAsset, soldAmt, salePriceXLM);
+        if (known) {
+          realizedPnlXLM += pnl;
+          totalSaleCount++;
+          pnlByAsset[soldAsset] = (pnlByAsset[soldAsset] ?? 0) + pnl;
+          if (pnl > 0) {
+            winCount++;
+            currentWinStreak++;
+            currentLossStreak = 0;
+            if (currentWinStreak > maxWinStreak) maxWinStreak = currentWinStreak;
+          } else {
+            lossCount++;
+            currentLossStreak++;
+            currentWinStreak = 0;
+            if (currentLossStreak > maxLossStreak) maxLossStreak = currentLossStreak;
+          }
+          const tradeSummary = { pair: pairKey, pnlXLM: pnl, timestamp: trade.ledger_close_time, notionalXLM: notXLM };
+          if (pnl > bestPnl) { bestPnl = pnl; bestTrade = tradeSummary; }
+          if (pnl < worstPnl) { worstPnl = pnl; worstTrade = tradeSummary; }
+          const ats = assetAcquiredTs[soldAsset];
+          if (ats?.length) {
+            const acquireTs = ats.shift()!;
+            holdTimes.push((ts - acquireTs) / 3600000);
+          }
+        }
+      } else if (usdcXlmRate && soldAsset === USDC_ASSET_KEY && boughtAsset !== 'XLM') {
+        // Bought TOKEN with USDC — record lot with XLM-equivalent cost basis
+        const pricePerUnit = (soldAmt * usdcXlmRate) / boughtAmt;
+        addLot(inv, boughtAsset, boughtAmt, pricePerUnit, ts);
+        if (!assetAcquiredTs[boughtAsset]) assetAcquiredTs[boughtAsset] = [];
+        assetAcquiredTs[boughtAsset].push(ts);
+      } else if (usdcXlmRate && boughtAsset === USDC_ASSET_KEY && soldAsset !== 'XLM') {
+        // Sold TOKEN for USDC — realize PnL in XLM-equivalent
+        totalSaleAttempts++;
+        const salePriceXLM = (boughtAmt * usdcXlmRate) / soldAmt;
         const { pnl, known } = consumeLots(inv, soldAsset, soldAmt, salePriceXLM);
         if (known) {
           realizedPnlXLM += pnl;
@@ -797,7 +847,7 @@ export const GET: APIRoute = async ({ params, url }) => {
         aquaClaimCount,
         blndClaimCount,
         phoClaimCount,
-        dataCapped: effects.length >= 1000 || payments.length >= 600,
+        dataCapped: tradesCapped || paymentsCapped || opsCapped || effectsCapped,
       },
     };
 
