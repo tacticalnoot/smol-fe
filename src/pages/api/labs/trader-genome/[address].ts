@@ -85,13 +85,16 @@ function consumeLots(inv: Inventory, asset: string, amount: number, salePriceXLM
   return { pnl, known };
 }
 
-export const GET: APIRoute = async ({ params }) => {
+export const GET: APIRoute = async ({ params, url }) => {
   const address = (params.address ?? '').trim();
   if (!isValidGAddress(address)) {
     return json({ error: 'Invalid Stellar G-address' }, 400);
   }
 
-  const cached = cache.get(address);
+  const period: 'recent' | 'all' = url.searchParams.get('period') === 'recent' ? 'recent' : 'all';
+  const cacheKey = `${address}:${period}`;
+
+  const cached = cache.get(cacheKey);
   if (cached && cached.expires > Date.now()) {
     return json(cached.data, 200, { 'X-Cache': 'HIT' });
   }
@@ -110,8 +113,8 @@ export const GET: APIRoute = async ({ params }) => {
       fetchJSON(`${HORIZON_URL}/accounts/${address}`),
       fetchJSON(`${HORIZON_URL}/trade_aggregations?base_asset_type=native&counter_asset_code=USDC&counter_asset_issuer=${USDC_ISSUER}&resolution=3600000&limit=1&order=desc`, 8000),
       fetchJSON(`${EXPERT_URL}/directory/${address}`).catch(() => null),
-      paginateHorizon(`${HORIZON_URL}/accounts/${address}/trades?limit=200&order=asc`, 5),
-      paginateHorizon(`${HORIZON_URL}/accounts/${address}/payments?limit=200&order=asc`, 3),
+      paginateHorizon(`${HORIZON_URL}/accounts/${address}/trades?limit=200&order=${period === 'recent' ? 'desc' : 'asc'}`, 5),
+      paginateHorizon(`${HORIZON_URL}/accounts/${address}/payments?limit=200&order=${period === 'recent' ? 'desc' : 'asc'}`, 3),
       paginateHorizon(`${HORIZON_URL}/accounts/${address}/operations?limit=200&order=desc`, 5),
       paginateHorizon(`${HORIZON_URL}/accounts/${address}/effects?limit=200&order=asc`, 5),
     ]);
@@ -125,21 +128,39 @@ export const GET: APIRoute = async ({ params }) => {
     const account = fetchedAs<Record<string, unknown>>(accountRes.value);
     const xlmUsdData = xlmUsdRes.status === 'fulfilled' ? fetchedAs<Record<string, unknown>>(xlmUsdRes.value) : null;
     const expert = expertRes.status === 'fulfilled' ? fetchedAs<Record<string, unknown>>(expertRes.value) : null;
-    const trades = tradesRes.status === 'fulfilled' ? fetchedAs<Record<string, unknown>[]>(tradesRes.value) : [];
-    const payments = paymentsRes.status === 'fulfilled' ? fetchedAs<Record<string, unknown>[]>(paymentsRes.value) : [];
-    const operations = opsRes.status === 'fulfilled' ? fetchedAs<Record<string, unknown>[]>(opsRes.value) : [];
+    const rawTrades = tradesRes.status === 'fulfilled' ? fetchedAs<Record<string, unknown>[]>(tradesRes.value) : [];
+    const rawPayments = paymentsRes.status === 'fulfilled' ? fetchedAs<Record<string, unknown>[]>(paymentsRes.value) : [];
+    const rawOperations = opsRes.status === 'fulfilled' ? fetchedAs<Record<string, unknown>[]>(opsRes.value) : [];
     const effects = effectsRes.status === 'fulfilled' ? fetchedAs<Record<string, unknown>[]>(effectsRes.value) : [];
+
+    // For recent period: filter to last 52 weeks and reverse to chronological (asc) order for FIFO
+    const cutoffMs = period === 'recent' ? Date.now() - 52 * 7 * 24 * 3600 * 1000 : 0;
+    const trades = period === 'recent'
+      ? rawTrades.filter(t => new Date(String(t.ledger_close_time)).getTime() >= cutoffMs).reverse()
+      : rawTrades;
+    const payments = period === 'recent'
+      ? rawPayments.filter(p => new Date(String(p.created_at ?? p.ledger_close_time ?? '')).getTime() >= cutoffMs).reverse()
+      : rawPayments;
+    const operations = period === 'recent'
+      ? rawOperations.filter(op => new Date(String(op.created_at)).getTime() >= cutoffMs)
+      : rawOperations;
 
     // XLM/USD price
     const xlmUsdRecs = fetchedAs<Record<string, unknown>[]>(fetchedAs<Record<string, unknown>>(fetchedAs<Record<string, unknown>>(xlmUsdData)?._embedded)?.records ?? []);
     const xlmUsdPrice: number | null = xlmUsdRecs?.[0]?.close ? parseFloat(String(xlmUsdRecs[0].close)) : null;
 
-    // Account creation timestamp
+    // Account creation timestamp — derive from first account_created effect (already fetched,
+    // ascending order) to avoid a serial round-trip. Fall back to Horizon ops if missing.
     let accountCreatedAt: string | null = null;
-    try {
-      const firstOp = fetchedAs<HorizonPage>(await fetchJSON(`${HORIZON_URL}/accounts/${address}/operations?limit=1&order=asc`, 6000));
-      accountCreatedAt = fetchedAs<Record<string, unknown>>(firstOp._embedded?.records?.[0])?.created_at as string ?? null;
-    } catch { /* best effort */ }
+    const creationEff = effects.find(e => e.type === 'account_created');
+    if (creationEff?.created_at) {
+      accountCreatedAt = String(creationEff.created_at);
+    } else {
+      try {
+        const firstOp = fetchedAs<HorizonPage>(await fetchJSON(`${HORIZON_URL}/accounts/${address}/operations?limit=1&order=asc`, 6000));
+        accountCreatedAt = fetchedAs<Record<string, unknown>>(firstOp._embedded?.records?.[0])?.created_at as string ?? null;
+      } catch { /* best effort */ }
+    }
 
     const walletAgeDays = accountCreatedAt
       ? Math.floor((Date.now() - new Date(accountCreatedAt).getTime()) / 86400000)
@@ -588,9 +609,10 @@ export const GET: APIRoute = async ({ params }) => {
       address,
       fetchedAt: new Date().toISOString(),
       dataCompleteness: {
+        period,
         totalTrades: trades.length,
-        tradesCapped: trades.length >= 1000,
-        paymentsCapped: payments.length >= 600,
+        tradesCapped: rawTrades.length >= 1000,
+        paymentsCapped: rawPayments.length >= 600,
         pnlConfidence,
         xlmUsdPrice,
       },
@@ -692,7 +714,7 @@ export const GET: APIRoute = async ({ params }) => {
       },
     };
 
-    cache.set(address, { data: profile, expires: Date.now() + CACHE_TTL });
+    cache.set(cacheKey, { data: profile, expires: Date.now() + CACHE_TTL });
 
     return json(profile, 200, { 'X-Cache': 'MISS', 'Cache-Control': 'public, max-age=600' });
   } catch (err) {
