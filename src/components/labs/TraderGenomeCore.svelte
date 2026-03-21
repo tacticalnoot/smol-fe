@@ -330,7 +330,7 @@
                     <!-- AQUA -->
                     <div class="border border-[#1a3a5c]/60 rounded-lg bg-[#0a1520] p-4 space-y-2">
                         <div class="flex items-center gap-2">
-                            <span class="text-base">💧</span>
+                            <span class="text-base">♒</span>
                             <span class="text-[9px] text-[#4da6ff] uppercase tracking-widest font-bold">AQUA</span>
                         </div>
                         <div class="text-xl font-bold text-[#4da6ff] font-mono">
@@ -341,7 +341,7 @@
                     <!-- PHO -->
                     <div class="border border-[#3a2a00]/60 rounded-lg bg-[#150f00] p-4 space-y-2">
                         <div class="flex items-center gap-2">
-                            <span class="text-base">🌅</span>
+                            <span class="text-base">🐉</span>
                             <span class="text-[9px] text-[#ffb830] uppercase tracking-widest font-bold">PHO</span>
                         </div>
                         <div class="text-xl font-bold text-[#ffb830] font-mono">
@@ -352,7 +352,7 @@
                     <!-- BLND -->
                     <div class="border border-[#2a1a3a]/60 rounded-lg bg-[#100a18] p-4 space-y-2">
                         <div class="flex items-center gap-2">
-                            <span class="text-base">🌀</span>
+                            <span class="text-base">🧪</span>
                             <span class="text-[9px] text-[#b085ff] uppercase tracking-widest font-bold">BLND</span>
                         </div>
                         <div class="text-xl font-bold text-[#b085ff] font-mono">
