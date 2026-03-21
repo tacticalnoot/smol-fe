@@ -604,13 +604,14 @@
 
         <!-- ── ACTIVITY HEATMAPS ── -->
         {#if hl.totalTrades > 0}
+            {@const maxH = Math.max(...tr.tradesByHour, 1)}
+            {@const maxD = Math.max(...tr.tradesByDay, 1)}
             <div class="border border-[#2a2a2a] rounded-xl bg-[#08080f] p-5 space-y-5">
                 <div class="text-[10px] text-[#555] uppercase tracking-widest">Trading Activity Patterns</div>
 
                 <!-- Hour of Day heatmap -->
                 <div class="space-y-2">
                     <div class="text-[8px] text-[#444] uppercase">Hour of Day (UTC)</div>
-                    {@const maxH = Math.max(...tr.tradesByHour, 1)}
                     <div class="flex gap-0.5">
                         {#each tr.tradesByHour as count, i}
                             <div
@@ -630,7 +631,6 @@
                 <!-- Day of Week heatmap -->
                 <div class="space-y-2">
                     <div class="text-[8px] text-[#444] uppercase">Day of Week</div>
-                    {@const maxD = Math.max(...tr.tradesByDay, 1)}
                     <div class="flex gap-1">
                         {#each tr.tradesByDay as count, i}
                             <div class="flex-1 space-y-1 text-center">
