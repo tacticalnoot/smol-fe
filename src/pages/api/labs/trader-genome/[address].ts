@@ -29,10 +29,10 @@ async function fetchJSON(url: string, timeoutMs = 12000): Promise<unknown> {
   }
 }
 
-async function paginateHorizon(baseUrl: string, maxPages = 5): Promise<unknown[]> {
+async function paginateHorizon(baseUrl: string): Promise<{ records: unknown[]; capped: boolean }> {
   const all: unknown[] = [];
   let url = baseUrl;
-  for (let p = 0; p < maxPages; p++) {
+  while (true) {
     try {
       const data = fetchedAs<HorizonPage>(await fetchJSON(url));
       const records = data._embedded?.records ?? [];
@@ -44,7 +44,7 @@ async function paginateHorizon(baseUrl: string, maxPages = 5): Promise<unknown[]
       break;
     }
   }
-  return all;
+  return { records: all, capped: false };
 }
 
 // Typed helpers to avoid excessive casting
@@ -85,19 +85,22 @@ function consumeLots(inv: Inventory, asset: string, amount: number, salePriceXLM
   return { pnl, known };
 }
 
-export const GET: APIRoute = async ({ params }) => {
+export const GET: APIRoute = async ({ params, url }) => {
   const address = (params.address ?? '').trim();
   if (!isValidGAddress(address)) {
     return json({ error: 'Invalid Stellar G-address' }, 400);
   }
 
-  const cached = cache.get(address);
+  const period: 'recent' | 'all' = url.searchParams.get('period') === 'recent' ? 'recent' : 'all';
+  const cacheKey = `${address}:${period}`;
+
+  const cached = cache.get(cacheKey);
   if (cached && cached.expires > Date.now()) {
     return json(cached.data, 200, { 'X-Cache': 'HIT' });
   }
 
   try {
-    // Kick off parallel fetches
+    // Kick off parallel fetches — all streams run to completion with no page cap
     const [
       accountRes,
       xlmUsdRes,
@@ -110,10 +113,10 @@ export const GET: APIRoute = async ({ params }) => {
       fetchJSON(`${HORIZON_URL}/accounts/${address}`),
       fetchJSON(`${HORIZON_URL}/trade_aggregations?base_asset_type=native&counter_asset_code=USDC&counter_asset_issuer=${USDC_ISSUER}&resolution=3600000&limit=1&order=desc`, 8000),
       fetchJSON(`${EXPERT_URL}/directory/${address}`).catch(() => null),
-      paginateHorizon(`${HORIZON_URL}/accounts/${address}/trades?limit=200&order=asc`, 5),
-      paginateHorizon(`${HORIZON_URL}/accounts/${address}/payments?limit=200&order=asc`, 3),
-      paginateHorizon(`${HORIZON_URL}/accounts/${address}/operations?limit=200&order=desc`, 5),
-      paginateHorizon(`${HORIZON_URL}/accounts/${address}/effects?limit=200&order=asc`, 5),
+      paginateHorizon(`${HORIZON_URL}/accounts/${address}/trades?limit=200&order=${period === 'recent' ? 'desc' : 'asc'}`),
+      paginateHorizon(`${HORIZON_URL}/accounts/${address}/payments?limit=200&order=${period === 'recent' ? 'desc' : 'asc'}`),
+      paginateHorizon(`${HORIZON_URL}/accounts/${address}/operations?limit=200&order=desc`),
+      paginateHorizon(`${HORIZON_URL}/accounts/${address}/effects?limit=200&order=asc`),
     ]);
 
     if (accountRes.status === 'rejected') {
@@ -125,33 +128,65 @@ export const GET: APIRoute = async ({ params }) => {
     const account = fetchedAs<Record<string, unknown>>(accountRes.value);
     const xlmUsdData = xlmUsdRes.status === 'fulfilled' ? fetchedAs<Record<string, unknown>>(xlmUsdRes.value) : null;
     const expert = expertRes.status === 'fulfilled' ? fetchedAs<Record<string, unknown>>(expertRes.value) : null;
-    const trades = tradesRes.status === 'fulfilled' ? fetchedAs<Record<string, unknown>[]>(tradesRes.value) : [];
-    const payments = paymentsRes.status === 'fulfilled' ? fetchedAs<Record<string, unknown>[]>(paymentsRes.value) : [];
-    const operations = opsRes.status === 'fulfilled' ? fetchedAs<Record<string, unknown>[]>(opsRes.value) : [];
-    const effects = effectsRes.status === 'fulfilled' ? fetchedAs<Record<string, unknown>[]>(effectsRes.value) : [];
+
+    type PageResult = { records: unknown[]; capped: boolean };
+    const emptyPage: PageResult = { records: [], capped: false };
+    const tradesPage   = tradesRes.status   === 'fulfilled' ? (tradesRes.value   as PageResult) : emptyPage;
+    const paymentsPage = paymentsRes.status === 'fulfilled' ? (paymentsRes.value as PageResult) : emptyPage;
+    const opsPage      = opsRes.status      === 'fulfilled' ? (opsRes.value      as PageResult) : emptyPage;
+    const effectsPage  = effectsRes.status  === 'fulfilled' ? (effectsRes.value  as PageResult) : emptyPage;
+
+    const rawTrades     = tradesPage.records   as Record<string, unknown>[];
+    const rawPayments   = paymentsPage.records as Record<string, unknown>[];
+    const rawOperations = opsPage.records      as Record<string, unknown>[];
+    const effects       = effectsPage.records  as Record<string, unknown>[];
+    const tradesCapped  = tradesPage.capped;
+    const paymentsCapped = paymentsPage.capped;
+    const opsCapped     = opsPage.capped;
+
+    // For recent period: filter to last 52 weeks and reverse to chronological (asc) order for FIFO
+    const cutoffMs = period === 'recent' ? Date.now() - 52 * 7 * 24 * 3600 * 1000 : 0;
+    const trades = period === 'recent'
+      ? rawTrades.filter(t => new Date(String(t.ledger_close_time)).getTime() >= cutoffMs).reverse()
+      : rawTrades;
+    const payments = period === 'recent'
+      ? rawPayments.filter(p => new Date(String(p.created_at ?? p.ledger_close_time ?? '')).getTime() >= cutoffMs).reverse()
+      : rawPayments;
+    const operations = period === 'recent'
+      ? rawOperations.filter(op => new Date(String(op.created_at)).getTime() >= cutoffMs)
+      : rawOperations;
 
     // XLM/USD price
     const xlmUsdRecs = fetchedAs<Record<string, unknown>[]>(fetchedAs<Record<string, unknown>>(fetchedAs<Record<string, unknown>>(xlmUsdData)?._embedded)?.records ?? []);
     const xlmUsdPrice: number | null = xlmUsdRecs?.[0]?.close ? parseFloat(String(xlmUsdRecs[0].close)) : null;
 
-    // Account creation timestamp
+    // Account creation timestamp — derive from first account_created effect (already fetched,
+    // ascending order) to avoid a serial round-trip. Fall back to Horizon ops if missing.
     let accountCreatedAt: string | null = null;
-    try {
-      const firstOp = fetchedAs<HorizonPage>(await fetchJSON(`${HORIZON_URL}/accounts/${address}/operations?limit=1&order=asc`, 6000));
-      accountCreatedAt = fetchedAs<Record<string, unknown>>(firstOp._embedded?.records?.[0])?.created_at as string ?? null;
-    } catch { /* best effort */ }
+    const creationEff = effects.find(e => e.type === 'account_created');
+    if (creationEff?.created_at) {
+      accountCreatedAt = String(creationEff.created_at);
+    } else {
+      try {
+        const firstOp = fetchedAs<HorizonPage>(await fetchJSON(`${HORIZON_URL}/accounts/${address}/operations?limit=1&order=asc`, 6000));
+        accountCreatedAt = fetchedAs<Record<string, unknown>>(firstOp._embedded?.records?.[0])?.created_at as string ?? null;
+      } catch { /* best effort */ }
+    }
 
     const walletAgeDays = accountCreatedAt
       ? Math.floor((Date.now() - new Date(accountCreatedAt).getTime()) / 86400000)
       : null;
 
-    // Balances
+    // Balances — separate classic LP shares from credit/native assets
     const rawBalances = fetchedAs<Record<string, unknown>[]>(account.balances as unknown[] ?? []);
     const xlmBalRec = rawBalances.find((b) => b.asset_type === 'native');
     const xlmAmount = xlmBalRec ? parseFloat(String(xlmBalRec.balance)) : 0;
     let portfolioValueXLM = xlmAmount;
 
-    const balanceItems = rawBalances.map((b) => ({
+    const lpShareBalances = rawBalances.filter((b) => b.asset_type === 'liquidity_pool_shares');
+    const creditBalances = rawBalances.filter((b) => b.asset_type !== 'liquidity_pool_shares');
+
+    const balanceItems = creditBalances.map((b) => ({
       asset: b.asset_type === 'native' ? 'XLM' : `${b.asset_code}:${b.asset_issuer}`,
       code: b.asset_type === 'native' ? 'XLM' : String(b.asset_code ?? ''),
       issuer: b.asset_type === 'native' ? null : String(b.asset_issuer ?? ''),
@@ -161,9 +196,9 @@ export const GET: APIRoute = async ({ params }) => {
       priced: b.asset_type === 'native',
     }));
 
-    // Price non-XLM assets
+    // Price up to 20 non-XLM credit assets with Horizon trade data (only liquid ones)
     const priceMap: Record<string, number> = {};
-    const toPriceItems = balanceItems.filter((b) => b.code !== 'XLM' && b.balance > 0).slice(0, 8);
+    const toPriceItems = balanceItems.filter((b) => b.code !== 'XLM' && b.balance > 0).slice(0, 20);
     const priceResults = await Promise.allSettled(
       toPriceItems.map(async (b) => {
         const codeLenSuffix = b.code.length <= 4 ? '4' : '12';
@@ -192,15 +227,75 @@ export const GET: APIRoute = async ({ params }) => {
       if (xlmItem) xlmItem.usdValue = xlmAmount * xlmUsdPrice;
     }
 
-    // Portfolio composition
+    // ---- CLASSIC LP POOL POSITIONS ----
+    // Each liquidity_pool_shares balance represents ownership of a classic AMM pool.
+    // Fetch pool reserves and value the account's proportional share.
+    interface LpPosition { poolId: string; label: string; xlmVal: number; shares: number; pct: number }
+    const lpPositions: LpPosition[] = [];
+    let lpTotalXLM = 0;
+
+    const lpPoolResults = await Promise.allSettled(
+      lpShareBalances
+        .filter((b) => parseFloat(String(b.balance ?? '0')) > 0)
+        .slice(0, 12)
+        .map(async (b) => {
+          const poolId = String(b.liquidity_pool_id ?? '');
+          const shares = parseFloat(String(b.balance ?? '0'));
+          if (!poolId) return null;
+          const pool = fetchedAs<Record<string, unknown>>(await fetchJSON(`${HORIZON_URL}/liquidity_pools/${poolId}`, 5000));
+          const totalShares = parseFloat(String(pool.total_shares ?? '0'));
+          const reserves = fetchedAs<Record<string, unknown>[]>(pool.reserves as unknown[] ?? []);
+          if (!totalShares || !reserves.length) return null;
+          const fraction = shares / totalShares;
+          let xlmVal = 0;
+          const assetCodes: string[] = [];
+          for (const r of reserves) {
+            const rAssetStr = String(r.asset ?? 'native');
+            const rAmt = parseFloat(String(r.amount ?? '0')) * fraction;
+            if (rAssetStr === 'native') {
+              assetCodes.push('XLM');
+              xlmVal += rAmt;
+            } else {
+              const ci = rAssetStr.indexOf(':');
+              const rCode = ci > 0 ? rAssetStr.slice(0, ci) : rAssetStr;
+              const rIssuer = ci > 0 ? rAssetStr.slice(ci + 1) : '';
+              assetCodes.push(rCode);
+              const assetKey2 = `${rCode}:${rIssuer}`;
+              if (priceMap[assetKey2] != null) {
+                xlmVal += rAmt * priceMap[assetKey2];
+              } else if (rCode && rIssuer) {
+                try {
+                  const cs = rCode.length <= 4 ? '4' : '12';
+                  const pu = `${HORIZON_URL}/trade_aggregations?base_asset_type=credit_alphanum${cs}&base_asset_code=${rCode}&base_asset_issuer=${rIssuer}&counter_asset_type=native&resolution=86400000&limit=1&order=desc`;
+                  const pd = fetchedAs<Record<string, unknown>>(await fetchJSON(pu, 4000));
+                  const precs = fetchedAs<Record<string, unknown>[]>(fetchedAs<Record<string, unknown>>(pd._embedded)?.records ?? []);
+                  const pr = precs?.[0]?.close ? parseFloat(String(precs[0].close)) : null;
+                  if (pr) { priceMap[assetKey2] = pr; xlmVal += rAmt * pr; }
+                } catch { /* skip unpriced reserve */ }
+              }
+            }
+          }
+          return { poolId, label: assetCodes.join('/'), xlmVal, shares, fraction };
+        })
+    );
+    for (const r of lpPoolResults) {
+      if (r.status === 'fulfilled' && r.value && r.value.xlmVal > 0) {
+        lpTotalXLM += r.value.xlmVal;
+        portfolioValueXLM += r.value.xlmVal;
+        lpPositions.push({ poolId: r.value.poolId, label: r.value.label, xlmVal: r2(r.value.xlmVal), shares: r.value.shares, pct: Math.round(r.value.fraction * 1000) / 10 });
+      }
+    }
+
+    // Portfolio composition (LP pools counted separately)
     const totalPortXLM = portfolioValueXLM || 1;
     const xlmPct = Math.round((xlmAmount / totalPortXLM) * 100);
+    const lpPct = Math.round((lpTotalXLM / totalPortXLM) * 100);
     const stableXLM = balanceItems
       .filter((b) => b.issuer === USDC_ISSUER || b.code === 'USDC' || b.code === 'USDT')
       .reduce((s, b) => s + (b.xlmValue ?? 0), 0);
     const stablePct = Math.round((stableXLM / totalPortXLM) * 100);
     const topNonXLM = balanceItems.filter((b) => b.code !== 'XLM').sort((a, b) => (b.xlmValue ?? 0) - (a.xlmValue ?? 0))[0];
-    const altPct = Math.max(0, 100 - xlmPct - stablePct);
+    const altPct = Math.max(0, 100 - xlmPct - lpPct - stablePct);
 
     // ---- TRADE ANALYSIS ----
     const inv: Inventory = {};
@@ -216,6 +311,8 @@ export const GET: APIRoute = async ({ params }) => {
     let totalSaleCount = 0;
     let totalSaleAttempts = 0;
     let biggestFillXLM = 0;
+    let spamTradeCount = 0;
+    const SPAM_DUST_XLM = 0.5; // XLM-paired trades below this are dust/spam
     const tradeSizes: number[] = [];
     const holdTimes: number[] = [];
     const assetAcquiredTs: Record<string, number[]> = {};
@@ -255,6 +352,10 @@ export const GET: APIRoute = async ({ params }) => {
       const [soldAsset, soldAmt, boughtAsset, boughtAmt] = isBase
         ? [baseAss, baseAmt, counterAss, counterAmt]
         : [counterAss, counterAmt, baseAss, baseAmt];
+
+      // Spam/dust filter: skip XLM-paired trades with tiny XLM amount
+      const xlmSide = soldAsset === 'XLM' ? soldAmt : boughtAsset === 'XLM' ? boughtAmt : null;
+      if (xlmSide !== null && xlmSide < SPAM_DUST_XLM) { spamTradeCount++; continue; }
 
       if (soldAsset === 'XLM') xlmToTrades += soldAmt;
       if (boughtAsset === 'XLM') xlmFromTrades += boughtAmt;
@@ -340,7 +441,7 @@ export const GET: APIRoute = async ({ params }) => {
 
     // Activity trend: trades-per-day in first half vs second half of history
     let activityTrend: 'accelerating' | 'decelerating' | 'steady' = 'steady';
-    if (trades.length >= 20 && walletAgeDays && walletAgeDays > 30) {
+    if (effectiveTradeCount >= 20 && walletAgeDays && walletAgeDays > 30) {
       const midTs = new Date(String(trades[Math.floor(trades.length / 2)].ledger_close_time)).getTime();
       const firstTs = new Date(String(trades[0].ledger_close_time)).getTime();
       const lastTs = new Date(String(trades[trades.length - 1].ledger_close_time)).getTime();
@@ -459,7 +560,8 @@ export const GET: APIRoute = async ({ params }) => {
         }
       }
     }
-    const totalFeesXLM = (trades.length + operations.length) * 0.00001;
+    const effectiveTradeCount = trades.length - spamTradeCount;
+    const totalFeesXLM = (effectiveTradeCount + operations.length) * 0.00001;
 
     // ---- SCORES ----
     let convictionScore = 50;
@@ -473,19 +575,19 @@ export const GET: APIRoute = async ({ params }) => {
     }
 
     const timespan = walletAgeDays ?? 365;
-    const tradesPerDay = timespan > 0 ? trades.length / timespan : 0;
+    const tradesPerDay = timespan > 0 ? effectiveTradeCount / timespan : 0;
     const degeneracyScore = Math.min(
       Math.round(
-        Math.min(trades.length / 50, 10) * 0.4 * 10 +
+        Math.min(effectiveTradeCount / 50, 10) * 0.4 * 10 +
         Math.min(uniquePairsCount / 10, 10) * 0.3 * 10 +
         Math.min(tradesPerDay * 10, 10) * 0.3 * 10
       ),
       100
     );
 
-    const totalOps = trades.length + paymentsIn + paymentsOut + 1;
+    const totalOps = effectiveTradeCount + paymentsIn + paymentsOut + 1;
     const lpFarmerScore = Math.min(Math.round(((lpDeposits + lpWithdrawals) / totalOps) * 500 + lpDeposits * 3), 100);
-    const pathWizardScore = Math.min(Math.round((pathPayments / Math.max(trades.length, 1)) * 200), 100);
+    const pathWizardScore = Math.min(Math.round((pathPayments / Math.max(effectiveTradeCount, 1)) * 200), 100);
 
     let whaleScore = 0;
     if (totalNotionalXLM > 0) {
@@ -510,7 +612,7 @@ export const GET: APIRoute = async ({ params }) => {
       (realizedPnlXLM > 0 ? 30 : realizedPnlXLM < 0 ? 5 : 15) +
       convictionScore * 0.15 +
       (winRate > 0.55 ? 25 : winRate > 0.45 ? 15 : 5) +
-      Math.min(trades.length * 0.3, 15)
+      Math.min(effectiveTradeCount * 0.3, 15)
     ), 100);
 
     // ---- ARCHETYPE ----
@@ -527,7 +629,7 @@ export const GET: APIRoute = async ({ params }) => {
 
     if (directoryTags.includes('exchange') || directoryTags.includes('anchor')) {
       archetype = 'Exchange Mule'; archetypeEmoji = '🏦';
-    } else if (xlmAmount > 100000 && trades.length < 50) {
+    } else if (xlmAmount > 100000 && effectiveTradeCount < 50) {
       archetype = 'Sleeping Whale'; archetypeEmoji = '🐋';
     } else if (defiScore > 70 && hasProtocolClaims) {
       archetype = 'DeFi Native'; archetypeEmoji = '🌐';
@@ -543,9 +645,9 @@ export const GET: APIRoute = async ({ params }) => {
       archetype = 'Diamond Hand'; archetypeEmoji = '💎';
     } else if (coffinScore > 40) {
       archetype = 'Airdrop Scavenger'; archetypeEmoji = '🪂';
-    } else if (trades.length > 200 && uniquePairsCount <= 3) {
+    } else if (effectiveTradeCount > 200 && uniquePairsCount <= 3) {
       archetype = 'XLM Swing Trader'; archetypeEmoji = '📈';
-    } else if (trades.length < 10 && xlmAmount < 100) {
+    } else if (effectiveTradeCount < 10 && xlmAmount < 100) {
       archetype = 'Crypto Tourist'; archetypeEmoji = '🗺️';
     } else if (realizedPnlXLM > 5000) {
       archetype = 'Alpha Hunter'; archetypeEmoji = '🎯';
@@ -564,7 +666,7 @@ export const GET: APIRoute = async ({ params }) => {
     if (pathPayments > 10) traits.push('DEX Router');
     if (lpDeposits > 5) traits.push('Liquidity Provider');
     if (coffinScore > 30) traits.push('Bag Holder');
-    if (trades.length > 500) traits.push('High Volume');
+    if (effectiveTradeCount > 500) traits.push('High Volume');
     if (realizedPnlXLM > 1000) traits.push('Profitable (in XLM)');
     if (realizedPnlXLM < -1000) traits.push('Battle Scarred');
     if (counterpartySet.size > 100) traits.push('Well Connected');
@@ -588,9 +690,13 @@ export const GET: APIRoute = async ({ params }) => {
       address,
       fetchedAt: new Date().toISOString(),
       dataCompleteness: {
-        totalTrades: trades.length,
-        tradesCapped: trades.length >= 1000,
-        paymentsCapped: payments.length >= 600,
+        period,
+        totalTrades: effectiveTradeCount,
+        rawTradeCount: trades.length,
+        spamTradeCount,
+        tradesCapped,
+        paymentsCapped,
+        opsCapped,
         pnlConfidence,
         xlmUsdPrice,
       },
@@ -611,7 +717,7 @@ export const GET: APIRoute = async ({ params }) => {
         portfolioValueXLM: r2(portfolioValueXLM),
         portfolioValueUSD: xlmUsdPrice ? r2(portfolioValueXLM * xlmUsdPrice) : null,
         lifetimeValueTradedXLM: r2(totalNotionalXLM),
-        totalTrades: trades.length,
+        totalTrades: effectiveTradeCount,
         netXlmFlow: r2(netTransferXLM + netXlmFromTrading),
         netXlmFromTrading: r2(netXlmFromTrading),
         netXlmFromTransfers: r2(netTransferXLM),
@@ -648,8 +754,8 @@ export const GET: APIRoute = async ({ params }) => {
         losses: lossCount,
         tradesByHour,
         tradesByDay,
-        peakHour: trades.length > 0 ? peakHour : null,
-        peakDay: trades.length > 0 ? peakDay : null,
+        peakHour: effectiveTradeCount > 0 ? peakHour : null,
+        peakDay: effectiveTradeCount > 0 ? peakDay : null,
         maxWinStreak,
         maxLossStreak,
         bestAsset,
@@ -660,10 +766,12 @@ export const GET: APIRoute = async ({ params }) => {
       },
       portfolio: {
         xlmPct,
+        lpPct,
         stablePct,
         altPct,
         topAltCode: topNonXLM?.code ?? null,
       },
+      lpPositions,
       scores: {
         conviction: convictionScore,
         degeneracy: degeneracyScore,
@@ -679,7 +787,7 @@ export const GET: APIRoute = async ({ params }) => {
         archetype,
         archetypeEmoji,
         traits,
-        summary: buildSummary({ address, walletAgeDays, trades, totalNotionalXLM, favoritePairs, realizedPnlXLM, totalSaleCount }),
+        summary: buildSummary({ address, walletAgeDays, effectiveTradeCount, totalNotionalXLM, favoritePairs, realizedPnlXLM, totalSaleCount }),
       },
       lifetimeClaims: {
         aqua: r2(lifetimeAQUA),
@@ -692,7 +800,7 @@ export const GET: APIRoute = async ({ params }) => {
       },
     };
 
-    cache.set(address, { data: profile, expires: Date.now() + CACHE_TTL });
+    cache.set(cacheKey, { data: profile, expires: Date.now() + CACHE_TTL });
 
     return json(profile, 200, { 'X-Cache': 'MISS', 'Cache-Control': 'public, max-age=600' });
   } catch (err) {
@@ -711,13 +819,13 @@ function json(data: unknown, status: number, extra?: Record<string, string>) {
   });
 }
 
-function buildSummary({ address, walletAgeDays, trades, totalNotionalXLM, favoritePairs, realizedPnlXLM, totalSaleCount }: {
-  address: string; walletAgeDays: number | null; trades: unknown[]; totalNotionalXLM: number;
+function buildSummary({ address, walletAgeDays, effectiveTradeCount, totalNotionalXLM, favoritePairs, realizedPnlXLM, totalSaleCount }: {
+  address: string; walletAgeDays: number | null; effectiveTradeCount: number; totalNotionalXLM: number;
   favoritePairs: { pair: string; count: number }[]; realizedPnlXLM: number; totalSaleCount: number;
 }): string {
   const parts: string[] = [];
   parts.push(`${address.slice(0, 4)}…${address.slice(-4)} has been active for ${walletAgeDays != null ? `${walletAgeDays} days` : 'an unknown period'}`);
-  if (trades.length > 0) parts.push(`executed ${trades.length.toLocaleString()} trades`);
+  if (effectiveTradeCount > 0) parts.push(`executed ${effectiveTradeCount.toLocaleString()} trades`);
   if (totalNotionalXLM > 0) parts.push(`moved ${Math.round(totalNotionalXLM).toLocaleString()} XLM in total notional`);
   if (favoritePairs.length > 0) parts.push(`preferring the ${favoritePairs[0].pair} pair`);
   if (realizedPnlXLM !== 0 && totalSaleCount > 0) {

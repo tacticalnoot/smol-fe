@@ -10,7 +10,7 @@
     interface Profile {
         address: string;
         fetchedAt: string;
-        dataCompleteness: { totalTrades: number; tradesCapped: boolean; paymentsCapped: boolean; pnlConfidence: number; xlmUsdPrice: number | null };
+        dataCompleteness: { period: 'recent' | 'all'; totalTrades: number; rawTradeCount: number; spamTradeCount: number; tradesCapped: boolean; paymentsCapped: boolean; opsCapped: boolean; pnlConfidence: number; xlmUsdPrice: number | null };
         identity: { createdAt: string | null; walletAgeDays: number | null; homeDomain: string | null; directoryTags: string[]; warnings: string[]; signerCount: number; trustlineCount: number; subentryCount: number };
         balances: Balance[];
         headline: { portfolioValueXLM: number; portfolioValueUSD: number | null; lifetimeValueTradedXLM: number; totalTrades: number; netXlmFlow: number; netXlmFromTrading: number; netXlmFromTransfers: number; feesSpentXLM: number; estimatedRealizedPnlXLM: number; pnlConfidence: number };
@@ -18,7 +18,8 @@
         trading: { favoritePairs: { pair: string; count: number }[]; uniquePairsCount: number; bestTrade: Trade | null; worstTrade: Trade | null; avgHoldHours: number; winRatePct: number; avgTradeXLM: number; medianTradeXLM: number; biggestFillXLM: number; totalSaleCount: number; wins: number; losses: number; tradesByHour: number[]; tradesByDay: number[]; peakHour: number | null; peakDay: number | null; maxWinStreak: number; maxLossStreak: number; bestAsset: { code: string; pnlXLM: number } | null; worstAsset: { code: string; pnlXLM: number } | null; unrealizedPnlXLM: number; activityTrend: string; tradeSizeBreakdown: { small: number; medium: number; large: number } };
         scores: { conviction: number; degeneracy: number; lpFarmer: number; pathWizard: number; diamondHands: number; whale: number; coffinPortfolio: number; aura: number; defi: number };
         narrative: { archetype: string; archetypeEmoji: string; traits: string[]; summary: string };
-        portfolio: { xlmPct: number; stablePct: number; altPct: number; topAltCode: string | null };
+        portfolio: { xlmPct: number; lpPct: number; stablePct: number; altPct: number; topAltCode: string | null };
+        lpPositions: { poolId: string; label: string; xlmVal: number; shares: number; pct: number }[];
         lifetimeClaims: { aqua: number; blnd: number; pho: number; aquaClaimCount: number; blndClaimCount: number; phoClaimCount: number; dataCapped: boolean };
     }
 
@@ -30,6 +31,7 @@
     let loadingStep = $state(0);
     let mounted = $state(false);
     let scoresVisible = $state(false);
+    let period = $state<'recent' | 'all'>('all');
 
     const EXAMPLE_ADDRESSES = [
         { label: "Binance", addr: "GAX3BRBNB5WTJ2GNEFFH7A4CZKT2FORYABDDBZR5FIIT3P7FLS2EFOZ" },
@@ -124,7 +126,7 @@
         }, 900);
 
         try {
-            const res = await fetch(`/api/labs/trader-genome/${encodeURIComponent(target)}`);
+            const res = await fetch(`/api/labs/trader-genome/${encodeURIComponent(target)}?period=${period}`);
             const data = await res.json();
             if (!res.ok) {
                 error = data.error ?? "Unknown error";
@@ -240,6 +242,7 @@
         {@const na = p.narrative}
         {@const lc = p.lifetimeClaims}
         {@const po = p.portfolio}
+        {@const lpos = p.lpPositions}
 
         <!-- ── IDENTITY CARD ── -->
         <div class="border border-[#2a2a2a] rounded-xl bg-[#08080f] overflow-hidden">
@@ -312,11 +315,24 @@
             </div>
         </div>
 
+        <!-- ── PERIOD SELECTOR ── -->
+        <div class="flex items-center gap-2">
+            <span class="text-[9px] text-[#444] uppercase tracking-widest">View period</span>
+            <div class="flex rounded-lg border border-[#2a2a2a] overflow-hidden">
+                {#each ([['all', 'All Time'], ['recent', '52 Weeks']] as [string, string][]) as [val, label]}
+                    <button
+                        onclick={() => { if (period !== val) { period = val as 'recent' | 'all'; runScan(); } }}
+                        class="px-3 py-1.5 text-[9px] uppercase tracking-widest transition-colors {p.dataCompleteness.period === val ? 'bg-[#9ae600]/10 text-[#9ae600]' : 'text-[#444] hover:text-[#888]'}"
+                    >{label}</button>
+                {/each}
+            </div>
+        </div>
+
         <!-- ── HEADLINE STATS ── -->
         <div class="grid grid-cols-2 md:grid-cols-3 gap-3">
             {#each [
                 { label: "Portfolio Value", value: fmt(hl.portfolioValueXLM) + " XLM", sub: hl.portfolioValueUSD != null ? "$" + fmt(hl.portfolioValueUSD) : null, color: "#9ae600" },
-                { label: "Lifetime Traded", value: fmt(hl.lifetimeValueTradedXLM) + " XLM", sub: null, color: "#fdda24" },
+                { label: p.dataCompleteness.period === 'recent' ? "52W Traded" : "Lifetime Traded", value: fmt(hl.lifetimeValueTradedXLM) + " XLM", sub: null, color: "#fdda24" },
                 { label: "Total Trades", value: hl.totalTrades.toLocaleString(), sub: p.dataCompleteness.tradesCapped ? "⚠ capped at 1000" : null, color: "#fff" },
                 { label: "Net XLM Flow", value: (hl.netXlmFlow >= 0 ? "+" : "") + fmt(hl.netXlmFlow) + " XLM", sub: null, color: pnlColor(hl.netXlmFlow) },
                 { label: "Realized P&L", value: (hl.estimatedRealizedPnlXLM >= 0 ? "+" : "") + fmt(hl.estimatedRealizedPnlXLM) + " XLM", sub: hl.pnlConfidence > 0 ? hl.pnlConfidence + "% confidence" : "no data", color: pnlColor(hl.estimatedRealizedPnlXLM) },
@@ -587,6 +603,9 @@
                     {#if po.xlmPct > 0}
                         <div class="bg-[#9ae600] h-full transition-all" style="width: {po.xlmPct}%" title="XLM: {po.xlmPct}%"></div>
                     {/if}
+                    {#if po.lpPct > 0}
+                        <div class="bg-[#00cfb4] h-full transition-all" style="width: {po.lpPct}%" title="LP Pools: {po.lpPct}%"></div>
+                    {/if}
                     {#if po.stablePct > 0}
                         <div class="bg-[#4da6ff] h-full transition-all" style="width: {po.stablePct}%" title="Stables: {po.stablePct}%"></div>
                     {/if}
@@ -596,6 +615,7 @@
                 </div>
                 <div class="flex flex-wrap gap-4 text-[9px] font-mono">
                     <span><span class="inline-block w-2 h-2 bg-[#9ae600] rounded-sm mr-1"></span>XLM {po.xlmPct}%</span>
+                    {#if po.lpPct > 0}<span><span class="inline-block w-2 h-2 bg-[#00cfb4] rounded-sm mr-1"></span>LP Pools {po.lpPct}%</span>{/if}
                     {#if po.stablePct > 0}<span><span class="inline-block w-2 h-2 bg-[#4da6ff] rounded-sm mr-1"></span>Stables {po.stablePct}%</span>{/if}
                     {#if po.altPct > 0}<span><span class="inline-block w-2 h-2 bg-[#fdda24] rounded-sm mr-1"></span>Alts {po.altPct}%{po.topAltCode ? ` (top: ${po.topAltCode})` : ""}</span>{/if}
                 </div>
@@ -662,7 +682,7 @@
                             </tr>
                         </thead>
                         <tbody>
-                            {#each p.balances.slice(0, 15) as b}
+                            {#each p.balances.slice(0, 20) as b}
                                 <tr class="border-b border-[#0f0f0f] hover:bg-[#9ae600]/3 transition-colors">
                                     <td class="py-2 pr-4">
                                         <span class="text-[#9ae600]">{b.code}</span>
@@ -682,6 +702,34 @@
                         </tbody>
                     </table>
                 </div>
+            </div>
+        {/if}
+
+        <!-- ── LP POOL POSITIONS (classic AMM) ── -->
+        {#if lpos.length > 0}
+            <div class="border border-[#00cfb4]/20 rounded-xl bg-[#08080f] p-5 space-y-4">
+                <div class="text-[10px] text-[#00cfb4]/60 uppercase tracking-widest">Liquidity Pool Positions</div>
+                <div class="overflow-x-auto">
+                    <table class="w-full text-[10px] font-mono">
+                        <thead>
+                            <tr class="text-[#333] text-[8px] uppercase border-b border-[#1a1a1a]">
+                                <th class="text-left py-2 pr-4">Pool</th>
+                                <th class="text-right py-2 pr-4">Pool Share</th>
+                                <th class="text-right py-2">XLM Value</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {#each lpos as lp}
+                                <tr class="border-b border-[#0f0f0f] hover:bg-[#00cfb4]/3 transition-colors">
+                                    <td class="py-2 pr-4 text-[#00cfb4]">{lp.label}</td>
+                                    <td class="text-right py-2 pr-4 text-[#555]">{lp.pct}%</td>
+                                    <td class="text-right py-2 text-[#fdda24]">{fmt(lp.xlmVal)}</td>
+                                </tr>
+                            {/each}
+                        </tbody>
+                    </table>
+                </div>
+                <div class="text-[8px] text-[#333]">Classic Stellar AMM pools only. Soroban protocol positions (Blend, Phoenix, Aquarius AMM) may not be reflected above.</div>
             </div>
         {/if}
 
@@ -729,9 +777,14 @@
                 <span>XLM/USD: {p.dataCompleteness.xlmUsdPrice != null ? "$" + p.dataCompleteness.xlmUsdPrice.toFixed(4) : "unavailable"}</span>
             </div>
             <div class="flex flex-wrap justify-between gap-2">
-                <span>Trades analyzed: {p.dataCompleteness.totalTrades.toLocaleString()}{p.dataCompleteness.tradesCapped ? " (capped)" : ""}</span>
+                <span>Trades analyzed: {p.dataCompleteness.totalTrades.toLocaleString()}{p.dataCompleteness.spamTradeCount > 0 ? ` (+${p.dataCompleteness.spamTradeCount} spam filtered)` : ""} · {p.dataCompleteness.period === 'recent' ? 'Last 52 weeks' : 'All time'}</span>
                 <span>P&L confidence: {p.dataCompleteness.pnlConfidence}%</span>
             </div>
+            {#if p.dataCompleteness.tradesCapped || p.dataCompleteness.paymentsCapped || p.dataCompleteness.opsCapped}
+            <div class="text-[#ff8c42]/60">
+                ⚠ Time budget exceeded — {[p.dataCompleteness.tradesCapped ? 'trades' : '', p.dataCompleteness.paymentsCapped ? 'payments' : '', p.dataCompleteness.opsCapped ? 'operations' : ''].filter(Boolean).join(', ')} may be incomplete (high-activity account).
+            </div>
+            {/if}
             <div class="text-[#222] pt-1">
                 P&L uses FIFO costing on XLM-paired trades only. Results are estimates, not financial advice.
                 Cached for 10 min. Source: Stellar Horizon + Stellar Expert Directory.
