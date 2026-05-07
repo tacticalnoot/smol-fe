@@ -15,7 +15,7 @@
     const intent = buildIntent({mode, amount, event, message, destination, asset: asset==='XLM'?{type:'native',code:'XLM'}:{type:'credit_alphanum4',code:'USDC',issuer:USDC.issuer}});
     const p = encodeIntent(intent); link = `${location.origin}/ezwallet/drop?p=${p}`; QRCode.toDataURL(link,{margin:1,width:256}).then((d: string)=>qrData=d);
   }
-  function bulk(){ const max = TIERS[tier].maxBatch ?? 10; if(count>max){status=`${TIERS[tier].name} limit is ${max}`; return;} const rows=generateBulk({mode,amount,event,message,asset: asset==='XLM'?{type:'native',code:'XLM'}:{type:'credit_alphanum4',code:'USDC',issuer:USDC.issuer}},count,1,'EV'); batchRows=rows; csv=toCsv(rows, location.origin); status=`Generated ${rows.length} QR intents`; }
+  function bulk(){ const max = TIERS[tier].maxBatch ?? 10; if(count>max){status=`${TIERS[tier].name} limit is ${max}`; return;} const rows=generateBulk({mode,amount,event,message,destination,asset: asset==='XLM'?{type:'native',code:'XLM'}:{type:'credit_alphanum4',code:'USDC',issuer:USDC.issuer}},count,1,'EV'); batchRows=rows; csv=toCsv(rows, location.origin); status=`Generated ${rows.length} QR intents`; }
   function downloadCsv(){ const b=new Blob([csv],{type:'text/csv'}); const a=document.createElement('a'); a.href=URL.createObjectURL(b); a.download='ezwallet-manifest.csv'; a.click(); }
 </script>
 <div class="p-6 max-w-5xl mx-auto text-white">
