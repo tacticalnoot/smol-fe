@@ -234,7 +234,7 @@
         "last_reviewed": "2026-05-07",
         "blast_radius": "LABS_ONLY",
         "path": "experiments/ezwallet/experiment.yml",
-        "href": "/ezwallet",
+        "href": "/labs/ezwallet",
         "description": "Generate Stellar QR payment intents and bulk event manifests for public drop campaigns.",
         "tags": [
             "Stellar",
