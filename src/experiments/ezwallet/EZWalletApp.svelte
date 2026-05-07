@@ -12,7 +12,7 @@
   let event = $state('');
   let message = $state('');
   let destination = $state('');
-  let count = $state(10);
+  let count = $state(1);
   let qrData = $state('');
   let link = $state('');
   let csv = $state('');
@@ -20,6 +20,25 @@
   const auth = useAuthentication();
   let status = $state('');
   let tier = $state<'FREE' | 'EVENT' | 'POWER'>('FREE');
+
+  let tierPaid = $state<'FREE' | 'EVENT' | 'POWER'>('FREE');
+
+  function getCheckoutLink(plan: 'EVENT' | 'POWER') {
+    const amountXlm = TIERS[plan].priceXlm;
+    const memo = encodeURIComponent(`EZWALLET_${plan}`);
+    return `stellar:${PLATFORM_PAYMENT_DESTINATION}?amount=${amountXlm}&memo=${memo}`;
+  }
+
+  function confirmPlanPaid(plan: 'EVENT' | 'POWER') {
+    tierPaid = plan;
+    tier = plan;
+    status = `${TIERS[plan].name} unlocked for this session.`;
+  }
+
+  function requiresPaidPlan() {
+    return count > 1;
+  }
+
 
   async function login() {
     await auth.login();
@@ -44,7 +63,17 @@
   }
 
   function bulk() {
-    const max = TIERS[tier].maxBatch ?? 10;
+    const max = TIERS[tier].maxBatch ?? 1;
+
+    if (requiresPaidPlan() && tier === 'FREE') {
+      status = 'Free includes 1 generation only. Choose Event or Power, then use the one-tap Stellar checkout below.';
+      return;
+    }
+
+    if (tier !== 'FREE' && tierPaid !== tier) {
+      status = `Complete ${TIERS[tier].name} checkout first, then tap "I paid" to unlock generation.`;
+      return;
+    }
     if (count > max) {
       status = `${TIERS[tier].name} limit is ${max}`;
       return;
@@ -163,6 +192,7 @@
         </select>
       </label>
       <div class="pill-row">
+        <button class="soft-button" onclick={() => (count = 1)}>1</button>
         <button class="soft-button" onclick={() => (count = 10)}>10</button>
         <button class="soft-button" onclick={() => (count = 100)}>100</button>
         <button class="soft-button" onclick={() => (count = 1000)}>1000</button>
@@ -176,6 +206,7 @@
       </div>
       <p class="status">{status}</p>
       <p class="muted">Rows generated: {batchRows.length}</p>
+      <p class="muted">Free plan is strictly limited to 1 generation. Any batch size above 1 requires a paid plan.</p>
     </article>
 
     <article class="glass-panel pricing-panel">
@@ -186,8 +217,16 @@
         <div class="plan-card"><strong>Power Pack</strong><span>{TIERS.POWER.maxBatch} • {TIERS.POWER.priceXlm} XLM</span></div>
         <div class="plan-card"><strong>Custom / Enterprise</strong><span>Contact for event ops scale</span></div>
       </div>
-      <p class="review">Pay with Stellar · Review before signing</p>
-      <label>Destination
+      <p class="review">One-tap checkout (Apple Pay-style flow): choose plan → pay in wallet → tap I paid → generate.</p>
+      <div class="pill-row">
+        <a class="holo-button" href={getCheckoutLink('EVENT')}>Pay {TIERS.EVENT.priceXlm} XLM · Event Pack</a>
+        <button class="soft-button" onclick={() => confirmPlanPaid('EVENT')}>I paid Event Pack</button>
+      </div>
+      <div class="pill-row">
+        <a class="holo-button" href={getCheckoutLink('POWER')}>Pay {TIERS.POWER.priceXlm} XLM · Power Pack</a>
+        <button class="soft-button" onclick={() => confirmPlanPaid('POWER')}>I paid Power Pack</button>
+      </div>
+      <label>Platform destination
         <input value={PLATFORM_PAYMENT_DESTINATION} readonly />
       </label>
       <p class="muted">Each scan opens a claim review screen first. Redemption always requires explicit signer approval.</p>
