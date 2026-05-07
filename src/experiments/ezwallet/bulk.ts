@@ -16,7 +16,7 @@ export function toCsv(rows: Array<{ intent: StellarIntent; batchId: string; qrId
   const h = ['batchId','qrId','dropId','index','label','event','mode','asset_code','issuer','amount','destination','message','deepLink','createdAt'];
   const createdAt = new Date().toISOString();
   const lines = rows.map((r) => {
-    const d = `${origin}/ezwallet/drop?p=${encodeIntent(r.intent)}`;
+    const d = `${origin}/labs/ezwallet/drop?p=${encodeIntent(r.intent)}`;
     const v = [r.batchId,r.qrId,r.dropId||'',r.index,r.intent.label||'',r.intent.event||'',r.intent.mode,r.intent.asset.code,r.intent.asset.issuer||'',r.intent.amount||'',r.intent.destination||'',r.intent.message||'',d,createdAt];
     return v.map((x)=>`"${String(x).replaceAll('"','""')}"`).join(',');
   });
