@@ -18,12 +18,26 @@ export function validateIntent(i: StellarIntent): string[] {
   return e;
 }
 
-export function encodeIntent(i: StellarIntent): string {
-  return btoa(JSON.stringify(i)).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/g, '');
+function toBase64UrlUtf8(value: string): string {
+  const bytes = new TextEncoder().encode(value);
+  let binary = '';
+  for (const b of bytes) binary += String.fromCharCode(b);
+  return btoa(binary).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/g, '');
 }
+
+function fromBase64UrlUtf8(value: string): string {
+  const padded = value + '='.repeat((4 - (value.length % 4)) % 4);
+  const binary = atob(padded.replace(/-/g, '+').replace(/_/g, '/'));
+  const bytes = Uint8Array.from(binary, (ch) => ch.charCodeAt(0));
+  return new TextDecoder().decode(bytes);
+}
+
+export function encodeIntent(i: StellarIntent): string {
+  return toBase64UrlUtf8(JSON.stringify(i));
+}
+
 export function decodeIntent(p: string): StellarIntent {
-  const padded = p + '='.repeat((4 - (p.length % 4)) % 4);
-  return JSON.parse(atob(padded.replace(/-/g, '+').replace(/_/g, '/')));
+  return JSON.parse(fromBase64UrlUtf8(p));
 }
 
 export function buildIntent(partial: Partial<StellarIntent>): StellarIntent {
