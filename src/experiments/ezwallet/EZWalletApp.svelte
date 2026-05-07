@@ -84,13 +84,13 @@
   <header class="glass-panel hero-panel">
     <p class="kicker">POWERED BY SMOL • STELLAR NATIVE</p>
     <h1 class="holo-text">EZWallet</h1>
-    <p class="hero-tag">Scan. Approve. Get Paid.</p>
-    <p class="hero-sub">Create one safe QR that requests payment to your wallet — perfect for cards, booths, and NFT drops.</p>
+    <p class="hero-tag">Scan. Claim. Receive Value.</p>
+    <p class="hero-sub">Create claim tickets where the QR payload carries the transfer intent (XLM/XOM/USDC), so recipients redeem value instead of being asked to pay you.</p>
   </header>
 
   <section class="dashboard-grid">
     <article class="glass-panel">
-      <h2 class="section-title">01 · Build Your Payment QR</h2>
+      <h2 class="section-title">01 · Build Your Value Ticket QR</h2>
       <div class="label">Asset</div>
       <div class="pill-row">
         <button class="asset-pill" class:active={asset === 'XLM'} onclick={() => (asset = 'XLM')}>XLM</button>
@@ -98,8 +98,8 @@
       </div>
       <label>Mode
         <select bind:value={mode}>
-          <option value="receive_request">Request Payment</option>
-          <option value="event_drop">Event Drop</option>
+          <option value="receive_request">Direct Claim Ticket</option>
+          <option value="event_drop">Event Ticket Drop</option>
         </select>
       </label>
       <label>Amount
@@ -121,8 +121,8 @@
     </article>
 
     <article class="glass-panel">
-      <h2 class="section-title">02 · Share with Confidence</h2>
-      <p class="safety">Review before signing. Intent links do not auto-pay.</p>
+      <h2 class="section-title">02 · Share Claim Ticket</h2>
+      <p class="safety">Review before signing. The QR carries claim intent metadata and never auto-sends funds.</p>
       <div class="qr-frame">
         {#if qrData}
           <img src={qrData} alt="Generated Stellar QR intent" class="qr-image" />
@@ -167,7 +167,7 @@
     </article>
 
     <article class="glass-panel pricing-panel">
-      <h2 class="section-title">04 · Trust & Safety</h2>
+      <h2 class="section-title">04 · Ticket Integrity</h2>
       <div class="plan-grid">
         <div class="plan-card"><strong>Free</strong><span>Up to {TIERS.FREE.maxBatch}</span></div>
         <div class="plan-card popular"><strong>Event Pack</strong><span>{TIERS.EVENT.maxBatch} • {TIERS.EVENT.priceXlm} XLM</span></div>
@@ -178,7 +178,7 @@
       <label>Destination
         <input value={PLATFORM_PAYMENT_DESTINATION} readonly />
       </label>
-      <p class="muted">Each scan opens a review screen first. Nothing auto-sends funds without signer approval.</p>
+      <p class="muted">Each scan opens a claim review screen first. Redemption always requires explicit signer approval.</p>
     </article>
   </section>
 
