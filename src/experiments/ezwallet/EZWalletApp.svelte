@@ -85,12 +85,12 @@
     <p class="kicker">POWERED BY SMOL • STELLAR NATIVE</p>
     <h1 class="holo-text">EZWallet</h1>
     <p class="hero-tag">Scan. Claim. Receive Value.</p>
-    <p class="hero-sub">Create claim tickets where the QR payload carries the transfer intent (XLM/XOM/USDC), so recipients redeem value instead of being asked to pay you.</p>
+    <p class="hero-sub">Create claim tickets where the QR payload carries transfer intent metadata (XLM/USDC), so recipients review and redeem value flows instead of being prompted for immediate payment.</p>
   </header>
 
   <section class="dashboard-grid">
     <article class="glass-panel">
-      <h2 class="section-title">01 · Build Your Value Ticket QR</h2>
+      <h2 class="section-title">01 · Build Your Claim Ticket QR</h2>
       <div class="label">Asset</div>
       <div class="pill-row">
         <button class="asset-pill" class:active={asset === 'XLM'} onclick={() => (asset = 'XLM')}>XLM</button>
@@ -121,7 +121,7 @@
     </article>
 
     <article class="glass-panel">
-      <h2 class="section-title">02 · Share Claim Ticket</h2>
+      <h2 class="section-title">02 · Share Review Link</h2>
       <p class="safety">Review before signing. The QR carries claim intent metadata and never auto-sends funds.</p>
       <div class="qr-frame">
         {#if qrData}
