@@ -87,6 +87,18 @@
     <p class="hero-tag">Scan. Claim. Receive Value.</p>
     <p class="hero-sub">Create claim tickets where the QR payload carries transfer intent metadata (XLM/USDC), so recipients review and redeem value flows instead of being prompted for immediate payment.</p>
   </header>
+  <div class="wip-banner" role="status" aria-live="polite">
+    <span class="wip-dot" aria-hidden="true"></span>
+    <span><strong>Work in Progress</strong> · Until this badge is removed, all payments received are treated as tips supporting ongoing Smol development.</span>
+  </div>
+
+  <div class="readiness-strip" aria-label="EZWallet readiness status">
+    <span class="readiness-label">Readiness</span>
+    <span class="light red active" title="Not ready / test mode">Red</span>
+    <span class="light yellow" title="Limited readiness">Yellow</span>
+    <span class="light green" title="Production ready">Green</span>
+    <span class="readiness-state">Not Ready / Test</span>
+  </div>
 
   <section class="dashboard-grid">
     <article class="glass-panel">
@@ -201,6 +213,18 @@
   .kicker { font-size: 0.72rem; letter-spacing: 0.18em; color: #b8bcc7; margin: 0 0 .5rem; }
   .hero-tag { font-size: 1.15rem; margin: .15rem 0; }
   .hero-sub { color: #b8bcc7; margin: 0; }
+
+  .wip-banner { margin: 0 0 1rem; padding: .65rem .8rem; border-radius: 12px; border: 1px solid rgba(245, 208, 74, .45); background: linear-gradient(120deg, rgba(250, 204, 21, .12), rgba(250, 204, 21, .04), rgba(255,255,255,.02)); color: #f5e7bd; display:flex; gap:.55rem; align-items:center; font-size:.82rem; }
+  .wip-dot { width: .55rem; height: .55rem; border-radius:999px; background: #facc15; box-shadow: 0 0 8px rgba(250,204,21,.7); }
+  .readiness-strip { display:flex; align-items:center; gap:.45rem; margin: 0 0 1rem; padding: .55rem .7rem; border-radius: 10px; background: rgba(255,255,255,.03); border:1px solid rgba(255,255,255,.12); font-size:.75rem; }
+  .readiness-label { color:#cbd5e1; text-transform: uppercase; letter-spacing:.08em; margin-right:.25rem; }
+  .light { padding:.2rem .5rem; border-radius:999px; border:1px solid transparent; opacity:.45; }
+  .light.red { background: rgba(239,68,68,.2); color:#fecaca; }
+  .light.yellow { background: rgba(250,204,21,.18); color:#fde68a; }
+  .light.green { background: rgba(34,197,94,.18); color:#bbf7d0; }
+  .light.active { opacity:1; border-color: rgba(255,255,255,.35); box-shadow: 0 0 0 1px rgba(255,255,255,.12) inset; }
+  .readiness-state { margin-left:auto; color:#fecaca; font-weight:600; }
+
   .dashboard-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 1rem; }
   .section-title { margin: 0 0 .85rem; color: #dce2ee; font-size: .95rem; letter-spacing: .12em; text-transform: uppercase; }
   label, .label { display: block; font-size: .82rem; color: #b8bcc7; margin: .5rem 0; }
