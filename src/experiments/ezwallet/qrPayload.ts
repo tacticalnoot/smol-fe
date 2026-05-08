@@ -1,5 +1,5 @@
 import type { StellarIntent } from './types';
-import { USDC } from './config';
+import { USDC, KALE } from './config';
 
 const RE = { amt: /^\d+(\.\d{1,7})?$/, code: /^[A-Z0-9]{1,12}$/, g: /^G[A-Z2-7]{55}$/, c: /^C[A-Z2-7]{55}$/ };
 const clean = (v?: string, n = 80) => (v || '').trim().slice(0, n) || undefined;
@@ -12,6 +12,7 @@ export function validateIntent(i: StellarIntent): string[] {
   if (i.asset.code === 'XLM' && i.asset.type !== 'native') e.push('XLM must be native');
   if (i.asset.code === 'XLM' && i.asset.issuer) e.push('XLM cannot have issuer');
   if (i.asset.code === 'USDC' && i.asset.issuer !== USDC.issuer) e.push('USDC issuer mismatch');
+  if (i.asset.code === 'KALE' && i.asset.issuer !== KALE.issuer) e.push('KALE issuer mismatch');
   if (i.asset.code !== 'XLM' && !i.asset.issuer) e.push('Issuer required for non-native');
   if (i.amount && !RE.amt.test(i.amount)) e.push('Invalid amount');
   if (i.destination && !RE.g.test(i.destination) && !RE.c.test(i.destination)) e.push('Invalid destination');
