@@ -18,7 +18,7 @@
   let csv = $state('');
   let batchRows = $state<any[]>([]);
   const auth = useAuthentication();
-  let status = $state('Ready to generate your first ticket.');
+  let status = $state('Ready when you are.');
   let tier = $state<'FREE' | 'EVENT' | 'POWER'>('FREE');
 
   function getCheckoutLink(plan: 'EVENT' | 'POWER') {
@@ -29,7 +29,7 @@
 
   function checkoutSelectedTier() {
     if (tier === 'FREE') {
-      status = 'Free plan is active — no checkout required.';
+      status = 'Free plan is active. No checkout needed.';
       return;
     }
 
@@ -41,7 +41,7 @@
   $effect(() => {
     if (tier === 'FREE' && count > 1) {
       count = 1;
-      status = 'Free plan allows 1 ticket per batch. Upgrade to Event or Power for larger runs.';
+      status = 'Free supports one claim per batch. Choose Event or Power for higher limits.';
     }
   });
 
@@ -73,12 +73,12 @@
     const max = TIERS[tier].maxBatch ?? 1;
 
     if (count > 1 && tier === 'FREE') {
-      status = 'Free includes 1 generation only. Choose Event or Power, then use the one-tap Stellar checkout below.';
+      status = 'Free supports one claim per batch. Upgrade when you need larger runs.';
       return;
     }
 
     if (count > max) {
-      status = `${TIERS[tier].name} limit is ${max}`;
+      status = `${TIERS[tier].name} supports up to ${max} claims per batch.`;
       return;
     }
     const rows = generateBulk(
@@ -100,7 +100,7 @@
     );
     batchRows = rows;
     csv = toCsv(rows, location.origin);
-    status = `Generated ${rows.length} QR intents`;
+    status = `Generated ${rows.length} claim links.`;
   }
 
   function downloadCsv() {
@@ -118,7 +118,7 @@
   <header class="panel hero">
     <p class="eyebrow">EZ Wallet</p>
     <h1>Create professional claim links in minutes</h1>
-    <p class="hero-copy">Build a claim, share a QR, and let people review details before they approve in wallet. Fast for you, clear for them.</p>
+    <p class="hero-copy">Build a claim, share a QR, and let recipients review before approval. Clean flow, flexible sizing.</p>
   </header>
 
   <section class="panel flow">
@@ -199,13 +199,17 @@
     <div class="chip-row">
       <button class="chip" onclick={() => (count = 1)}>1</button>
       <button class="chip" onclick={() => (count = 10)} disabled={tier === 'FREE'}>10</button>
+      <button class="chip" onclick={() => (count = 25)} disabled={tier === 'FREE'}>25</button>
+      <button class="chip" onclick={() => (count = 50)} disabled={tier === 'FREE'}>50</button>
       <button class="chip" onclick={() => (count = 100)} disabled={tier === 'FREE'}>100</button>
+      <button class="chip" onclick={() => (count = 250)} disabled={tier !== 'POWER'}>250</button>
       <button class="chip" onclick={() => (count = 1000)} disabled={tier !== 'POWER'}>1000</button>
     </div>
 
     <label class="field-label">Batch size
       <input type="number" bind:value={count} min="1" max={TIERS[tier].maxBatch ?? undefined} />
     </label>
+    <p class="muted">Enter any amount (for example 26). Current plan max: {TIERS[tier].maxBatch}.</p>
 
     <div class="actions">
       <button class="btn btn-primary" onclick={bulk}>Generate batch</button>
