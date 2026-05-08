@@ -2,12 +2,12 @@
   import QRCode from 'qrcode';
   import { userState, ensureWalletConnected } from '../../stores/user.svelte';
   import { useAuthentication } from '../../hooks/useAuthentication';
-  import { TIERS, USDC, PLATFORM_PAYMENT_DESTINATION } from './config';
+  import { TIERS, USDC, KALE, PLATFORM_PAYMENT_DESTINATION } from './config';
   import { buildIntent, encodeIntent } from './qrPayload';
   import { generateBulk, toCsv } from './bulk';
 
   let mode = $state<'receive_request' | 'event_drop'>('receive_request');
-  let asset = $state<'XLM' | 'USDC'>('XLM');
+  let asset = $state<'XLM' | 'USDC' | 'KALE'>('XLM');
   let amount = $state('');
   let event = $state('');
   let message = $state('');
@@ -58,10 +58,11 @@
       event,
       message,
       destination,
-      asset:
-        asset === 'XLM'
-          ? { type: 'native', code: 'XLM' }
-          : { type: 'credit_alphanum4', code: 'USDC', issuer: USDC.issuer }
+      asset: asset === 'XLM'
+        ? { type: 'native', code: 'XLM' }
+        : asset === 'USDC'
+          ? { type: 'credit_alphanum4', code: 'USDC', issuer: USDC.issuer }
+          : { type: 'credit_alphanum4', code: 'KALE', issuer: KALE.issuer }
     });
     const p = encodeIntent(intent);
     link = `${location.origin}/labs/ezwallet/drop?p=${p}`;
@@ -87,10 +88,11 @@
         event,
         message,
         destination,
-        asset:
-          asset === 'XLM'
-            ? { type: 'native', code: 'XLM' }
-            : { type: 'credit_alphanum4', code: 'USDC', issuer: USDC.issuer }
+        asset: asset === 'XLM'
+          ? { type: 'native', code: 'XLM' }
+          : asset === 'USDC'
+            ? { type: 'credit_alphanum4', code: 'USDC', issuer: USDC.issuer }
+            : { type: 'credit_alphanum4', code: 'KALE', issuer: KALE.issuer }
       },
       count,
       1,
@@ -115,8 +117,8 @@
   <header class="glass-panel hero-panel">
     <p class="kicker">POWERED BY SMOL • STELLAR NATIVE</p>
     <h1 class="holo-text">EZWallet</h1>
-    <p class="hero-tag">Scan. Claim. Receive Value.</p>
-    <p class="hero-sub">Create claim tickets where the QR payload carries transfer intent metadata (XLM/USDC), so recipients review and redeem value flows instead of being prompted for immediate payment.</p>
+    <p class="hero-tag">Create, Share, and Redeem in One Place.</p>
+    <p class="hero-sub">Make instantly redeemable tickets for XLM, USDC, or KALE. People can scan, review, and redeem from the same simple flow.</p>
   </header>
   <div class="wip-banner" role="status" aria-live="polite">
     <span class="wip-dot" aria-hidden="true"></span>
@@ -134,23 +136,24 @@
   <section class="dashboard-grid">
     <article class="glass-panel">
       <h2 class="section-title">01 · Build Your Claim Ticket</h2>
-      <p class="muted">Quick start: choose asset, add an optional amount, and generate.</p>
+      <p class="muted">Step 1: pick a coin, add optional details, then generate a ticket.</p>
       <div class="label">Asset</div>
       <div class="pill-row">
         <button class="asset-pill" class:active={asset === 'XLM'} onclick={() => (asset = 'XLM')}>XLM</button>
         <button class="asset-pill" class:active={asset === 'USDC'} onclick={() => (asset = 'USDC')}>USDC</button>
+        <button class="asset-pill" class:active={asset === 'KALE'} onclick={() => (asset = 'KALE')}>KALE</button>
       </div>
       <label>Mode
         <select bind:value={mode}>
-          <option value="receive_request">Direct claim ticket</option>
-          <option value="event_drop">Event ticket drop</option>
+          <option value="receive_request">Direct claim ticket (one person)</option>
+          <option value="event_drop">Event ticket drop (multiple people)</option>
         </select>
       </label>
       <label>Amount
-        <input bind:value={amount} placeholder="Optional" />
+        <input bind:value={amount} placeholder="Optional (example: 10 or 10.5)" />
       </label>
       <label>Destination
-        <input bind:value={destination} placeholder="Optional (G.../C...)" />
+        <input bind:value={destination} placeholder="Optional wallet (G... or C...)" />
       </label>
       {#if mode === 'event_drop'}
       <label>Event
@@ -158,7 +161,7 @@
       </label>
       {/if}
       <label>Message
-        <input bind:value={message} placeholder="Optional note for recipient" />
+        <input bind:value={message} placeholder="Optional note (what this giveaway is for)" />
       </label>
       <div class="action-row">
         <button class="holo-button" onclick={makeOne}>Generate QR</button>
@@ -169,7 +172,7 @@
 
     <article class="glass-panel">
       <h2 class="section-title">02 · Share & Review</h2>
-      <p class="safety">Review before signing. The QR carries claim intent metadata and never auto-sends funds.</p>
+      <p class="safety">Step 2: share your QR or link. Every person reviews details before redeeming. No auto-send.</p>
       <div class="qr-frame">
         {#if qrData}
           <img src={qrData} alt="Generated Stellar QR intent" class="qr-image" />
@@ -211,18 +214,18 @@
         {#if csv}<button class="soft-button" onclick={downloadCsv}>Export CSV manifest</button>{/if}
       </div>
       <p class="muted">Rows generated: {batchRows.length}</p>
-      <p class="muted">Free plan creates one ticket at a time. Batch sizes above 1 require Event or Power.</p>
+      <p class="muted">Best for giveaways: generate many tickets at once, then print or distribute digitally.</p>
     </article>
 
     <article class="glass-panel pricing-panel">
-      <h2 class="section-title">04 · Ticket Integrity</h2>
+      <h2 class="section-title">04 · Upgrade & Trust</h2>
       <div class="plan-grid">
         <div class="plan-card"><strong>Free</strong><span>Up to {TIERS.FREE.maxBatch}</span></div>
         <div class="plan-card popular"><strong>Event Pack</strong><span>{TIERS.EVENT.maxBatch} • {TIERS.EVENT.priceXlm} XLM</span></div>
         <div class="plan-card"><strong>Power Pack</strong><span>{TIERS.POWER.maxBatch} • {TIERS.POWER.priceXlm} XLM</span></div>
         <div class="plan-card"><strong>Custom / Enterprise</strong><span>Contact for event ops scale</span></div>
       </div>
-      <p class="review">One-tap checkout flow: choose your plan, open wallet checkout, and continue generating. No manual ‘I paid’ confirmation step.</p>
+      <p class="review">Step 4: if needed, upgrade your batch limit. Checkout opens in wallet and you can continue right away.</p>
       <div class="action-row">
         <button class="holo-button" onclick={checkoutSelectedTier} disabled={tier === 'FREE'}>
           {#if tier === 'EVENT'}Upgrade · {TIERS.EVENT.priceXlm} XLM{/if}
@@ -233,7 +236,7 @@
       <label>Platform destination
         <input value={PLATFORM_PAYMENT_DESTINATION} readonly />
       </label>
-      <p class="muted">Each scan opens a claim review screen first. Redemption always requires explicit signer approval.</p>
+      <p class="muted">Anyone can open a ticket safely, review details, and redeem from the same EZWallet flow with signer approval.</p>
     </article>
   </section>
 
