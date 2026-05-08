@@ -21,24 +21,29 @@
   let status = $state('Ready to generate your first ticket.');
   let tier = $state<'FREE' | 'EVENT' | 'POWER'>('FREE');
 
-  let tierPaid = $state<'FREE' | 'EVENT' | 'POWER'>('FREE');
-
   function getCheckoutLink(plan: 'EVENT' | 'POWER') {
     const amountXlm = TIERS[plan].priceXlm;
     const memo = encodeURIComponent(`EZWALLET_${plan}`);
     return `stellar:${PLATFORM_PAYMENT_DESTINATION}?amount=${amountXlm}&memo=${memo}`;
   }
 
-  function confirmPlanPaid(plan: 'EVENT' | 'POWER') {
-    tierPaid = plan;
-    tier = plan;
-    status = `${TIERS[plan].name} unlocked for this session.`;
+  function checkoutSelectedTier() {
+    if (tier === 'FREE') {
+      status = 'Free plan is active — no checkout required.';
+      return;
+    }
+
+    const checkoutLink = getCheckoutLink(tier);
+    window.open(checkoutLink, '_blank', 'noopener,noreferrer');
+    status = `Opening ${TIERS[tier].name} checkout in Stellar wallet…`;
   }
 
-  function requiresPaidPlan() {
-    return count > 1;
-  }
-
+  $effect(() => {
+    if (tier === 'FREE' && count > 1) {
+      count = 1;
+      status = 'Free plan allows 1 ticket per batch. Upgrade to Event or Power for larger runs.';
+    }
+  });
 
   async function login() {
     await auth.login();
@@ -66,15 +71,11 @@
   function bulk() {
     const max = TIERS[tier].maxBatch ?? 1;
 
-    if (requiresPaidPlan() && tier === 'FREE') {
+    if (count > 1 && tier === 'FREE') {
       status = 'Free includes 1 generation only. Choose Event or Power, then use the one-tap Stellar checkout below.';
       return;
     }
 
-    if (tier !== 'FREE' && tierPaid !== tier) {
-      status = `Complete ${TIERS[tier].name} checkout first, then tap "I paid" to unlock generation.`;
-      return;
-    }
     if (count > max) {
       status = `${TIERS[tier].name} limit is ${max}`;
       return;
@@ -198,12 +199,12 @@
       </label>
       <div class="pill-row">
         <button class="soft-button" onclick={() => (count = 1)}>1</button>
-        <button class="soft-button" onclick={() => (count = 10)}>10</button>
-        <button class="soft-button" onclick={() => (count = 100)}>100</button>
-        <button class="soft-button" onclick={() => (count = 1000)}>1000</button>
+        <button class="soft-button" onclick={() => (count = 10)} disabled={tier === 'FREE'}>10</button>
+        <button class="soft-button" onclick={() => (count = 100)} disabled={tier === 'FREE'}>100</button>
+        <button class="soft-button" onclick={() => (count = 1000)} disabled={tier !== 'POWER'}>1000</button>
       </div>
       <label>Batch count
-        <input type="number" bind:value={count} min="1" />
+        <input type="number" bind:value={count} min="1" max={TIERS[tier].maxBatch ?? undefined} />
       </label>
       <div class="action-row">
         <button class="holo-button" onclick={bulk}>Generate batch</button>
@@ -221,14 +222,13 @@
         <div class="plan-card"><strong>Power Pack</strong><span>{TIERS.POWER.maxBatch} • {TIERS.POWER.priceXlm} XLM</span></div>
         <div class="plan-card"><strong>Custom / Enterprise</strong><span>Contact for event ops scale</span></div>
       </div>
-      <p class="review">One-tap checkout (Apple Pay-style flow): choose plan → pay in wallet → tap I paid → generate.</p>
-      <div class="pill-row">
-        <a class="holo-button" href={getCheckoutLink('EVENT')}>Pay {TIERS.EVENT.priceXlm} XLM · Event Pack</a>
-        <button class="soft-button" onclick={() => confirmPlanPaid('EVENT')}>I paid Event Pack</button>
-      </div>
-      <div class="pill-row">
-        <a class="holo-button" href={getCheckoutLink('POWER')}>Pay {TIERS.POWER.priceXlm} XLM · Power Pack</a>
-        <button class="soft-button" onclick={() => confirmPlanPaid('POWER')}>I paid Power Pack</button>
+      <p class="review">One-tap checkout flow: choose your plan, open wallet checkout, and continue generating. No manual ‘I paid’ confirmation step.</p>
+      <div class="action-row">
+        <button class="holo-button" onclick={checkoutSelectedTier} disabled={tier === 'FREE'}>
+          {#if tier === 'EVENT'}Upgrade · {TIERS.EVENT.priceXlm} XLM{/if}
+          {#if tier === 'POWER'}Upgrade · {TIERS.POWER.priceXlm} XLM{/if}
+          {#if tier === 'FREE'}Select Event or Power to upgrade{/if}
+        </button>
       </div>
       <label>Platform destination
         <input value={PLATFORM_PAYMENT_DESTINATION} readonly />
@@ -274,9 +274,11 @@
   input, select { width: 100%; margin-top: .35rem; background: #0a0a0a; color: #f4f4f5; border: 1px solid rgba(255,255,255,.18); border-radius: 10px; padding: .58rem .66rem; }
   input:focus, select:focus, button:focus, a:focus { outline: 2px solid #9ee7ff; outline-offset: 2px; }
   .pill-row,.action-row { display:flex; gap:.5rem; flex-wrap:wrap; margin:.5rem 0; }
-  .asset-pill,.soft-button,.holo-button { border-radius: 999px; border:1px solid rgba(255,255,255,.2); padding:.5rem .85rem; color:#f4f4f5; background:#11131a; }
+  .asset-pill,.soft-button,.holo-button { border-radius: 999px; border:1px solid rgba(255,255,255,.2); padding:.5rem .85rem; color:#f4f4f5; background:#11131a; transition: all .18s ease; }
   .asset-pill.active { border-color: rgba(255,255,255,.35); box-shadow: 0 0 0 1px #9ee7ff44; }
   .holo-button { background: linear-gradient(110deg, #f5f5f5, #9ca3af, #e5e7eb, #c0c0c0, #f8fafc, #a3a3a3); color:#060709; font-weight:700; }
+  button:disabled { opacity:.45; cursor:not-allowed; }
+  .soft-button:hover,.holo-button:hover,.asset-pill:hover { transform: translateY(-1px); }
   .soft-link { align-self:center; color:#dbe5f3; text-decoration:underline; }
   .qr-frame { background: linear-gradient(160deg,#1e232e,#11131a); border:1px solid rgba(255,255,255,.35); border-radius:14px; padding: 1rem; min-height: 230px; display:grid; place-items:center; }
   .qr-image { background:white; padding:12px; border-radius:10px; width:min(320px,100%); height:auto; }
