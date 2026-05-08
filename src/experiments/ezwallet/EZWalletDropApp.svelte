@@ -15,12 +15,14 @@
 </script>
 <div class="p-6 max-w-3xl mx-auto text-white">
 <h1 class="text-2xl font-bold">Stellar Claim Ticket</h1>
-<p>Review the ticket payload details, confirm destination, then sign only if everything is correct.</p>
+<p>This page is safe to open. Review details first, then connect and sign only if everything looks right.</p>
 {#if errors.length}<p class="text-red-400">{errors.join(', ')}</p>{:else if intent}
 <ul><li>Mode: {intent.mode}</li><li>Asset: {intent.asset.code}</li><li>Amount: {intent.amount || '—'}</li><li>Destination: {intent.destination || 'choose later'}</li><li>Event: {intent.event || '—'}</li><li>Message: {intent.message || '—'}</li><li>Network: public</li></ul>
 <p class="text-yellow-300">No transaction has been sent. This QR stores claim intent metadata; signer approval is still required.</p>
-<button onclick={login}>Continue with Passkey</button>
-<button onclick={()=>navigator.clipboard.writeText(raw)}>Copy Intent</button>
-<a href="/labs/ezwallet">Generate Another QR</a>
+<div class="mt-4 flex flex-wrap gap-3">
+<button class="px-3 py-2 rounded bg-white/10" onclick={login}>Connect passkey wallet</button>
+<button class="px-3 py-2 rounded bg-white/10" onclick={()=>navigator.clipboard.writeText(raw)}>Copy intent</button>
+<a class="px-3 py-2 rounded bg-white/10" href="/labs/ezwallet">Create another ticket</a>
+</div>
 {/if}
 </div>

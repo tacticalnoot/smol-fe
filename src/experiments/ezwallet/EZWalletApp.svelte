@@ -18,7 +18,7 @@
   let csv = $state('');
   let batchRows = $state<any[]>([]);
   const auth = useAuthentication();
-  let status = $state('');
+  let status = $state('Ready to generate your first ticket.');
   let tier = $state<'FREE' | 'EVENT' | 'POWER'>('FREE');
 
   let tierPaid = $state<'FREE' | 'EVENT' | 'POWER'>('FREE');
@@ -46,6 +46,7 @@
   }
 
   function makeOne() {
+    status = 'Building your share link…';
     const intent = buildIntent({
       mode,
       amount,
@@ -59,7 +60,7 @@
     });
     const p = encodeIntent(intent);
     link = `${location.origin}/labs/ezwallet/drop?p=${p}`;
-    QRCode.toDataURL(link, { margin: 1, width: 320 }).then((d: string) => (qrData = d));
+    QRCode.toDataURL(link, { margin: 1, width: 320 }).then((d: string) => { qrData = d; status = 'QR ready — share the link or scan to review.'; });
   }
 
   function bulk() {
@@ -131,7 +132,8 @@
 
   <section class="dashboard-grid">
     <article class="glass-panel">
-      <h2 class="section-title">01 · Build Your Claim Ticket QR</h2>
+      <h2 class="section-title">01 · Build Your Claim Ticket</h2>
+      <p class="muted">Quick start: choose asset, add an optional amount, and generate.</p>
       <div class="label">Asset</div>
       <div class="pill-row">
         <button class="asset-pill" class:active={asset === 'XLM'} onclick={() => (asset = 'XLM')}>XLM</button>
@@ -139,8 +141,8 @@
       </div>
       <label>Mode
         <select bind:value={mode}>
-          <option value="receive_request">Direct Claim Ticket</option>
-          <option value="event_drop">Event Ticket Drop</option>
+          <option value="receive_request">Direct claim ticket</option>
+          <option value="event_drop">Event ticket drop</option>
         </select>
       </label>
       <label>Amount
@@ -149,20 +151,23 @@
       <label>Destination
         <input bind:value={destination} placeholder="Optional (G.../C...)" />
       </label>
+      {#if mode === 'event_drop'}
       <label>Event
         <input bind:value={event} placeholder="Event name" />
       </label>
+      {/if}
       <label>Message
-        <input bind:value={message} placeholder="Message" />
+        <input bind:value={message} placeholder="Optional note for recipient" />
       </label>
       <div class="action-row">
         <button class="holo-button" onclick={makeOne}>Generate QR</button>
-        <button class="soft-button" onclick={login}>Continue with Passkey</button>
+        <button class="soft-button" onclick={login}>Connect passkey wallet</button>
       </div>
+      <p class="status">{status}</p>
     </article>
 
     <article class="glass-panel">
-      <h2 class="section-title">02 · Share Review Link</h2>
+      <h2 class="section-title">02 · Share & Review</h2>
       <p class="safety">Review before signing. The QR carries claim intent metadata and never auto-sends funds.</p>
       <div class="qr-frame">
         {#if qrData}
@@ -183,7 +188,7 @@
     </article>
 
     <article class="glass-panel">
-      <h2 class="section-title">03 · Event & Batch Mode</h2>
+      <h2 class="section-title">03 · Batch Generation</h2>
       <label>Plan
         <select bind:value={tier}>
           <option value="FREE">Free</option>
@@ -204,9 +209,8 @@
         <button class="holo-button" onclick={bulk}>Generate batch</button>
         {#if csv}<button class="soft-button" onclick={downloadCsv}>Export CSV manifest</button>{/if}
       </div>
-      <p class="status">{status}</p>
       <p class="muted">Rows generated: {batchRows.length}</p>
-      <p class="muted">Free plan is strictly limited to 1 generation. Any batch size above 1 requires a paid plan.</p>
+      <p class="muted">Free plan creates one ticket at a time. Batch sizes above 1 require Event or Power.</p>
     </article>
 
     <article class="glass-panel pricing-panel">
