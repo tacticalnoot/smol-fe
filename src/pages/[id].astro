@@ -154,6 +154,17 @@ if (id) {
 			<SmolResults id={id as string} client:only="svelte" />
 		</div>
         
+        {lyricsDisplay && (
+            <button
+                id="copy-lyrics-button"
+                class="fixed bottom-4 right-4 z-40 rounded-md border border-white/20 bg-black/60 px-3 py-1.5 text-xs font-medium text-white backdrop-blur hover:bg-black/75 transition-colors"
+                type="button"
+                aria-label="Copy lyrics"
+                data-lyrics={lyricsDisplay}
+            >
+                Copy lyrics
+            </button>
+        )}
         <!-- SSR Content for SEO (Visible but unobtrusive) -->
         <!-- SSR Content for SEO -->
         <div class="sr-only">
@@ -173,4 +184,29 @@ if (id) {
             </section>
         </div>
 	</div>
+
+<script is:inline>
+    const copyLyricsButton = document.getElementById("copy-lyrics-button");
+
+    if (copyLyricsButton) {
+        copyLyricsButton.addEventListener("click", async () => {
+            const lyrics = copyLyricsButton.getAttribute("data-lyrics") || "";
+            if (!lyrics) return;
+
+            try {
+                await navigator.clipboard.writeText(lyrics);
+                copyLyricsButton.textContent = "Copied";
+                setTimeout(() => {
+                    copyLyricsButton.textContent = "Copy lyrics";
+                }, 1200);
+            } catch {
+                copyLyricsButton.textContent = "Copy failed";
+                setTimeout(() => {
+                    copyLyricsButton.textContent = "Copy lyrics";
+                }, 1200);
+            }
+        });
+    }
+</script>
+
 </Layout>
