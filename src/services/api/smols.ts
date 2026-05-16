@@ -1,8 +1,104 @@
-import type { Smol } from "../../types/domain";
+import type { Smol, SmolDetailResponse } from "../../types/domain";
 import {
   getSnapshotAsync,
   mergeSmolsWithSnapshot,
 } from "./snapshot";
+
+
+export type SmolDetailLoadState = "loading" | "preparing" | "loaded" | "error" | "staleFallback";
+
+export interface LoadSmolDetailResult {
+  state: SmolDetailLoadState;
+  source?: "live" | "snapshot";
+  smol?: SmolDetailResponse;
+  error?: string;
+}
+
+function delay(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+function isValidDetailResponse(response: SmolDetailResponse | null | undefined): response is SmolDetailResponse {
+  if (!response) return false;
+  const liveId = normalizeId(response.d1?.Id).trim();
+  const hasTitle = Boolean(response.d1?.Title?.trim() || response.kv_do?.lyrics?.title?.trim());
+  const hasMedia = Boolean(response.d1?.Song_1 || response.kv_do?.songs?.[0]?.music_id || response.kv_do?.image_base64);
+  return liveId.length > 0 && hasTitle && hasMedia;
+}
+
+function mapSnapshotToDetail(snapshotSmol: Smol): SmolDetailResponse | null {
+  const normalizedId = normalizeId(snapshotSmol?.Id).trim();
+  if (!normalizedId) return null;
+  const title = typeof snapshotSmol.Title === "string" ? snapshotSmol.Title.trim() : "";
+  if (!title) return null;
+  return {
+    d1: {
+      Id: normalizedId,
+      Title: title,
+      Address: snapshotSmol.Address,
+      Creator: snapshotSmol.Creator || snapshotSmol.Username || snapshotSmol.artist || snapshotSmol.author,
+      Song_1: snapshotSmol.Song_1,
+      Mint_Token: snapshotSmol.Mint_Token,
+      Mint_Amm: snapshotSmol.Mint_Amm,
+      Created_At: snapshotSmol.Created_At,
+    },
+    kv_do: snapshotSmol.kv_do || {
+      description: snapshotSmol.Description,
+      lyrics: snapshotSmol.lyrics,
+    },
+    wf: { status: "complete" },
+  };
+}
+
+export async function loadSmolDetail(id: unknown, options?: { signal?: AbortSignal }): Promise<LoadSmolDetailResult> {
+  const normalizedId = normalizeId(id).trim();
+  if (!normalizedId) return { state: "error", error: "Missing song id." };
+
+  const retryDelaysMs = [750, 1500, 3000];
+
+  for (let attempt = 0; attempt <= retryDelaysMs.length; attempt += 1) {
+    try {
+      const res = await fetch(`${API_URL.replace(/\/$/, "")}/${encodeURIComponent(normalizedId)}`, {
+        credentials: "include",
+        cache: "no-store",
+        signal: options?.signal,
+      });
+
+      if (res.ok) {
+        const live = (await res.json()) as SmolDetailResponse;
+        if (isValidDetailResponse(live)) {
+          return { state: "loaded", source: "live", smol: live };
+        }
+      }
+
+      if ((res.status === 404 || res.status === 425 || res.status === 409 || res.status >= 500) && attempt < retryDelaysMs.length) {
+        await delay(retryDelaysMs[attempt]);
+        continue;
+      }
+      break;
+    } catch {
+      if (attempt < retryDelaysMs.length) {
+        await delay(retryDelaysMs[attempt]);
+        continue;
+      }
+      break;
+    }
+  }
+
+  const snapshot = await getSnapshotAsync();
+  const snapshotMatch = snapshot.find((s) => normalizeId(s.Id).trim() === normalizedId);
+  if (snapshotMatch) {
+    const mapped = mapSnapshotToDetail(snapshotMatch);
+    if (isValidDetailResponse(mapped)) {
+      return { state: "staleFallback", source: "snapshot", smol: mapped };
+    }
+  }
+
+  return {
+    state: "error",
+    error: "Could not load this smol. It may still be preparing—please retry.",
+  };
+}
 
 const API_URL = import.meta.env.PUBLIC_API_URL || 'https://api.smol.xyz';
 
