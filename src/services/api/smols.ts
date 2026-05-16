@@ -54,19 +54,9 @@ export async function fetchSmols(options?: { limit?: number; signal?: AbortSigna
       };
     });
 
-    // 3. Add songs from snapshot that aren't in the live response
-    const liveIds = new Set(liveSmols.map((s) => s.Id));
-    snapshot.forEach((oldSmol) => {
-      if (!liveIds.has(oldSmol.Id)) {
-        merged.push({
-          ...oldSmol,
-          Tags: oldSmol.Tags || [],
-          Address: oldSmol.Address || undefined,
-          Minted_By: oldSmol.Minted_By || undefined,
-          Username: oldSmol.Username || undefined,
-        });
-      }
-    });
+    // 3. Do NOT append snapshot-only songs when live API succeeded.
+    // Live must remain authoritative for "latest" ordering and corpus freshness.
+    // Snapshot is only a field-level fallback for known live IDs.
 
     // 4. DEEP VERIFICATION: Hydrate missing metadata for "Live-Only" songs
     // (Songs present in API but not in snapshot = New drops missing tags/address)
