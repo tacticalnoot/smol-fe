@@ -63,7 +63,10 @@ if (id) {
 			}
 
             // Prepare SSR Content
-            lyricsDisplay = data.kv_do?.lyrics?.text || data.kv_do?.lyrics || "";
+            const rawLyrics = data.kv_do?.lyrics;
+            lyricsDisplay = typeof rawLyrics === "string"
+                ? rawLyrics
+                : rawLyrics?.lyrics || rawLyrics?.text || "";
             rawPrompt = data.kv_do?.payload?.prompt || "";
              
             // Schema
@@ -154,7 +157,7 @@ if (id) {
 			<SmolResults id={id as string} client:only="svelte" />
 		</div>
         
-        {lyricsDisplay && (
+        {lyricsDisplay.trim().length > 0 && (
             <button
                 id="copy-lyrics-button"
                 class="fixed bottom-4 right-4 z-40 rounded-md border border-white/20 bg-black/60 px-3 py-1.5 text-xs font-medium text-white backdrop-blur hover:bg-black/75 transition-colors"
@@ -170,7 +173,7 @@ if (id) {
             <h1>{title}</h1>
             <h2>Description</h2>
             <p>{description}</p>
-            {lyricsDisplay && (
+            {lyricsDisplay.trim().length > 0 && (
                 <section>
                     <h3>Lyrics</h3>
                     <p>{lyricsDisplay}</p>
