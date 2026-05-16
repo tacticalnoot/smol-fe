@@ -1,5 +1,17 @@
 import type { Smol } from "../../types/domain";
 
+function normalizeId(value: unknown): string {
+  return typeof value === "string" ? value : String(value ?? "");
+}
+
+function isValidSmolRecord(smol: Partial<Smol> | null | undefined): smol is Smol {
+  if (!smol) return false;
+  const id = normalizeId((smol as any).Id).trim();
+  if (!id) return false;
+  const title = typeof smol.Title === "string" ? smol.Title.trim() : "";
+  return title.length > 0;
+}
+
 // OOM FIX: Removed static JSON imports - data fetched at runtime
 // Shared cache for the raw snapshot response to prevent double-fetching
 let cachedFullData: { songs: Smol[], tagGraph: any } | null = null;
@@ -22,7 +34,9 @@ export async function getSnapshotAsync(): Promise<Smol[]> {
     cachedFullData = data;
 
     // Support both legacy array and new structured object { songs: [], tagGraph: {} }
-    const songs = Array.isArray(data) ? data : (data.songs || []);
+    const songs = (Array.isArray(data) ? data : (data.songs || []))
+      .map((smol: Smol) => ({ ...smol, Id: normalizeId(smol?.Id) }))
+      .filter((smol: Smol) => isValidSmolRecord(smol));
     cachedSnapshot = songs;
     return cachedSnapshot!;
   } catch (e) {
@@ -59,12 +73,14 @@ export function getGlobalSnapshot(): Smol[] {
 
 export async function mergeSmolsWithSnapshot(liveSmols: Smol[]): Promise<Smol[]> {
   const snapshot = await getSnapshotAsync();
-  const snapshotMap = new Map(snapshot.map((s) => [s.Id, s]));
+  const snapshotMap = new Map(snapshot.map((s) => [normalizeId(s.Id), s]));
 
   const merged = liveSmols.map((newSmol) => {
-    const oldSmol = snapshotMap.get(newSmol.Id);
+    const normalizedId = normalizeId(newSmol.Id);
+    const oldSmol = snapshotMap.get(normalizedId);
     return {
       ...newSmol,
+      Id: normalizedId,
       Tags:
         newSmol.Tags && newSmol.Tags.length > 0
           ? newSmol.Tags
@@ -75,11 +91,12 @@ export async function mergeSmolsWithSnapshot(liveSmols: Smol[]): Promise<Smol[]>
     };
   });
 
-  const liveIds = new Set(liveSmols.map((s) => s.Id));
+  const liveIds = new Set(liveSmols.map((s) => normalizeId(s.Id)));
   snapshot.forEach((oldSmol) => {
-    if (!liveIds.has(oldSmol.Id)) {
+    if (!liveIds.has(normalizeId(oldSmol.Id))) {
       merged.push({
         ...oldSmol,
+        Id: normalizeId(oldSmol.Id),
         Tags: oldSmol.Tags || [],
         Address: oldSmol.Address || undefined,
         Minted_By: oldSmol.Minted_By || undefined,
