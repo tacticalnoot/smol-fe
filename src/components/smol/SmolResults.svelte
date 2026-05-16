@@ -207,6 +207,18 @@
         return status === "errored" || status === "terminated";
     }
 
+    function hasRenderableDetail(response: SmolDetailResponse | null): boolean {
+        if (!response) return false;
+        const hasTitle = Boolean(
+            response.kv_do?.lyrics?.title || response.d1?.Title,
+        );
+        const hasAudio = Boolean(
+            response.d1?.Song_1 || response.kv_do?.songs?.[0]?.music_id,
+        );
+        const hasArtwork = Boolean(response.kv_do?.image_base64 || id);
+        return hasTitle && (hasAudio || hasArtwork);
+    }
+
     // Stop polling
     function stopPolling() {
         if (pollIntervalId) {
@@ -244,6 +256,18 @@
             }
 
             data = await res.json();
+
+            if (!hasRenderableDetail(data)) {
+                if (retryCount < MAX_RETRIES) {
+                    isPolling = true;
+                    startPolling();
+                    return;
+                }
+                stopPolling();
+                error = "Track data is incomplete right now. Please retry.";
+                loading = false;
+                return;
+            }
 
             // Check if still generating
             if (isStillGenerating(data) && retryCount < MAX_RETRIES) {

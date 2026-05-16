@@ -6,6 +6,18 @@ import {
 
 const API_URL = import.meta.env.PUBLIC_API_URL || 'https://api.smol.xyz';
 
+function normalizeId(value: unknown): string {
+  return typeof value === "string" ? value : String(value ?? "");
+}
+
+function isRenderableSmol(smol: Partial<Smol> | null | undefined): smol is Smol {
+  if (!smol) return false;
+  const id = normalizeId((smol as any).Id).trim();
+  if (!id) return false;
+  const title = typeof smol.Title === "string" ? smol.Title.trim() : "";
+  return title.length > 0;
+}
+
 /**
  * Fetch all smols with Hybrid Strategy (Live + GalacticSnapshot Merge)
  */
@@ -37,13 +49,15 @@ export async function fetchSmols(options?: { limit?: number; signal?: AbortSigna
     }
 
     // 2. Perform Merging with pre-loaded snapshot
-    const snapshotMap = new Map(snapshot.map((s) => [s.Id, s]));
+    const snapshotMap = new Map(snapshot.map((s) => [normalizeId(s.Id), s]));
 
     // Merge: Prefer Live, but fallback to Snapshot for missing critical fields
     const merged = liveSmols.map((newSmol) => {
-      const oldSmol = snapshotMap.get(newSmol.Id);
+      const normalizedId = normalizeId(newSmol.Id);
+      const oldSmol = snapshotMap.get(normalizedId);
       return {
         ...newSmol,
+        Id: normalizedId,
         Tags:
           newSmol.Tags && newSmol.Tags.length > 0
             ? newSmol.Tags
@@ -62,7 +76,7 @@ export async function fetchSmols(options?: { limit?: number; signal?: AbortSigna
     // (Songs present in API but not in snapshot = New drops missing tags/address)
     const newItems = merged.filter(
       (s: any) =>
-        !snapshotMap.has(s.Id) &&
+        !snapshotMap.has(normalizeId(s.Id)) &&
         (!s.Tags || s.Tags.length === 0 || !s.Address),
     );
 
@@ -75,7 +89,7 @@ export async function fetchSmols(options?: { limit?: number; signal?: AbortSigna
         await Promise.all(
           chunk.map(async (song: any) => {
             try {
-              const res = await fetch(`${API_URL}/${song.Id}`, { signal: options?.signal });
+              const res = await fetch(`${API_URL}/${normalizeId(song.Id)}`, { signal: options?.signal });
               if (!res.ok) return;
               const data = await res.json();
               const detail = data.d1 || data.kv_do;
@@ -98,7 +112,7 @@ export async function fetchSmols(options?: { limit?: number; signal?: AbortSigna
       }
     }
 
-    return merged as Smol[];
+    return merged.filter((smol) => isRenderableSmol(smol)) as Smol[];
   } catch (e) {
     console.error("Fetch error, falling back to snapshot", e);
     return getSnapshotAsync();
