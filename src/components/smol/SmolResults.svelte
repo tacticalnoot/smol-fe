@@ -9,6 +9,7 @@
     } from "../../stores/audio.svelte.ts";
     import { navigate } from "astro:transitions/client";
     import { onDestroy } from "svelte";
+    import { loadSmolDetail } from "../../services/api/smols";
     import RadioPlayer from "../radio/RadioPlayer.svelte";
     import LikeButton from "../ui/LikeButton.svelte";
     import Loader from "../ui/Loader.svelte";
@@ -72,6 +73,8 @@
     // Data State
     let data = $state<SmolDetailResponse | null>(null);
     let loading = $state(true);
+    let preparing = $state(false);
+    let usingSnapshotFallback = $state(false);
     let error = $state<string | null>(null);
     let showTradeModal = $state(false);
     let minting = $state(false);
@@ -231,75 +234,47 @@
     async function fetchData(isRetry = false) {
         if (!isRetry) {
             loading = true;
+            preparing = false;
+            usingSnapshotFallback = false;
             error = null;
             retryCount = 0;
+            stopPolling();
         }
 
         try {
-            const res = await fetch(`${API_URL}/${id}`, {
-                credentials: "include",
-                cache: "no-store",
-            });
+            const result = await loadSmolDetail(String(id));
 
-            if (!res.ok) {
-                // 404 might mean song is still being created - start polling
-                if (res.status === 404 && retryCount < MAX_RETRIES) {
-                    isPolling = true;
-                    startPolling();
-                    return;
-                }
-                throw new Error(
-                    res.status === 404
-                        ? "Song not found"
-                        : "Failed to load track",
-                );
+            if (result.smol) {
+                data = result.smol;
             }
 
-            data = await res.json();
-
-            if (!hasRenderableDetail(data)) {
-                if (retryCount < MAX_RETRIES) {
-                    isPolling = true;
-                    startPolling();
-                    return;
+            if (result.state === "loaded") {
+                usingSnapshotFallback = false;
+                preparing = false;
+                loading = false;
+                if (track && !showTapToPlay) {
+                    selectSong(track);
                 }
-                stopPolling();
-                error = "Track data is incomplete right now. Please retry.";
+                return;
+            }
+
+            if (result.state === "staleFallback") {
+                usingSnapshotFallback = true;
+                preparing = false;
                 loading = false;
                 return;
             }
 
-            // Check if still generating
-            if (isStillGenerating(data) && retryCount < MAX_RETRIES) {
-                isPolling = true;
-                startPolling();
-                return;
-            }
-
-            // Check if generation failed
-            if (isGenerationFailed(data)) {
-                stopPolling();
-                error = "Generation failed. Please try again.";
-                loading = false;
-                return;
-            }
-
-            // Complete! Stop polling and show content
-            stopPolling();
+            // Live detail failed after bounded retries; show recoverable preparing/error state.
+            preparing = true;
             loading = false;
-
-            // Auto-play if track is ready (but not if showing tap-to-play overlay)
-            if (track && !showTapToPlay) {
-                selectSong(track);
-            }
+            error = result.error || "Could not load this smol. Please retry.";
         } catch (e: any) {
-            // On error, try polling if we haven't exhausted retries
-            if (retryCount < MAX_RETRIES && !error) {
-                isPolling = true;
-                startPolling();
-            } else {
-                stopPolling();
-                error = e.message;
+            preparing = false;
+            loading = false;
+            error = e?.message || "Could not load this smol. Please retry.";
+        } finally {
+            if (loading && error) {
                 loading = false;
             }
         }
@@ -732,7 +707,10 @@
         </div>
     {:else if error}
         <div class="text-center py-32">
-            <h2 class="text-2xl font-bold text-red-500 mb-4">Error</h2>
+            {#if preparing}
+                <p class="text-white/60 mb-3">This smol may still be preparing on the live API.</p>
+            {/if}
+            <h2 class="text-2xl font-bold text-red-500 mb-4">Could not load this smol</h2>
             <p class="text-white/40 mb-6">{error}</p>
             <div class="flex gap-4 justify-center">
                 <button
@@ -750,6 +728,11 @@
         </div>
     {:else if data}
         <div class="animate-in fade-in slide-in-from-bottom-4 duration-700">
+            {#if usingSnapshotFallback}
+                <div class="mb-4 rounded-lg border border-yellow-500/30 bg-yellow-500/10 px-4 py-2 text-sm text-yellow-200">
+                    Live detail is unavailable right now. Showing snapshot fallback data.
+                </div>
+            {/if}
             <!-- Main Portal -->
             <div
                 class="reactive-glass border border-white/5 bg-[#1a1a1a] overflow-hidden rounded-2xl shadow-2xl"
