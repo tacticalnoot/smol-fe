@@ -160,7 +160,6 @@ if (id) {
                 class="fixed bottom-4 right-4 z-40 rounded-md border border-white/20 bg-black/60 px-3 py-1.5 text-xs font-medium text-white backdrop-blur hover:bg-black/75 transition-colors"
                 type="button"
                 aria-label="Copy lyrics"
-                data-lyrics={lyricsDisplay}
             >
                 Copy lyrics
             </button>
@@ -187,14 +186,14 @@ if (id) {
 
 <script is:inline>
     const copyLyricsButton = document.getElementById("copy-lyrics-button");
+    const lyricsToCopy = {JSON.stringify(lyricsDisplay)};
 
     if (copyLyricsButton) {
         copyLyricsButton.addEventListener("click", async () => {
-            const lyrics = copyLyricsButton.getAttribute("data-lyrics") || "";
-            if (!lyrics) return;
+            if (!lyricsToCopy) return;
 
             try {
-                await navigator.clipboard.writeText(lyrics);
+                await navigator.clipboard.writeText(lyricsToCopy);
                 copyLyricsButton.textContent = "Copied";
                 setTimeout(() => {
                     copyLyricsButton.textContent = "Copy lyrics";
