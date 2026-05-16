@@ -85,7 +85,7 @@
     let pollIntervalId: ReturnType<typeof setInterval> | null = null;
     let retryCount = $state(0);
     let isPolling = $state(false);
-    const MAX_RETRIES = 30; // 30 * 2s = 60s max
+    const MAX_RETRIES = 120; // 120 * 2s = 4m max for slow generations
     const POLL_INTERVAL = 2000;
 
     // Context-aware back navigation
@@ -289,7 +289,7 @@
 
             if (retryCount >= MAX_RETRIES) {
                 stopPolling();
-                error = "Taking longer than expected. Click retry to continue.";
+                error = "Still generating in the background. Click retry to keep checking.";
                 loading = false;
                 return;
             }
