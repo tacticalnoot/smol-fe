@@ -1,5 +1,23 @@
 [
     {
+        "id": "lab_ask_the_smol",
+        "title": "Ask the Smol",
+        "badge": "EXP-ASK",
+        "status_color": "YELLOW",
+        "readiness_score": 70,
+        "last_reviewed": "2026-05-29",
+        "blast_radius": "LABS_ONLY",
+        "path": "experiments/ask-the-smol/experiment.yml",
+        "href": "/labs/ask-the-smol",
+        "description": "Every Smol has a soul. Search any song and chat with a fictional oracle derived from its metadata, lyrics, style, tags, and media context.",
+        "tags": [
+            "AI",
+            "Music",
+            "Persona"
+        ],
+        "isLocked": false
+    },
+    {
         "id": "lab_roulette",
         "title": "Tag Roulette",
         "badge": "EXP-001",
@@ -217,7 +235,7 @@
         "blast_radius": "READ_ONLY",
         "path": "experiments/trader-genome/experiment.yml",
         "href": "/labs/trader-genome",
-        "description": "Decode any Stellar wallet's trading DNA. FIFO P&L, behavioral genome scores, archetype classification, and activity heatmaps \u2014 all from public Horizon data.",
+        "description": "Decode any Stellar wallet's trading DNA. FIFO P&L, behavioral genome scores, archetype classification, and activity heatmaps — all from public Horizon data.",
         "tags": [
             "Stellar",
             "Tool",
