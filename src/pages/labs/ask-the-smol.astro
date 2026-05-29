@@ -1,0 +1,11 @@
+---
+import Layout from "../../layouts/Layout.astro";
+import AskTheSmolLab from "../../components/labs/AskTheSmolLab.svelte";
+---
+
+<Layout
+  title="Ask the Smol | Smol Labs"
+  description="Every Smol has a soul. Pick any song and ask its fictional oracle questions."
+>
+  <AskTheSmolLab client:only="svelte" />
+</Layout>
