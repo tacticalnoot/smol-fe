@@ -1,0 +1,28 @@
+id: lab_ask_the_smol
+title: "Ask the Smol"
+owner: "Labs"
+status_color: YELLOW
+readiness_score: 74
+risk_level: LOW
+blast_radius: LABS_ONLY
+env: SERVER_OPTIONAL
+feature_flag: "labs.ask_the_smol.enabled"
+last_reviewed: "2026-05-30"
+dependencies:
+  - "src/pages/labs/ask-the-smol.astro"
+  - "src/components/labs/AskTheSmolLab.svelte"
+  - "src/pages/api/ask-the-smol.ts"
+  - "src/lib/smolPersona"
+links:
+  spec: "docs/labs/ASK_THE_SMOL.md"
+  pr: ""
+  docs:
+    - "docs/labs/ASK_THE_SMOL.md"
+definition_of_done:
+  - "Loads Smols through the canonical live/snapshot data path"
+  - "Searches across the loaded corpus without rendering every row at once"
+  - "Lets visitors select a Smol, ask questions, and use starter prompts"
+  - "Falls back to clearly labeled local preview when Gemini is unavailable"
+  - "Keeps Prompt Inspector collapsed and contained on mobile"
+notes: |
+  Mobile-first lab for chatting with a fictional song-persona derived from normalized Smol metadata.
