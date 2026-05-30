@@ -121,12 +121,14 @@ Manual checks:
 
 1. the page loads
 2. the Smol list loads from the existing data path
-3. search filters by title, tag, creator, or id
-4. selecting different Smols changes the normalized context
-5. starter prompts submit chat messages
-6. responses come from Gemini when `GEMINI_API_KEY` works
-7. otherwise the UI clearly falls back to local preview mode
-8. Prompt Inspector shows normalized context, universal prompt, user message, mode, and recent history
+3. search filters by title, tag, creator, or id across the full loaded collection
+4. the selector renders a limited visible window first, with Show more for additional matches
+5. selecting different Smols changes the normalized context and collapses the selector to a compact summary on mobile
+6. starter prompts submit chat messages using tappable chip buttons
+7. responses come from Gemini when `GEMINI_API_KEY` works
+8. otherwise the UI clearly falls back to local preview mode
+9. Prompt Inspector is collapsed by default and contains normalized context, universal prompt, user message, mode, provider error, and recent history in bounded scroll areas
+10. 375px, 390px, 414px, and 430px mobile widths do not require horizontal page scrolling
 
 ## Gemini environment variable
 
@@ -142,4 +144,5 @@ Do not put Gemini keys in public `VITE_*` or `PUBLIC_*` frontend variables.
 - There is no account auth or persistent memory.
 - The server trusts the client-supplied normalized context for this lab prototype.
 - The live API list limit is currently requested at 5000 through the existing loader.
+- The UI keeps the full loaded collection in memory, but renders a smaller visible result window first to keep mobile selection responsive.
 - The fallback is intentionally small and deterministic; it proves the UX and prompt system, not full model quality.
